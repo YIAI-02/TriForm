@@ -1,3 +1,4 @@
 [submodule "ramulator"]
 	path = ramulator
 	url = https://github.com/CMU-SAFARI/ramulator.git
+	ignore = dirty
