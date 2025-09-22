@@ -1,0 +1,1 @@
+Simulation done. Statistics written to out_runs/stats/layoutND_mpt_Wq_4096x4096_write.stats.txt

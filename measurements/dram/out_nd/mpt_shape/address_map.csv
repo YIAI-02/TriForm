@@ -1,0 +1,4 @@
+name,model,rows,cols,dtype_B,cacheline_B,base_addr,total_bytes,trace_read,trace_write
+mpt_Wq,mpt,4096,4096,2,64,0x10000000,33554432,out_nd/mpt_shape/traces/layoutND_mpt_Wq_4096x4096_read.trace,out_nd/mpt_shape/traces/layoutND_mpt_Wq_4096x4096_write.trace
+mpt_mlp_up,mpt,4096,16384,2,64,0x12200000,134217728,out_nd/mpt_shape/traces/layoutND_mpt_mlp_up_4096x16384_read.trace,out_nd/mpt_shape/traces/layoutND_mpt_mlp_up_4096x16384_write.trace
+mpt_mlp_down,mpt,16384,4096,2,64,0x1a400000,134217728,out_nd/mpt_shape/traces/layoutND_mpt_mlp_down_16384x4096_read.trace,out_nd/mpt_shape/traces/layoutND_mpt_mlp_down_16384x4096_write.trace
