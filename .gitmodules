@@ -1,5 +1,5 @@
 [submodule "ramulator"]
-	path = ramulator
+	path = submodules/ramulator
 	url = https://github.com/CMU-SAFARI/ramulator.git
 	ignore = dirty
 [submodule "submodules/attacc_simulator"]
