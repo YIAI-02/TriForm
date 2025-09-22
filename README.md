@@ -3,19 +3,15 @@
 ## Mesurements
 ### Global Buffer
 #### End-to-End Workflow
+```
 configs ──▶ 01_generate_traces.py ──▶ <weight traces>
-
                 │
-
                 ▼
-
             02_run_ramulator.py   ──▶ <Ramulator statistics / logs>
-
                 │
-
                 ▼
-
              03_parse_and_fit     ──▶ <linear-fit params for algorithms>
+```
 
 - 01_generate_traces.py
 
