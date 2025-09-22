@@ -1,0 +1,4 @@
+trace_stem,requests,cacheline_B,bytes_read,read_latency_sum
+layoutND_mpt_Wq_4096x4096_read,524288,64,33554432,76762246.0
+layoutND_mpt_mlp_down_16384x4096_read,2097152,64,134217728,307070670.0
+layoutND_mpt_mlp_up_4096x16384_read,2097152,64,134217728,307070670.0
