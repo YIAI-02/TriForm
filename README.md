@@ -4,20 +4,32 @@
 ### Global Buffer
 #### End-to-End Workflow
 configs ──▶ 01_generate_traces.py ──▶ <weight traces>
+
                 │
+
                 ▼
+
             02_run_ramulator.py   ──▶ <Ramulator statistics / logs>
+
                 │
+
                 ▼
+
              03_parse_and_fit     ──▶ <linear-fit params for algorithms>
 
 - 01_generate_traces.py
+
     Input: configs/ (model params).
+
     Output: DRAM traces that represent ND-format weight accesses.
 - 02_run_ramulator.py
+
     Runs Ramulator on the generated traces and exports timing/latency stats.
+
 - 03_parse_and_fit
+
     Parses the simulation outputs and fits a linear model used by the algorithm side.
+
 #### One-Command Runner
 
 Use ./run_dram.sh at repo root to chain the full pipeline (01→03). It accepts flags to override sensible defaults.
