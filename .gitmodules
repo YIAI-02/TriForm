@@ -2,3 +2,8 @@
 	path = submodules/ramulator
 	url = https://github.com/CMU-SAFARI/ramulator.git
 	ignore = dirty
+
+[submodule "CENT"]
+	path = submodules/CENT
+	url = https://github.com/Yufeng98/CENT.git
+	ignore = dirty

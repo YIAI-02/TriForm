@@ -5,7 +5,7 @@ from pathlib import Path
 import os, csv, re, subprocess, inspect
 
 from cent_loader import load_cent_functions
-from trace_composer import concat_traces, write_trace
+from trace_composer import concat_trace, write_trace
 
 DEFAULT_FUNCTIONS = [
     "store_to_DRAM_multi_channel",
