@@ -1,5 +1,6 @@
+import os,csv,json
 from __future__ import annotations
-from typing import Optional
+from typing import Optional, Any, Dict, Tuple
 from config import (
     GB_TO_DEVICE_BW, DEVICE_TO_GB_BW, DEVICE_TO_DEVICE_BW,
     DIRECT_INTERCONNECTS, INTERCONNECT_MODE,
@@ -7,6 +8,63 @@ from config import (
     DEVICE_PEAK_THROUGHPUT, DEVICE_LAUNCH_OVERHEAD,
     FORMAT_SIZE_MULTIPLIER, INTRA_DEVICE_PASS_BW
 )
+import config as _cfg
+
+AIM_PROFILE_DB: str = getattr(_cfg, "AIM_PROFILE_DB", "profiles/aim_pim_latencies.csv")
+AIM_CHANNELS: int = getattr(_cfg, "AIM_CHANNELS", 32)
+
+class AIMOfflineDB:
+    def __init__(self, path: str, default_channels: int=32, default_dtype: str = "fp16") -> None:
+        self.path = path
+        self.default_channels = default_channels
+        self.default_dtype = default_dtype
+        self._db: Dict[Tuple[str,int,int,int,str,int],float] = {}
+        self._loaded: bool = False
+        self._load()
+        
+    @staticmethod
+    def _round_128(x:int) -> int:
+        return int(round(x/128.0)*128)
+    
+    def _load(self) -> None:
+        if not self.path or not os.path.exists(self.path):
+            return
+        if self.path.endswith(".csv"):
+            with open(self.path, "r", newline="") as f:
+                for row in csv.DictReader(f):
+                    cls = row.get("op_class","GEMM")
+                    m,n,k = int(row["M"]), int(row["N"]), int(row["K"])
+                    dt = row.get("dtype", self.default_dtype)
+                    ch = int(row.get("channels", self.default_channels))
+                    cycles = float(row["cycles"])
+                    self._db[(cls,m,n,k,dt,ch)] = cycles
+        else:
+            with open(self.path, "r") as f:
+                items = json.load(f)
+            for it in items:
+                cls = it.get("op_class","GEMM")
+                m,n,k = int(it["M"]), int(it["N"]), int(it["K"])
+                dt = it.get("dtype", self.default_dtype)
+                ch = int(it.get("channels", self.default_channels))
+                cycles = float(it["cycles"])
+                self._db[(cls,m,n,k,dt,ch)] = cycles
+        self._loaded = True
+        
+    def lookup_gemm(self, m: int, n: int, k: int, dtype: str = "fp16", channels: int = 32) -> Optional[float]:
+        """Return latency in seconds if found; otherwise try rounded-bucket scaling; otherwise None."""
+        if not self._db:
+            return None
+        key = ("GEMM", m, n, k, dtype, channels)
+        if key in self._db:
+            return self._db[key]
+        bm, bn, bk = self._round_128(m), self._round_128(n), self._round_128(k)
+        base = self._db.get(("GEMM", bm, bn, bk, dtype, channels))
+        if base is None:
+            return None
+        # Simple volume-based scaling when missing exact key
+        scale = (m * n * k) / max(1, bm * bn * bk)
+        return base * scale
+    
 
 class CostModel:
     """

@@ -153,8 +153,8 @@ def default_weight_vmm_steps(M:int, N:int, K:int, dtype:str, channels:int) -> Li
     ]
 
 if __name__ == "__main__":
-    cent_root   = "../../submodules/CENT"
-    module_path = "../../submodules/CENT/cent_simulation/TransformerBlock.py" 
+    cent_root   = "/home/wsy/WorkSpace/TriForm/submodules/CENT/cent_simulation"
+    module_path = "TransformerBlock" 
     adapter = CentTraceAdapter(cent_root, module_path, DEFAULT_FUNCTIONS)
 
     grid = [(2048,4096,4096), (4096,4096,4096)]
