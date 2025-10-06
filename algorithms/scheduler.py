@@ -53,8 +53,8 @@ class HeftScheduler:
 
         def avg_comp(n: TaskNode) -> float:
             ts = []
-            if n.allowed[0]: ts.append(self.cm.compute_time(n.work, "NPU", n.attrs.get("op")))
-            if n.allowed[1]: ts.append(self.cm.compute_time(n.work, "PIM", n.attrs.get("op")))
+            if n.allowed[0]: ts.append(self.cm.compute_time(n.work, "NPU", n.attrs.get("op"),node = n))
+            if n.allowed[1]: ts.append(self.cm.compute_time(n.work, "PIM", n.attrs.get("op"),node = n))
             if not ts: raise ValueError(f"Node {n.id} has no allowed devices")
             if RANK_COST_POLICY == "avg": return sum(ts)/len(ts)
             if RANK_COST_POLICY == "best": return min(ts)
@@ -117,7 +117,7 @@ class HeftScheduler:
             t_ready_weight = best_time
 
         start = max(ready, t_ready_inputs, (ready + t_ready_weight))
-        comp = self.cm.compute_time(node.work, dev_type, node.attrs.get("op"))
+        comp = self.cm.compute_time(node.work, dev_type, node.attrs.get("op"), node=node)
         end = start + comp
         out_fmt = DEVICE_PREFERRED_FORMAT[dev_type]
         return start, end, dev, out_fmt
@@ -186,8 +186,8 @@ class HeftScheduler:
         start_pim = max(t_pim_free, t_ready_inputs_pim, (t_pim_free + t_ready_weight_pim))
 
         # compute time & rate
-        tN = self.cm.compute_time(node.work, "NPU", node.attrs.get("op"))
-        tP = self.cm.compute_time(node.work, "PIM", node.attrs.get("op"))
+        tN = self.cm.compute_time(node.work, "NPU", node.attrs.get("op"),node=node)
+        tP = self.cm.compute_time(node.work, "PIM", node.attrs.get("op"),node=node)
         rN = (1.0 / tN) if tN > 0 else float("inf")
         rP = (1.0 / tP) if tP > 0 else float("inf")
 
