@@ -1,0 +1,42 @@
+
+#01 gentrace
+# 1) 生成 attention 的 score/output 两类算子的 trace（不同 seqlen）
+python gentrace.py \
+  --ops score,output \
+  --seqlens 64,128,256,512 \
+  --out-dir traces/
+
+# 2) 生成 GEMV（权重）算子的 trace（不同向量/矩阵规模）
+python gentrace.py \
+  --ops weight \
+  --vector-dims 256,512,1024 \
+  --matrix-cols 1024,2048,4096 \
+  --out-dir traces/
+
+# 3) 生成 FFN 权重+激活路径（包含 WR_BIAS, AF 等）的 trace
+python gentrace.py \
+  --ops ffn_weight_af \
+  --vector-dims 256 \
+  --matrix-cols 1024,2048,4096 \
+  --out-dir traces/
+
+# 想换硬件/模型参数，例如 8 通道、16 burst、列宽 256（默认就是这样）
+python gentrace.py \
+  --ops weight \
+  --vector-dims 512,1024 \
+  --matrix-cols 2048,4096 \
+  --DRAM-column 256 --burst-length 16 \
+  --num-banks 8 --num-channels 4 \
+  --dim 256 --n-heads 8 \
+  --out-dir traces/
+
+
+#02
+
+python run_ramulator.py \
+  --traces-dir traces/ \
+  --ramulator-bin /path/to/ramulator \
+  --config /path/to/pim-config.yaml \
+  --out-csv ram_results.csv \
+  --metric-regex "Total cycles:\s*([0-9]+)" \
+  --extra-args "--aim"   # 如果你的 fork 有 AiM 开关
