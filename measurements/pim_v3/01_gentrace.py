@@ -196,6 +196,7 @@ def main():
                 dic_model["x"] = torch.randn(1, L, args.dim)
                 block = TransformerBlock(dic_model, tb_args)
                 call_score_or_output(block, op, row_index_matrix, L)
+                block.finish()
                 (trace_path.with_suffix(".json")).write_text(
                     json.dumps({"op":op,"seqlen":L, "dim":args.dim, "n_heads":args.n_heads, **pim_cfg}, indent=2, ensure_ascii=False),
                     encoding="utf-8") #配置文件写json，写aim在函数内部处理
@@ -208,6 +209,7 @@ def main():
                     tb_args = make_tb_args_from_pim(pim_cfg, str(trace_path))
                     block = TransformerBlock(dic_model, tb_args)
                     call_weight(block, row_index_matrix, V, N, args.with_af)
+                    block.finish()
                     (trace_path.with_suffix(".json")).write_text(
                         json.dumps({"op":"weight","vector_dim":V,"matrix_col":N,"with_af":bool(args.with_af),
                                     "dim":args.dim,"n_heads":args.n_heads, **pim_cfg}, indent=2, ensure_ascii=False),

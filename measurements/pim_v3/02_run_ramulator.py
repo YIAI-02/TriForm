@@ -123,7 +123,7 @@ def main():
     ap.add_argument("--out-csv", type=Path, required=True)
     ap.add_argument("--extra-args", type=str, default="", help="Extra args appended to the command")
     ap.add_argument("--metric-regex", type=str, default=None, help="Regex with one capture group yielding cycles")
-    ap.add_argument("--cmd-template", type=str, default="{bin} --config {config} --trace {trace} {extra}")
+    ap.add_argument("--cmd-template", type=str, default="{bin} -f {config} -t {trace} {extra}")
     args = ap.parse_args()
 
     traces = sorted(args.traces_dir.rglob(args.glob))
