@@ -91,6 +91,7 @@ def make_tb_args_from_pim(cfg: Dict[str, Any], trace_file: str) -> Any:
         pipeline_parallel=False, inter_device_attention=False, only_FC=False,
         trace_prepare=False, trace_norm=False, trace_fc_kqvo=False, trace_attention=False,
         trace_softmax=False, trace_fc_ffn=False, trace_activation=False,
+        GEMV="reuse-GB",
     )
 
 def make_dic_model(dim: int, n_heads: int, n_kv_heads: Optional[int], seqlen: int) -> Dict[str, Any]:
