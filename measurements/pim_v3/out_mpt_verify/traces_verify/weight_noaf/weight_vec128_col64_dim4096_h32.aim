@@ -1,0 +1,8 @@
+AiM WR_GB 8 0 0xf
+AiM WR_BIAS 0 0xf
+AiM WR_BIAS 0 0xf
+AiM MAC_ABK 8 0xf 0
+AiM MAC_ABK 8 0xf 1
+AiM RD_MAC 0 0xf
+AiM RD_MAC 0 0xf
+AiM EOC

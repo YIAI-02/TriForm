@@ -1,0 +1,18 @@
+{
+  "op": "weight",
+  "vector_dim": 96,
+  "matrix_col": 512,
+  "with_af": false,
+  "dim": 4096,
+  "n_heads": 32,
+  "n_kv_heads": 32,
+  "DRAM_column": 256,
+  "DRAM_row": 64,
+  "burst_length": 16,
+  "num_banks": 8,
+  "num_channels": 4,
+  "threads": 1,
+  "reuse_size": 32,
+  "channels_per_block": null,
+  "max_seq_len": 4096
+}

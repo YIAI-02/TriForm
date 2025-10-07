@@ -37,7 +37,6 @@ def parse_metric(text: str, pattern: Optional[str]) -> Optional[int]:
     pats = [pattern] if pattern else DEFAULT_PATTERNS
     for pat in pats:
         m = re.search(pat, text)
-        print(f"m:{m}")
         if m:
             try:
                 return int(m.group(1))
