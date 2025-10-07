@@ -1,0 +1,1926 @@
+[AiMTrace] [info] Opening trace file /home/wsy/WorkSpace/TriForm/measurements/pim_v3/out_mpt_verify/traces_verify/weight_noaf/weight_vec96_col3072_dim4096_h32.aim with delimiter " "...
+Frontend:
+  impl: AiMTrace
+
+MemorySystem:
+  impl: AiMDRAM
+  total_num_AiM_ISR_SYNC_requests: 0  # total number of AiM ISR_SYNC requests
+  total_num_AiM_ISR_WR_ABK_requests: 0  # total number of AiM ISR_WR_ABK requests
+  total_num_AiM_ISR_EWADD_requests: 0  # total number of AiM ISR_EWADD requests
+  total_num_AiM_ISR_AF_requests: 0  # total number of AiM ISR_AF requests
+  total_num_AiM_ISR_MAC_ABK_requests: 96  # total number of AiM ISR_MAC_ABK requests
+  total_num_AiM_ISR_MAC_SBK_requests: 0  # total number of AiM ISR_MAC_SBK requests
+  total_num_AiM_ISR_COPY_BKGB_requests: 0  # total number of AiM ISR_COPY_BKGB requests
+  total_num_AiM_ISR_RD_AF_requests: 0  # total number of AiM ISR_RD_AF requests
+  total_num_AiM_ISR_RD_SBK_requests: 0  # total number of AiM ISR_RD_SBK requests
+  total_num_AiM_ISR_RD_MAC_requests: 96  # total number of AiM ISR_RD_MAC requests
+  total_num_AiM_ISR_EOC_requests: 1  # total number of AiM ISR_EOC requests
+  memory_system_cycles: 11217
+  total_num_AiM_ISR_EWMUL_requests: 0  # total number of AiM ISR_EWMUL requests
+  total_num_R_MEM_requests: 0  # total number of R MEM requests
+  total_num_wait_read_stalls: 0  # total number of cycles that AiM DMA is stalled because of waiting for read operations from channels
+  total_num_ISR_full: 0  # total number of cycles that AiM DMA does not receive ISR because of lack of enough ISR space
+  total_num_W_CFR_requests: 0  # total number of W CFR requests
+  total_num_R_CFR_requests: 0  # total number of R CFR requests
+  total_num_AiM_ISR_WR_GB_requests: 1  # total number of AiM ISR_WR_GB requests
+  total_num_W_GPR_requests: 0  # total number of W GPR requests
+  total_num_AiM_ISR_WR_AFLUT_requests: 0  # total number of AiM ISR_WR_AFLUT requests
+  total_num_AiM_ISR_COPY_GBBK_requests: 0  # total number of AiM ISR_COPY_GBBK requests
+  total_num_W_MEM_requests: 0  # total number of W MEM requests
+  total_num_AiM_ISR_WR_SBK_requests: 0  # total number of AiM ISR_WR_SBK requests
+  total_num_R_GPR_requests: 0  # total number of R GPR requests
+  total_num_AiM_ISR_WR_BIAS_requests: 96  # total number of AiM ISR_WR_BIAS requests
+  DRAM:
+    impl: GDDR6
+  AddrMapper:
+    impl: RoBaRaCoCh
+
+
+  Controller:
+    impl: AiM
+    id: Channel 0
+    CH0_precharged_cycles: 11217  # total number of precharged cycles
+    CH0_num_UNKNOWN_commands: 0  # total number of UNKNOWN commands
+    CH0_num_TMOD_commands: 0  # total number of TMOD commands
+    CH0_num_WRMAC16_commands: 0  # total number of WRMAC16 commands
+    CH0_num_RDAF16_commands: 0  # total number of RDAF16 commands
+    CH0_num_WRGB_commands: 0  # total number of WRGB commands
+    CH0_num_WRCP_commands: 0  # total number of WRCP commands
+    CH0_num_EWMUL16_commands: 0  # total number of EWMUL16 commands
+    CH0_num_AF16_commands: 0  # total number of AF16 commands
+    CH0_num_MAC16_commands: 0  # total number of MAC16 commands
+    CH0_num_MAC_commands: 0  # total number of MAC commands
+    CH0_num_PRE4_commands: 0  # total number of PRE4 commands
+    CH0_num_ACT16_commands: 0  # total number of ACT16 commands
+    CH0_idle_cycles: 11216  # total number of idle cycles
+    CH0_AiM_ISR_SYNC_cycles: 0  # total number of AiM ISR_SYNC cycles
+    CH0_num_WR_commands: 0  # total number of WR commands
+    CH0_num_RDMAC16_commands: 0  # total number of RDMAC16 commands
+    CH0_AiM_ISR_WR_ABK_cycles: 0  # total number of AiM ISR_WR_ABK cycles
+    CH0_AiM_ISR_RD_SBK_cycles: 0  # total number of AiM ISR_RD_SBK cycles
+    CH0_AiM_ISR_COPY_GBBK_cycles: 0  # total number of AiM ISR_COPY_GBBK cycles
+    CH0_num_ACT4_commands: 0  # total number of ACT4 commands
+    CH0_active_cycles: 0  # total number of active cycles
+    CH0_num_EOC_commands: 0  # total number of EOC commands
+    CH0_AiM_ISR_RD_AF_cycles: 0  # total number of AiM ISR_RD_AF cycles
+    CH0_AiM_ISR_WR_AFLUT_cycles: 0  # total number of AiM ISR_WR_AFLUT cycles
+    CH0_num_RDCP_commands: 0  # total number of RDCP commands
+    CH0_AiM_ISR_COPY_BKGB_cycles: 0  # total number of AiM ISR_COPY_BKGB cycles
+    CH0_num_PRE_commands: 0  # total number of PRE commands
+    CH0_AiM_ISR_WR_BIAS_cycles: 0  # total number of AiM ISR_WR_BIAS cycles
+    CH0_AiM_ISR_WR_GB_cycles: 0  # total number of AiM ISR_WR_GB cycles
+    CH0_num_REFab_commands: 0  # total number of REFab commands
+    CH0_W_cycles: 0
+    CH0_num_SYNC_commands: 0  # total number of SYNC commands
+    CH0_AiM_ISR_MAC_SBK_cycles: 0  # total number of AiM ISR_MAC_SBK cycles
+    CH0_num_RDA_commands: 0  # total number of RDA commands
+    CH0_AiM_ISR_AF_cycles: 0  # total number of AiM ISR_AF cycles
+    CH0_num_ACT_commands: 0  # total number of ACT commands
+    CH0_AiM_ISR_EWMUL_cycles: 0  # total number of AiM ISR_EWMUL cycles
+    CH0_num_WRA16_commands: 0  # total number of WRA16 commands
+    CH0_R_cycles: 0
+    CH0_AiM_ISR_EWADD_cycles: 0  # total number of AiM ISR_EWADD cycles
+    CH0_AiM_ISR_RD_MAC_cycles: 0  # total number of AiM ISR_RD_MAC cycles
+    CH0_AiM_ISR_EOC_cycles: 0  # total number of AiM ISR_EOC cycles
+    CH0_num_PREA_commands: 0  # total number of PREA commands
+    CH0_num_RD_commands: 0  # total number of RD commands
+    CH0_AiM_ISR_MAC_ABK_cycles: 0  # total number of AiM ISR_MAC_ABK cycles
+    CH0_num_WRA_commands: 0  # total number of WRA commands
+    CH0_AiM_ISR_WR_SBK_cycles: 0  # total number of AiM ISR_WR_SBK cycles
+    CH0_num_REFpb_commands: 0  # total number of REFpb commands
+    Scheduler:
+      impl: FRFCFS
+    RefreshManager:
+      impl: AllBank
+
+
+
+  Controller:
+    impl: AiM
+    id: Channel 1
+    CH1_active_cycles: 0  # total number of active cycles
+    CH1_idle_cycles: 11216  # total number of idle cycles
+    CH1_num_UNKNOWN_commands: 0  # total number of UNKNOWN commands
+    CH1_num_TMOD_commands: 0  # total number of TMOD commands
+    CH1_num_WRMAC16_commands: 0  # total number of WRMAC16 commands
+    CH1_num_RDMAC16_commands: 0  # total number of RDMAC16 commands
+    CH1_num_WRGB_commands: 0  # total number of WRGB commands
+    CH1_num_RDCP_commands: 0  # total number of RDCP commands
+    CH1_num_EWMUL16_commands: 0  # total number of EWMUL16 commands
+    CH1_num_PRE4_commands: 0  # total number of PRE4 commands
+    CH1_num_SYNC_commands: 0  # total number of SYNC commands
+    CH1_num_ACT16_commands: 0  # total number of ACT16 commands
+    CH1_AiM_ISR_RD_AF_cycles: 0  # total number of AiM ISR_RD_AF cycles
+    CH1_AiM_ISR_WR_BIAS_cycles: 0  # total number of AiM ISR_WR_BIAS cycles
+    CH1_num_AF16_commands: 0  # total number of AF16 commands
+    CH1_AiM_ISR_RD_SBK_cycles: 0  # total number of AiM ISR_RD_SBK cycles
+    CH1_AiM_ISR_COPY_BKGB_cycles: 0  # total number of AiM ISR_COPY_BKGB cycles
+    CH1_AiM_ISR_SYNC_cycles: 0  # total number of AiM ISR_SYNC cycles
+    CH1_AiM_ISR_WR_AFLUT_cycles: 0  # total number of AiM ISR_WR_AFLUT cycles
+    CH1_num_PREA_commands: 0  # total number of PREA commands
+    CH1_AiM_ISR_WR_GB_cycles: 0  # total number of AiM ISR_WR_GB cycles
+    CH1_AiM_ISR_MAC_SBK_cycles: 0  # total number of AiM ISR_MAC_SBK cycles
+    CH1_AiM_ISR_WR_SBK_cycles: 0  # total number of AiM ISR_WR_SBK cycles
+    CH1_AiM_ISR_WR_ABK_cycles: 0  # total number of AiM ISR_WR_ABK cycles
+    CH1_num_ACT4_commands: 0  # total number of ACT4 commands
+    CH1_precharged_cycles: 11217  # total number of precharged cycles
+    CH1_AiM_ISR_MAC_ABK_cycles: 0  # total number of AiM ISR_MAC_ABK cycles
+    CH1_num_WRA_commands: 0  # total number of WRA commands
+    CH1_R_cycles: 0
+    CH1_num_WRCP_commands: 0  # total number of WRCP commands
+    CH1_AiM_ISR_COPY_GBBK_cycles: 0  # total number of AiM ISR_COPY_GBBK cycles
+    CH1_AiM_ISR_AF_cycles: 0  # total number of AiM ISR_AF cycles
+    CH1_num_RD_commands: 0  # total number of RD commands
+    CH1_W_cycles: 0
+    CH1_AiM_ISR_EWMUL_cycles: 0  # total number of AiM ISR_EWMUL cycles
+    CH1_num_REFpb_commands: 0  # total number of REFpb commands
+    CH1_AiM_ISR_EWADD_cycles: 0  # total number of AiM ISR_EWADD cycles
+    CH1_num_RDAF16_commands: 0  # total number of RDAF16 commands
+    CH1_num_ACT_commands: 0  # total number of ACT commands
+    CH1_num_REFab_commands: 0  # total number of REFab commands
+    CH1_num_EOC_commands: 0  # total number of EOC commands
+    CH1_AiM_ISR_EOC_cycles: 0  # total number of AiM ISR_EOC cycles
+    CH1_num_WRA16_commands: 0  # total number of WRA16 commands
+    CH1_num_PRE_commands: 0  # total number of PRE commands
+    CH1_num_MAC_commands: 0  # total number of MAC commands
+    CH1_AiM_ISR_RD_MAC_cycles: 0  # total number of AiM ISR_RD_MAC cycles
+    CH1_num_WR_commands: 0  # total number of WR commands
+    CH1_num_MAC16_commands: 0  # total number of MAC16 commands
+    CH1_num_RDA_commands: 0  # total number of RDA commands
+    Scheduler:
+      impl: FRFCFS
+    RefreshManager:
+      impl: AllBank
+
+
+
+  Controller:
+    impl: AiM
+    id: Channel 2
+    CH2_precharged_cycles: 11217  # total number of precharged cycles
+    CH2_active_cycles: 0  # total number of active cycles
+    CH2_num_SYNC_commands: 0  # total number of SYNC commands
+    CH2_num_TMOD_commands: 0  # total number of TMOD commands
+    CH2_num_WRMAC16_commands: 0  # total number of WRMAC16 commands
+    CH2_num_RDAF16_commands: 0  # total number of RDAF16 commands
+    CH2_num_WRCP_commands: 0  # total number of WRCP commands
+    CH2_num_RDCP_commands: 0  # total number of RDCP commands
+    CH2_num_MAC_commands: 0  # total number of MAC commands
+    CH2_num_ACT16_commands: 0  # total number of ACT16 commands
+    CH2_num_PRE4_commands: 0  # total number of PRE4 commands
+    CH2_num_ACT_commands: 0  # total number of ACT commands
+    CH2_AiM_ISR_WR_AFLUT_cycles: 0  # total number of AiM ISR_WR_AFLUT cycles
+    CH2_AiM_ISR_COPY_GBBK_cycles: 0  # total number of AiM ISR_COPY_GBBK cycles
+    CH2_AiM_ISR_RD_SBK_cycles: 0  # total number of AiM ISR_RD_SBK cycles
+    CH2_AiM_ISR_RD_AF_cycles: 0  # total number of AiM ISR_RD_AF cycles
+    CH2_num_REFpb_commands: 0  # total number of REFpb commands
+    CH2_AiM_ISR_WR_BIAS_cycles: 0  # total number of AiM ISR_WR_BIAS cycles
+    CH2_AiM_ISR_MAC_ABK_cycles: 0  # total number of AiM ISR_MAC_ABK cycles
+    CH2_num_RDMAC16_commands: 0  # total number of RDMAC16 commands
+    CH2_AiM_ISR_WR_ABK_cycles: 0  # total number of AiM ISR_WR_ABK cycles
+    CH2_R_cycles: 0
+    CH2_AiM_ISR_WR_GB_cycles: 0  # total number of AiM ISR_WR_GB cycles
+    CH2_num_EOC_commands: 0  # total number of EOC commands
+    CH2_AiM_ISR_EWMUL_cycles: 0  # total number of AiM ISR_EWMUL cycles
+    CH2_AiM_ISR_WR_SBK_cycles: 0  # total number of AiM ISR_WR_SBK cycles
+    CH2_num_WRGB_commands: 0  # total number of WRGB commands
+    CH2_AiM_ISR_RD_MAC_cycles: 0  # total number of AiM ISR_RD_MAC cycles
+    CH2_num_EWMUL16_commands: 0  # total number of EWMUL16 commands
+    CH2_AiM_ISR_COPY_BKGB_cycles: 0  # total number of AiM ISR_COPY_BKGB cycles
+    CH2_num_PRE_commands: 0  # total number of PRE commands
+    CH2_num_MAC16_commands: 0  # total number of MAC16 commands
+    CH2_W_cycles: 0
+    CH2_AiM_ISR_MAC_SBK_cycles: 0  # total number of AiM ISR_MAC_SBK cycles
+    CH2_AiM_ISR_AF_cycles: 0  # total number of AiM ISR_AF cycles
+    CH2_AiM_ISR_EWADD_cycles: 0  # total number of AiM ISR_EWADD cycles
+    CH2_num_RD_commands: 0  # total number of RD commands
+    CH2_AiM_ISR_EOC_cycles: 0  # total number of AiM ISR_EOC cycles
+    CH2_num_RDA_commands: 0  # total number of RDA commands
+    CH2_idle_cycles: 11216  # total number of idle cycles
+    CH2_num_WRA_commands: 0  # total number of WRA commands
+    CH2_AiM_ISR_SYNC_cycles: 0  # total number of AiM ISR_SYNC cycles
+    CH2_num_UNKNOWN_commands: 0  # total number of UNKNOWN commands
+    CH2_num_PREA_commands: 0  # total number of PREA commands
+    CH2_num_WRA16_commands: 0  # total number of WRA16 commands
+    CH2_num_WR_commands: 0  # total number of WR commands
+    CH2_num_AF16_commands: 0  # total number of AF16 commands
+    CH2_num_REFab_commands: 0  # total number of REFab commands
+    CH2_num_ACT4_commands: 0  # total number of ACT4 commands
+    Scheduler:
+      impl: FRFCFS
+    RefreshManager:
+      impl: AllBank
+
+
+
+  Controller:
+    impl: AiM
+    id: Channel 3
+    CH3_precharged_cycles: 11217  # total number of precharged cycles
+    CH3_active_cycles: 0  # total number of active cycles
+    CH3_num_UNKNOWN_commands: 0  # total number of UNKNOWN commands
+    CH3_num_EOC_commands: 0  # total number of EOC commands
+    CH3_num_WRMAC16_commands: 0  # total number of WRMAC16 commands
+    CH3_num_RDAF16_commands: 0  # total number of RDAF16 commands
+    CH3_num_RDMAC16_commands: 0  # total number of RDMAC16 commands
+    CH3_num_WRGB_commands: 0  # total number of WRGB commands
+    CH3_num_WRCP_commands: 0  # total number of WRCP commands
+    CH3_num_RDCP_commands: 0  # total number of RDCP commands
+    CH3_num_MAC_commands: 0  # total number of MAC commands
+    CH3_num_WRA16_commands: 0  # total number of WRA16 commands
+    CH3_num_EWMUL16_commands: 0  # total number of EWMUL16 commands
+    CH3_num_PRE4_commands: 0  # total number of PRE4 commands
+    CH3_num_ACT16_commands: 0  # total number of ACT16 commands
+    CH3_AiM_ISR_RD_SBK_cycles: 0  # total number of AiM ISR_RD_SBK cycles
+    CH3_AiM_ISR_RD_MAC_cycles: 0  # total number of AiM ISR_RD_MAC cycles
+    CH3_AiM_ISR_COPY_BKGB_cycles: 0  # total number of AiM ISR_COPY_BKGB cycles
+    CH3_AiM_ISR_RD_AF_cycles: 0  # total number of AiM ISR_RD_AF cycles
+    CH3_AiM_ISR_COPY_GBBK_cycles: 0  # total number of AiM ISR_COPY_GBBK cycles
+    CH3_AiM_ISR_EWADD_cycles: 0  # total number of AiM ISR_EWADD cycles
+    CH3_AiM_ISR_WR_BIAS_cycles: 0  # total number of AiM ISR_WR_BIAS cycles
+    CH3_num_SYNC_commands: 0  # total number of SYNC commands
+    CH3_num_REFab_commands: 0  # total number of REFab commands
+    CH3_AiM_ISR_WR_SBK_cycles: 0  # total number of AiM ISR_WR_SBK cycles
+    CH3_num_TMOD_commands: 0  # total number of TMOD commands
+    CH3_AiM_ISR_MAC_ABK_cycles: 0  # total number of AiM ISR_MAC_ABK cycles
+    CH3_num_WR_commands: 0  # total number of WR commands
+    CH3_W_cycles: 0
+    CH3_AiM_ISR_EOC_cycles: 0  # total number of AiM ISR_EOC cycles
+    CH3_AiM_ISR_MAC_SBK_cycles: 0  # total number of AiM ISR_MAC_SBK cycles
+    CH3_num_RD_commands: 0  # total number of RD commands
+    CH3_AiM_ISR_AF_cycles: 0  # total number of AiM ISR_AF cycles
+    CH3_num_ACT4_commands: 0  # total number of ACT4 commands
+    CH3_AiM_ISR_WR_GB_cycles: 0  # total number of AiM ISR_WR_GB cycles
+    CH3_AiM_ISR_WR_ABK_cycles: 0  # total number of AiM ISR_WR_ABK cycles
+    CH3_AiM_ISR_SYNC_cycles: 0  # total number of AiM ISR_SYNC cycles
+    CH3_num_REFpb_commands: 0  # total number of REFpb commands
+    CH3_AiM_ISR_WR_AFLUT_cycles: 0  # total number of AiM ISR_WR_AFLUT cycles
+    CH3_num_ACT_commands: 0  # total number of ACT commands
+    CH3_num_PREA_commands: 0  # total number of PREA commands
+    CH3_num_MAC16_commands: 0  # total number of MAC16 commands
+    CH3_num_PRE_commands: 0  # total number of PRE commands
+    CH3_num_AF16_commands: 0  # total number of AF16 commands
+    CH3_R_cycles: 0
+    CH3_num_RDA_commands: 0  # total number of RDA commands
+    CH3_idle_cycles: 11216  # total number of idle cycles
+    CH3_AiM_ISR_EWMUL_cycles: 0  # total number of AiM ISR_EWMUL cycles
+    CH3_num_WRA_commands: 0  # total number of WRA commands
+    Scheduler:
+      impl: FRFCFS
+    RefreshManager:
+      impl: AllBank
+
+
+
+  Controller:
+    impl: AiM
+    id: Channel 4
+    CH4_num_EOC_commands: 0  # total number of EOC commands
+    CH4_num_SYNC_commands: 0  # total number of SYNC commands
+    CH4_num_WRA16_commands: 0  # total number of WRA16 commands
+    CH4_num_RDAF16_commands: 0  # total number of RDAF16 commands
+    CH4_num_WRCP_commands: 0  # total number of WRCP commands
+    CH4_active_cycles: 0  # total number of active cycles
+    CH4_AiM_ISR_MAC_ABK_cycles: 0  # total number of AiM ISR_MAC_ABK cycles
+    CH4_AiM_ISR_COPY_GBBK_cycles: 0  # total number of AiM ISR_COPY_GBBK cycles
+    CH4_W_cycles: 0
+    CH4_num_WRGB_commands: 0  # total number of WRGB commands
+    CH4_AiM_ISR_EWMUL_cycles: 0  # total number of AiM ISR_EWMUL cycles
+    CH4_num_ACT16_commands: 0  # total number of ACT16 commands
+    CH4_num_PREA_commands: 0  # total number of PREA commands
+    CH4_num_REFpb_commands: 0  # total number of REFpb commands
+    CH4_num_ACT4_commands: 0  # total number of ACT4 commands
+    CH4_AiM_ISR_MAC_SBK_cycles: 0  # total number of AiM ISR_MAC_SBK cycles
+    CH4_num_UNKNOWN_commands: 0  # total number of UNKNOWN commands
+    CH4_AiM_ISR_COPY_BKGB_cycles: 0  # total number of AiM ISR_COPY_BKGB cycles
+    CH4_AiM_ISR_WR_BIAS_cycles: 0  # total number of AiM ISR_WR_BIAS cycles
+    CH4_num_MAC_commands: 0  # total number of MAC commands
+    CH4_num_PRE4_commands: 0  # total number of PRE4 commands
+    CH4_AiM_ISR_WR_SBK_cycles: 0  # total number of AiM ISR_WR_SBK cycles
+    CH4_num_WRMAC16_commands: 0  # total number of WRMAC16 commands
+    CH4_AiM_ISR_WR_ABK_cycles: 0  # total number of AiM ISR_WR_ABK cycles
+    CH4_AiM_ISR_EOC_cycles: 0  # total number of AiM ISR_EOC cycles
+    CH4_AiM_ISR_RD_AF_cycles: 0  # total number of AiM ISR_RD_AF cycles
+    CH4_AiM_ISR_WR_AFLUT_cycles: 0  # total number of AiM ISR_WR_AFLUT cycles
+    CH4_num_RDMAC16_commands: 0  # total number of RDMAC16 commands
+    CH4_AiM_ISR_WR_GB_cycles: 0  # total number of AiM ISR_WR_GB cycles
+    CH4_AiM_ISR_RD_SBK_cycles: 0  # total number of AiM ISR_RD_SBK cycles
+    CH4_num_EWMUL16_commands: 0  # total number of EWMUL16 commands
+    CH4_AiM_ISR_SYNC_cycles: 0  # total number of AiM ISR_SYNC cycles
+    CH4_num_TMOD_commands: 0  # total number of TMOD commands
+    CH4_num_RDCP_commands: 0  # total number of RDCP commands
+    CH4_AiM_ISR_RD_MAC_cycles: 0  # total number of AiM ISR_RD_MAC cycles
+    CH4_R_cycles: 0
+    CH4_precharged_cycles: 11217  # total number of precharged cycles
+    CH4_num_MAC16_commands: 0  # total number of MAC16 commands
+    CH4_AiM_ISR_AF_cycles: 0  # total number of AiM ISR_AF cycles
+    CH4_AiM_ISR_EWADD_cycles: 0  # total number of AiM ISR_EWADD cycles
+    CH4_num_ACT_commands: 0  # total number of ACT commands
+    CH4_num_PRE_commands: 0  # total number of PRE commands
+    CH4_num_RD_commands: 0  # total number of RD commands
+    CH4_num_WRA_commands: 0  # total number of WRA commands
+    CH4_idle_cycles: 11216  # total number of idle cycles
+    CH4_num_WR_commands: 0  # total number of WR commands
+    CH4_num_RDA_commands: 0  # total number of RDA commands
+    CH4_num_AF16_commands: 0  # total number of AF16 commands
+    CH4_num_REFab_commands: 0  # total number of REFab commands
+    Scheduler:
+      impl: FRFCFS
+    RefreshManager:
+      impl: AllBank
+
+
+
+  Controller:
+    impl: AiM
+    id: Channel 5
+    CH5_active_cycles: 0  # total number of active cycles
+    CH5_num_UNKNOWN_commands: 0  # total number of UNKNOWN commands
+    CH5_num_SYNC_commands: 0  # total number of SYNC commands
+    CH5_num_TMOD_commands: 0  # total number of TMOD commands
+    CH5_num_WRMAC16_commands: 0  # total number of WRMAC16 commands
+    CH5_num_RDAF16_commands: 0  # total number of RDAF16 commands
+    CH5_num_RDMAC16_commands: 0  # total number of RDMAC16 commands
+    CH5_num_WRGB_commands: 0  # total number of WRGB commands
+    CH5_num_EOC_commands: 0  # total number of EOC commands
+    CH5_num_WRCP_commands: 0  # total number of WRCP commands
+    CH5_num_RDCP_commands: 0  # total number of RDCP commands
+    CH5_num_MAC16_commands: 0  # total number of MAC16 commands
+    CH5_num_MAC_commands: 0  # total number of MAC commands
+    CH5_num_PRE4_commands: 0  # total number of PRE4 commands
+    CH5_AiM_ISR_MAC_ABK_cycles: 0  # total number of AiM ISR_MAC_ABK cycles
+    CH5_num_RD_commands: 0  # total number of RD commands
+    CH5_AiM_ISR_RD_AF_cycles: 0  # total number of AiM ISR_RD_AF cycles
+    CH5_num_AF16_commands: 0  # total number of AF16 commands
+    CH5_AiM_ISR_WR_ABK_cycles: 0  # total number of AiM ISR_WR_ABK cycles
+    CH5_num_EWMUL16_commands: 0  # total number of EWMUL16 commands
+    CH5_AiM_ISR_WR_AFLUT_cycles: 0  # total number of AiM ISR_WR_AFLUT cycles
+    CH5_AiM_ISR_COPY_BKGB_cycles: 0  # total number of AiM ISR_COPY_BKGB cycles
+    CH5_AiM_ISR_RD_SBK_cycles: 0  # total number of AiM ISR_RD_SBK cycles
+    CH5_AiM_ISR_WR_BIAS_cycles: 0  # total number of AiM ISR_WR_BIAS cycles
+    CH5_num_RDA_commands: 0  # total number of RDA commands
+    CH5_AiM_ISR_WR_GB_cycles: 0  # total number of AiM ISR_WR_GB cycles
+    CH5_precharged_cycles: 11217  # total number of precharged cycles
+    CH5_num_WRA16_commands: 0  # total number of WRA16 commands
+    CH5_AiM_ISR_EOC_cycles: 0  # total number of AiM ISR_EOC cycles
+    CH5_num_ACT16_commands: 0  # total number of ACT16 commands
+    CH5_num_PRE_commands: 0  # total number of PRE commands
+    CH5_AiM_ISR_WR_SBK_cycles: 0  # total number of AiM ISR_WR_SBK cycles
+    CH5_num_WR_commands: 0  # total number of WR commands
+    CH5_W_cycles: 0
+    CH5_num_WRA_commands: 0  # total number of WRA commands
+    CH5_AiM_ISR_AF_cycles: 0  # total number of AiM ISR_AF cycles
+    CH5_AiM_ISR_EWMUL_cycles: 0  # total number of AiM ISR_EWMUL cycles
+    CH5_AiM_ISR_COPY_GBBK_cycles: 0  # total number of AiM ISR_COPY_GBBK cycles
+    CH5_AiM_ISR_RD_MAC_cycles: 0  # total number of AiM ISR_RD_MAC cycles
+    CH5_AiM_ISR_EWADD_cycles: 0  # total number of AiM ISR_EWADD cycles
+    CH5_idle_cycles: 11216  # total number of idle cycles
+    CH5_num_REFab_commands: 0  # total number of REFab commands
+    CH5_AiM_ISR_MAC_SBK_cycles: 0  # total number of AiM ISR_MAC_SBK cycles
+    CH5_AiM_ISR_SYNC_cycles: 0  # total number of AiM ISR_SYNC cycles
+    CH5_num_ACT4_commands: 0  # total number of ACT4 commands
+    CH5_R_cycles: 0
+    CH5_num_ACT_commands: 0  # total number of ACT commands
+    CH5_num_PREA_commands: 0  # total number of PREA commands
+    CH5_num_REFpb_commands: 0  # total number of REFpb commands
+    Scheduler:
+      impl: FRFCFS
+    RefreshManager:
+      impl: AllBank
+
+
+
+  Controller:
+    impl: AiM
+    id: Channel 6
+    CH6_precharged_cycles: 11217  # total number of precharged cycles
+    CH6_active_cycles: 0  # total number of active cycles
+    CH6_num_UNKNOWN_commands: 0  # total number of UNKNOWN commands
+    CH6_num_EOC_commands: 0  # total number of EOC commands
+    CH6_num_SYNC_commands: 0  # total number of SYNC commands
+    CH6_num_TMOD_commands: 0  # total number of TMOD commands
+    CH6_num_WRMAC16_commands: 0  # total number of WRMAC16 commands
+    CH6_num_WRGB_commands: 0  # total number of WRGB commands
+    CH6_num_WRCP_commands: 0  # total number of WRCP commands
+    CH6_num_RDCP_commands: 0  # total number of RDCP commands
+    CH6_num_WRA16_commands: 0  # total number of WRA16 commands
+    CH6_num_AF16_commands: 0  # total number of AF16 commands
+    CH6_num_MAC16_commands: 0  # total number of MAC16 commands
+    CH6_num_ACT16_commands: 0  # total number of ACT16 commands
+    CH6_AiM_ISR_MAC_ABK_cycles: 0  # total number of AiM ISR_MAC_ABK cycles
+    CH6_AiM_ISR_SYNC_cycles: 0  # total number of AiM ISR_SYNC cycles
+    CH6_idle_cycles: 11216  # total number of idle cycles
+    CH6_AiM_ISR_COPY_GBBK_cycles: 0  # total number of AiM ISR_COPY_GBBK cycles
+    CH6_num_WR_commands: 0  # total number of WR commands
+    CH6_num_PRE4_commands: 0  # total number of PRE4 commands
+    CH6_AiM_ISR_WR_AFLUT_cycles: 0  # total number of AiM ISR_WR_AFLUT cycles
+    CH6_AiM_ISR_WR_BIAS_cycles: 0  # total number of AiM ISR_WR_BIAS cycles
+    CH6_num_ACT_commands: 0  # total number of ACT commands
+    CH6_AiM_ISR_MAC_SBK_cycles: 0  # total number of AiM ISR_MAC_SBK cycles
+    CH6_AiM_ISR_WR_GB_cycles: 0  # total number of AiM ISR_WR_GB cycles
+    CH6_AiM_ISR_RD_AF_cycles: 0  # total number of AiM ISR_RD_AF cycles
+    CH6_num_EWMUL16_commands: 0  # total number of EWMUL16 commands
+    CH6_num_PRE_commands: 0  # total number of PRE commands
+    CH6_num_REFpb_commands: 0  # total number of REFpb commands
+    CH6_AiM_ISR_WR_SBK_cycles: 0  # total number of AiM ISR_WR_SBK cycles
+    CH6_AiM_ISR_RD_SBK_cycles: 0  # total number of AiM ISR_RD_SBK cycles
+    CH6_AiM_ISR_RD_MAC_cycles: 0  # total number of AiM ISR_RD_MAC cycles
+    CH6_W_cycles: 0
+    CH6_AiM_ISR_COPY_BKGB_cycles: 0  # total number of AiM ISR_COPY_BKGB cycles
+    CH6_num_RDAF16_commands: 0  # total number of RDAF16 commands
+    CH6_R_cycles: 0
+    CH6_num_REFab_commands: 0  # total number of REFab commands
+    CH6_AiM_ISR_AF_cycles: 0  # total number of AiM ISR_AF cycles
+    CH6_num_MAC_commands: 0  # total number of MAC commands
+    CH6_num_RD_commands: 0  # total number of RD commands
+    CH6_AiM_ISR_EWMUL_cycles: 0  # total number of AiM ISR_EWMUL cycles
+    CH6_num_RDMAC16_commands: 0  # total number of RDMAC16 commands
+    CH6_AiM_ISR_EWADD_cycles: 0  # total number of AiM ISR_EWADD cycles
+    CH6_AiM_ISR_WR_ABK_cycles: 0  # total number of AiM ISR_WR_ABK cycles
+    CH6_AiM_ISR_EOC_cycles: 0  # total number of AiM ISR_EOC cycles
+    CH6_num_PREA_commands: 0  # total number of PREA commands
+    CH6_num_RDA_commands: 0  # total number of RDA commands
+    CH6_num_WRA_commands: 0  # total number of WRA commands
+    CH6_num_ACT4_commands: 0  # total number of ACT4 commands
+    Scheduler:
+      impl: FRFCFS
+    RefreshManager:
+      impl: AllBank
+
+
+
+  Controller:
+    impl: AiM
+    id: Channel 7
+    CH7_idle_cycles: 11216  # total number of idle cycles
+    CH7_num_UNKNOWN_commands: 0  # total number of UNKNOWN commands
+    CH7_num_EOC_commands: 0  # total number of EOC commands
+    CH7_num_WRMAC16_commands: 0  # total number of WRMAC16 commands
+    CH7_num_RDMAC16_commands: 0  # total number of RDMAC16 commands
+    CH7_num_WRA16_commands: 0  # total number of WRA16 commands
+    CH7_num_RDAF16_commands: 0  # total number of RDAF16 commands
+    CH7_num_WRGB_commands: 0  # total number of WRGB commands
+    CH7_num_WRCP_commands: 0  # total number of WRCP commands
+    CH7_num_AF16_commands: 0  # total number of AF16 commands
+    CH7_num_MAC_commands: 0  # total number of MAC commands
+    CH7_precharged_cycles: 11217  # total number of precharged cycles
+    CH7_active_cycles: 0  # total number of active cycles
+    CH7_AiM_ISR_COPY_GBBK_cycles: 0  # total number of AiM ISR_COPY_GBBK cycles
+    CH7_AiM_ISR_WR_GB_cycles: 0  # total number of AiM ISR_WR_GB cycles
+    CH7_AiM_ISR_COPY_BKGB_cycles: 0  # total number of AiM ISR_COPY_BKGB cycles
+    CH7_AiM_ISR_MAC_SBK_cycles: 0  # total number of AiM ISR_MAC_SBK cycles
+    CH7_AiM_ISR_RD_MAC_cycles: 0  # total number of AiM ISR_RD_MAC cycles
+    CH7_num_MAC16_commands: 0  # total number of MAC16 commands
+    CH7_AiM_ISR_EWADD_cycles: 0  # total number of AiM ISR_EWADD cycles
+    CH7_num_WR_commands: 0  # total number of WR commands
+    CH7_AiM_ISR_RD_AF_cycles: 0  # total number of AiM ISR_RD_AF cycles
+    CH7_num_RDCP_commands: 0  # total number of RDCP commands
+    CH7_AiM_ISR_EOC_cycles: 0  # total number of AiM ISR_EOC cycles
+    CH7_AiM_ISR_WR_BIAS_cycles: 0  # total number of AiM ISR_WR_BIAS cycles
+    CH7_W_cycles: 0
+    CH7_num_RD_commands: 0  # total number of RD commands
+    CH7_AiM_ISR_RD_SBK_cycles: 0  # total number of AiM ISR_RD_SBK cycles
+    CH7_num_PRE4_commands: 0  # total number of PRE4 commands
+    CH7_AiM_ISR_WR_SBK_cycles: 0  # total number of AiM ISR_WR_SBK cycles
+    CH7_R_cycles: 0
+    CH7_num_SYNC_commands: 0  # total number of SYNC commands
+    CH7_AiM_ISR_WR_AFLUT_cycles: 0  # total number of AiM ISR_WR_AFLUT cycles
+    CH7_num_REFpb_commands: 0  # total number of REFpb commands
+    CH7_AiM_ISR_MAC_ABK_cycles: 0  # total number of AiM ISR_MAC_ABK cycles
+    CH7_AiM_ISR_AF_cycles: 0  # total number of AiM ISR_AF cycles
+    CH7_num_RDA_commands: 0  # total number of RDA commands
+    CH7_AiM_ISR_EWMUL_cycles: 0  # total number of AiM ISR_EWMUL cycles
+    CH7_AiM_ISR_SYNC_cycles: 0  # total number of AiM ISR_SYNC cycles
+    CH7_num_TMOD_commands: 0  # total number of TMOD commands
+    CH7_AiM_ISR_WR_ABK_cycles: 0  # total number of AiM ISR_WR_ABK cycles
+    CH7_num_ACT_commands: 0  # total number of ACT commands
+    CH7_num_PREA_commands: 0  # total number of PREA commands
+    CH7_num_WRA_commands: 0  # total number of WRA commands
+    CH7_num_EWMUL16_commands: 0  # total number of EWMUL16 commands
+    CH7_num_PRE_commands: 0  # total number of PRE commands
+    CH7_num_REFab_commands: 0  # total number of REFab commands
+    CH7_num_ACT16_commands: 0  # total number of ACT16 commands
+    CH7_num_ACT4_commands: 0  # total number of ACT4 commands
+    Scheduler:
+      impl: FRFCFS
+    RefreshManager:
+      impl: AllBank
+
+
+
+  Controller:
+    impl: AiM
+    id: Channel 8
+    CH8_precharged_cycles: 11217  # total number of precharged cycles
+    CH8_num_UNKNOWN_commands: 0  # total number of UNKNOWN commands
+    CH8_num_RDAF16_commands: 0  # total number of RDAF16 commands
+    CH8_num_RDMAC16_commands: 0  # total number of RDMAC16 commands
+    CH8_num_RDCP_commands: 0  # total number of RDCP commands
+    CH8_num_AF16_commands: 0  # total number of AF16 commands
+    CH8_num_EOC_commands: 0  # total number of EOC commands
+    CH8_num_MAC_commands: 0  # total number of MAC commands
+    CH8_num_PRE4_commands: 0  # total number of PRE4 commands
+    CH8_AiM_ISR_MAC_SBK_cycles: 0  # total number of AiM ISR_MAC_SBK cycles
+    CH8_W_cycles: 0
+    CH8_num_REFab_commands: 0  # total number of REFab commands
+    CH8_active_cycles: 0  # total number of active cycles
+    CH8_AiM_ISR_RD_SBK_cycles: 0  # total number of AiM ISR_RD_SBK cycles
+    CH8_idle_cycles: 11216  # total number of idle cycles
+    CH8_AiM_ISR_WR_SBK_cycles: 0  # total number of AiM ISR_WR_SBK cycles
+    CH8_AiM_ISR_WR_AFLUT_cycles: 0  # total number of AiM ISR_WR_AFLUT cycles
+    CH8_num_ACT16_commands: 0  # total number of ACT16 commands
+    CH8_AiM_ISR_WR_ABK_cycles: 0  # total number of AiM ISR_WR_ABK cycles
+    CH8_AiM_ISR_MAC_ABK_cycles: 0  # total number of AiM ISR_MAC_ABK cycles
+    CH8_num_ACT_commands: 0  # total number of ACT commands
+    CH8_num_TMOD_commands: 0  # total number of TMOD commands
+    CH8_num_ACT4_commands: 0  # total number of ACT4 commands
+    CH8_num_EWMUL16_commands: 0  # total number of EWMUL16 commands
+    CH8_AiM_ISR_RD_MAC_cycles: 0  # total number of AiM ISR_RD_MAC cycles
+    CH8_num_WRMAC16_commands: 0  # total number of WRMAC16 commands
+    CH8_num_WRA_commands: 0  # total number of WRA commands
+    CH8_AiM_ISR_WR_GB_cycles: 0  # total number of AiM ISR_WR_GB cycles
+    CH8_AiM_ISR_COPY_GBBK_cycles: 0  # total number of AiM ISR_COPY_GBBK cycles
+    CH8_num_WR_commands: 0  # total number of WR commands
+    CH8_num_PREA_commands: 0  # total number of PREA commands
+    CH8_R_cycles: 0
+    CH8_num_WRCP_commands: 0  # total number of WRCP commands
+    CH8_AiM_ISR_AF_cycles: 0  # total number of AiM ISR_AF cycles
+    CH8_AiM_ISR_COPY_BKGB_cycles: 0  # total number of AiM ISR_COPY_BKGB cycles
+    CH8_AiM_ISR_EWMUL_cycles: 0  # total number of AiM ISR_EWMUL cycles
+    CH8_num_SYNC_commands: 0  # total number of SYNC commands
+    CH8_AiM_ISR_WR_BIAS_cycles: 0  # total number of AiM ISR_WR_BIAS cycles
+    CH8_AiM_ISR_EWADD_cycles: 0  # total number of AiM ISR_EWADD cycles
+    CH8_AiM_ISR_RD_AF_cycles: 0  # total number of AiM ISR_RD_AF cycles
+    CH8_num_PRE_commands: 0  # total number of PRE commands
+    CH8_num_MAC16_commands: 0  # total number of MAC16 commands
+    CH8_AiM_ISR_EOC_cycles: 0  # total number of AiM ISR_EOC cycles
+    CH8_AiM_ISR_SYNC_cycles: 0  # total number of AiM ISR_SYNC cycles
+    CH8_num_WRA16_commands: 0  # total number of WRA16 commands
+    CH8_num_RD_commands: 0  # total number of RD commands
+    CH8_num_WRGB_commands: 0  # total number of WRGB commands
+    CH8_num_RDA_commands: 0  # total number of RDA commands
+    CH8_num_REFpb_commands: 0  # total number of REFpb commands
+    Scheduler:
+      impl: FRFCFS
+    RefreshManager:
+      impl: AllBank
+
+
+
+  Controller:
+    impl: AiM
+    id: Channel 9
+    CH9_precharged_cycles: 11217  # total number of precharged cycles
+    CH9_num_EOC_commands: 0  # total number of EOC commands
+    CH9_num_TMOD_commands: 0  # total number of TMOD commands
+    CH9_num_WRA16_commands: 0  # total number of WRA16 commands
+    CH9_num_RDAF16_commands: 0  # total number of RDAF16 commands
+    CH9_num_RDMAC16_commands: 0  # total number of RDMAC16 commands
+    CH9_num_WRGB_commands: 0  # total number of WRGB commands
+    CH9_num_WRCP_commands: 0  # total number of WRCP commands
+    CH9_num_RDCP_commands: 0  # total number of RDCP commands
+    CH9_num_EWMUL16_commands: 0  # total number of EWMUL16 commands
+    CH9_num_AF16_commands: 0  # total number of AF16 commands
+    CH9_num_WRMAC16_commands: 0  # total number of WRMAC16 commands
+    CH9_num_MAC16_commands: 0  # total number of MAC16 commands
+    CH9_num_MAC_commands: 0  # total number of MAC commands
+    CH9_num_PRE4_commands: 0  # total number of PRE4 commands
+    CH9_idle_cycles: 11216  # total number of idle cycles
+    CH9_num_ACT16_commands: 0  # total number of ACT16 commands
+    CH9_AiM_ISR_COPY_GBBK_cycles: 0  # total number of AiM ISR_COPY_GBBK cycles
+    CH9_AiM_ISR_WR_AFLUT_cycles: 0  # total number of AiM ISR_WR_AFLUT cycles
+    CH9_AiM_ISR_RD_SBK_cycles: 0  # total number of AiM ISR_RD_SBK cycles
+    CH9_AiM_ISR_MAC_ABK_cycles: 0  # total number of AiM ISR_MAC_ABK cycles
+    CH9_active_cycles: 0  # total number of active cycles
+    CH9_AiM_ISR_WR_BIAS_cycles: 0  # total number of AiM ISR_WR_BIAS cycles
+    CH9_AiM_ISR_RD_AF_cycles: 0  # total number of AiM ISR_RD_AF cycles
+    CH9_AiM_ISR_WR_SBK_cycles: 0  # total number of AiM ISR_WR_SBK cycles
+    CH9_num_ACT_commands: 0  # total number of ACT commands
+    CH9_W_cycles: 0
+    CH9_AiM_ISR_WR_GB_cycles: 0  # total number of AiM ISR_WR_GB cycles
+    CH9_AiM_ISR_COPY_BKGB_cycles: 0  # total number of AiM ISR_COPY_BKGB cycles
+    CH9_R_cycles: 0
+    CH9_AiM_ISR_EWMUL_cycles: 0  # total number of AiM ISR_EWMUL cycles
+    CH9_AiM_ISR_MAC_SBK_cycles: 0  # total number of AiM ISR_MAC_SBK cycles
+    CH9_AiM_ISR_AF_cycles: 0  # total number of AiM ISR_AF cycles
+    CH9_AiM_ISR_WR_ABK_cycles: 0  # total number of AiM ISR_WR_ABK cycles
+    CH9_num_ACT4_commands: 0  # total number of ACT4 commands
+    CH9_AiM_ISR_EOC_cycles: 0  # total number of AiM ISR_EOC cycles
+    CH9_AiM_ISR_SYNC_cycles: 0  # total number of AiM ISR_SYNC cycles
+    CH9_num_PREA_commands: 0  # total number of PREA commands
+    CH9_num_RDA_commands: 0  # total number of RDA commands
+    CH9_num_PRE_commands: 0  # total number of PRE commands
+    CH9_num_WR_commands: 0  # total number of WR commands
+    CH9_num_REFpb_commands: 0  # total number of REFpb commands
+    CH9_num_UNKNOWN_commands: 0  # total number of UNKNOWN commands
+    CH9_AiM_ISR_RD_MAC_cycles: 0  # total number of AiM ISR_RD_MAC cycles
+    CH9_AiM_ISR_EWADD_cycles: 0  # total number of AiM ISR_EWADD cycles
+    CH9_num_WRA_commands: 0  # total number of WRA commands
+    CH9_num_SYNC_commands: 0  # total number of SYNC commands
+    CH9_num_RD_commands: 0  # total number of RD commands
+    CH9_num_REFab_commands: 0  # total number of REFab commands
+    Scheduler:
+      impl: FRFCFS
+    RefreshManager:
+      impl: AllBank
+
+
+
+  Controller:
+    impl: AiM
+    id: Channel 10
+    CH10_precharged_cycles: 11217  # total number of precharged cycles
+    CH10_num_WRA16_commands: 0  # total number of WRA16 commands
+    CH10_num_WRMAC16_commands: 0  # total number of WRMAC16 commands
+    CH10_num_RDAF16_commands: 0  # total number of RDAF16 commands
+    CH10_num_MAC16_commands: 0  # total number of MAC16 commands
+    CH10_active_cycles: 0  # total number of active cycles
+    CH10_num_MAC_commands: 0  # total number of MAC commands
+    CH10_num_SYNC_commands: 0  # total number of SYNC commands
+    CH10_num_ACT16_commands: 0  # total number of ACT16 commands
+    CH10_AiM_ISR_MAC_SBK_cycles: 0  # total number of AiM ISR_MAC_SBK cycles
+    CH10_num_WRGB_commands: 0  # total number of WRGB commands
+    CH10_num_WRA_commands: 0  # total number of WRA commands
+    CH10_num_TMOD_commands: 0  # total number of TMOD commands
+    CH10_AiM_ISR_COPY_GBBK_cycles: 0  # total number of AiM ISR_COPY_GBBK cycles
+    CH10_idle_cycles: 11216  # total number of idle cycles
+    CH10_num_EOC_commands: 0  # total number of EOC commands
+    CH10_num_RDCP_commands: 0  # total number of RDCP commands
+    CH10_num_EWMUL16_commands: 0  # total number of EWMUL16 commands
+    CH10_AiM_ISR_RD_AF_cycles: 0  # total number of AiM ISR_RD_AF cycles
+    CH10_num_REFab_commands: 0  # total number of REFab commands
+    CH10_AiM_ISR_RD_MAC_cycles: 0  # total number of AiM ISR_RD_MAC cycles
+    CH10_AiM_ISR_COPY_BKGB_cycles: 0  # total number of AiM ISR_COPY_BKGB cycles
+    CH10_AiM_ISR_WR_BIAS_cycles: 0  # total number of AiM ISR_WR_BIAS cycles
+    CH10_AiM_ISR_MAC_ABK_cycles: 0  # total number of AiM ISR_MAC_ABK cycles
+    CH10_AiM_ISR_WR_AFLUT_cycles: 0  # total number of AiM ISR_WR_AFLUT cycles
+    CH10_AiM_ISR_RD_SBK_cycles: 0  # total number of AiM ISR_RD_SBK cycles
+    CH10_AiM_ISR_WR_GB_cycles: 0  # total number of AiM ISR_WR_GB cycles
+    CH10_AiM_ISR_EWMUL_cycles: 0  # total number of AiM ISR_EWMUL cycles
+    CH10_AiM_ISR_EOC_cycles: 0  # total number of AiM ISR_EOC cycles
+    CH10_num_RDA_commands: 0  # total number of RDA commands
+    CH10_AiM_ISR_WR_SBK_cycles: 0  # total number of AiM ISR_WR_SBK cycles
+    CH10_num_AF16_commands: 0  # total number of AF16 commands
+    CH10_W_cycles: 0
+    CH10_num_RDMAC16_commands: 0  # total number of RDMAC16 commands
+    CH10_AiM_ISR_WR_ABK_cycles: 0  # total number of AiM ISR_WR_ABK cycles
+    CH10_num_WRCP_commands: 0  # total number of WRCP commands
+    CH10_num_ACT_commands: 0  # total number of ACT commands
+    CH10_R_cycles: 0
+    CH10_num_WR_commands: 0  # total number of WR commands
+    CH10_AiM_ISR_AF_cycles: 0  # total number of AiM ISR_AF cycles
+    CH10_AiM_ISR_EWADD_cycles: 0  # total number of AiM ISR_EWADD cycles
+    CH10_AiM_ISR_SYNC_cycles: 0  # total number of AiM ISR_SYNC cycles
+    CH10_num_PREA_commands: 0  # total number of PREA commands
+    CH10_num_PRE_commands: 0  # total number of PRE commands
+    CH10_num_RD_commands: 0  # total number of RD commands
+    CH10_num_UNKNOWN_commands: 0  # total number of UNKNOWN commands
+    CH10_num_PRE4_commands: 0  # total number of PRE4 commands
+    CH10_num_REFpb_commands: 0  # total number of REFpb commands
+    CH10_num_ACT4_commands: 0  # total number of ACT4 commands
+    Scheduler:
+      impl: FRFCFS
+    RefreshManager:
+      impl: AllBank
+
+
+
+  Controller:
+    impl: AiM
+    id: Channel 11
+    CH11_active_cycles: 0  # total number of active cycles
+    CH11_num_EOC_commands: 0  # total number of EOC commands
+    CH11_num_SYNC_commands: 0  # total number of SYNC commands
+    CH11_num_TMOD_commands: 0  # total number of TMOD commands
+    CH11_num_RDAF16_commands: 0  # total number of RDAF16 commands
+    CH11_num_RDMAC16_commands: 0  # total number of RDMAC16 commands
+    CH11_num_WRGB_commands: 0  # total number of WRGB commands
+    CH11_num_WRMAC16_commands: 0  # total number of WRMAC16 commands
+    CH11_num_EWMUL16_commands: 0  # total number of EWMUL16 commands
+    CH11_num_AF16_commands: 0  # total number of AF16 commands
+    CH11_num_MAC_commands: 0  # total number of MAC commands
+    CH11_num_PRE4_commands: 0  # total number of PRE4 commands
+    CH11_num_ACT16_commands: 0  # total number of ACT16 commands
+    CH11_AiM_ISR_MAC_ABK_cycles: 0  # total number of AiM ISR_MAC_ABK cycles
+    CH11_AiM_ISR_COPY_BKGB_cycles: 0  # total number of AiM ISR_COPY_BKGB cycles
+    CH11_num_REFpb_commands: 0  # total number of REFpb commands
+    CH11_precharged_cycles: 11217  # total number of precharged cycles
+    CH11_AiM_ISR_COPY_GBBK_cycles: 0  # total number of AiM ISR_COPY_GBBK cycles
+    CH11_AiM_ISR_WR_BIAS_cycles: 0  # total number of AiM ISR_WR_BIAS cycles
+    CH11_AiM_ISR_WR_AFLUT_cycles: 0  # total number of AiM ISR_WR_AFLUT cycles
+    CH11_idle_cycles: 11216  # total number of idle cycles
+    CH11_AiM_ISR_MAC_SBK_cycles: 0  # total number of AiM ISR_MAC_SBK cycles
+    CH11_num_WRA16_commands: 0  # total number of WRA16 commands
+    CH11_num_RD_commands: 0  # total number of RD commands
+    CH11_num_ACT_commands: 0  # total number of ACT commands
+    CH11_num_WRCP_commands: 0  # total number of WRCP commands
+    CH11_AiM_ISR_WR_GB_cycles: 0  # total number of AiM ISR_WR_GB cycles
+    CH11_num_WR_commands: 0  # total number of WR commands
+    CH11_num_RDCP_commands: 0  # total number of RDCP commands
+    CH11_AiM_ISR_WR_SBK_cycles: 0  # total number of AiM ISR_WR_SBK cycles
+    CH11_W_cycles: 0
+    CH11_R_cycles: 0
+    CH11_num_PREA_commands: 0  # total number of PREA commands
+    CH11_AiM_ISR_EWMUL_cycles: 0  # total number of AiM ISR_EWMUL cycles
+    CH11_num_UNKNOWN_commands: 0  # total number of UNKNOWN commands
+    CH11_AiM_ISR_EWADD_cycles: 0  # total number of AiM ISR_EWADD cycles
+    CH11_AiM_ISR_WR_ABK_cycles: 0  # total number of AiM ISR_WR_ABK cycles
+    CH11_AiM_ISR_EOC_cycles: 0  # total number of AiM ISR_EOC cycles
+    CH11_num_PRE_commands: 0  # total number of PRE commands
+    CH11_AiM_ISR_RD_SBK_cycles: 0  # total number of AiM ISR_RD_SBK cycles
+    CH11_num_RDA_commands: 0  # total number of RDA commands
+    CH11_AiM_ISR_RD_AF_cycles: 0  # total number of AiM ISR_RD_AF cycles
+    CH11_AiM_ISR_SYNC_cycles: 0  # total number of AiM ISR_SYNC cycles
+    CH11_AiM_ISR_AF_cycles: 0  # total number of AiM ISR_AF cycles
+    CH11_num_WRA_commands: 0  # total number of WRA commands
+    CH11_AiM_ISR_RD_MAC_cycles: 0  # total number of AiM ISR_RD_MAC cycles
+    CH11_num_REFab_commands: 0  # total number of REFab commands
+    CH11_num_MAC16_commands: 0  # total number of MAC16 commands
+    CH11_num_ACT4_commands: 0  # total number of ACT4 commands
+    Scheduler:
+      impl: FRFCFS
+    RefreshManager:
+      impl: AllBank
+
+
+
+  Controller:
+    impl: AiM
+    id: Channel 12
+    CH12_precharged_cycles: 11217  # total number of precharged cycles
+    CH12_num_UNKNOWN_commands: 0  # total number of UNKNOWN commands
+    CH12_num_TMOD_commands: 0  # total number of TMOD commands
+    CH12_num_WRMAC16_commands: 0  # total number of WRMAC16 commands
+    CH12_num_RDAF16_commands: 0  # total number of RDAF16 commands
+    CH12_num_WRGB_commands: 0  # total number of WRGB commands
+    CH12_num_WRCP_commands: 0  # total number of WRCP commands
+    CH12_num_RDCP_commands: 0  # total number of RDCP commands
+    CH12_num_EOC_commands: 0  # total number of EOC commands
+    CH12_num_EWMUL16_commands: 0  # total number of EWMUL16 commands
+    CH12_num_MAC_commands: 0  # total number of MAC commands
+    CH12_num_ACT16_commands: 0  # total number of ACT16 commands
+    CH12_num_WRA16_commands: 0  # total number of WRA16 commands
+    CH12_num_REFab_commands: 0  # total number of REFab commands
+    CH12_AiM_ISR_RD_SBK_cycles: 0  # total number of AiM ISR_RD_SBK cycles
+    CH12_AiM_ISR_COPY_GBBK_cycles: 0  # total number of AiM ISR_COPY_GBBK cycles
+    CH12_AiM_ISR_MAC_SBK_cycles: 0  # total number of AiM ISR_MAC_SBK cycles
+    CH12_num_PRE4_commands: 0  # total number of PRE4 commands
+    CH12_AiM_ISR_WR_GB_cycles: 0  # total number of AiM ISR_WR_GB cycles
+    CH12_AiM_ISR_COPY_BKGB_cycles: 0  # total number of AiM ISR_COPY_BKGB cycles
+    CH12_num_RDMAC16_commands: 0  # total number of RDMAC16 commands
+    CH12_AiM_ISR_EWADD_cycles: 0  # total number of AiM ISR_EWADD cycles
+    CH12_num_MAC16_commands: 0  # total number of MAC16 commands
+    CH12_AiM_ISR_MAC_ABK_cycles: 0  # total number of AiM ISR_MAC_ABK cycles
+    CH12_AiM_ISR_WR_AFLUT_cycles: 0  # total number of AiM ISR_WR_AFLUT cycles
+    CH12_active_cycles: 0  # total number of active cycles
+    CH12_AiM_ISR_SYNC_cycles: 0  # total number of AiM ISR_SYNC cycles
+    CH12_AiM_ISR_WR_SBK_cycles: 0  # total number of AiM ISR_WR_SBK cycles
+    CH12_W_cycles: 0
+    CH12_AiM_ISR_WR_BIAS_cycles: 0  # total number of AiM ISR_WR_BIAS cycles
+    CH12_num_AF16_commands: 0  # total number of AF16 commands
+    CH12_R_cycles: 0
+    CH12_AiM_ISR_WR_ABK_cycles: 0  # total number of AiM ISR_WR_ABK cycles
+    CH12_AiM_ISR_AF_cycles: 0  # total number of AiM ISR_AF cycles
+    CH12_idle_cycles: 11216  # total number of idle cycles
+    CH12_AiM_ISR_EWMUL_cycles: 0  # total number of AiM ISR_EWMUL cycles
+    CH12_num_RD_commands: 0  # total number of RD commands
+    CH12_AiM_ISR_RD_AF_cycles: 0  # total number of AiM ISR_RD_AF cycles
+    CH12_AiM_ISR_RD_MAC_cycles: 0  # total number of AiM ISR_RD_MAC cycles
+    CH12_num_ACT4_commands: 0  # total number of ACT4 commands
+    CH12_AiM_ISR_EOC_cycles: 0  # total number of AiM ISR_EOC cycles
+    CH12_num_ACT_commands: 0  # total number of ACT commands
+    CH12_num_PREA_commands: 0  # total number of PREA commands
+    CH12_num_REFpb_commands: 0  # total number of REFpb commands
+    CH12_num_WR_commands: 0  # total number of WR commands
+    CH12_num_RDA_commands: 0  # total number of RDA commands
+    CH12_num_SYNC_commands: 0  # total number of SYNC commands
+    CH12_num_PRE_commands: 0  # total number of PRE commands
+    CH12_num_WRA_commands: 0  # total number of WRA commands
+    Scheduler:
+      impl: FRFCFS
+    RefreshManager:
+      impl: AllBank
+
+
+
+  Controller:
+    impl: AiM
+    id: Channel 13
+    CH13_precharged_cycles: 11217  # total number of precharged cycles
+    CH13_idle_cycles: 11216  # total number of idle cycles
+    CH13_num_UNKNOWN_commands: 0  # total number of UNKNOWN commands
+    CH13_num_EOC_commands: 0  # total number of EOC commands
+    CH13_num_SYNC_commands: 0  # total number of SYNC commands
+    CH13_num_TMOD_commands: 0  # total number of TMOD commands
+    CH13_num_WRMAC16_commands: 0  # total number of WRMAC16 commands
+    CH13_num_RDAF16_commands: 0  # total number of RDAF16 commands
+    CH13_num_WRGB_commands: 0  # total number of WRGB commands
+    CH13_num_WRCP_commands: 0  # total number of WRCP commands
+    CH13_num_RDCP_commands: 0  # total number of RDCP commands
+    CH13_num_MAC16_commands: 0  # total number of MAC16 commands
+    CH13_num_PRE4_commands: 0  # total number of PRE4 commands
+    CH13_AiM_ISR_MAC_SBK_cycles: 0  # total number of AiM ISR_MAC_SBK cycles
+    CH13_active_cycles: 0  # total number of active cycles
+    CH13_AiM_ISR_COPY_GBBK_cycles: 0  # total number of AiM ISR_COPY_GBBK cycles
+    CH13_AiM_ISR_AF_cycles: 0  # total number of AiM ISR_AF cycles
+    CH13_num_WRA16_commands: 0  # total number of WRA16 commands
+    CH13_AiM_ISR_RD_MAC_cycles: 0  # total number of AiM ISR_RD_MAC cycles
+    CH13_W_cycles: 0
+    CH13_AiM_ISR_EOC_cycles: 0  # total number of AiM ISR_EOC cycles
+    CH13_AiM_ISR_WR_AFLUT_cycles: 0  # total number of AiM ISR_WR_AFLUT cycles
+    CH13_AiM_ISR_WR_ABK_cycles: 0  # total number of AiM ISR_WR_ABK cycles
+    CH13_AiM_ISR_RD_SBK_cycles: 0  # total number of AiM ISR_RD_SBK cycles
+    CH13_AiM_ISR_WR_SBK_cycles: 0  # total number of AiM ISR_WR_SBK cycles
+    CH13_num_EWMUL16_commands: 0  # total number of EWMUL16 commands
+    CH13_AiM_ISR_RD_AF_cycles: 0  # total number of AiM ISR_RD_AF cycles
+    CH13_AiM_ISR_WR_GB_cycles: 0  # total number of AiM ISR_WR_GB cycles
+    CH13_R_cycles: 0
+    CH13_AiM_ISR_EWMUL_cycles: 0  # total number of AiM ISR_EWMUL cycles
+    CH13_num_ACT16_commands: 0  # total number of ACT16 commands
+    CH13_num_RDA_commands: 0  # total number of RDA commands
+    CH13_num_RD_commands: 0  # total number of RD commands
+    CH13_AiM_ISR_EWADD_cycles: 0  # total number of AiM ISR_EWADD cycles
+    CH13_num_ACT_commands: 0  # total number of ACT commands
+    CH13_num_AF16_commands: 0  # total number of AF16 commands
+    CH13_AiM_ISR_SYNC_cycles: 0  # total number of AiM ISR_SYNC cycles
+    CH13_num_PREA_commands: 0  # total number of PREA commands
+    CH13_AiM_ISR_COPY_BKGB_cycles: 0  # total number of AiM ISR_COPY_BKGB cycles
+    CH13_AiM_ISR_WR_BIAS_cycles: 0  # total number of AiM ISR_WR_BIAS cycles
+    CH13_num_WR_commands: 0  # total number of WR commands
+    CH13_num_WRA_commands: 0  # total number of WRA commands
+    CH13_num_REFpb_commands: 0  # total number of REFpb commands
+    CH13_AiM_ISR_MAC_ABK_cycles: 0  # total number of AiM ISR_MAC_ABK cycles
+    CH13_num_PRE_commands: 0  # total number of PRE commands
+    CH13_num_REFab_commands: 0  # total number of REFab commands
+    CH13_num_RDMAC16_commands: 0  # total number of RDMAC16 commands
+    CH13_num_MAC_commands: 0  # total number of MAC commands
+    CH13_num_ACT4_commands: 0  # total number of ACT4 commands
+    Scheduler:
+      impl: FRFCFS
+    RefreshManager:
+      impl: AllBank
+
+
+
+  Controller:
+    impl: AiM
+    id: Channel 14
+    CH14_precharged_cycles: 11217  # total number of precharged cycles
+    CH14_num_TMOD_commands: 0  # total number of TMOD commands
+    CH14_num_WRMAC16_commands: 0  # total number of WRMAC16 commands
+    CH14_num_RDMAC16_commands: 0  # total number of RDMAC16 commands
+    CH14_num_RDCP_commands: 0  # total number of RDCP commands
+    CH14_num_EWMUL16_commands: 0  # total number of EWMUL16 commands
+    CH14_num_MAC16_commands: 0  # total number of MAC16 commands
+    CH14_idle_cycles: 11216  # total number of idle cycles
+    CH14_num_WRGB_commands: 0  # total number of WRGB commands
+    CH14_num_MAC_commands: 0  # total number of MAC commands
+    CH14_num_PRE4_commands: 0  # total number of PRE4 commands
+    CH14_num_ACT16_commands: 0  # total number of ACT16 commands
+    CH14_AiM_ISR_COPY_GBBK_cycles: 0  # total number of AiM ISR_COPY_GBBK cycles
+    CH14_W_cycles: 0
+    CH14_AiM_ISR_RD_AF_cycles: 0  # total number of AiM ISR_RD_AF cycles
+    CH14_num_AF16_commands: 0  # total number of AF16 commands
+    CH14_AiM_ISR_RD_MAC_cycles: 0  # total number of AiM ISR_RD_MAC cycles
+    CH14_num_WRA16_commands: 0  # total number of WRA16 commands
+    CH14_AiM_ISR_MAC_SBK_cycles: 0  # total number of AiM ISR_MAC_SBK cycles
+    CH14_AiM_ISR_EWADD_cycles: 0  # total number of AiM ISR_EWADD cycles
+    CH14_num_WRCP_commands: 0  # total number of WRCP commands
+    CH14_num_REFpb_commands: 0  # total number of REFpb commands
+    CH14_active_cycles: 0  # total number of active cycles
+    CH14_num_UNKNOWN_commands: 0  # total number of UNKNOWN commands
+    CH14_AiM_ISR_WR_GB_cycles: 0  # total number of AiM ISR_WR_GB cycles
+    CH14_AiM_ISR_WR_AFLUT_cycles: 0  # total number of AiM ISR_WR_AFLUT cycles
+    CH14_num_EOC_commands: 0  # total number of EOC commands
+    CH14_AiM_ISR_RD_SBK_cycles: 0  # total number of AiM ISR_RD_SBK cycles
+    CH14_AiM_ISR_AF_cycles: 0  # total number of AiM ISR_AF cycles
+    CH14_num_PREA_commands: 0  # total number of PREA commands
+    CH14_AiM_ISR_WR_BIAS_cycles: 0  # total number of AiM ISR_WR_BIAS cycles
+    CH14_AiM_ISR_MAC_ABK_cycles: 0  # total number of AiM ISR_MAC_ABK cycles
+    CH14_num_RDAF16_commands: 0  # total number of RDAF16 commands
+    CH14_R_cycles: 0
+    CH14_AiM_ISR_WR_ABK_cycles: 0  # total number of AiM ISR_WR_ABK cycles
+    CH14_AiM_ISR_WR_SBK_cycles: 0  # total number of AiM ISR_WR_SBK cycles
+    CH14_AiM_ISR_SYNC_cycles: 0  # total number of AiM ISR_SYNC cycles
+    CH14_num_RD_commands: 0  # total number of RD commands
+    CH14_AiM_ISR_EOC_cycles: 0  # total number of AiM ISR_EOC cycles
+    CH14_AiM_ISR_COPY_BKGB_cycles: 0  # total number of AiM ISR_COPY_BKGB cycles
+    CH14_num_PRE_commands: 0  # total number of PRE commands
+    CH14_num_WR_commands: 0  # total number of WR commands
+    CH14_num_SYNC_commands: 0  # total number of SYNC commands
+    CH14_AiM_ISR_EWMUL_cycles: 0  # total number of AiM ISR_EWMUL cycles
+    CH14_num_RDA_commands: 0  # total number of RDA commands
+    CH14_num_REFab_commands: 0  # total number of REFab commands
+    CH14_num_ACT_commands: 0  # total number of ACT commands
+    CH14_num_ACT4_commands: 0  # total number of ACT4 commands
+    CH14_num_WRA_commands: 0  # total number of WRA commands
+    Scheduler:
+      impl: FRFCFS
+    RefreshManager:
+      impl: AllBank
+
+
+
+  Controller:
+    impl: AiM
+    id: Channel 15
+    CH15_active_cycles: 0  # total number of active cycles
+    CH15_num_EOC_commands: 0  # total number of EOC commands
+    CH15_num_TMOD_commands: 0  # total number of TMOD commands
+    CH15_num_WRA16_commands: 0  # total number of WRA16 commands
+    CH15_num_RDAF16_commands: 0  # total number of RDAF16 commands
+    CH15_num_WRGB_commands: 0  # total number of WRGB commands
+    CH15_num_WRCP_commands: 0  # total number of WRCP commands
+    CH15_num_RDCP_commands: 0  # total number of RDCP commands
+    CH15_idle_cycles: 11216  # total number of idle cycles
+    CH15_num_AF16_commands: 0  # total number of AF16 commands
+    CH15_num_UNKNOWN_commands: 0  # total number of UNKNOWN commands
+    CH15_num_MAC_commands: 0  # total number of MAC commands
+    CH15_num_PRE4_commands: 0  # total number of PRE4 commands
+    CH15_num_WRMAC16_commands: 0  # total number of WRMAC16 commands
+    CH15_AiM_ISR_COPY_GBBK_cycles: 0  # total number of AiM ISR_COPY_GBBK cycles
+    CH15_AiM_ISR_COPY_BKGB_cycles: 0  # total number of AiM ISR_COPY_BKGB cycles
+    CH15_AiM_ISR_MAC_ABK_cycles: 0  # total number of AiM ISR_MAC_ABK cycles
+    CH15_AiM_ISR_RD_SBK_cycles: 0  # total number of AiM ISR_RD_SBK cycles
+    CH15_AiM_ISR_WR_SBK_cycles: 0  # total number of AiM ISR_WR_SBK cycles
+    CH15_AiM_ISR_RD_AF_cycles: 0  # total number of AiM ISR_RD_AF cycles
+    CH15_R_cycles: 0
+    CH15_AiM_ISR_EOC_cycles: 0  # total number of AiM ISR_EOC cycles
+    CH15_num_EWMUL16_commands: 0  # total number of EWMUL16 commands
+    CH15_AiM_ISR_SYNC_cycles: 0  # total number of AiM ISR_SYNC cycles
+    CH15_AiM_ISR_WR_BIAS_cycles: 0  # total number of AiM ISR_WR_BIAS cycles
+    CH15_num_REFab_commands: 0  # total number of REFab commands
+    CH15_AiM_ISR_MAC_SBK_cycles: 0  # total number of AiM ISR_MAC_SBK cycles
+    CH15_AiM_ISR_WR_GB_cycles: 0  # total number of AiM ISR_WR_GB cycles
+    CH15_num_MAC16_commands: 0  # total number of MAC16 commands
+    CH15_W_cycles: 0
+    CH15_num_REFpb_commands: 0  # total number of REFpb commands
+    CH15_precharged_cycles: 11217  # total number of precharged cycles
+    CH15_AiM_ISR_RD_MAC_cycles: 0  # total number of AiM ISR_RD_MAC cycles
+    CH15_AiM_ISR_AF_cycles: 0  # total number of AiM ISR_AF cycles
+    CH15_num_SYNC_commands: 0  # total number of SYNC commands
+    CH15_AiM_ISR_EWADD_cycles: 0  # total number of AiM ISR_EWADD cycles
+    CH15_num_RDMAC16_commands: 0  # total number of RDMAC16 commands
+    CH15_num_PRE_commands: 0  # total number of PRE commands
+    CH15_num_ACT_commands: 0  # total number of ACT commands
+    CH15_AiM_ISR_WR_ABK_cycles: 0  # total number of AiM ISR_WR_ABK cycles
+    CH15_AiM_ISR_WR_AFLUT_cycles: 0  # total number of AiM ISR_WR_AFLUT cycles
+    CH15_AiM_ISR_EWMUL_cycles: 0  # total number of AiM ISR_EWMUL cycles
+    CH15_num_PREA_commands: 0  # total number of PREA commands
+    CH15_num_RD_commands: 0  # total number of RD commands
+    CH15_num_WR_commands: 0  # total number of WR commands
+    CH15_num_RDA_commands: 0  # total number of RDA commands
+    CH15_num_ACT16_commands: 0  # total number of ACT16 commands
+    CH15_num_WRA_commands: 0  # total number of WRA commands
+    CH15_num_ACT4_commands: 0  # total number of ACT4 commands
+    Scheduler:
+      impl: FRFCFS
+    RefreshManager:
+      impl: AllBank
+
+
+
+  Controller:
+    impl: AiM
+    id: Channel 16
+    CH16_num_TMOD_commands: 0  # total number of TMOD commands
+    CH16_num_WRA16_commands: 0  # total number of WRA16 commands
+    CH16_num_RDAF16_commands: 0  # total number of RDAF16 commands
+    CH16_num_RDCP_commands: 0  # total number of RDCP commands
+    CH16_num_EWMUL16_commands: 0  # total number of EWMUL16 commands
+    CH16_num_AF16_commands: 0  # total number of AF16 commands
+    CH16_num_ACT16_commands: 0  # total number of ACT16 commands
+    CH16_num_SYNC_commands: 0  # total number of SYNC commands
+    CH16_AiM_ISR_MAC_ABK_cycles: 0  # total number of AiM ISR_MAC_ABK cycles
+    CH16_num_MAC_commands: 0  # total number of MAC commands
+    CH16_AiM_ISR_WR_ABK_cycles: 0  # total number of AiM ISR_WR_ABK cycles
+    CH16_num_PRE4_commands: 0  # total number of PRE4 commands
+    CH16_num_REFpb_commands: 0  # total number of REFpb commands
+    CH16_num_PRE_commands: 0  # total number of PRE commands
+    CH16_active_cycles: 0  # total number of active cycles
+    CH16_AiM_ISR_WR_GB_cycles: 0  # total number of AiM ISR_WR_GB cycles
+    CH16_num_WRA_commands: 0  # total number of WRA commands
+    CH16_precharged_cycles: 11217  # total number of precharged cycles
+    CH16_num_MAC16_commands: 0  # total number of MAC16 commands
+    CH16_num_ACT_commands: 0  # total number of ACT commands
+    CH16_AiM_ISR_MAC_SBK_cycles: 0  # total number of AiM ISR_MAC_SBK cycles
+    CH16_AiM_ISR_WR_AFLUT_cycles: 0  # total number of AiM ISR_WR_AFLUT cycles
+    CH16_R_cycles: 0
+    CH16_AiM_ISR_RD_SBK_cycles: 0  # total number of AiM ISR_RD_SBK cycles
+    CH16_AiM_ISR_WR_BIAS_cycles: 0  # total number of AiM ISR_WR_BIAS cycles
+    CH16_AiM_ISR_WR_SBK_cycles: 0  # total number of AiM ISR_WR_SBK cycles
+    CH16_num_EOC_commands: 0  # total number of EOC commands
+    CH16_num_RDA_commands: 0  # total number of RDA commands
+    CH16_W_cycles: 0
+    CH16_AiM_ISR_COPY_BKGB_cycles: 0  # total number of AiM ISR_COPY_BKGB cycles
+    CH16_num_RD_commands: 0  # total number of RD commands
+    CH16_AiM_ISR_RD_MAC_cycles: 0  # total number of AiM ISR_RD_MAC cycles
+    CH16_AiM_ISR_AF_cycles: 0  # total number of AiM ISR_AF cycles
+    CH16_idle_cycles: 11216  # total number of idle cycles
+    CH16_num_WRCP_commands: 0  # total number of WRCP commands
+    CH16_AiM_ISR_EWMUL_cycles: 0  # total number of AiM ISR_EWMUL cycles
+    CH16_num_WRMAC16_commands: 0  # total number of WRMAC16 commands
+    CH16_AiM_ISR_COPY_GBBK_cycles: 0  # total number of AiM ISR_COPY_GBBK cycles
+    CH16_AiM_ISR_EWADD_cycles: 0  # total number of AiM ISR_EWADD cycles
+    CH16_num_UNKNOWN_commands: 0  # total number of UNKNOWN commands
+    CH16_AiM_ISR_RD_AF_cycles: 0  # total number of AiM ISR_RD_AF cycles
+    CH16_AiM_ISR_EOC_cycles: 0  # total number of AiM ISR_EOC cycles
+    CH16_num_WR_commands: 0  # total number of WR commands
+    CH16_AiM_ISR_SYNC_cycles: 0  # total number of AiM ISR_SYNC cycles
+    CH16_num_PREA_commands: 0  # total number of PREA commands
+    CH16_num_REFab_commands: 0  # total number of REFab commands
+    CH16_num_RDMAC16_commands: 0  # total number of RDMAC16 commands
+    CH16_num_WRGB_commands: 0  # total number of WRGB commands
+    CH16_num_ACT4_commands: 0  # total number of ACT4 commands
+    Scheduler:
+      impl: FRFCFS
+    RefreshManager:
+      impl: AllBank
+
+
+
+  Controller:
+    impl: AiM
+    id: Channel 17
+    CH17_active_cycles: 0  # total number of active cycles
+    CH17_idle_cycles: 11216  # total number of idle cycles
+    CH17_num_UNKNOWN_commands: 0  # total number of UNKNOWN commands
+    CH17_num_TMOD_commands: 0  # total number of TMOD commands
+    CH17_num_RDAF16_commands: 0  # total number of RDAF16 commands
+    CH17_num_WRGB_commands: 0  # total number of WRGB commands
+    CH17_num_WRMAC16_commands: 0  # total number of WRMAC16 commands
+    CH17_num_WRCP_commands: 0  # total number of WRCP commands
+    CH17_num_AF16_commands: 0  # total number of AF16 commands
+    CH17_num_MAC_commands: 0  # total number of MAC commands
+    CH17_num_ACT16_commands: 0  # total number of ACT16 commands
+    CH17_AiM_ISR_MAC_ABK_cycles: 0  # total number of AiM ISR_MAC_ABK cycles
+    CH17_num_REFpb_commands: 0  # total number of REFpb commands
+    CH17_num_EWMUL16_commands: 0  # total number of EWMUL16 commands
+    CH17_AiM_ISR_COPY_BKGB_cycles: 0  # total number of AiM ISR_COPY_BKGB cycles
+    CH17_AiM_ISR_COPY_GBBK_cycles: 0  # total number of AiM ISR_COPY_GBBK cycles
+    CH17_AiM_ISR_WR_AFLUT_cycles: 0  # total number of AiM ISR_WR_AFLUT cycles
+    CH17_AiM_ISR_WR_BIAS_cycles: 0  # total number of AiM ISR_WR_BIAS cycles
+    CH17_num_RDMAC16_commands: 0  # total number of RDMAC16 commands
+    CH17_AiM_ISR_WR_GB_cycles: 0  # total number of AiM ISR_WR_GB cycles
+    CH17_R_cycles: 0
+    CH17_num_WRA16_commands: 0  # total number of WRA16 commands
+    CH17_num_PRE4_commands: 0  # total number of PRE4 commands
+    CH17_AiM_ISR_WR_SBK_cycles: 0  # total number of AiM ISR_WR_SBK cycles
+    CH17_AiM_ISR_EWMUL_cycles: 0  # total number of AiM ISR_EWMUL cycles
+    CH17_AiM_ISR_RD_SBK_cycles: 0  # total number of AiM ISR_RD_SBK cycles
+    CH17_AiM_ISR_RD_AF_cycles: 0  # total number of AiM ISR_RD_AF cycles
+    CH17_num_MAC16_commands: 0  # total number of MAC16 commands
+    CH17_W_cycles: 0
+    CH17_AiM_ISR_MAC_SBK_cycles: 0  # total number of AiM ISR_MAC_SBK cycles
+    CH17_AiM_ISR_WR_ABK_cycles: 0  # total number of AiM ISR_WR_ABK cycles
+    CH17_AiM_ISR_AF_cycles: 0  # total number of AiM ISR_AF cycles
+    CH17_num_RD_commands: 0  # total number of RD commands
+    CH17_AiM_ISR_EOC_cycles: 0  # total number of AiM ISR_EOC cycles
+    CH17_num_ACT_commands: 0  # total number of ACT commands
+    CH17_num_PREA_commands: 0  # total number of PREA commands
+    CH17_AiM_ISR_EWADD_cycles: 0  # total number of AiM ISR_EWADD cycles
+    CH17_num_WRA_commands: 0  # total number of WRA commands
+    CH17_num_RDCP_commands: 0  # total number of RDCP commands
+    CH17_AiM_ISR_RD_MAC_cycles: 0  # total number of AiM ISR_RD_MAC cycles
+    CH17_num_PRE_commands: 0  # total number of PRE commands
+    CH17_precharged_cycles: 11217  # total number of precharged cycles
+    CH17_num_EOC_commands: 0  # total number of EOC commands
+    CH17_num_SYNC_commands: 0  # total number of SYNC commands
+    CH17_num_WR_commands: 0  # total number of WR commands
+    CH17_num_RDA_commands: 0  # total number of RDA commands
+    CH17_AiM_ISR_SYNC_cycles: 0  # total number of AiM ISR_SYNC cycles
+    CH17_num_REFab_commands: 0  # total number of REFab commands
+    CH17_num_ACT4_commands: 0  # total number of ACT4 commands
+    Scheduler:
+      impl: FRFCFS
+    RefreshManager:
+      impl: AllBank
+
+
+
+  Controller:
+    impl: AiM
+    id: Channel 18
+    CH18_precharged_cycles: 11217  # total number of precharged cycles
+    CH18_num_UNKNOWN_commands: 0  # total number of UNKNOWN commands
+    CH18_num_WRCP_commands: 0  # total number of WRCP commands
+    CH18_num_EWMUL16_commands: 0  # total number of EWMUL16 commands
+    CH18_num_RDCP_commands: 0  # total number of RDCP commands
+    CH18_num_MAC16_commands: 0  # total number of MAC16 commands
+    CH18_num_MAC_commands: 0  # total number of MAC commands
+    CH18_num_AF16_commands: 0  # total number of AF16 commands
+    CH18_num_PRE4_commands: 0  # total number of PRE4 commands
+    CH18_num_ACT16_commands: 0  # total number of ACT16 commands
+    CH18_num_WRMAC16_commands: 0  # total number of WRMAC16 commands
+    CH18_AiM_ISR_COPY_BKGB_cycles: 0  # total number of AiM ISR_COPY_BKGB cycles
+    CH18_AiM_ISR_MAC_ABK_cycles: 0  # total number of AiM ISR_MAC_ABK cycles
+    CH18_num_RDAF16_commands: 0  # total number of RDAF16 commands
+    CH18_AiM_ISR_EOC_cycles: 0  # total number of AiM ISR_EOC cycles
+    CH18_num_WR_commands: 0  # total number of WR commands
+    CH18_active_cycles: 0  # total number of active cycles
+    CH18_AiM_ISR_RD_SBK_cycles: 0  # total number of AiM ISR_RD_SBK cycles
+    CH18_num_ACT_commands: 0  # total number of ACT commands
+    CH18_num_EOC_commands: 0  # total number of EOC commands
+    CH18_AiM_ISR_WR_AFLUT_cycles: 0  # total number of AiM ISR_WR_AFLUT cycles
+    CH18_num_REFpb_commands: 0  # total number of REFpb commands
+    CH18_AiM_ISR_EWADD_cycles: 0  # total number of AiM ISR_EWADD cycles
+    CH18_AiM_ISR_WR_GB_cycles: 0  # total number of AiM ISR_WR_GB cycles
+    CH18_num_PRE_commands: 0  # total number of PRE commands
+    CH18_num_ACT4_commands: 0  # total number of ACT4 commands
+    CH18_AiM_ISR_WR_SBK_cycles: 0  # total number of AiM ISR_WR_SBK cycles
+    CH18_num_REFab_commands: 0  # total number of REFab commands
+    CH18_AiM_ISR_RD_MAC_cycles: 0  # total number of AiM ISR_RD_MAC cycles
+    CH18_W_cycles: 0
+    CH18_num_WRA16_commands: 0  # total number of WRA16 commands
+    CH18_num_RDMAC16_commands: 0  # total number of RDMAC16 commands
+    CH18_AiM_ISR_MAC_SBK_cycles: 0  # total number of AiM ISR_MAC_SBK cycles
+    CH18_num_TMOD_commands: 0  # total number of TMOD commands
+    CH18_R_cycles: 0
+    CH18_num_RD_commands: 0  # total number of RD commands
+    CH18_num_WRGB_commands: 0  # total number of WRGB commands
+    CH18_AiM_ISR_WR_BIAS_cycles: 0  # total number of AiM ISR_WR_BIAS cycles
+    CH18_num_SYNC_commands: 0  # total number of SYNC commands
+    CH18_AiM_ISR_WR_ABK_cycles: 0  # total number of AiM ISR_WR_ABK cycles
+    CH18_AiM_ISR_COPY_GBBK_cycles: 0  # total number of AiM ISR_COPY_GBBK cycles
+    CH18_AiM_ISR_AF_cycles: 0  # total number of AiM ISR_AF cycles
+    CH18_AiM_ISR_EWMUL_cycles: 0  # total number of AiM ISR_EWMUL cycles
+    CH18_idle_cycles: 11216  # total number of idle cycles
+    CH18_AiM_ISR_SYNC_cycles: 0  # total number of AiM ISR_SYNC cycles
+    CH18_num_PREA_commands: 0  # total number of PREA commands
+    CH18_num_RDA_commands: 0  # total number of RDA commands
+    CH18_AiM_ISR_RD_AF_cycles: 0  # total number of AiM ISR_RD_AF cycles
+    CH18_num_WRA_commands: 0  # total number of WRA commands
+    Scheduler:
+      impl: FRFCFS
+    RefreshManager:
+      impl: AllBank
+
+
+
+  Controller:
+    impl: AiM
+    id: Channel 19
+    CH19_precharged_cycles: 11217  # total number of precharged cycles
+    CH19_active_cycles: 0  # total number of active cycles
+    CH19_num_WRMAC16_commands: 0  # total number of WRMAC16 commands
+    CH19_num_RDAF16_commands: 0  # total number of RDAF16 commands
+    CH19_num_RDMAC16_commands: 0  # total number of RDMAC16 commands
+    CH19_num_WRGB_commands: 0  # total number of WRGB commands
+    CH19_num_EWMUL16_commands: 0  # total number of EWMUL16 commands
+    CH19_num_AF16_commands: 0  # total number of AF16 commands
+    CH19_num_MAC16_commands: 0  # total number of MAC16 commands
+    CH19_num_MAC_commands: 0  # total number of MAC commands
+    CH19_num_PRE4_commands: 0  # total number of PRE4 commands
+    CH19_num_ACT16_commands: 0  # total number of ACT16 commands
+    CH19_AiM_ISR_COPY_BKGB_cycles: 0  # total number of AiM ISR_COPY_BKGB cycles
+    CH19_AiM_ISR_WR_GB_cycles: 0  # total number of AiM ISR_WR_GB cycles
+    CH19_AiM_ISR_RD_MAC_cycles: 0  # total number of AiM ISR_RD_MAC cycles
+    CH19_AiM_ISR_RD_AF_cycles: 0  # total number of AiM ISR_RD_AF cycles
+    CH19_num_ACT4_commands: 0  # total number of ACT4 commands
+    CH19_num_UNKNOWN_commands: 0  # total number of UNKNOWN commands
+    CH19_AiM_ISR_WR_BIAS_cycles: 0  # total number of AiM ISR_WR_BIAS cycles
+    CH19_num_ACT_commands: 0  # total number of ACT commands
+    CH19_num_WRA16_commands: 0  # total number of WRA16 commands
+    CH19_AiM_ISR_WR_SBK_cycles: 0  # total number of AiM ISR_WR_SBK cycles
+    CH19_num_PREA_commands: 0  # total number of PREA commands
+    CH19_AiM_ISR_WR_AFLUT_cycles: 0  # total number of AiM ISR_WR_AFLUT cycles
+    CH19_AiM_ISR_MAC_SBK_cycles: 0  # total number of AiM ISR_MAC_SBK cycles
+    CH19_idle_cycles: 11216  # total number of idle cycles
+    CH19_num_TMOD_commands: 0  # total number of TMOD commands
+    CH19_num_WR_commands: 0  # total number of WR commands
+    CH19_AiM_ISR_RD_SBK_cycles: 0  # total number of AiM ISR_RD_SBK cycles
+    CH19_R_cycles: 0
+    CH19_num_EOC_commands: 0  # total number of EOC commands
+    CH19_num_WRCP_commands: 0  # total number of WRCP commands
+    CH19_AiM_ISR_AF_cycles: 0  # total number of AiM ISR_AF cycles
+    CH19_AiM_ISR_EWMUL_cycles: 0  # total number of AiM ISR_EWMUL cycles
+    CH19_AiM_ISR_EWADD_cycles: 0  # total number of AiM ISR_EWADD cycles
+    CH19_num_RDCP_commands: 0  # total number of RDCP commands
+    CH19_AiM_ISR_WR_ABK_cycles: 0  # total number of AiM ISR_WR_ABK cycles
+    CH19_AiM_ISR_SYNC_cycles: 0  # total number of AiM ISR_SYNC cycles
+    CH19_AiM_ISR_MAC_ABK_cycles: 0  # total number of AiM ISR_MAC_ABK cycles
+    CH19_AiM_ISR_EOC_cycles: 0  # total number of AiM ISR_EOC cycles
+    CH19_AiM_ISR_COPY_GBBK_cycles: 0  # total number of AiM ISR_COPY_GBBK cycles
+    CH19_num_REFpb_commands: 0  # total number of REFpb commands
+    CH19_num_PRE_commands: 0  # total number of PRE commands
+    CH19_num_WRA_commands: 0  # total number of WRA commands
+    CH19_num_SYNC_commands: 0  # total number of SYNC commands
+    CH19_num_RDA_commands: 0  # total number of RDA commands
+    CH19_num_RD_commands: 0  # total number of RD commands
+    CH19_W_cycles: 0
+    CH19_num_REFab_commands: 0  # total number of REFab commands
+    Scheduler:
+      impl: FRFCFS
+    RefreshManager:
+      impl: AllBank
+
+
+
+  Controller:
+    impl: AiM
+    id: Channel 20
+    CH20_precharged_cycles: 11217  # total number of precharged cycles
+    CH20_num_UNKNOWN_commands: 0  # total number of UNKNOWN commands
+    CH20_num_SYNC_commands: 0  # total number of SYNC commands
+    CH20_num_TMOD_commands: 0  # total number of TMOD commands
+    CH20_num_WRA16_commands: 0  # total number of WRA16 commands
+    CH20_num_RDAF16_commands: 0  # total number of RDAF16 commands
+    CH20_num_RDMAC16_commands: 0  # total number of RDMAC16 commands
+    CH20_active_cycles: 0  # total number of active cycles
+    CH20_num_WRCP_commands: 0  # total number of WRCP commands
+    CH20_num_WRMAC16_commands: 0  # total number of WRMAC16 commands
+    CH20_num_RDCP_commands: 0  # total number of RDCP commands
+    CH20_num_EWMUL16_commands: 0  # total number of EWMUL16 commands
+    CH20_num_AF16_commands: 0  # total number of AF16 commands
+    CH20_num_PRE4_commands: 0  # total number of PRE4 commands
+    CH20_idle_cycles: 11216  # total number of idle cycles
+    CH20_AiM_ISR_COPY_BKGB_cycles: 0  # total number of AiM ISR_COPY_BKGB cycles
+    CH20_AiM_ISR_COPY_GBBK_cycles: 0  # total number of AiM ISR_COPY_GBBK cycles
+    CH20_AiM_ISR_MAC_SBK_cycles: 0  # total number of AiM ISR_MAC_SBK cycles
+    CH20_num_PRE_commands: 0  # total number of PRE commands
+    CH20_AiM_ISR_RD_SBK_cycles: 0  # total number of AiM ISR_RD_SBK cycles
+    CH20_num_EOC_commands: 0  # total number of EOC commands
+    CH20_AiM_ISR_RD_AF_cycles: 0  # total number of AiM ISR_RD_AF cycles
+    CH20_num_WRGB_commands: 0  # total number of WRGB commands
+    CH20_AiM_ISR_MAC_ABK_cycles: 0  # total number of AiM ISR_MAC_ABK cycles
+    CH20_AiM_ISR_WR_BIAS_cycles: 0  # total number of AiM ISR_WR_BIAS cycles
+    CH20_num_RD_commands: 0  # total number of RD commands
+    CH20_AiM_ISR_RD_MAC_cycles: 0  # total number of AiM ISR_RD_MAC cycles
+    CH20_num_REFpb_commands: 0  # total number of REFpb commands
+    CH20_AiM_ISR_WR_AFLUT_cycles: 0  # total number of AiM ISR_WR_AFLUT cycles
+    CH20_num_MAC_commands: 0  # total number of MAC commands
+    CH20_AiM_ISR_WR_GB_cycles: 0  # total number of AiM ISR_WR_GB cycles
+    CH20_num_MAC16_commands: 0  # total number of MAC16 commands
+    CH20_AiM_ISR_EOC_cycles: 0  # total number of AiM ISR_EOC cycles
+    CH20_AiM_ISR_WR_SBK_cycles: 0  # total number of AiM ISR_WR_SBK cycles
+    CH20_AiM_ISR_AF_cycles: 0  # total number of AiM ISR_AF cycles
+    CH20_W_cycles: 0
+    CH20_num_ACT16_commands: 0  # total number of ACT16 commands
+    CH20_num_PREA_commands: 0  # total number of PREA commands
+    CH20_R_cycles: 0
+    CH20_num_ACT4_commands: 0  # total number of ACT4 commands
+    CH20_AiM_ISR_EWMUL_cycles: 0  # total number of AiM ISR_EWMUL cycles
+    CH20_AiM_ISR_EWADD_cycles: 0  # total number of AiM ISR_EWADD cycles
+    CH20_AiM_ISR_WR_ABK_cycles: 0  # total number of AiM ISR_WR_ABK cycles
+    CH20_AiM_ISR_SYNC_cycles: 0  # total number of AiM ISR_SYNC cycles
+    CH20_num_RDA_commands: 0  # total number of RDA commands
+    CH20_num_WR_commands: 0  # total number of WR commands
+    CH20_num_ACT_commands: 0  # total number of ACT commands
+    CH20_num_WRA_commands: 0  # total number of WRA commands
+    CH20_num_REFab_commands: 0  # total number of REFab commands
+    Scheduler:
+      impl: FRFCFS
+    RefreshManager:
+      impl: AllBank
+
+
+
+  Controller:
+    impl: AiM
+    id: Channel 21
+    CH21_precharged_cycles: 11217  # total number of precharged cycles
+    CH21_idle_cycles: 11216  # total number of idle cycles
+    CH21_active_cycles: 0  # total number of active cycles
+    CH21_num_SYNC_commands: 0  # total number of SYNC commands
+    CH21_num_WRA16_commands: 0  # total number of WRA16 commands
+    CH21_num_WRMAC16_commands: 0  # total number of WRMAC16 commands
+    CH21_num_WRGB_commands: 0  # total number of WRGB commands
+    CH21_num_RDCP_commands: 0  # total number of RDCP commands
+    CH21_num_MAC16_commands: 0  # total number of MAC16 commands
+    CH21_num_MAC_commands: 0  # total number of MAC commands
+    CH21_num_PRE4_commands: 0  # total number of PRE4 commands
+    CH21_num_ACT16_commands: 0  # total number of ACT16 commands
+    CH21_AiM_ISR_MAC_ABK_cycles: 0  # total number of AiM ISR_MAC_ABK cycles
+    CH21_AiM_ISR_COPY_GBBK_cycles: 0  # total number of AiM ISR_COPY_GBBK cycles
+    CH21_AiM_ISR_RD_SBK_cycles: 0  # total number of AiM ISR_RD_SBK cycles
+    CH21_num_UNKNOWN_commands: 0  # total number of UNKNOWN commands
+    CH21_AiM_ISR_WR_BIAS_cycles: 0  # total number of AiM ISR_WR_BIAS cycles
+    CH21_AiM_ISR_WR_GB_cycles: 0  # total number of AiM ISR_WR_GB cycles
+    CH21_AiM_ISR_WR_AFLUT_cycles: 0  # total number of AiM ISR_WR_AFLUT cycles
+    CH21_num_RDMAC16_commands: 0  # total number of RDMAC16 commands
+    CH21_num_REFpb_commands: 0  # total number of REFpb commands
+    CH21_num_ACT4_commands: 0  # total number of ACT4 commands
+    CH21_AiM_ISR_RD_AF_cycles: 0  # total number of AiM ISR_RD_AF cycles
+    CH21_AiM_ISR_WR_SBK_cycles: 0  # total number of AiM ISR_WR_SBK cycles
+    CH21_AiM_ISR_RD_MAC_cycles: 0  # total number of AiM ISR_RD_MAC cycles
+    CH21_AiM_ISR_MAC_SBK_cycles: 0  # total number of AiM ISR_MAC_SBK cycles
+    CH21_AiM_ISR_COPY_BKGB_cycles: 0  # total number of AiM ISR_COPY_BKGB cycles
+    CH21_AiM_ISR_EWMUL_cycles: 0  # total number of AiM ISR_EWMUL cycles
+    CH21_num_EOC_commands: 0  # total number of EOC commands
+    CH21_num_RDAF16_commands: 0  # total number of RDAF16 commands
+    CH21_AiM_ISR_EWADD_cycles: 0  # total number of AiM ISR_EWADD cycles
+    CH21_R_cycles: 0
+    CH21_num_EWMUL16_commands: 0  # total number of EWMUL16 commands
+    CH21_num_WRA_commands: 0  # total number of WRA commands
+    CH21_W_cycles: 0
+    CH21_AiM_ISR_AF_cycles: 0  # total number of AiM ISR_AF cycles
+    CH21_AiM_ISR_WR_ABK_cycles: 0  # total number of AiM ISR_WR_ABK cycles
+    CH21_num_AF16_commands: 0  # total number of AF16 commands
+    CH21_AiM_ISR_SYNC_cycles: 0  # total number of AiM ISR_SYNC cycles
+    CH21_num_TMOD_commands: 0  # total number of TMOD commands
+    CH21_num_ACT_commands: 0  # total number of ACT commands
+    CH21_AiM_ISR_EOC_cycles: 0  # total number of AiM ISR_EOC cycles
+    CH21_num_PREA_commands: 0  # total number of PREA commands
+    CH21_num_PRE_commands: 0  # total number of PRE commands
+    CH21_num_WRCP_commands: 0  # total number of WRCP commands
+    CH21_num_WR_commands: 0  # total number of WR commands
+    CH21_num_RD_commands: 0  # total number of RD commands
+    CH21_num_RDA_commands: 0  # total number of RDA commands
+    CH21_num_REFab_commands: 0  # total number of REFab commands
+    Scheduler:
+      impl: FRFCFS
+    RefreshManager:
+      impl: AllBank
+
+
+
+  Controller:
+    impl: AiM
+    id: Channel 22
+    CH22_precharged_cycles: 11217  # total number of precharged cycles
+    CH22_idle_cycles: 11216  # total number of idle cycles
+    CH22_num_UNKNOWN_commands: 0  # total number of UNKNOWN commands
+    CH22_num_EOC_commands: 0  # total number of EOC commands
+    CH22_num_SYNC_commands: 0  # total number of SYNC commands
+    CH22_num_WRMAC16_commands: 0  # total number of WRMAC16 commands
+    CH22_num_RDMAC16_commands: 0  # total number of RDMAC16 commands
+    CH22_num_WRGB_commands: 0  # total number of WRGB commands
+    CH22_num_WRCP_commands: 0  # total number of WRCP commands
+    CH22_num_EWMUL16_commands: 0  # total number of EWMUL16 commands
+    CH22_num_MAC16_commands: 0  # total number of MAC16 commands
+    CH22_num_MAC_commands: 0  # total number of MAC commands
+    CH22_num_PRE4_commands: 0  # total number of PRE4 commands
+    CH22_num_ACT16_commands: 0  # total number of ACT16 commands
+    CH22_AiM_ISR_COPY_GBBK_cycles: 0  # total number of AiM ISR_COPY_GBBK cycles
+    CH22_AiM_ISR_MAC_ABK_cycles: 0  # total number of AiM ISR_MAC_ABK cycles
+    CH22_active_cycles: 0  # total number of active cycles
+    CH22_num_REFpb_commands: 0  # total number of REFpb commands
+    CH22_AiM_ISR_EWADD_cycles: 0  # total number of AiM ISR_EWADD cycles
+    CH22_num_PRE_commands: 0  # total number of PRE commands
+    CH22_AiM_ISR_COPY_BKGB_cycles: 0  # total number of AiM ISR_COPY_BKGB cycles
+    CH22_AiM_ISR_RD_MAC_cycles: 0  # total number of AiM ISR_RD_MAC cycles
+    CH22_AiM_ISR_EOC_cycles: 0  # total number of AiM ISR_EOC cycles
+    CH22_num_WRA16_commands: 0  # total number of WRA16 commands
+    CH22_AiM_ISR_WR_BIAS_cycles: 0  # total number of AiM ISR_WR_BIAS cycles
+    CH22_AiM_ISR_WR_SBK_cycles: 0  # total number of AiM ISR_WR_SBK cycles
+    CH22_AiM_ISR_RD_AF_cycles: 0  # total number of AiM ISR_RD_AF cycles
+    CH22_AiM_ISR_WR_ABK_cycles: 0  # total number of AiM ISR_WR_ABK cycles
+    CH22_num_RDA_commands: 0  # total number of RDA commands
+    CH22_W_cycles: 0
+    CH22_num_RDAF16_commands: 0  # total number of RDAF16 commands
+    CH22_R_cycles: 0
+    CH22_AiM_ISR_SYNC_cycles: 0  # total number of AiM ISR_SYNC cycles
+    CH22_AiM_ISR_AF_cycles: 0  # total number of AiM ISR_AF cycles
+    CH22_AiM_ISR_EWMUL_cycles: 0  # total number of AiM ISR_EWMUL cycles
+    CH22_num_AF16_commands: 0  # total number of AF16 commands
+    CH22_num_ACT_commands: 0  # total number of ACT commands
+    CH22_AiM_ISR_WR_AFLUT_cycles: 0  # total number of AiM ISR_WR_AFLUT cycles
+    CH22_num_PREA_commands: 0  # total number of PREA commands
+    CH22_AiM_ISR_WR_GB_cycles: 0  # total number of AiM ISR_WR_GB cycles
+    CH22_num_ACT4_commands: 0  # total number of ACT4 commands
+    CH22_AiM_ISR_MAC_SBK_cycles: 0  # total number of AiM ISR_MAC_SBK cycles
+    CH22_num_RD_commands: 0  # total number of RD commands
+    CH22_num_TMOD_commands: 0  # total number of TMOD commands
+    CH22_AiM_ISR_RD_SBK_cycles: 0  # total number of AiM ISR_RD_SBK cycles
+    CH22_num_WR_commands: 0  # total number of WR commands
+    CH22_num_WRA_commands: 0  # total number of WRA commands
+    CH22_num_RDCP_commands: 0  # total number of RDCP commands
+    CH22_num_REFab_commands: 0  # total number of REFab commands
+    Scheduler:
+      impl: FRFCFS
+    RefreshManager:
+      impl: AllBank
+
+
+
+  Controller:
+    impl: AiM
+    id: Channel 23
+    CH23_precharged_cycles: 11217  # total number of precharged cycles
+    CH23_active_cycles: 0  # total number of active cycles
+    CH23_idle_cycles: 11216  # total number of idle cycles
+    CH23_num_UNKNOWN_commands: 0  # total number of UNKNOWN commands
+    CH23_num_EOC_commands: 0  # total number of EOC commands
+    CH23_num_SYNC_commands: 0  # total number of SYNC commands
+    CH23_num_WRA16_commands: 0  # total number of WRA16 commands
+    CH23_num_WRMAC16_commands: 0  # total number of WRMAC16 commands
+    CH23_num_RDAF16_commands: 0  # total number of RDAF16 commands
+    CH23_num_WRCP_commands: 0  # total number of WRCP commands
+    CH23_num_RDCP_commands: 0  # total number of RDCP commands
+    CH23_num_WRGB_commands: 0  # total number of WRGB commands
+    CH23_num_EWMUL16_commands: 0  # total number of EWMUL16 commands
+    CH23_num_TMOD_commands: 0  # total number of TMOD commands
+    CH23_num_AF16_commands: 0  # total number of AF16 commands
+    CH23_num_PRE4_commands: 0  # total number of PRE4 commands
+    CH23_num_ACT16_commands: 0  # total number of ACT16 commands
+    CH23_AiM_ISR_COPY_BKGB_cycles: 0  # total number of AiM ISR_COPY_BKGB cycles
+    CH23_AiM_ISR_COPY_GBBK_cycles: 0  # total number of AiM ISR_COPY_GBBK cycles
+    CH23_num_RDA_commands: 0  # total number of RDA commands
+    CH23_AiM_ISR_MAC_SBK_cycles: 0  # total number of AiM ISR_MAC_SBK cycles
+    CH23_num_ACT_commands: 0  # total number of ACT commands
+    CH23_AiM_ISR_RD_MAC_cycles: 0  # total number of AiM ISR_RD_MAC cycles
+    CH23_AiM_ISR_WR_AFLUT_cycles: 0  # total number of AiM ISR_WR_AFLUT cycles
+    CH23_AiM_ISR_MAC_ABK_cycles: 0  # total number of AiM ISR_MAC_ABK cycles
+    CH23_num_PREA_commands: 0  # total number of PREA commands
+    CH23_AiM_ISR_RD_SBK_cycles: 0  # total number of AiM ISR_RD_SBK cycles
+    CH23_num_PRE_commands: 0  # total number of PRE commands
+    CH23_AiM_ISR_WR_BIAS_cycles: 0  # total number of AiM ISR_WR_BIAS cycles
+    CH23_AiM_ISR_WR_SBK_cycles: 0  # total number of AiM ISR_WR_SBK cycles
+    CH23_W_cycles: 0
+    CH23_AiM_ISR_WR_ABK_cycles: 0  # total number of AiM ISR_WR_ABK cycles
+    CH23_num_RDMAC16_commands: 0  # total number of RDMAC16 commands
+    CH23_AiM_ISR_SYNC_cycles: 0  # total number of AiM ISR_SYNC cycles
+    CH23_R_cycles: 0
+    CH23_num_RD_commands: 0  # total number of RD commands
+    CH23_AiM_ISR_EWMUL_cycles: 0  # total number of AiM ISR_EWMUL cycles
+    CH23_AiM_ISR_EWADD_cycles: 0  # total number of AiM ISR_EWADD cycles
+    CH23_AiM_ISR_AF_cycles: 0  # total number of AiM ISR_AF cycles
+    CH23_AiM_ISR_RD_AF_cycles: 0  # total number of AiM ISR_RD_AF cycles
+    CH23_AiM_ISR_WR_GB_cycles: 0  # total number of AiM ISR_WR_GB cycles
+    CH23_AiM_ISR_EOC_cycles: 0  # total number of AiM ISR_EOC cycles
+    CH23_num_MAC16_commands: 0  # total number of MAC16 commands
+    CH23_num_MAC_commands: 0  # total number of MAC commands
+    CH23_num_WR_commands: 0  # total number of WR commands
+    CH23_num_WRA_commands: 0  # total number of WRA commands
+    CH23_num_REFpb_commands: 0  # total number of REFpb commands
+    CH23_num_REFab_commands: 0  # total number of REFab commands
+    CH23_num_ACT4_commands: 0  # total number of ACT4 commands
+    Scheduler:
+      impl: FRFCFS
+    RefreshManager:
+      impl: AllBank
+
+
+
+  Controller:
+    impl: AiM
+    id: Channel 24
+    CH24_precharged_cycles: 11217  # total number of precharged cycles
+    CH24_num_UNKNOWN_commands: 0  # total number of UNKNOWN commands
+    CH24_num_EOC_commands: 0  # total number of EOC commands
+    CH24_num_SYNC_commands: 0  # total number of SYNC commands
+    CH24_num_TMOD_commands: 0  # total number of TMOD commands
+    CH24_num_WRA16_commands: 0  # total number of WRA16 commands
+    CH24_num_WRMAC16_commands: 0  # total number of WRMAC16 commands
+    CH24_active_cycles: 0  # total number of active cycles
+    CH24_num_RDAF16_commands: 0  # total number of RDAF16 commands
+    CH24_num_RDMAC16_commands: 0  # total number of RDMAC16 commands
+    CH24_num_WRGB_commands: 0  # total number of WRGB commands
+    CH24_num_RDCP_commands: 0  # total number of RDCP commands
+    CH24_num_MAC16_commands: 0  # total number of MAC16 commands
+    CH24_num_MAC_commands: 0  # total number of MAC commands
+    CH24_num_ACT16_commands: 0  # total number of ACT16 commands
+    CH24_AiM_ISR_MAC_SBK_cycles: 0  # total number of AiM ISR_MAC_SBK cycles
+    CH24_AiM_ISR_RD_SBK_cycles: 0  # total number of AiM ISR_RD_SBK cycles
+    CH24_num_PRE4_commands: 0  # total number of PRE4 commands
+    CH24_AiM_ISR_RD_AF_cycles: 0  # total number of AiM ISR_RD_AF cycles
+    CH24_AiM_ISR_RD_MAC_cycles: 0  # total number of AiM ISR_RD_MAC cycles
+    CH24_AiM_ISR_COPY_BKGB_cycles: 0  # total number of AiM ISR_COPY_BKGB cycles
+    CH24_num_PREA_commands: 0  # total number of PREA commands
+    CH24_AiM_ISR_WR_GB_cycles: 0  # total number of AiM ISR_WR_GB cycles
+    CH24_AiM_ISR_EWADD_cycles: 0  # total number of AiM ISR_EWADD cycles
+    CH24_AiM_ISR_WR_AFLUT_cycles: 0  # total number of AiM ISR_WR_AFLUT cycles
+    CH24_num_RDA_commands: 0  # total number of RDA commands
+    CH24_W_cycles: 0
+    CH24_num_WR_commands: 0  # total number of WR commands
+    CH24_AiM_ISR_COPY_GBBK_cycles: 0  # total number of AiM ISR_COPY_GBBK cycles
+    CH24_idle_cycles: 11216  # total number of idle cycles
+    CH24_R_cycles: 0
+    CH24_AiM_ISR_AF_cycles: 0  # total number of AiM ISR_AF cycles
+    CH24_AiM_ISR_MAC_ABK_cycles: 0  # total number of AiM ISR_MAC_ABK cycles
+    CH24_AiM_ISR_EWMUL_cycles: 0  # total number of AiM ISR_EWMUL cycles
+    CH24_AiM_ISR_WR_ABK_cycles: 0  # total number of AiM ISR_WR_ABK cycles
+    CH24_AiM_ISR_WR_SBK_cycles: 0  # total number of AiM ISR_WR_SBK cycles
+    CH24_num_PRE_commands: 0  # total number of PRE commands
+    CH24_num_WRCP_commands: 0  # total number of WRCP commands
+    CH24_AiM_ISR_EOC_cycles: 0  # total number of AiM ISR_EOC cycles
+    CH24_num_ACT_commands: 0  # total number of ACT commands
+    CH24_AiM_ISR_SYNC_cycles: 0  # total number of AiM ISR_SYNC cycles
+    CH24_num_RD_commands: 0  # total number of RD commands
+    CH24_num_WRA_commands: 0  # total number of WRA commands
+    CH24_num_AF16_commands: 0  # total number of AF16 commands
+    CH24_num_REFab_commands: 0  # total number of REFab commands
+    CH24_AiM_ISR_WR_BIAS_cycles: 0  # total number of AiM ISR_WR_BIAS cycles
+    CH24_num_REFpb_commands: 0  # total number of REFpb commands
+    CH24_num_EWMUL16_commands: 0  # total number of EWMUL16 commands
+    CH24_num_ACT4_commands: 0  # total number of ACT4 commands
+    Scheduler:
+      impl: FRFCFS
+    RefreshManager:
+      impl: AllBank
+
+
+
+  Controller:
+    impl: AiM
+    id: Channel 25
+    CH25_num_UNKNOWN_commands: 0  # total number of UNKNOWN commands
+    CH25_num_WRA16_commands: 0  # total number of WRA16 commands
+    CH25_num_WRMAC16_commands: 0  # total number of WRMAC16 commands
+    CH25_precharged_cycles: 11217  # total number of precharged cycles
+    CH25_num_WRGB_commands: 0  # total number of WRGB commands
+    CH25_num_RDCP_commands: 0  # total number of RDCP commands
+    CH25_num_EOC_commands: 0  # total number of EOC commands
+    CH25_num_EWMUL16_commands: 0  # total number of EWMUL16 commands
+    CH25_num_RDMAC16_commands: 0  # total number of RDMAC16 commands
+    CH25_num_MAC16_commands: 0  # total number of MAC16 commands
+    CH25_num_ACT16_commands: 0  # total number of ACT16 commands
+    CH25_idle_cycles: 11216  # total number of idle cycles
+    CH25_AiM_ISR_MAC_SBK_cycles: 0  # total number of AiM ISR_MAC_SBK cycles
+    CH25_AiM_ISR_RD_SBK_cycles: 0  # total number of AiM ISR_RD_SBK cycles
+    CH25_num_ACT_commands: 0  # total number of ACT commands
+    CH25_num_RDAF16_commands: 0  # total number of RDAF16 commands
+    CH25_num_AF16_commands: 0  # total number of AF16 commands
+    CH25_AiM_ISR_RD_MAC_cycles: 0  # total number of AiM ISR_RD_MAC cycles
+    CH25_AiM_ISR_WR_BIAS_cycles: 0  # total number of AiM ISR_WR_BIAS cycles
+    CH25_active_cycles: 0  # total number of active cycles
+    CH25_AiM_ISR_COPY_GBBK_cycles: 0  # total number of AiM ISR_COPY_GBBK cycles
+    CH25_AiM_ISR_RD_AF_cycles: 0  # total number of AiM ISR_RD_AF cycles
+    CH25_AiM_ISR_WR_SBK_cycles: 0  # total number of AiM ISR_WR_SBK cycles
+    CH25_AiM_ISR_WR_ABK_cycles: 0  # total number of AiM ISR_WR_ABK cycles
+    CH25_AiM_ISR_WR_AFLUT_cycles: 0  # total number of AiM ISR_WR_AFLUT cycles
+    CH25_AiM_ISR_EOC_cycles: 0  # total number of AiM ISR_EOC cycles
+    CH25_num_REFab_commands: 0  # total number of REFab commands
+    CH25_num_TMOD_commands: 0  # total number of TMOD commands
+    CH25_AiM_ISR_COPY_BKGB_cycles: 0  # total number of AiM ISR_COPY_BKGB cycles
+    CH25_W_cycles: 0
+    CH25_AiM_ISR_AF_cycles: 0  # total number of AiM ISR_AF cycles
+    CH25_num_PRE4_commands: 0  # total number of PRE4 commands
+    CH25_R_cycles: 0
+    CH25_AiM_ISR_EWMUL_cycles: 0  # total number of AiM ISR_EWMUL cycles
+    CH25_AiM_ISR_WR_GB_cycles: 0  # total number of AiM ISR_WR_GB cycles
+    CH25_num_RDA_commands: 0  # total number of RDA commands
+    CH25_AiM_ISR_EWADD_cycles: 0  # total number of AiM ISR_EWADD cycles
+    CH25_AiM_ISR_SYNC_cycles: 0  # total number of AiM ISR_SYNC cycles
+    CH25_num_MAC_commands: 0  # total number of MAC commands
+    CH25_AiM_ISR_MAC_ABK_cycles: 0  # total number of AiM ISR_MAC_ABK cycles
+    CH25_num_PREA_commands: 0  # total number of PREA commands
+    CH25_num_WRCP_commands: 0  # total number of WRCP commands
+    CH25_num_PRE_commands: 0  # total number of PRE commands
+    CH25_num_SYNC_commands: 0  # total number of SYNC commands
+    CH25_num_RD_commands: 0  # total number of RD commands
+    CH25_num_WR_commands: 0  # total number of WR commands
+    CH25_num_WRA_commands: 0  # total number of WRA commands
+    CH25_num_REFpb_commands: 0  # total number of REFpb commands
+    CH25_num_ACT4_commands: 0  # total number of ACT4 commands
+    Scheduler:
+      impl: FRFCFS
+    RefreshManager:
+      impl: AllBank
+
+
+
+  Controller:
+    impl: AiM
+    id: Channel 26
+    CH26_idle_cycles: 11216  # total number of idle cycles
+    CH26_num_TMOD_commands: 0  # total number of TMOD commands
+    CH26_num_WRMAC16_commands: 0  # total number of WRMAC16 commands
+    CH26_num_RDAF16_commands: 0  # total number of RDAF16 commands
+    CH26_num_WRGB_commands: 0  # total number of WRGB commands
+    CH26_num_EOC_commands: 0  # total number of EOC commands
+    CH26_num_RDCP_commands: 0  # total number of RDCP commands
+    CH26_num_UNKNOWN_commands: 0  # total number of UNKNOWN commands
+    CH26_num_EWMUL16_commands: 0  # total number of EWMUL16 commands
+    CH26_num_MAC16_commands: 0  # total number of MAC16 commands
+    CH26_num_MAC_commands: 0  # total number of MAC commands
+    CH26_num_ACT16_commands: 0  # total number of ACT16 commands
+    CH26_AiM_ISR_MAC_SBK_cycles: 0  # total number of AiM ISR_MAC_SBK cycles
+    CH26_AiM_ISR_RD_SBK_cycles: 0  # total number of AiM ISR_RD_SBK cycles
+    CH26_AiM_ISR_COPY_GBBK_cycles: 0  # total number of AiM ISR_COPY_GBBK cycles
+    CH26_num_ACT_commands: 0  # total number of ACT commands
+    CH26_num_WRCP_commands: 0  # total number of WRCP commands
+    CH26_AiM_ISR_MAC_ABK_cycles: 0  # total number of AiM ISR_MAC_ABK cycles
+    CH26_AiM_ISR_RD_AF_cycles: 0  # total number of AiM ISR_RD_AF cycles
+    CH26_AiM_ISR_WR_GB_cycles: 0  # total number of AiM ISR_WR_GB cycles
+    CH26_AiM_ISR_RD_MAC_cycles: 0  # total number of AiM ISR_RD_MAC cycles
+    CH26_W_cycles: 0
+    CH26_AiM_ISR_WR_AFLUT_cycles: 0  # total number of AiM ISR_WR_AFLUT cycles
+    CH26_AiM_ISR_WR_BIAS_cycles: 0  # total number of AiM ISR_WR_BIAS cycles
+    CH26_AiM_ISR_COPY_BKGB_cycles: 0  # total number of AiM ISR_COPY_BKGB cycles
+    CH26_AiM_ISR_EWADD_cycles: 0  # total number of AiM ISR_EWADD cycles
+    CH26_num_RDA_commands: 0  # total number of RDA commands
+    CH26_precharged_cycles: 11217  # total number of precharged cycles
+    CH26_num_SYNC_commands: 0  # total number of SYNC commands
+    CH26_AiM_ISR_WR_SBK_cycles: 0  # total number of AiM ISR_WR_SBK cycles
+    CH26_AiM_ISR_SYNC_cycles: 0  # total number of AiM ISR_SYNC cycles
+    CH26_num_REFpb_commands: 0  # total number of REFpb commands
+    CH26_num_WRA16_commands: 0  # total number of WRA16 commands
+    CH26_R_cycles: 0
+    CH26_AiM_ISR_AF_cycles: 0  # total number of AiM ISR_AF cycles
+    CH26_AiM_ISR_EWMUL_cycles: 0  # total number of AiM ISR_EWMUL cycles
+    CH26_num_RDMAC16_commands: 0  # total number of RDMAC16 commands
+    CH26_AiM_ISR_WR_ABK_cycles: 0  # total number of AiM ISR_WR_ABK cycles
+    CH26_AiM_ISR_EOC_cycles: 0  # total number of AiM ISR_EOC cycles
+    CH26_num_PREA_commands: 0  # total number of PREA commands
+    CH26_num_PRE_commands: 0  # total number of PRE commands
+    CH26_active_cycles: 0  # total number of active cycles
+    CH26_num_WR_commands: 0  # total number of WR commands
+    CH26_num_RD_commands: 0  # total number of RD commands
+    CH26_num_WRA_commands: 0  # total number of WRA commands
+    CH26_num_PRE4_commands: 0  # total number of PRE4 commands
+    CH26_num_REFab_commands: 0  # total number of REFab commands
+    CH26_num_AF16_commands: 0  # total number of AF16 commands
+    CH26_num_ACT4_commands: 0  # total number of ACT4 commands
+    Scheduler:
+      impl: FRFCFS
+    RefreshManager:
+      impl: AllBank
+
+
+
+  Controller:
+    impl: AiM
+    id: Channel 27
+    CH27_num_SYNC_commands: 0  # total number of SYNC commands
+    CH27_num_WRMAC16_commands: 0  # total number of WRMAC16 commands
+    CH27_num_RDAF16_commands: 0  # total number of RDAF16 commands
+    CH27_num_WRGB_commands: 0  # total number of WRGB commands
+    CH27_num_WRA16_commands: 0  # total number of WRA16 commands
+    CH27_num_WRCP_commands: 0  # total number of WRCP commands
+    CH27_num_RDCP_commands: 0  # total number of RDCP commands
+    CH27_num_EWMUL16_commands: 0  # total number of EWMUL16 commands
+    CH27_num_MAC16_commands: 0  # total number of MAC16 commands
+    CH27_num_MAC_commands: 0  # total number of MAC commands
+    CH27_num_AF16_commands: 0  # total number of AF16 commands
+    CH27_num_ACT16_commands: 0  # total number of ACT16 commands
+    CH27_AiM_ISR_MAC_ABK_cycles: 0  # total number of AiM ISR_MAC_ABK cycles
+    CH27_AiM_ISR_COPY_GBBK_cycles: 0  # total number of AiM ISR_COPY_GBBK cycles
+    CH27_num_PREA_commands: 0  # total number of PREA commands
+    CH27_num_PRE4_commands: 0  # total number of PRE4 commands
+    CH27_num_RDA_commands: 0  # total number of RDA commands
+    CH27_num_RDMAC16_commands: 0  # total number of RDMAC16 commands
+    CH27_AiM_ISR_WR_SBK_cycles: 0  # total number of AiM ISR_WR_SBK cycles
+    CH27_AiM_ISR_RD_MAC_cycles: 0  # total number of AiM ISR_RD_MAC cycles
+    CH27_AiM_ISR_EOC_cycles: 0  # total number of AiM ISR_EOC cycles
+    CH27_AiM_ISR_MAC_SBK_cycles: 0  # total number of AiM ISR_MAC_SBK cycles
+    CH27_AiM_ISR_RD_SBK_cycles: 0  # total number of AiM ISR_RD_SBK cycles
+    CH27_AiM_ISR_WR_BIAS_cycles: 0  # total number of AiM ISR_WR_BIAS cycles
+    CH27_AiM_ISR_WR_GB_cycles: 0  # total number of AiM ISR_WR_GB cycles
+    CH27_precharged_cycles: 11217  # total number of precharged cycles
+    CH27_num_RD_commands: 0  # total number of RD commands
+    CH27_AiM_ISR_COPY_BKGB_cycles: 0  # total number of AiM ISR_COPY_BKGB cycles
+    CH27_num_TMOD_commands: 0  # total number of TMOD commands
+    CH27_AiM_ISR_AF_cycles: 0  # total number of AiM ISR_AF cycles
+    CH27_W_cycles: 0
+    CH27_AiM_ISR_EWADD_cycles: 0  # total number of AiM ISR_EWADD cycles
+    CH27_num_WRA_commands: 0  # total number of WRA commands
+    CH27_R_cycles: 0
+    CH27_AiM_ISR_RD_AF_cycles: 0  # total number of AiM ISR_RD_AF cycles
+    CH27_AiM_ISR_WR_AFLUT_cycles: 0  # total number of AiM ISR_WR_AFLUT cycles
+    CH27_AiM_ISR_EWMUL_cycles: 0  # total number of AiM ISR_EWMUL cycles
+    CH27_num_EOC_commands: 0  # total number of EOC commands
+    CH27_AiM_ISR_WR_ABK_cycles: 0  # total number of AiM ISR_WR_ABK cycles
+    CH27_AiM_ISR_SYNC_cycles: 0  # total number of AiM ISR_SYNC cycles
+    CH27_num_ACT4_commands: 0  # total number of ACT4 commands
+    CH27_num_ACT_commands: 0  # total number of ACT commands
+    CH27_active_cycles: 0  # total number of active cycles
+    CH27_num_WR_commands: 0  # total number of WR commands
+    CH27_num_PRE_commands: 0  # total number of PRE commands
+    CH27_num_UNKNOWN_commands: 0  # total number of UNKNOWN commands
+    CH27_num_REFab_commands: 0  # total number of REFab commands
+    CH27_idle_cycles: 11216  # total number of idle cycles
+    CH27_num_REFpb_commands: 0  # total number of REFpb commands
+    Scheduler:
+      impl: FRFCFS
+    RefreshManager:
+      impl: AllBank
+
+
+
+  Controller:
+    impl: AiM
+    id: Channel 28
+    CH28_active_cycles: 8038  # total number of active cycles
+    CH28_num_EOC_commands: 0  # total number of EOC commands
+    CH28_num_WRA16_commands: 0  # total number of WRA16 commands
+    CH28_num_WRMAC16_commands: 96  # total number of WRMAC16 commands
+    CH28_num_RDMAC16_commands: 96  # total number of RDMAC16 commands
+    CH28_num_WRCP_commands: 0  # total number of WRCP commands
+    CH28_num_RDCP_commands: 0  # total number of RDCP commands
+    CH28_num_EWMUL16_commands: 0  # total number of EWMUL16 commands
+    CH28_num_AF16_commands: 0  # total number of AF16 commands
+    CH28_num_MAC16_commands: 576  # total number of MAC16 commands
+    CH28_idle_cycles: 97  # total number of idle cycles
+    CH28_num_SYNC_commands: 0  # total number of SYNC commands
+    CH28_num_TMOD_commands: 7  # total number of TMOD commands
+    CH28_num_MAC_commands: 0  # total number of MAC commands
+    CH28_num_PRE4_commands: 0  # total number of PRE4 commands
+    CH28_num_RDAF16_commands: 0  # total number of RDAF16 commands
+    CH28_num_ACT16_commands: 96  # total number of ACT16 commands
+    CH28_AiM_ISR_MAC_SBK_cycles: 0  # total number of AiM ISR_MAC_SBK cycles
+    CH28_AiM_ISR_WR_BIAS_cycles: 96  # total number of AiM ISR_WR_BIAS cycles
+    CH28_AiM_ISR_EWADD_cycles: 0  # total number of AiM ISR_EWADD cycles
+    CH28_num_PREA_commands: 95  # total number of PREA commands
+    CH28_num_REFpb_commands: 0  # total number of REFpb commands
+    CH28_num_WRGB_commands: 6  # total number of WRGB commands
+    CH28_AiM_ISR_MAC_ABK_cycles: 9088  # total number of AiM ISR_MAC_ABK cycles
+    CH28_AiM_ISR_RD_MAC_cycles: 192  # total number of AiM ISR_RD_MAC cycles
+    CH28_AiM_ISR_WR_AFLUT_cycles: 0  # total number of AiM ISR_WR_AFLUT cycles
+    CH28_AiM_ISR_WR_GB_cycles: 38  # total number of AiM ISR_WR_GB cycles
+    CH28_AiM_ISR_EWMUL_cycles: 0  # total number of AiM ISR_EWMUL cycles
+    CH28_num_RD_commands: 0  # total number of RD commands
+    CH28_AiM_ISR_RD_SBK_cycles: 0  # total number of AiM ISR_RD_SBK cycles
+    CH28_num_UNKNOWN_commands: 0  # total number of UNKNOWN commands
+    CH28_num_WR_commands: 0  # total number of WR commands
+    CH28_AiM_ISR_RD_AF_cycles: 0  # total number of AiM ISR_RD_AF cycles
+    CH28_AiM_ISR_WR_SBK_cycles: 0  # total number of AiM ISR_WR_SBK cycles
+    CH28_R_cycles: 0
+    CH28_W_cycles: 0
+    CH28_AiM_ISR_COPY_GBBK_cycles: 0  # total number of AiM ISR_COPY_GBBK cycles
+    CH28_num_RDA_commands: 0  # total number of RDA commands
+    CH28_num_WRA_commands: 0  # total number of WRA commands
+    CH28_AiM_ISR_WR_ABK_cycles: 0  # total number of AiM ISR_WR_ABK cycles
+    CH28_AiM_ISR_COPY_BKGB_cycles: 0  # total number of AiM ISR_COPY_BKGB cycles
+    CH28_AiM_ISR_EOC_cycles: 0  # total number of AiM ISR_EOC cycles
+    CH28_AiM_ISR_AF_cycles: 0  # total number of AiM ISR_AF cycles
+    CH28_AiM_ISR_SYNC_cycles: 0  # total number of AiM ISR_SYNC cycles
+    CH28_precharged_cycles: 3179  # total number of precharged cycles
+    CH28_num_ACT_commands: 0  # total number of ACT commands
+    CH28_num_PRE_commands: 0  # total number of PRE commands
+    CH28_num_REFab_commands: 0  # total number of REFab commands
+    CH28_num_ACT4_commands: 0  # total number of ACT4 commands
+    Scheduler:
+      impl: FRFCFS
+    RefreshManager:
+      impl: AllBank
+
+
+
+  Controller:
+    impl: AiM
+    id: Channel 29
+    CH29_precharged_cycles: 3179  # total number of precharged cycles
+    CH29_active_cycles: 8038  # total number of active cycles
+    CH29_num_TMOD_commands: 7  # total number of TMOD commands
+    CH29_num_RDAF16_commands: 0  # total number of RDAF16 commands
+    CH29_num_RDMAC16_commands: 96  # total number of RDMAC16 commands
+    CH29_num_WRGB_commands: 6  # total number of WRGB commands
+    CH29_num_WRCP_commands: 0  # total number of WRCP commands
+    CH29_num_EWMUL16_commands: 0  # total number of EWMUL16 commands
+    CH29_num_AF16_commands: 0  # total number of AF16 commands
+    CH29_num_MAC16_commands: 576  # total number of MAC16 commands
+    CH29_num_MAC_commands: 0  # total number of MAC commands
+    CH29_num_PRE4_commands: 0  # total number of PRE4 commands
+    CH29_num_ACT16_commands: 96  # total number of ACT16 commands
+    CH29_AiM_ISR_MAC_ABK_cycles: 9088  # total number of AiM ISR_MAC_ABK cycles
+    CH29_AiM_ISR_MAC_SBK_cycles: 0  # total number of AiM ISR_MAC_SBK cycles
+    CH29_AiM_ISR_COPY_BKGB_cycles: 0  # total number of AiM ISR_COPY_BKGB cycles
+    CH29_num_RDCP_commands: 0  # total number of RDCP commands
+    CH29_R_cycles: 0
+    CH29_num_PRE_commands: 0  # total number of PRE commands
+    CH29_AiM_ISR_EWADD_cycles: 0  # total number of AiM ISR_EWADD cycles
+    CH29_AiM_ISR_WR_AFLUT_cycles: 0  # total number of AiM ISR_WR_AFLUT cycles
+    CH29_num_EOC_commands: 0  # total number of EOC commands
+    CH29_num_WRMAC16_commands: 96  # total number of WRMAC16 commands
+    CH29_AiM_ISR_COPY_GBBK_cycles: 0  # total number of AiM ISR_COPY_GBBK cycles
+    CH29_AiM_ISR_SYNC_cycles: 0  # total number of AiM ISR_SYNC cycles
+    CH29_AiM_ISR_AF_cycles: 0  # total number of AiM ISR_AF cycles
+    CH29_num_SYNC_commands: 0  # total number of SYNC commands
+    CH29_num_WRA16_commands: 0  # total number of WRA16 commands
+    CH29_AiM_ISR_WR_SBK_cycles: 0  # total number of AiM ISR_WR_SBK cycles
+    CH29_W_cycles: 0
+    CH29_num_WR_commands: 0  # total number of WR commands
+    CH29_AiM_ISR_WR_BIAS_cycles: 96  # total number of AiM ISR_WR_BIAS cycles
+    CH29_AiM_ISR_WR_ABK_cycles: 0  # total number of AiM ISR_WR_ABK cycles
+    CH29_AiM_ISR_EOC_cycles: 0  # total number of AiM ISR_EOC cycles
+    CH29_idle_cycles: 97  # total number of idle cycles
+    CH29_AiM_ISR_RD_SBK_cycles: 0  # total number of AiM ISR_RD_SBK cycles
+    CH29_num_ACT_commands: 0  # total number of ACT commands
+    CH29_num_REFpb_commands: 0  # total number of REFpb commands
+    CH29_AiM_ISR_WR_GB_cycles: 38  # total number of AiM ISR_WR_GB cycles
+    CH29_AiM_ISR_EWMUL_cycles: 0  # total number of AiM ISR_EWMUL cycles
+    CH29_num_RD_commands: 0  # total number of RD commands
+    CH29_num_RDA_commands: 0  # total number of RDA commands
+    CH29_AiM_ISR_RD_AF_cycles: 0  # total number of AiM ISR_RD_AF cycles
+    CH29_num_WRA_commands: 0  # total number of WRA commands
+    CH29_AiM_ISR_RD_MAC_cycles: 192  # total number of AiM ISR_RD_MAC cycles
+    CH29_num_REFab_commands: 0  # total number of REFab commands
+    CH29_num_UNKNOWN_commands: 0  # total number of UNKNOWN commands
+    CH29_num_PREA_commands: 95  # total number of PREA commands
+    CH29_num_ACT4_commands: 0  # total number of ACT4 commands
+    Scheduler:
+      impl: FRFCFS
+    RefreshManager:
+      impl: AllBank
+
+
+
+  Controller:
+    impl: AiM
+    id: Channel 30
+    CH30_active_cycles: 8038  # total number of active cycles
+    CH30_num_UNKNOWN_commands: 0  # total number of UNKNOWN commands
+    CH30_num_SYNC_commands: 0  # total number of SYNC commands
+    CH30_num_WRA16_commands: 0  # total number of WRA16 commands
+    CH30_num_RDAF16_commands: 0  # total number of RDAF16 commands
+    CH30_num_WRGB_commands: 6  # total number of WRGB commands
+    CH30_num_WRCP_commands: 0  # total number of WRCP commands
+    CH30_num_RDCP_commands: 0  # total number of RDCP commands
+    CH30_num_EWMUL16_commands: 0  # total number of EWMUL16 commands
+    CH30_num_AF16_commands: 0  # total number of AF16 commands
+    CH30_num_PRE4_commands: 0  # total number of PRE4 commands
+    CH30_AiM_ISR_SYNC_cycles: 0  # total number of AiM ISR_SYNC cycles
+    CH30_precharged_cycles: 3179  # total number of precharged cycles
+    CH30_AiM_ISR_EWMUL_cycles: 0  # total number of AiM ISR_EWMUL cycles
+    CH30_AiM_ISR_MAC_SBK_cycles: 0  # total number of AiM ISR_MAC_SBK cycles
+    CH30_num_TMOD_commands: 7  # total number of TMOD commands
+    CH30_num_REFpb_commands: 0  # total number of REFpb commands
+    CH30_AiM_ISR_RD_MAC_cycles: 192  # total number of AiM ISR_RD_MAC cycles
+    CH30_num_PREA_commands: 95  # total number of PREA commands
+    CH30_num_WRMAC16_commands: 96  # total number of WRMAC16 commands
+    CH30_AiM_ISR_WR_AFLUT_cycles: 0  # total number of AiM ISR_WR_AFLUT cycles
+    CH30_AiM_ISR_MAC_ABK_cycles: 9088  # total number of AiM ISR_MAC_ABK cycles
+    CH30_num_PRE_commands: 0  # total number of PRE commands
+    CH30_AiM_ISR_WR_BIAS_cycles: 96  # total number of AiM ISR_WR_BIAS cycles
+    CH30_AiM_ISR_WR_GB_cycles: 38  # total number of AiM ISR_WR_GB cycles
+    CH30_num_EOC_commands: 0  # total number of EOC commands
+    CH30_AiM_ISR_RD_AF_cycles: 0  # total number of AiM ISR_RD_AF cycles
+    CH30_W_cycles: 0
+    CH30_AiM_ISR_EOC_cycles: 0  # total number of AiM ISR_EOC cycles
+    CH30_num_WRA_commands: 0  # total number of WRA commands
+    CH30_AiM_ISR_WR_SBK_cycles: 0  # total number of AiM ISR_WR_SBK cycles
+    CH30_R_cycles: 0
+    CH30_AiM_ISR_AF_cycles: 0  # total number of AiM ISR_AF cycles
+    CH30_num_MAC_commands: 0  # total number of MAC commands
+    CH30_num_ACT16_commands: 96  # total number of ACT16 commands
+    CH30_AiM_ISR_EWADD_cycles: 0  # total number of AiM ISR_EWADD cycles
+    CH30_AiM_ISR_COPY_BKGB_cycles: 0  # total number of AiM ISR_COPY_BKGB cycles
+    CH30_num_RD_commands: 0  # total number of RD commands
+    CH30_AiM_ISR_WR_ABK_cycles: 0  # total number of AiM ISR_WR_ABK cycles
+    CH30_idle_cycles: 97  # total number of idle cycles
+    CH30_num_ACT_commands: 0  # total number of ACT commands
+    CH30_num_MAC16_commands: 576  # total number of MAC16 commands
+    CH30_AiM_ISR_COPY_GBBK_cycles: 0  # total number of AiM ISR_COPY_GBBK cycles
+    CH30_num_RDA_commands: 0  # total number of RDA commands
+    CH30_num_RDMAC16_commands: 96  # total number of RDMAC16 commands
+    CH30_num_WR_commands: 0  # total number of WR commands
+    CH30_num_REFab_commands: 0  # total number of REFab commands
+    CH30_AiM_ISR_RD_SBK_cycles: 0  # total number of AiM ISR_RD_SBK cycles
+    CH30_num_ACT4_commands: 0  # total number of ACT4 commands
+    Scheduler:
+      impl: FRFCFS
+    RefreshManager:
+      impl: AllBank
+
+
+
+  Controller:
+    impl: AiM
+    id: Channel 31
+    CH31_active_cycles: 8038  # total number of active cycles
+    CH31_idle_cycles: 97  # total number of idle cycles
+    CH31_num_EOC_commands: 0  # total number of EOC commands
+    CH31_num_SYNC_commands: 0  # total number of SYNC commands
+    CH31_num_TMOD_commands: 7  # total number of TMOD commands
+    CH31_num_WRA16_commands: 0  # total number of WRA16 commands
+    CH31_num_WRMAC16_commands: 96  # total number of WRMAC16 commands
+    CH31_num_WRGB_commands: 6  # total number of WRGB commands
+    CH31_num_WRCP_commands: 0  # total number of WRCP commands
+    CH31_num_RDCP_commands: 0  # total number of RDCP commands
+    CH31_num_EWMUL16_commands: 0  # total number of EWMUL16 commands
+    CH31_num_MAC16_commands: 576  # total number of MAC16 commands
+    CH31_num_ACT16_commands: 96  # total number of ACT16 commands
+    CH31_AiM_ISR_RD_AF_cycles: 0  # total number of AiM ISR_RD_AF cycles
+    CH31_AiM_ISR_COPY_GBBK_cycles: 0  # total number of AiM ISR_COPY_GBBK cycles
+    CH31_AiM_ISR_WR_ABK_cycles: 0  # total number of AiM ISR_WR_ABK cycles
+    CH31_num_UNKNOWN_commands: 0  # total number of UNKNOWN commands
+    CH31_AiM_ISR_MAC_SBK_cycles: 0  # total number of AiM ISR_MAC_SBK cycles
+    CH31_num_WR_commands: 0  # total number of WR commands
+    CH31_AiM_ISR_RD_MAC_cycles: 192  # total number of AiM ISR_RD_MAC cycles
+    CH31_num_WRA_commands: 0  # total number of WRA commands
+    CH31_AiM_ISR_MAC_ABK_cycles: 9088  # total number of AiM ISR_MAC_ABK cycles
+    CH31_AiM_ISR_WR_AFLUT_cycles: 0  # total number of AiM ISR_WR_AFLUT cycles
+    CH31_precharged_cycles: 3179  # total number of precharged cycles
+    CH31_AiM_ISR_RD_SBK_cycles: 0  # total number of AiM ISR_RD_SBK cycles
+    CH31_num_PREA_commands: 95  # total number of PREA commands
+    CH31_num_AF16_commands: 0  # total number of AF16 commands
+    CH31_AiM_ISR_WR_BIAS_cycles: 96  # total number of AiM ISR_WR_BIAS cycles
+    CH31_AiM_ISR_WR_SBK_cycles: 0  # total number of AiM ISR_WR_SBK cycles
+    CH31_num_RDMAC16_commands: 96  # total number of RDMAC16 commands
+    CH31_num_PRE_commands: 0  # total number of PRE commands
+    CH31_R_cycles: 0
+    CH31_num_PRE4_commands: 0  # total number of PRE4 commands
+    CH31_AiM_ISR_WR_GB_cycles: 38  # total number of AiM ISR_WR_GB cycles
+    CH31_W_cycles: 0
+    CH31_AiM_ISR_COPY_BKGB_cycles: 0  # total number of AiM ISR_COPY_BKGB cycles
+    CH31_num_ACT4_commands: 0  # total number of ACT4 commands
+    CH31_AiM_ISR_AF_cycles: 0  # total number of AiM ISR_AF cycles
+    CH31_AiM_ISR_SYNC_cycles: 0  # total number of AiM ISR_SYNC cycles
+    CH31_AiM_ISR_EWADD_cycles: 0  # total number of AiM ISR_EWADD cycles
+    CH31_num_MAC_commands: 0  # total number of MAC commands
+    CH31_AiM_ISR_EWMUL_cycles: 0  # total number of AiM ISR_EWMUL cycles
+    CH31_AiM_ISR_EOC_cycles: 0  # total number of AiM ISR_EOC cycles
+    CH31_num_ACT_commands: 0  # total number of ACT commands
+    CH31_num_RDAF16_commands: 0  # total number of RDAF16 commands
+    CH31_num_RDA_commands: 0  # total number of RDA commands
+    CH31_num_RD_commands: 0  # total number of RD commands
+    CH31_num_REFab_commands: 0  # total number of REFab commands
+    CH31_num_REFpb_commands: 0  # total number of REFpb commands
+    Scheduler:
+      impl: FRFCFS
+    RefreshManager:
+      impl: AllBank
+
+
+

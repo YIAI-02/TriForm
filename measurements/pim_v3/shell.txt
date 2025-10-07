@@ -1,3 +1,5 @@
 python 01_gentrace.py --pim-config ./pim_config_sample.json --ops weight --out-dir ./trace
 
 python 02_run_ramulator.py --traces-dir ./trace --ramulator-bin ../../submodules/CENT/aim_simulator/build/ramulator2 --config ../../submodules/CENT/aim_simulator/test/example.yaml --out-csv test.csv
+
+python auto_fit_pipeline.py --pim-config ./pim_config_sample.json --ramulator-bin ../../submodules/CENT/aim_simulator/build/ramulator2 --ramulator-config ../../submodules/CENT/aim_simulator/test/example.yaml --out-dir ./out_run --gen-predictions
