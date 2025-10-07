@@ -30,13 +30,14 @@ FEATURE_HAS_SIZE = {n: has for n, has, _ in FEATURE_SPECS}
 FEATURE_PATTERNS = {n: [re.compile(p) for p in pats] for n, _, pats in FEATURE_SPECS}
 
 DEFAULT_PATTERNS = [
-    r"memory_system_cycles\s*([0-9]+)"
+    r"memory_system_cycles:\s*([0-9]+)"
 ]
 
 def parse_metric(text: str, pattern: Optional[str]) -> Optional[int]:
     pats = [pattern] if pattern else DEFAULT_PATTERNS
     for pat in pats:
         m = re.search(pat, text)
+        print(f"m:{m}")
         if m:
             try:
                 return int(m.group(1))
