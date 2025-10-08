@@ -53,8 +53,8 @@ class HeftScheduler:
 
         def avg_comp(n: TaskNode) -> float:
             ts = []
-            if n.allowed[0]: ts.append(self.cm.compute_time(n.work, "NPU", n.attrs.get("op"),node = n))
-            if n.allowed[1]: ts.append(self.cm.compute_time(n.work, "PIM", n.attrs.get("op"),node = n))
+            if n.allowed[0]: ts.append(self.cm.compute_time(n.work, "NPU", n.attrs.get("op"), node=n))
+            if n.allowed[1]: ts.append(self.cm.compute_time(n.work, "PIM", n.attrs.get("op"), node=n))
             if not ts: raise ValueError(f"Node {n.id} has no allowed devices")
             if RANK_COST_POLICY == "avg": return sum(ts)/len(ts)
             if RANK_COST_POLICY == "best": return min(ts)

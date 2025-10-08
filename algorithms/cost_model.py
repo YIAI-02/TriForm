@@ -1,5 +1,6 @@
-import os,csv,json
 from __future__ import annotations
+
+import os,csv,json
 from typing import Optional, Any, Dict, Tuple
 from config import (
     GB_TO_DEVICE_BW, DEVICE_TO_GB_BW, DEVICE_TO_DEVICE_BW,
@@ -86,7 +87,7 @@ class CostModel:
         self.local_bw = INTRA_DEVICE_PASS_BW
 
     # ---- compute ----
-    def compute_time(self, work: float, device_type: str, op_name: Optional[str] = None) -> float:
+    def compute_time(self, work: float, device_type: str, op_name: Optional[str] = None, **kwargs) -> float:
         return self.launch_over[device_type] + work / self.thr[device_type]
 
     # ---- conversion ----
