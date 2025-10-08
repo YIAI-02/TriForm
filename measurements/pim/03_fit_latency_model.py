@@ -7,7 +7,6 @@ from typing import Dict, List, Tuple, Any, Optional
 
 import numpy as np
 
-# 共享：trace解析（保留兼容），以及模型形状读取（predict 的默认值可来自 shape）
 from aim_shared import (
     FEATURE_NAMES, FEATURE_HAS_SIZE, parse_features_from_trace,  # 兼容旧逻辑
     load_model_shape
@@ -15,7 +14,7 @@ from aim_shared import (
 
 OP_KEYS = ("score", "output", "weight", "weight_af")
 
-# ------------------------------ 工具 ------------------------------
+# ------------------------------ utils ------------------------------
 def _normalize_op_label(row: Dict[str, Any]) -> str:
     """从 CSV 行推断标准 op_label（score/output/weight/weight_af）。"""
     op_label = (row.get("op_label") or "").strip()
@@ -207,7 +206,6 @@ def cmd_fit(args):
     fit_model_formula(args.results_csv, args.out, out_summary_csv)
 
 def cmd_predict(args):
-    # 支持直接从 --model-shape 读取 n_heads（如果未提供）
     n_heads = args.n_heads
     if n_heads is None and args.model_shape:
         shape = load_model_shape(args.model_shape)

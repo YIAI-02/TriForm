@@ -32,16 +32,54 @@ def weight_bytes(shape):
     return prod*WEIGHT_BYTES
 
 def parse_shape_json(path: str) -> Tuple[str, ModelShape]:
-    with open(path,"r") as f: obj=json.load(f)
-    model_type = obj.get("type","llama")
+    with open(path, "r") as f:
+        obj = json.load(f)
+
+    model_type = obj.get("type", "llama")
+
+    def pick(keys, default=None):
+        for k in keys:
+            if k in obj and obj[k] is not None:
+                return obj[k]
+        return default
+
+    # layer_num 兼容多种命名；若仍缺失，退回环境变量或 config，再不行默认 1
+    try:
+        from config import LAYER_NUM as _CFG_LAYER_NUM
+    except Exception:
+        _CFG_LAYER_NUM = None
+    import os
+    layer_val = pick(["layer_num", "n_layers", "num_layers", "num_hidden_layers", "n_layer", "num_transformer_layers"], None)
+    if layer_val is None:
+        env_layer = os.environ.get("LAYER_NUM")
+        if env_layer is not None:
+            layer_val = int(env_layer)
+        elif _CFG_LAYER_NUM is not None:
+            layer_val = int(_CFG_LAYER_NUM)
+        else:
+            layer_val = 1  
+
+    dim = int(pick(["hidden_dim", "hidden_size", "d_model", "model_dim", "dim"], 0))
+    ffn_dim = pick(["intermediate_dim", "ffn_dim", "mlp_dim"], None)
+    if ffn_dim is None and dim:
+        ffn_dim = 4 * int(dim)   # 常见默认
+    ffn_dim = int(ffn_dim)
+
+    n_heads = int(pick(["q_head_num", "num_attention_heads", "n_heads", "n_head", "head_num"], 0))
+    n_kv_heads = pick(["kv_head_num", "num_key_value_heads", "n_kv_heads"], None)
+    if n_kv_heads is None:
+        n_kv_heads = n_heads
+    n_kv_heads = int(n_kv_heads)
+
     shape = ModelShape(
-        layer_num=int(obj["layer_num"]),
-        dim=int(obj["hidden_dim"]),
-        ffn_dim=int(obj["intermediate_dim"]),
-        n_heads=int(obj["q_head_num"]),
-        n_kv_heads=int(obj.get("kv_head_num", obj["q_head_num"]))
+        layer_num=int(layer_val),
+        dim=int(dim),
+        ffn_dim=int(ffn_dim),
+        n_heads=int(n_heads),
+        n_kv_heads=int(n_kv_heads),
     )
     return model_type, shape
+
 
 def build_model_graph(model_type: str, shape: ModelShape, cfg: ParserConfig) -> TaskGraph:
     b, s, dim, ffn, h = cfg.batch, cfg.seq_len, shape.dim, shape.ffn_dim, shape.n_heads

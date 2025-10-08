@@ -9,7 +9,7 @@ from hardware import HardwareManager
 from buffer_manager import BufferManager
 from cost_model import CostModel
 from scheduler import HeftScheduler, Assignment
-from graph_io import load_graph_from_json, graph_to_json
+from graph_io import load_graph_from_json
 from model_parser import parse_shape_json, build_model_graph, ParserConfig
 from utils import setup_logger
 

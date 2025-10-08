@@ -1,16 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-aim_shared.py
-集中放置 01/02/03 共享的定义，避免重复：
-- FEATURE_SPECS / FEATURE_NAMES / FEATURE_HAS_SIZE / FEATURE_PATTERNS
-- 解析 .aim 特征：parse_features_from_trace
-- ramulator cycles 默认正则：CYCLE_PATTERNS 与 parse_metric
-- trace 元数据解析：parse_meta_from_trace
-- 与 CENT 相关的工具：ensure_cent_on_path / TIMING / load_pim_config / make_tb_args_from_pim / make_dic_model / emit_single_op_trace
-- 常用小工具：parse_int_list
-- **模型形状读取**：load_model_shape（从 mpt/qwen2 等 shape.json 中提取 dim/n_heads/n_kv_heads/seq_length）
-"""
+
 from __future__ import annotations
 import re, sys, json
 from pathlib import Path
@@ -54,7 +44,7 @@ def parse_features_from_trace(trace_path: Path) -> Dict[str, Tuple[int, int]]:
     return {k: (v[0], v[1]) for k, v in counts.items()}
 
 # ----------------------- ramulator cycles 解析 -----------------------
-CYCLE_PATTERNS = [r"memory_system_cycles\s*([0-9]+)"]
+CYCLE_PATTERNS = [r"memory_system_cycles:\s*([0-9]+)"]
 
 def parse_metric(text: str, pattern: Optional[str]) -> Optional[int]:
     """解析 ramulator 输出中的 cycles。pattern 优先；否则使用默认 CYCLE_PATTERNS。"""
