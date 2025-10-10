@@ -1,0 +1,8 @@
+{
+  "type": "mpt_30b",
+  "hidden_dim": 7168,
+  "layer_num": 48,
+  "intermediate_dim": 28672,
+  "q_head_num": 64,
+  "kv_head_num": 64
+}

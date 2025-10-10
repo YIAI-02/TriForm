@@ -1,6 +1,7 @@
 {
   "type": "mistral",
   "hidden_dim": 4096,
+  "layer_num": 32,
   "intermediate_dim": 14336,
   "q_head_num": 32,
   "kv_head_num": 8
