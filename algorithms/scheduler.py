@@ -1,326 +1,512 @@
+# scheduler.py
 from __future__ import annotations
-from typing import Dict, List, Optional, Tuple
+
 from dataclasses import dataclass
+from typing import Dict, List, Tuple, Optional
+from collections import defaultdict
+
+from hardware import Cluster, DeviceSpec
 from task_graph import TaskGraph, TaskNode
-from hardware import HardwareManager, Device
-from buffer_manager import BufferManager
 from cost_model import CostModel
-from config import DEVICE_PREFERRED_FORMAT, RANK_COST_POLICY, ALLOW_HYBRID, HYBRID_SPEEDUP, ENABLE_WEIGHT_PREFETCH, OBJECTIVE, BALANCED_ALPHA, HYBRID_GATE_BY_DIFF, HYBRID_RELATIVE_DIFF, HYBRID_ABSOLUTE_MARGIN, HYSTERESIS_ENABLE, HYST_REL_ENTER, HYST_ABS_ENTER, HYST_REL_EXIT, HYST_ABS_EXIT, OP_PLACEMENT_CONSTRAINTS, NODE_PLACEMENT_CONSTRAINTS
+from config import (
+    ALLOW_HYBRID, HYBRID_GATE_BY_DIFF,
+    HYBRID_RELATIVE_DIFF, HYBRID_ABSOLUTE_MARGIN,
+    HYSTERESIS_ENABLE, HYST_REL_ENTER, HYST_ABS_ENTER,
+    HYST_REL_EXIT, HYST_ABS_EXIT,
+    RANKU_INCLUDE_AVG_WEIGHT_LOAD,
+)
 
+DEBUG_SCHEDULER = True
+
+# ------------------------------
+# Simple Gantt record
+# ------------------------------
 @dataclass
-class Assignment:
+class ScheduledTask:
     node_id: str
-    state: str                # "NPU"|"PIM"|"HYBRID"
-    devices: Tuple[Optional[int], Optional[int]]  # (npu_id or None, pim_id or None)
-    start_time: float
-    finish_time: float
-    output_format: str
-    output_device: str
+    device: str
+    start: float
+    finish: float
 
-class HeftScheduler:
 
-    def _resolve_placement_constraints(self, node: TaskNode) -> Tuple[bool, bool, bool]:
-        allow_npu, allow_pim = node.allowed
-        op_name = node.attrs.get("op") or getattr(node, "name", None) or ""
-        nid = node.id
+# ------------------------------
+# Communication manager
+# ------------------------------
+class CommManager:
+    """
+    Maintain independent timelines per (src, dst) channel.
+    """
+    def __init__(self, cluster: Cluster):
+        self.cluster = cluster
+        self.timeline_end: Dict[Tuple[str, str], float] = {}
 
-        # by op
-        cfg_op = OP_PLACEMENT_CONSTRAINTS.get(op_name, {})
-        if "allow_npu" in cfg_op: allow_npu = bool(cfg_op["allow_npu"])
-        if "allow_pim" in cfg_op: allow_pim = bool(cfg_op["allow_pim"])
-        allow_hybrid = bool(cfg_op.get("allow_hybrid", True))
+    def reserve(
+        self,
+        src: str,
+        dst: str,
+        bytes_amount: int,
+        earliest: float,
+        commit: bool = True,
+    ) -> Tuple[float, float]:
+        key = (src, dst)
+        bw = self.cluster.get_link_bw(src, dst) * 1e9  # bytes/s
+        ch_end = self.timeline_end.get(key, 0.0)
+        start = max(ch_end, earliest)
+        dt = 0.0 if bw <= 0 else bytes_amount / bw
+        end = start + dt
+        if commit:
+            self.timeline_end[key] = end
+        return start, end
 
-        # by node id (override)
-        cfg_node = NODE_PLACEMENT_CONSTRAINTS.get(nid, {})
-        if "allow_npu" in cfg_node: allow_npu = bool(cfg_node["allow_npu"])
-        if "allow_pim" in cfg_node: allow_pim = bool(cfg_node["allow_pim"])
-        if "allow_hybrid" in cfg_node: allow_hybrid = bool(cfg_node["allow_hybrid"])
 
-        if not allow_npu or not allow_pim:
-            allow_hybrid = False
-        return allow_npu, allow_pim, allow_hybrid
-    
-    def __init__(self, cm: CostModel, hw: HardwareManager, buf: BufferManager) -> None:
-        self.cm = cm
-        self.hw = hw
-        self.buf = buf
-        self.assignments: Dict[str, Assignment] = {}
+# ------------------------------
+# HEFT Scheduler with Hybrid + two-pass format tuning
+# ------------------------------
+class HEFTScheduler:
+    def __init__(self, cluster: Cluster, cost: CostModel, label, batch: int, seq_len: int):
+        self.cluster = cluster
+        self.cost = cost
+        self.label = label
+        self.batch = batch
+        self.seq_len = seq_len
+
+        self.comm = CommManager(cluster)
+        self.avail: Dict[str, float] = {name: 0.0 for name in self.cluster.devices}
+
+        # per-node results
+        self._node_finish_time: Dict[str, float] = {}
+        self._node_placement: Dict[str, str] = {}
+        self._node_out_fmt: Dict[str, str] = {}
+
+        # weights
+        self.weight_cached: Dict[Tuple[str, str], bool] = {}  # (dev_name, weight_id) -> cached
+        self.storage_fmt_map: Dict[str, str] = {}  # host storage fmt by weight_id
+        self._weight_load_count: Dict[Tuple[str, str], int] = defaultdict(int)  # (wid, dev.type) -> cnt
+        self._weight_sizes: Dict[str, int] = {}
+
+        # hybrid hysteresis memory
         self.mode_mem: Dict[str, str] = {}
 
-    # ---------- rank-u ----------
-    def compute_rank_u(self, g: TaskGraph) -> Dict[str, float]:
-        memo: Dict[str, float] = {}
+    # Public: allow progressive decode to update seq_len
+    def set_seq_len(self, seq_len: int) -> None:
+        self.seq_len = int(seq_len)
 
-        def avg_comp(n: TaskNode) -> float:
-            ts = []
-            if n.allowed[0]: ts.append(self.cm.compute_time(n.work, "NPU", n.attrs.get("op"), node=n))
-            if n.allowed[1]: ts.append(self.cm.compute_time(n.work, "PIM", n.attrs.get("op"), node=n))
-            if not ts: raise ValueError(f"Node {n.id} has no allowed devices")
-            if RANK_COST_POLICY == "avg": return sum(ts)/len(ts)
-            if RANK_COST_POLICY == "best": return min(ts)
-            if RANK_COST_POLICY == "npu_only": return self.cm.compute_time(n.work, "NPU", n.attrs.get("op"))
-            if RANK_COST_POLICY == "pim_only": return self.cm.compute_time(n.work, "PIM", n.attrs.get("op"))
-            return sum(ts)/len(ts)
+    # --------------------------
+    # HEFT: upward rank helpers
+    # --------------------------
+    def _avg_compute_cost(self, node: TaskNode, phase: str) -> float:
+        devs = list(self.cluster.devices.values())
+        total_compute = 0.0
+        total_w = 0.0
+        k = 0
+        
+        for d in devs:
+            if not node.allowed.get(d.type, True):
+                continue
+            k += 1
+            device_compute = self.cost.node_device_cost(node, d, self.batch, self.seq_len, phase=phase)
+            total_compute += device_compute
+ 
+            if RANKU_INCLUDE_AVG_WEIGHT_LOAD and node.weight_id and node.weight_size > 0:
+                wid = node.weight_id
+                stored_fmt = self.storage_fmt_map.get(wid, "ND")
+                size_src = self.cost.format_size(node.weight_size, stored_fmt)
+                weight_cost = self.cost.gb_move_and_format(d, size_src, stored_fmt, self.cost.device_preferred_fmt(d))
+                total_w += weight_cost
+        avg_compute = (total_compute / k) if k else 0.0
+        avg_w = (total_w / k) if (k and RANKU_INCLUDE_AVG_WEIGHT_LOAD and node.weight_id) else 0.0
+        total_avg = avg_compute + avg_w
+        return total_avg
 
-        def rec(u: str) -> float:
-            if u in memo: return memo[u]
-            n = g.nodes[u]
-            if len(g.successors(u)) == 0:
-                val = avg_comp(n)
+    def _avg_comm_cost(self, u: TaskNode, v: TaskNode) -> float:
+        devs = list(self.cluster.devices.values())
+        total = 0.0
+        k = 0
+        bytes_nd = max(u.bytes_write, v.bytes_read, 16 * 1024)
+        for i in range(len(devs)):
+            for j in range(len(devs)):
+                di, dj = devs[i], devs[j]
+                if not (u.allowed.get(di.type, True) and v.allowed.get(dj.type, True)):
+                    continue
+                # payload size by source's output fmt
+                src_fmt = self.cost.device_preferred_fmt(di)
+                dst_fmt = self.cost.device_preferred_fmt(dj)
+                payload_src = self.cost.format_size(bytes_nd, src_fmt)
+                t_link = self.cost.comm_cost(di, dj, payload_src)
+                t_conv = 0.0
+                if di.type != dj.type:
+                    t_conv = self.cost.format_conversion_time(payload_src, src_fmt, dst_fmt, dj)
+                total += (t_link + t_conv)
+                k += 1
+        return total / k if k else 0.0
+
+    def _upward_rank(self, g: TaskGraph, phase: str) -> List[str]:
+        # compute rank_u bottom-up
+        succ = {nid: list(g.successors(nid)) for nid in g.nodes}
+        order = list(reversed(g.topological()))
+        rank_u: Dict[str, float] = {}
+        for nid in order:
+            node = g.nodes[nid]
+            if not succ[nid]:
+                # Leaf node - only compute cost
+                compute_cost = self._avg_compute_cost(node, phase=phase)
+                rank_u[nid] = compute_cost
             else:
-                val = avg_comp(n) + max(rec(v) for v in g.successors(u))
-            memo[u] = val
-            return val
+                # Non-leaf node - compute + max path to successors
+                compute_cost = self._avg_compute_cost(node, phase=phase)
+                best = 0.0
+               
+                for v in succ[nid]:
+                    comm_cost = self._avg_comm_cost(node, g.nodes[v])
+                    path_cost = comm_cost + rank_u[v]
+                    if path_cost > best:
+                        best = path_cost
+                
+                rank_u[nid] = compute_cost + best
+        # schedule order: descending rank_u
+        sorted_nodes = sorted(g.nodes.keys(), key=lambda x: -rank_u[x])
+        return sorted_nodes
 
-        return {nid: rec(nid) for nid in g.nodes}
+    # --------------------------
+    # Streaming rule on PIM
+    # --------------------------
+    def _needs_streaming_on_pim(self, weight_id: Optional[str]) -> bool:
+        if not weight_id:
+            return False
+        mode = getattr(self.label, "pim_mode", "small")
+        if mode == "large":
+            return False
+        if mode == "medium":
+            pinned = getattr(self.label, "pinned_fc_on_pim", set())
+            return weight_id not in pinned
+        # small
+        return True
 
-    # ---------- earliest finish on single device ----------
-    def _earliest_finish_on_device(self, g: TaskGraph, node_id: str, dev_type: str):
-        node = g.nodes[node_id]
-        dev, ready = self.hw.earliest_available(dev_type)
+    # --------------------------
+    # Detailed timing helpers
+    # --------------------------
+    def _weight_load_time(self, node: TaskNode, dev: DeviceSpec, t0: float, commit: bool) -> float:
+        """Host->dev load + format conversion; overlappable with compute."""
+        if not node.weight_id or node.weight_size <= 0:
+            return 0.0
+        wid = node.weight_id
 
-        # inputs ready?
-        t_ready_inputs = 0.0
-        for pid in g.predecessors(node_id):
-            p = g.nodes[pid]
-            pa = self.assignments[pid]
-            t_avail = pa.finish_time
-            src_fmt = pa.output_format
-            dst_fmt = DEVICE_PREFERRED_FORMAT[dev_type]
-            if pa.output_device == "HYBRID":
-                t_avail += self.cm.gb_move_and_format(dev_type, p.out_size, src_fmt, dst_fmt)
-            elif pa.output_device != dev_type:
-                t_avail += self.cm.inter_device_comm(pa.output_device, dev_type, p.out_size, src_fmt, dst_fmt)
+        # cached and not streaming case
+        if self.weight_cached.get((dev.name, wid), False) and not (dev.type == "pim" and self._needs_streaming_on_pim(wid)):
+            return 0.0
+
+        must_stream = (dev.type == "pim" and self._needs_streaming_on_pim(wid))
+        host = self.cost.get_host_device().name
+        stored_fmt = self.storage_fmt_map.get(wid, "ND")
+        size_src = self.cost.format_size(node.weight_size, stored_fmt)
+
+        # 1) transfer
+        _, link_end = self.comm.reserve(host, dev.name, size_src, earliest=t0, commit=commit)
+        # 2) convert on device
+        conv_t = self.cost.format_conversion_time(size_src, stored_fmt, self.cost.device_preferred_fmt(dev), dev)
+        end = link_end + conv_t
+
+        if commit:
+            self._weight_load_count[(wid, dev.type)] += 1
+            self._weight_sizes[wid] = node.weight_size
+            if not must_stream:
+                self.weight_cached[(dev.name, wid)] = True
+
+        return max(0.0, end - t0)
+
+    def _kv_transfer_time_if_needed(self, node: TaskNode, dev: DeviceSpec, phase: str, t0: float, commit: bool) -> float:
+        """Only for decode on PIM in small mode: host<->PIM KV movement."""
+        if phase != "decode":
+            return 0.0
+        if node.name not in ("KV_read", "KV_write"):
+            return 0.0
+        if dev.type != "pim":
+            return 0.0
+        if getattr(self.label, "kv_in_pim", False):
+            return 0.0
+
+        r, w = self.cost.kv_rw_bytes_decode(node, self.batch, self.seq_len)
+        host = self.cost.get_host_device().name
+        if node.name == "KV_read":
+            _, end = self.comm.reserve(host, dev.name, r, earliest=t0, commit=commit)
+        else:
+            _, end = self.comm.reserve(dev.name, host, w, earliest=t0, commit=commit)
+        return max(0.0, end - t0)
+
+    def _earliest_finish_on_device(self, g: TaskGraph, nid: str, dev: DeviceSpec, phase: str, commit: bool) -> Tuple[float, float]:
+        node = g.nodes[nid]
+
+        # 1) inputs ready (consider cross-device comm + dst format conversion)
+        ready_time = 0.0
+        for u in g.predecessors(nid):
+            pred_finish = self._node_finish_time.get(u, 0.0)
+            pred_dev_name = self._node_placement.get(u, dev.name)
+            pred_dev = self.cluster.devices[pred_dev_name]
+            if pred_dev.name == dev.name:
+                ready_time = max(ready_time, pred_finish)
             else:
-                t_avail += self.cm.local_pass_time(dev_type, p.out_size)
-                t_avail += self.cm.format_conversion_time(src_fmt, dst_fmt, p.out_size)
-            t_ready_inputs = max(t_ready_inputs, t_avail)
+                payload_nd = max(g.nodes[u].bytes_write, node.bytes_read, 16 * 1024)
+                src_fmt = self._node_out_fmt.get(u, self.cost.device_preferred_fmt(pred_dev))
+                dst_fmt = self.cost.device_preferred_fmt(dev)
+                payload_src = self.cost.format_size(payload_nd, src_fmt)
+                _, link_end = self.comm.reserve(pred_dev.name, dev.name, payload_src, earliest=pred_finish, commit=commit)
+                dep_end = link_end + self.cost.format_conversion_time(payload_src, src_fmt, dst_fmt, dev)
+                ready_time = max(ready_time, dep_end)
 
-        # weight ready?
-        t_ready_weight = 0.0
-        if node.weight_id:
-            w = node.weight_id
-            if not self.buf.has_weight(w):
-                # 首轮/无预加载时默认全为ND，下一轮用 --init-plan 预加载
-                self.buf.place_weight(w, node.weight_size, initial_format="ND")
-            stored_formats = self.buf.weight_formats(w)
-            preferred = DEVICE_PREFERRED_FORMAT[dev_type]
-            if ENABLE_WEIGHT_PREFETCH and preferred not in stored_formats:
-                self.buf.ensure_format(w, preferred)
-                stored_formats = self.buf.weight_formats(w)
-            best_time = float("inf")
-            for fmt in stored_formats or {"ND"}:
-                size_fmt = self.cm.format_size(node.weight_size, fmt)
-                t = self.cm.gb_to_device_time(dev_type, size_fmt) + self.cm.format_conversion_time(fmt, preferred, node.weight_size)
-                if t < best_time:
-                    best_time = t
-            t_ready_weight = best_time
+        # 2) device available
+        t0 = max(self.avail[dev.name], ready_time)
 
-        start = max(ready, t_ready_inputs, (ready + t_ready_weight))
-        comp = self.cm.compute_time(node.work, dev_type, node.attrs.get("op"), node=node)
-        end = start + comp
-        out_fmt = DEVICE_PREFERRED_FORMAT[dev_type]
-        return start, end, dev, out_fmt
+        # 3) compute
+        compute_t = self.cost.node_device_cost(node, dev, self.batch, self.seq_len, phase)
 
-    # ---------- earliest finish hybrid ----------
-    def _earliest_finish_hybrid(self, g: TaskGraph, node_id: str):
-        node = g.nodes[node_id]
-        # npu & pim free time
-        npu_dev, t_npu_free = self.hw.earliest_available("NPU")
-        pim_dev, t_pim_free = self.hw.earliest_available("PIM")
+        # 4) overlappable transfers
+        wload_t = self._weight_load_time(node, dev, t0, commit)
+        kv_t = self._kv_transfer_time_if_needed(node, dev, phase, t0, commit)
 
-        # ready inputs?
-        t_ready_inputs_npu = 0.0
-        t_ready_inputs_pim = 0.0
-        for pid in g.predecessors(node_id):
-            p = g.nodes[pid]
-            pa = self.assignments[pid]
-            # NPU
-            t_n = pa.finish_time
-            if pa.output_device == "HYBRID":
-                t_n += self.cm.gb_move_and_format("NPU", p.out_size, pa.output_format, "NPU_OPT")
-            elif pa.output_device != "NPU":
-                t_n += self.cm.inter_device_comm(pa.output_device, "NPU", p.out_size, pa.output_format, "NPU_OPT")
+        # 5) finish
+        finish = t0 + max(compute_t, wload_t, kv_t)
+        if commit:
+            self._node_out_fmt[nid] = self.cost.device_preferred_fmt(dev)
+        return t0, finish
+
+    # --------------------------
+    # Hybrid helpers
+    # --------------------------
+    def _earliest_free_device(self, dev_type: str) -> Tuple[Optional[DeviceSpec], float]:
+        devs = self.cluster.devices_by_type(dev_type)
+        if not devs:
+            return None, float("inf")
+        best = None
+        best_t = float("inf")
+        for d in devs:
+            t = self.avail.get(d.name, 0.0)
+            if t < best_t:
+                best, best_t = d, t
+        return best, best_t
+
+    def _ready_time_for_device(self, g: TaskGraph, nid: str, dev: DeviceSpec, phase: str, commit: bool) -> float:
+        node = g.nodes[nid]
+        ready = 0.0
+        for u in g.predecessors(nid):
+            pred_finish = self._node_finish_time.get(u, 0.0) #前驱节点完成时间
+            pred_dev_name = self._node_placement.get(u, dev.name) #前驱节点被分配的设备名称
+            pred_dev = self.cluster.devices[pred_dev_name] #前驱节点被分配的设备
+            if pred_dev.name == dev.name: #同设备
+                ready = max(ready, pred_finish)
             else:
-                t_n += self.cm.local_pass_time("NPU", p.out_size)
-                t_n += self.cm.format_conversion_time(pa.output_format, "NPU_OPT", p.out_size)
-            t_ready_inputs_npu = max(t_ready_inputs_npu, t_n)
+                payload_nd = max(g.nodes[u].bytes_write, node.bytes_read, 16 * 1024)
+                src_fmt = self._node_out_fmt.get(u, self.cost.device_preferred_fmt(pred_dev))
+                dst_fmt = self.cost.device_preferred_fmt(dev)
+                payload_src = self.cost.format_size(payload_nd, src_fmt)
+                _, link_end = self.comm.reserve(pred_dev.name, dev.name, payload_src, earliest=pred_finish, commit=commit)
+                dep_end = link_end + self.cost.format_conversion_time(payload_src, src_fmt, dst_fmt, dev)
+                ready = max(ready, dep_end)
+        return ready
 
-            # PIM
-            t_p = pa.finish_time
-            if pa.output_device == "HYBRID":
-                t_p += self.cm.gb_move_and_format("PIM", p.out_size, pa.output_format, "PIM_OPT")
-            elif pa.output_device != "PIM":
-                t_p += self.cm.inter_device_comm(pa.output_device, "PIM", p.out_size, pa.output_format, "PIM_OPT")
-            else:
-                t_p += self.cm.local_pass_time("PIM", p.out_size)
-                t_p += self.cm.format_conversion_time(pa.output_format, "PIM_OPT", p.out_size)
-            t_ready_inputs_pim = max(t_ready_inputs_pim, t_p)
+    def _earliest_finish_hybrid(self, g: TaskGraph, nid: str, phase: str, commit: bool) -> Optional[Dict[str, object]]:
+        node = g.nodes[nid]
+        npu_dev, t_npu_free = self._earliest_free_device("npu")
+        pim_dev, t_pim_free = self._earliest_free_device("pim")
+        if (npu_dev is None) or (pim_dev is None):
+            return None
 
-        # weight ready?
-        t_ready_weight_npu = 0.0
-        t_ready_weight_pim = 0.0
-        if node.weight_id:
-            w = node.weight_id
-            if not self.buf.has_weight(w):
-                self.buf.place_weight(w, node.weight_size, initial_format="ND")
-            stored_formats = self.buf.weight_formats(w) or {"ND"}
+        t_ready_npu = self._ready_time_for_device(g, nid, npu_dev, phase, commit)
+        t_ready_pim = self._ready_time_for_device(g, nid, pim_dev, phase, commit)
 
-            # 最快转化的格式
-            best_n = float("inf")
-            for fmt in stored_formats:
-                size_fmt = self.cm.format_size(node.weight_size, fmt)
-                t = self.cm.gb_move_and_format("NPU", size_fmt, fmt, "NPU_OPT")
-                if t < best_n: best_n = t
-            t_ready_weight_npu = best_n
+        t_w_npu = self._weight_load_time(node, npu_dev, t_npu_free, commit)
+        t_w_pim = self._weight_load_time(node, pim_dev, t_pim_free, commit)
+        t_kv_npu = self._kv_transfer_time_if_needed(node, npu_dev, phase, t_npu_free, commit)
+        t_kv_pim = self._kv_transfer_time_if_needed(node, pim_dev, phase, t_pim_free, commit)
 
-            best_p = float("inf")
-            for fmt in stored_formats:
-                size_fmt = self.cm.format_size(node.weight_size, fmt)
-                t = self.cm.gb_move_and_format("PIM", size_fmt, fmt, "PIM_OPT")
-                if t < best_p: best_p = t
-            t_ready_weight_pim = best_p
+        start_npu = max(t_npu_free, t_ready_npu, t_npu_free + t_w_npu, t_npu_free + t_kv_npu)
+        start_pim = max(t_pim_free, t_ready_pim, t_pim_free + t_w_pim, t_pim_free + t_kv_pim)
 
-        # AST
-        start_npu = max(t_npu_free, t_ready_inputs_npu, (t_npu_free + t_ready_weight_npu))
-        start_pim = max(t_pim_free, t_ready_inputs_pim, (t_pim_free + t_ready_weight_pim))
+        tN = self.cost.node_device_cost(node, npu_dev, self.batch, self.seq_len, phase)
+        tP = self.cost.node_device_cost(node, pim_dev, self.batch, self.seq_len, phase)
+        rN = (0.0 if tN <= 0.0 else 1.0 / tN)
+        rP = (0.0 if tP <= 0.0 else 1.0 / tP)
 
-        # compute time & rate
-        tN = self.cm.compute_time(node.work, "NPU", node.attrs.get("op"),node=node)
-        tP = self.cm.compute_time(node.work, "PIM", node.attrs.get("op"),node=node)
-        rN = (1.0 / tN) if tN > 0 else float("inf")
-        rP = (1.0 / tP) if tP > 0 else float("inf")
-
-        # 先进行npu/pim，join后并行
         if start_npu <= start_pim:
-            lead = "NPU"; lead_start = start_npu; join = start_pim; rate_lead = rN; rate_tail = rP
+            lead = "npu"; lead_start = start_npu; tail_start = start_pim; r_lead = rN; r_tail = rP
         else:
-            lead = "PIM"; lead_start = start_pim; join = start_npu; rate_lead = rP; rate_tail = rN
+            lead = "pim"; lead_start = start_pim; tail_start = start_npu; r_lead = rP; r_tail = rN
 
-        # 先进行的硬件完成度
-        lead_time = max(0.0, join - lead_start)
-        work_done = (0.0 if (rate_lead == float('inf')) else rate_lead * lead_time)
-
-        out_fmt = "ND"  # Hybrid 输出默认 ND（保持中立；如需可改为最后完成侧格式）
-        if work_done >= 1.0 - 1e-12:
-            # 退化为单设备
-            finish = join
-            if lead == "NPU":
-                return {"mode":"NPU", "start_npu": start_npu, "start_pim": None, "finish": finish, "npu": npu_dev, "pim": pim_dev, "out_fmt": DEVICE_PREFERRED_FORMAT["NPU"]}
-            else:
-                return {"mode":"PIM", "start_npu": None, "start_pim": start_pim, "finish": finish, "npu": npu_dev, "pim": pim_dev, "out_fmt": DEVICE_PREFERRED_FORMAT["PIM"]}
+        lead_interval = max(0.0, tail_start - lead_start)
+        work_done = r_lead * lead_interval
+        eps = 1e-12
+        if work_done >= 1.0 - eps:
+            # degenerate single-device
+            finish = tail_start
+            mode = "NPU" if lead == "npu" else "PIM"
+            return {
+                "mode": mode,
+                "start_npu": (start_npu if mode == "NPU" else None),
+                "start_pim": (start_pim if mode == "PIM" else None),
+                "finish": finish,
+                "npu": npu_dev,
+                "pim": pim_dev,
+                "out_dev": (npu_dev if mode == "NPU" else pim_dev),
+            }
         else:
-            # 并行
-            agg = rate_lead + rate_tail
-            finish = join + (1.0 - work_done) / agg
-            return {"mode":"HYBRID", "start_npu": start_npu, "start_pim": start_pim, "finish": finish, "npu": npu_dev, "pim": pim_dev, "out_fmt": out_fmt}
+            agg = rN + rP #合起来处理的计算速率
+            finish = tail_start if agg <= 0.0 else tail_start + (1.0 - work_done) / agg
+            # choose output ownership by contribution
+            contrib_n = max(0.0, finish - start_npu) * rN
+            contrib_p = max(0.0, finish - start_pim) * rP
+            out_dev = npu_dev if contrib_n >= contrib_p else pim_dev
+            return {
+                "mode": "HYBRID",
+                "start_npu": start_npu,
+                "start_pim": start_pim,
+                "finish": finish,
+                "npu": npu_dev,
+                "pim": pim_dev,
+                "out_dev": out_dev,
+            }
 
-    # ---------- public ----------
-    def schedule(self, g: TaskGraph) -> Dict[str, Assignment]:
-        import math
-        ranks = self.compute_rank_u(g)
-        order = sorted(g.nodes.keys(), key=lambda nid: -ranks[nid])
+    # --------------------------
+    # Public API
+    # --------------------------
+    def schedule(self, g: TaskGraph, phase: str) -> List[ScheduledTask]:
+        order = self._upward_rank(g, phase=phase)
+        schedule: List[ScheduledTask] = []
 
         for nid in order:
             node = g.nodes[nid]
-            options: List[tuple] = []
 
-            # 应用 placement 约束
-            allow_npu, allow_pim, allow_hybrid_cfg = self._resolve_placement_constraints(node)
+            # Try Hybrid first (if allowed)
+            used_hybrid = False
+            allow_npu = node.allowed.get("npu", True)
+            allow_pim = node.allowed.get("pim", True)
 
-            # 单设备
-            npu_opt = None; pim_opt = None
-            if allow_npu:
-                s,e,dev,fmt = self._earliest_finish_on_device(g, nid, "NPU")
-                npu_opt = ("NPU", s, e, dev, fmt)
-                options.append(npu_opt)
-            if allow_pim:
-                s,e,dev,fmt = self._earliest_finish_on_device(g, nid, "PIM")
-                pim_opt = ("PIM", s, e, dev, fmt)
-                options.append(pim_opt)
+            if ALLOW_HYBRID and allow_npu and allow_pim:
+                hy_est = self._earliest_finish_hybrid(g, nid, phase, commit=False)
+                if hy_est is not None:
+                    # single-device baselines for gating
+                    npu_dev, _ = self._earliest_free_device("npu")
+                    pim_dev, _ = self._earliest_free_device("pim")
+                    _, f_npu = self._earliest_finish_on_device(g, nid, npu_dev, phase, commit=False)
+                    _, f_pim = self._earliest_finish_on_device(g, nid, pim_dev, phase, commit=False)
+                    abs_diff = abs(f_npu - f_pim)
+                    rel_diff = abs_diff / max(1e-9, min(f_npu, f_pim))
 
-            # Hybrid 候选（先看配置，再看 gating + 滞回）
-            consider_hybrid = ALLOW_HYBRID and allow_hybrid_cfg and allow_npu and allow_pim
-            if consider_hybrid:
-                # 差异门控
-                pass_gating = True
-                if HYBRID_GATE_BY_DIFF and (npu_opt is not None) and (pim_opt is not None):
-                    f1, f2 = npu_opt[2], pim_opt[2]  # finish times
-                    rel_diff = abs(f1 - f2) / max(1e-9, min(f1, f2))
-                    abs_diff = abs(f1 - f2)
-                    pass_gating = (rel_diff <= HYBRID_RELATIVE_DIFF) or (abs_diff <= HYBRID_ABSOLUTE_MARGIN)
+                    pass_gating = True
+                    if HYBRID_GATE_BY_DIFF:
+                        pass_gating = (rel_diff <= HYBRID_RELATIVE_DIFF) or (abs_diff <= HYBRID_ABSOLUTE_MARGIN)
 
-                # 滞回窗
-                if HYSTERESIS_ENABLE and (npu_opt is not None) and (pim_opt is not None):
-                    op_name = node.attrs.get("op") or getattr(node, "name", None) or ""
-                    last_mode = self.mode_mem.get(op_name, None)
-                    f1, f2 = npu_opt[2], pim_opt[2]
-                    rel_diff = abs(f1 - f2) / max(1e-9, min(f1, f2))
-                    abs_diff = abs(f1 - f2)
-                    if last_mode == "HYBRID":
-                        # 只有当差距变得“显著更大”时，才退出 Hybrid
-                        if (rel_diff > HYST_REL_EXIT) and (abs_diff > HYST_ABS_EXIT):
-                            pass_gating = False
+                    if HYSTERESIS_ENABLE:
+                        op_name = node.attrs.get("op") or node.name
+                        last_mode = self.mode_mem.get(op_name)
+                        if last_mode == "HYBRID":
+                            if (rel_diff > HYST_REL_EXIT) and (abs_diff > HYST_ABS_EXIT):
+                                pass_gating = False
+                            else:
+                                pass_gating = True
                         else:
-                            pass_gating = True
-                    else:
-                        # 进入 Hybrid 需要更严格（差距足够小）
-                        if (rel_diff < HYST_REL_ENTER) or (abs_diff < HYST_ABS_ENTER):
-                            pass_gating = pass_gating and True
-                        else:
+                            if (rel_diff < HYST_REL_ENTER) or (abs_diff < HYST_ABS_ENTER):
+                                pass_gating = pass_gating and True
+                            else:
+                                pass_gating = False
+
+                    # both nearly free?
+                    if pass_gating:
+                        sN = hy_est["start_npu"] if hy_est["start_npu"] is not None else float("inf")
+                        sP = hy_est["start_pim"] if hy_est["start_pim"] is not None else float("inf")
+                        if abs(sN - sP) > HYBRID_ABSOLUTE_MARGIN:
                             pass_gating = False
 
-                if pass_gating:
-                    hy = self._earliest_finish_hybrid(g, nid)
-                    if hy["mode"] == "HYBRID":
-                        # devinfo 携带 start_npu/start_pim 以便 reserve
-                        options.append(("HYBRID",
-                                        min(hy["start_npu"], hy["start_pim"]),
-                                        hy["finish"],
-                                        (hy["npu"], hy["pim"], hy["start_npu"], hy["start_pim"]),
-                                        hy["out_fmt"]))
-                    elif hy["mode"] == "NPU":
-                        options.append(("NPU", hy["start_npu"], hy["finish"], hy["npu"], hy["out_fmt"]))
-                    elif hy["mode"] == "PIM":
-                        options.append(("PIM", hy["start_pim"], hy["finish"], hy["pim"], hy["out_fmt"]))
+                    if pass_gating:
+                        hy = self._earliest_finish_hybrid(g, nid, phase, commit=True)
+                        mode = hy["mode"]
+                        if mode == "HYBRID":
+                            npu = hy["npu"]; pim = hy["pim"]
+                            start = min(hy["start_npu"], hy["start_pim"])
+                            finish = hy["finish"]
+                            self.avail[npu.name] = finish
+                            self.avail[pim.name] = finish
+                            self._node_finish_time[nid] = finish
+                            self._node_placement[nid] = hy["out_dev"].name
+                            self._node_out_fmt[nid] = "ND"  # hybrid outputs ND by convention
+                            schedule.append(ScheduledTask(nid, f"HYBRID({npu.name}+{pim.name})", start, finish))
+                            op_name = node.attrs.get("op") or node.name
+                            self.mode_mem[op_name] = "HYBRID"
+                            used_hybrid = True
+                        elif mode in ("NPU", "PIM"):
+                            dev = hy["npu"] if mode == "NPU" else hy["pim"]
+                            start = hy["start_npu"] if mode == "NPU" else hy["start_pim"]
+                            finish = hy["finish"]
+                            self.avail[dev.name] = finish
+                            self._node_finish_time[nid] = finish
+                            self._node_placement[nid] = dev.name
+                            self._node_out_fmt[nid] = self.cost.device_preferred_fmt(dev)
+                            schedule.append(ScheduledTask(nid, dev.name, start, finish))
+                            op_name = node.attrs.get("op") or node.name
+                            self.mode_mem[op_name] = mode
+                            used_hybrid = True
 
-            if not options: raise RuntimeError(f"No scheduling options for node {nid}")
+            if used_hybrid:
+                continue
 
-            from config import OBJECTIVE, BALANCED_ALPHA
-            if OBJECTIVE == "latency":
-                best = min(options, key=lambda x: x[2])
-            elif OBJECTIVE == "memory":
-                order_pref = {"PIM":0,"NPU":1,"HYBRID":2}
-                best = min(options, key=lambda x: (order_pref[x[0]], x[2]))
-            else:
-                best = min(options, key=lambda x: BALANCED_ALPHA*x[2] + (1-BALANCED_ALPHA)*x[1])
+            # HEFT device enumeration
+            best_dev: Optional[DeviceSpec] = None
+            best_finish = float("inf")
+            for dev in self.cluster.devices.values():
+                if not node.allowed.get(dev.type, True):
+                    continue
+                start, finish = self._earliest_finish_on_device(g, nid, dev, phase, commit=False)
+                if finish < best_finish:
+                    best_finish = finish
+                    best_dev = dev
+            if best_dev is None:
+                raise RuntimeError(f"No feasible device for node {nid}")
 
-            state, s, e, devinfo, outfmt = best
-            if state == "HYBRID":
-                # devinfo may be (npu, pim, start_npu, start_pim)
-                if isinstance(devinfo, tuple) and len(devinfo) >= 4:
-                    npu, pim, start_npu, start_pim = devinfo[:4]
-                else:
-                    npu, pim = devinfo
-                    start_npu, start_pim = s, s
-                # 允许一侧为 None（退化情形）
-                self.hw.reserve_hybrid(npu, pim, nid, (start_npu, start_pim), e)
-                self.assignments[nid] = Assignment(
-                    nid, state,
-                    (npu.id if start_npu is not None else None,
-                     pim.id if start_pim is not None else None),
-                    min([t for t in (start_npu, start_pim) if t is not None]),
-                    e, outfmt, "HYBRID"
-                )
-            else:
-                dev: Device = devinfo
-                self.hw.reserve(dev, nid, s, e)
-                self.assignments[nid] = Assignment(
-                    nid, state,
-                    (dev.id if dev.type=="NPU" else None, dev.id if dev.type=="PIM" else None),
-                    s, e, outfmt, dev.type
-                )
-            # 记录滞回的选择模式（按 op 聚合）
-            op_name = node.attrs.get("op") or getattr(node, "name", None) or ""
-            self.mode_mem[op_name] = state
-        return self.assignments
+            start, finish = self._earliest_finish_on_device(g, nid, best_dev, phase, commit=True)
+            schedule.append(ScheduledTask(nid, best_dev.name, start, finish))
+            self.avail[best_dev.name] = finish
+            self._node_finish_time[nid] = finish
+            self._node_placement[nid] = best_dev.name
+            self._node_out_fmt[nid] = self.cost.device_preferred_fmt(best_dev)
+
+        return schedule
+
+    def makespan(self, schedule: List[ScheduledTask]) -> float:
+        return max((t.finish for t in schedule), default=0.0)
+
+
+    def set_storage_format_map(self, fmt_map: Dict[str, str]):
+        self.storage_fmt_map = dict(fmt_map or {})
+
+    def suggest_weight_storage_formats(self) -> Dict[str, str]:
+        candidates = ["ND", "NPU_OPT", "PIM_OPT"]
+        sugg: Dict[str, str] = {}
+        by_wid: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
+        for (wid, dev_type), cnt in self._weight_load_count.items():
+            by_wid[wid][dev_type] += cnt
+
+        for wid, counts in by_wid.items():
+            w_bytes_nd = self._weight_sizes.get(wid, 0)
+            best_fmt = "ND"
+            best_t = float("inf")
+            for fmt in candidates:
+                size_src = self.cost.format_size(w_bytes_nd, fmt)
+                total = 0.0
+                for dev_type, cnt in counts.items():
+                    devs = self.cluster.devices_by_type(dev_type)
+                    if not devs:
+                        continue
+                    d = devs[0]
+                    total += cnt * self.cost.gb_move_and_format(d, size_src, fmt, self.cost.device_preferred_fmt(d))
+                if total < best_t:
+                    best_t, best_fmt = total, fmt
+            sugg[wid] = best_fmt
+        return sugg
+
+    def reset_state(self):
+        """Reset mutable scheduling state for a fresh pass (keep stats and storage_fmt_map)."""
+        self.comm.timeline_end.clear()
+        self.avail = {name: 0.0 for name in self.cluster.devices}
+        self._node_finish_time.clear()
+        self._node_placement.clear()
+        self._node_out_fmt.clear()
+        self.weight_cached.clear()
+        self.mode_mem.clear()

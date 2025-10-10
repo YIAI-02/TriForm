@@ -1,0 +1,8 @@
+{
+  "type": "llama_7b",
+  "hidden_dim": 4096,
+  "layer_num": 32,
+  "intermediate_dim": 11008,
+  "q_head_num": 32,
+  "kv_head_num": 32
+}

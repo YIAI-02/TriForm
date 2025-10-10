@@ -1,159 +1,248 @@
+# main.py
 from __future__ import annotations
-import json, argparse, sys
-from typing import Dict
+
+import argparse
+import json
+import os
+from dataclasses import dataclass, field
+from typing import Dict, Set
+
+from hardware import demo_cluster, Cluster
+from model_parser import build_graph
+from scheduler import HEFTScheduler
+from cost_model import CostModel, DTYPE_BYTES
 from config import (
-    NPU_COUNT, PIM_COUNT, LOG_LEVEL, OBJECTIVE, GLOBAL_BUFFER_BYTES,
-    FORMAT_SIZE_MULTIPLIER
+    DEFAULT_CONFIG,
+    ENABLE_TWO_PASS_FORMAT_TUNING,
+    WEIGHT_FORMAT_JSON_PATH,
+    FORMAT_TUNING_MAX_PASSES,
+    FORMAT_TUNING_TIME_EPS,
+    FORMAT_TUNING_MAP_EPS,
 )
-from hardware import HardwareManager
-from buffer_manager import BufferManager
-from cost_model import CostModel
-from scheduler import HeftScheduler, Assignment
-from graph_io import load_graph_from_json
-from model_parser import parse_shape_json, build_model_graph, ParserConfig
-from utils import setup_logger
 
-def _compute_weight_usage_by_format(assignments: Dict[str, Assignment], nodes_by_id: Dict[str, any]) -> Dict[str, Dict[str,int]]:
-    """统计：每个 weight 在本轮中被各 '目标格式' 使用的次数。
-       NPU -> NPU_OPT, PIM -> PIM_OPT, HYBRID -> 两者都 +1。
+DEBUG_MAIN = False
+# ------------------------------
+# Plan label (PIM memory planning)
+# ------------------------------
+@dataclass
+class PlanLabel:
+    pim_mode: str                 # "small" | "medium" | "large"
+    kv_in_pim: bool
+    pinned_fc_on_pim: Set[str] = field(default_factory=set)
+    
+    def print_debug(self) -> None:
+        """Print all PlanLabel settings for debugging."""
+        print("=" * 50)
+        print("PIM MEMORY PLAN DEBUG INFO")
+        print("=" * 50)
+        print(f"PIM Mode: {self.pim_mode}")
+        print(f"KV Cache in PIM: {self.kv_in_pim}")
+        print(f"Number of Pinned FC Weights: {len(self.pinned_fc_on_pim)}")
+        if self.pinned_fc_on_pim:
+            print("Pinned FC Weights:")
+            for weight_id in sorted(self.pinned_fc_on_pim):
+                print(f"  - {weight_id}")
+        else:
+            print("Pinned FC Weights: None")
+        print("=" * 50)
+
+
+def plan_memory_and_label(cfg: Dict, cluster: Cluster) -> PlanLabel:
     """
-    stats: Dict[str, Dict[str,int]] = {}
-    for nid, a in assignments.items():
-        node = nodes_by_id[nid]
-        if not node.weight_id:
-            continue
-        m = stats.setdefault(node.weight_id, {"NPU_OPT":0, "PIM_OPT":0})
-        if a.output_device == "NPU":
-            m["NPU_OPT"] += 1
-        elif a.output_device == "PIM":
-            m["PIM_OPT"] += 1
-        elif a.output_device == "HYBRID":
-            m["NPU_OPT"] += 1
-            m["PIM_OPT"] += 1
-    return stats
+    Decide PIM mode and which FC weights to pin on PIM (if medium).
+    small:   PIM capacity < KV_total -> kv_in_pim=False, no pin
+    medium:  KV_total <= cap < (KV_total + FC_total) -> kv_in_pim=True, greedily pin FC
+    large:   cap >= KV_total + FC_total -> kv_in_pim=True, all FC pinned
+    """
+    # Build graph once to collect weight sizes (independent of seq_len)
+    seq_len = int(cfg.get("prefill_len", 128))
+    g, shape = build_graph(cfg, seq_len=seq_len, phase="prefill")
 
-def _weights_size_from_graph(g) -> Dict[str, int]:
-    return g.weights()
+    dtype_bytes = int(DTYPE_BYTES.get(cfg.get("dtype", "fp16"), 2))
+    # KV total bytes over prefill+decode
+    S = int(cfg.get("prefill_len", 128))
+    T = int(cfg.get("decode_len", 32))
+    batch = int(cfg.get("batch", 1))
+    layers = int(getattr(shape, "layer_num", 1))
+    n_kv_heads = int(getattr(shape, "n_kv_heads", 1))
+    head_dim = int(getattr(shape, "head_dim", max(1, getattr(shape, "dim", 1) // max(1, getattr(shape, "n_heads", 1)))))
 
-def _plan_total_bytes(plan: Dict[str, list], weights_size: Dict[str,int]) -> int:
-    total = 0
-    for w, fmts in plan.items():
-        sz = weights_size.get(w, 0)
-        for f in fmts:
-            total += int(sz * FORMAT_SIZE_MULTIPLIER[f])
-    return total
+    kv_elems = 2 * (S + T) * n_kv_heads * head_dim * batch * layers  # K+V
+    KV_total_bytes = kv_elems * dtype_bytes
 
-def run_static_graph(g, init_plan_path: str = "") -> Dict:
-    cm = CostModel()
-    hw = HardwareManager(NPU_COUNT, PIM_COUNT)
-    buf = BufferManager()
+    # Sum FC (W1/W2/W3) and attention (Wq/Wk/Wv/Wo) weights sizes
+    FC_total_bytes = 0
+    per_weight_size: Dict[str, int] = {}
+    for n in g.nodes.values():
+        if getattr(n, "weight_id", None) and isinstance(n.weight_id, str):
+            if (n.weight_id.endswith("W1") or n.weight_id.endswith("W2") or n.weight_id.endswith("W3") or
+                n.weight_id.endswith("WQ") or n.weight_id.endswith("WK") or n.weight_id.endswith("WV") or n.weight_id.endswith("WO")):
+                FC_total_bytes += int(getattr(n, "weight_size", 0))
+                per_weight_size[n.weight_id] = int(getattr(n, "weight_size", 0))
 
-    # optional: preload plan for THIS round
-    weights_size = _weights_size_from_graph(g)
-    if init_plan_path:
-        with open(init_plan_path, "r") as f:
-            init_obj = json.load(f)
-        # 支持两种键名：weight_plan 或 weight_formats
-        plan = init_obj.get("weight_plan") or init_obj.get("weight_formats") or {}
-        est_bytes = _plan_total_bytes(plan, weights_size)
-        if est_bytes > GLOBAL_BUFFER_BYTES:
-            print(f"[WARN] init plan total bytes={est_bytes} > capacity={GLOBAL_BUFFER_BYTES}")
-        buf.preload_plan(weights_size, plan)
+    # PIM capacity (sum)
+    pim_bytes = 0
+    for d in cluster.devices_by_type("pim"):
+        pim_bytes += int(d.mem_capacity_GB * 1e9)
 
-    sched = HeftScheduler(cm, hw, buf)
-    assigns = sched.schedule(g)
+    a = KV_total_bytes
+    b = KV_total_bytes + FC_total_bytes
+    
+    if DEBUG_MAIN:
+        print(f"[DEBUG] KV total bytes: {KV_total_bytes:,} ({KV_total_bytes/1e9:.2f} GB)")
+        print(f"[DEBUG] FC total bytes: {FC_total_bytes:,} ({FC_total_bytes/1e9:.2f} GB)")
+        print(f"[DEBUG] PIM capacity: {pim_bytes:,} ({pim_bytes/1e9:.2f} GB)")
+        print(f"[DEBUG] Total weights found: {len(per_weight_size)}")
+    
+    if pim_bytes < a:
+        label = PlanLabel(pim_mode="small", kv_in_pim=False, pinned_fc_on_pim=set())
+    elif pim_bytes >= b:
+        # pin all FC
+        pin = set([wid for wid in per_weight_size.keys()])
+        label = PlanLabel(pim_mode="large", kv_in_pim=True, pinned_fc_on_pim=pin)
+    else:
+        # medium: greedily pin FC until capacity used
+        remaining = pim_bytes - a
+        pin_list = sorted(per_weight_size.items(), key=lambda kv: -kv[1])  # big first
+        pinned: Set[str] = set()
+        used = 0
+        for wid, sz in pin_list:
+            if used + sz <= remaining:
+                pinned.add(wid)
+                used += sz
+        label = PlanLabel(pim_mode="medium", kv_in_pim=True, pinned_fc_on_pim=pinned)
+    
+    # Print debug info
+    if DEBUG_MAIN:
+        label.print_debug()
+    return label
+# ------------------------------
+# Progressive simulation helpers
+# ------------------------------
+def simulate_prefill(sched: HEFTScheduler, cfg: Dict) -> float:
+    """Prefill 调度（DAG 内部可并行，HEFT/Hybrid 会自动并发）。"""
+    prefill_len = int(cfg.get("prefill_len", 128))
+    sched.set_seq_len(prefill_len)
+    g_prefill, _ = build_graph(cfg, prefill_len, phase="prefill")
+    prefill_sched = sched.schedule(g_prefill, phase="prefill")
+    prefill_time = sched.makespan(prefill_sched)
+    return prefill_time
 
-    # 本轮统计使用信息（按目标格式计数）
-    usage_by_format = _compute_weight_usage_by_format(assigns, g.nodes)
-    # 规划下一轮格式
-    plan_next, plan_bytes = buf.plan_weight_formats(usage_by_format, weights_size, objective=OBJECTIVE)
 
-    makespan = max(a.finish_time for a in assigns.values()) if assigns else 0.0
-    return {
-        "objective": OBJECTIVE,
-        "makespan": makespan,
-        "buffer_usage_bytes_this_round": buf.bytes_used(),
-        "recommended_plan_bytes": plan_bytes,
-        "recommended_weight_plan": {w: list(fmts) for w, fmts in plan_next.items()},
-        "assignments": {k: a.__dict__ for k,a in assigns.items()},
-    }
+def simulate_decode_progressive(sched: HEFTScheduler, cfg: Dict, prefill_end: float) -> float:
+    """
+    Progressive decode：token t 使用 seq_len = prefill_len + t；
+    累积调度，设备可用时间从 prefill_end 开始延续。
+    """
+    prefill_len = int(cfg.get("prefill_len", 128))
+    decode_len = int(cfg.get("decode_len", 32))
+
+    global_end = prefill_end
+    for t in range(1, decode_len + 1):
+        cur_seq = prefill_len + t
+        sched.set_seq_len(cur_seq)
+        g_dec_t, _ = build_graph(cfg, cur_seq, phase="decode")
+        dec_sched_t = sched.schedule(g_dec_t, phase="decode")
+        token_end = sched.makespan(dec_sched_t)
+        if token_end > global_end:
+            global_end = token_end
+
+    return max(0.0, global_end - prefill_end)
+
+
+def mapping_diff_ratio(a: Dict[str, str], b: Dict[str, str]) -> float:
+    """两个权重-格式映射的差异比例（Hamming ratio）。"""
+    if not a and not b:
+        return 0.0
+    keys = set(a.keys()) | set(b.keys())
+    if not keys:
+        return 0.0
+    diff = sum(1 for k in keys if a.get(k) != b.get(k))
+    return diff / float(len(keys))
+
+
+# ------------------------------
+# CLI & run
+# ------------------------------
+def run(cfg: Dict):
+    # Setup
+    cluster = demo_cluster()
+    cost = CostModel(cluster, dtype=cfg.get("dtype", "fp16"))
+    label = plan_memory_and_label(cfg, cluster)
+
+    prefill_len = int(cfg.get("prefill_len", 128))
+    batch = int(cfg.get("batch", 1))
+
+    # 多次迭代直至收敛
+    fmt_map: Dict[str, str] = {}
+    prev_total: float = None  # type: ignore
+    prev_map: Dict[str, str] = {}
+    best_total: float = None  # type: ignore
+
+    for p in range(1, FORMAT_TUNING_MAX_PASSES + 1):
+        # 新建调度器（确保状态干净），并加载当前主存格式建议
+        sched = HEFTScheduler(cluster, cost, label, batch=batch, seq_len=prefill_len)
+        sched.set_storage_format_map(fmt_map)
+
+        # Prefill
+        prefill_time = simulate_prefill(sched, cfg)
+        # Progressive Decode（seq_len 按 token 增长）
+        decode_time = simulate_decode_progressive(sched, cfg, prefill_end=prefill_time)
+
+        total_time = prefill_time + decode_time
+        if best_total is None or total_time < best_total:
+            best_total = total_time
+
+        print(f"[PASS{p}] prefill={prefill_time:.6f}s decode={decode_time:.6f}s total={total_time:.6f}s")
+
+        # 基于“实际加载/流式”统计给出新的主存格式建议
+        fmt_suggestion = sched.suggest_weight_storage_formats()
+
+        # 覆盖写 JSON：确保目录存在（你要求的这段）
+        os.makedirs(os.path.dirname(WEIGHT_FORMAT_JSON_PATH), exist_ok=True)
+        with open(WEIGHT_FORMAT_JSON_PATH, "w") as f:
+            json.dump(fmt_suggestion, f, indent=2, sort_keys=True)
+        print(f"[INFO] weight storage suggestion saved: {WEIGHT_FORMAT_JSON_PATH}")
+
+        # 收敛判定：时间与映射差异同时达标则停止
+        if prev_total is not None:
+            time_improve = prev_total - total_time
+            map_delta = mapping_diff_ratio(prev_map, fmt_suggestion)
+            print(f"[DELTA] Δtime={time_improve:+.6f}s, map_change_ratio={map_delta:.4f}")
+            if abs(time_improve) <= FORMAT_TUNING_TIME_EPS and map_delta <= FORMAT_TUNING_MAP_EPS:
+                print(f"[STOP] Converged at pass {p}.")
+                break
+
+        prev_total = total_time
+        prev_map = fmt_suggestion
+        fmt_map = fmt_suggestion  # 下一轮采用新的主存权重格式
+
+    print(f"[BEST] best_total={best_total:.6f}s")
+
+
+def parse_args():
+    p = argparse.ArgumentParser()
+    p.add_argument("--model_family", type=str, default=DEFAULT_CONFIG["model_family"])
+    p.add_argument("--model_variant", type=str, default=DEFAULT_CONFIG["model_variant"])
+    p.add_argument("--dtype", type=str, default=DEFAULT_CONFIG["dtype"])
+    p.add_argument("--batch", type=int, default=DEFAULT_CONFIG["batch"])
+    p.add_argument("--prefill_len", type=int, default=DEFAULT_CONFIG["prefill_len"])
+    p.add_argument("--decode_len", type=int, default=DEFAULT_CONFIG["decode_len"])
+    return p.parse_args()
+
 
 def main():
-    setup_logger(LOG_LEVEL)
-    ap = argparse.ArgumentParser(description="HEFT + AttAcc Interconnects (Static) with Greedy/DP/Beam Format Planners")
-    ap.add_argument("--graph", type=str, help="JSON path (prebuilt DAG)")
-    ap.add_argument("--model", type=str, choices=["llama","opt","palm"], help="Model type for parsing")
-    ap.add_argument("--shape", type=str, help="Shape.json path for the model")
-    ap.add_argument("--batch", type=int, default=1, help="Batch size")
-    ap.add_argument("--seq", type=int, default=128, help="Sequence length")
-    ap.add_argument("--init-plan", type=str, default="", help="Preload GB with a prior plan (JSON)")
-    ap.add_argument("--emit-plan", type=str, default="", help="Emit the NEXT-round plan to this JSON")
-    ap.add_argument("--out", type=str, default="", help="Output JSON path (default: stdout)")
-    ap.add_argument("--mode", type=str, choices=["model_parser","analysis"], default="analysis", help="model_parser: only build & dump graph then exit; analysis: full scheduling & planning (default)")
-    ap.add_argument("--graph-dir", type=str, default="", help="Directory to dump parsed graph JSON (file name: graph.json). Used in model_parser mode or when also saving during analysis.")
-    args = ap.parse_args()
+    args = parse_args()
+    cfg = {
+        "model_family": args.model_family,
+        "model_variant": args.model_variant,
+        "dtype": args.dtype,
+        "batch": args.batch,
+        "prefill_len": args.prefill_len,
+        "decode_len": args.decode_len,
+    }
+    run(cfg)
 
-    if args.model and args.shape:
-        model_type, shp = parse_shape_json(args.shape)
-        if args.model:
-            model_type = args.model
-        g = build_model_graph(model_type, shp, ParserConfig(batch=args.batch, seq_len=args.seq))
-        # Save graph if requested
-        if args.graph_dir:
-            import os, json as _json
-            from pathlib import Path
-            gd = Path(args.graph_dir)
-            gd.mkdir(parents=True, exist_ok=True)
-            (gd / 'graph.json').write_text(_json.dumps(graph_to_json(g), indent=2), encoding='utf-8')
-            print(f"Saved graph to {gd / args.model + 'graph.json'}")
-        if args.mode == "model_parser":
-            # Only parse & dump
-            if args.out:
-                with open(args.out, 'w') as f:
-                    f.write(json.dumps({"status":"graph_dumped","graph_path": str((Path(args.graph_dir)/'graph.json') if args.graph_dir else '')}, indent=2))
-            else:
-                print(json.dumps({"status":"graph_dumped"}, indent=2))
-            return
-        # analysis mode continues
-        res = run_static_graph(g, init_plan_path=args.init_plan)
-    elif args.graph:
-        with open(args.graph, "r") as f:
-            obj = json.load(f)
-        g = load_graph_from_json(obj)
-        if args.mode == "model_parser":
-            # If user provides an already-built graph with model_parser mode, just optionally re-dump and exit
-            if args.graph_dir:
-                import json as _json
-                from pathlib import Path
-                gd = Path(args.graph_dir)
-                gd.mkdir(parents=True, exist_ok=True)
-                (gd / 'graph.json').write_text(_json.dumps(graph_to_json(g), indent=2), encoding='utf-8')
-                print(f"Saved graph to {gd / 'graph.json'}")
-            print(json.dumps({"status":"graph_dumped_from_input"}, indent=2))
-            return
-        res = run_static_graph(g, init_plan_path=args.init_plan)
-    else:
-        ap.print_help()
-        sys.exit(1)
-
-    # emit plan (for next round)
-    if args.emit_plan:
-        plan = {
-            "weight_plan": res["recommended_weight_plan"],
-            "total_bytes": res["recommended_plan_bytes"],
-            "capacity_bytes": GLOBAL_BUFFER_BYTES
-        }
-        with open(args.emit_plan, "w") as f:
-            json.dump(plan, f, indent=2)
-        print(f"Saved NEXT-round plan to: {args.emit_plan}")
-
-    js = json.dumps(res, indent=2)
-    if args.out:
-        with open(args.out, "w") as f:
-            f.write(js)
-        print(f"Saved result to: {args.out}")
-    else:
-        print(js)
 
 if __name__ == "__main__":
     main()

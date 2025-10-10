@@ -1,78 +1,249 @@
 from __future__ import annotations
 from dataclasses import dataclass
+from typing import List, Dict, Tuple
+from task_graph import TaskGraph, TaskNode
+
 
 @dataclass
 class ModelShape:
     layer_num: int
     dim: int
     ffn_dim: int
-    n_heads: int
-    n_kv_heads: int
+    n_heads: int         # Q heads
+    n_kv_heads: int      # shared KV heads (GQA/MQA)
+    batch: int
+    seq_len: int
 
     @property
     def head_dim(self) -> int:
-        return self.dim // max(1, self.n_heads)
+        # Default per-head dimension: dim // q_heads
+        return self.dim // self.n_heads
 
-class BaseModelDef:
-    name: str = "base"
-    def layer_blueprint(self):
-        raise NotImplementedError
+# ---- Common helpers ----
+def linear_flops(inp, out):
+    return 2.0 * inp * out
 
-class LLaMADef(BaseModelDef):
+def add_llama_block(g: TaskGraph, l: int, shape: ModelShape, phase: str, dtype_bytes: int):
+    b, s = shape.batch, shape.seq_len
+    dim, ffn = shape.dim, shape.ffn_dim
+    qh, kvh, hd = shape.n_heads, shape.n_kv_heads, shape.head_dim
+    q_dim, kv_dim, o_in_dim = qh*hd, kvh*hd, qh*hd
+    attr = {"layer": l, "q_heads": qh, "kv_heads": kvh, "head_dim": hd}
+
+    # LN1
+    nid_LN1 = f"L{l}_LN1"
+    g.add_node(TaskNode(nid_LN1, "LN", flops=b*s*dim, attrs=attr))
+    # Q/K/V
+    nid_Q = f"L{l}_Q"
+    nid_K = f"L{l}_K"
+    nid_V = f"L{l}_V"
+    g.add_node(TaskNode(nid_Q, "Q", flops=linear_flops(dim, q_dim)*b*(s if phase=='prefill' else 1),
+                        weight_id=f"L{l}_WQ", weight_size=dim*q_dim*dtype_bytes, attrs=attr))
+    g.add_node(TaskNode(nid_K, "K", flops=linear_flops(dim, kv_dim)*b*(s if phase=='prefill' else 1),
+                        weight_id=f"L{l}_WK", weight_size=dim*kv_dim*dtype_bytes, attrs=attr))
+    g.add_node(TaskNode(nid_V, "V", flops=linear_flops(dim, kv_dim)*b*(s if phase=='prefill' else 1),
+                        weight_id=f"L{l}_WV", weight_size=dim*kv_dim*dtype_bytes, attrs=attr))
+
+    # Attention core
+    nid_QK = f"L{l}_QK"; nid_SO = f"L{l}_Softmax"; nid_SV = f"L{l}_SV"
+    if phase == "prefill":
+        qk_flops = 2.0 * b * qh * (s*s) * hd
+        sv_flops = 2.0 * b * qh * (s*s) * hd
+    else:
+        qk_flops = 2.0 * b * qh * (s*hd)
+        sv_flops = 2.0 * b * qh * (s*hd)
+    g.add_node(TaskNode(nid_QK, "QK", flops=qk_flops, attrs=attr))
+    g.add_node(TaskNode(nid_SO, "Softmax", flops=b*qh*(s if phase=='decode' else s*s), attrs=attr))
+    g.add_node(TaskNode(nid_SV, "SV", flops=sv_flops, attrs=attr))
+
+    # O
+    nid_O = f"L{l}_O"
+    g.add_node(TaskNode(nid_O, "O", flops=linear_flops(o_in_dim, dim)*b*(s if phase=='prefill' else 1),
+                        weight_id=f"L{l}_WO", weight_size=o_in_dim*dim*dtype_bytes, attrs=attr))
+
+    nid_Add1 = f"L{l}_Add1"
+    g.add_node(TaskNode(nid_Add1, "Add", flops=b*dim*(s if phase=='prefill' else 1)))
+
+    # MLP: SwiGLU (W1,W3)->Act->W2
+    nid_LN2 = f"L{l}_LN2"; nid_W1=f"L{l}_FFN_W1"; nid_W3=f"L{l}_FFN_W3"; nid_ACT=f"L{l}_Act"; nid_W2=f"L{l}_FFN_W2"; nid_Add2=f"L{l}_Add2"
+    g.add_node(TaskNode(nid_LN2, "LN", flops=b*s*dim, attrs=attr))
+    g.add_node(TaskNode(nid_W1, "FFN_W1", flops=linear_flops(dim, ffn)*b*(s if phase=='prefill' else 1), weight_id=f"L{l}_W1", weight_size=dim*ffn*dtype_bytes, attrs=attr))
+    g.add_node(TaskNode(nid_W3, "FFN_W3", flops=linear_flops(dim, ffn)*b*(s if phase=='prefill' else 1), weight_id=f"L{l}_W3", weight_size=dim*ffn*dtype_bytes, attrs=attr))
+    g.add_node(TaskNode(nid_ACT, "SwiGLU", flops=b*ffn*(s if phase=='prefill' else 1), attrs=attr))
+    g.add_node(TaskNode(nid_W2, "FFN_W2", flops=linear_flops(ffn, dim)*b*(s if phase=='prefill' else 1), weight_id=f"L{l}_W2", weight_size=ffn*dim*dtype_bytes, attrs=attr))
+    g.add_node(TaskNode(nid_Add2, "Add", flops=b*dim*(s if phase=='prefill' else 1)))
+
+    # KV explicit ops in decode
+    if phase == "decode":
+        nid_KVr=f"L{l}_KV_read"; nid_KVw=f"L{l}_KV_write"
+        g.add_node(TaskNode(nid_KVr, "KV_read", attrs=attr))
+        g.add_node(TaskNode(nid_KVw, "KV_write", attrs=attr))
+
+    # Wire connections (pre-norm, sequential)
+    x_in = f"L{l-1}_Add2" if l>0 else None
+    if x_in:
+        nid_X = f"L{l}_X"; g.add_node(TaskNode(nid_X, "Identity"))
+        g.add_edge(x_in, nid_X); g.add_edge(nid_X, nid_LN1)
+
+    g.add_edge(nid_LN1, nid_Q); g.add_edge(nid_LN1, nid_K); g.add_edge(nid_LN1, nid_V)
+    if phase == "decode":
+        g.add_edge(nid_Q, nid_QK); g.add_edge(nid_QK, nid_SO); g.add_edge(nid_SO, nid_SV); g.add_edge(nid_SV, nid_O)
+        g.add_edge(nid_KVr, nid_QK); g.add_edge(nid_KVr, nid_SV)
+        g.add_edge(nid_K, nid_KVw); g.add_edge(nid_V, nid_KVw)
+    else:
+        g.add_edge(nid_Q, nid_QK); g.add_edge(nid_K, nid_QK); g.add_edge(nid_QK, nid_SO); g.add_edge(nid_SO, nid_SV); g.add_edge(nid_V, nid_SV); g.add_edge(nid_SV, nid_O)
+    g.add_edge(nid_O, nid_Add1); 
+    if x_in: g.add_edge(x_in, nid_Add1)
+
+    g.add_edge(nid_Add1, nid_LN2); g.add_edge(nid_LN2, nid_W1); g.add_edge(nid_LN2, nid_W3)
+    g.add_edge(nid_W1, nid_ACT); g.add_edge(nid_W3, nid_ACT)
+    g.add_edge(nid_ACT, nid_W2); g.add_edge(nid_W2, nid_Add2); g.add_edge(nid_Add1, nid_Add2)
+
+def add_mpt_block(g: TaskGraph, l: int, shape: ModelShape, phase: str, dtype_bytes: int):
+    # Similar to LLaMA but MLP uses GELU (no W3 gate by default)
+    b, s = shape.batch, shape.seq_len
+    dim, ffn = shape.dim, shape.ffn_dim
+    qh, kvh, hd = shape.n_heads, shape.n_kv_heads, shape.head_dim
+    q_dim, kv_dim, o_in_dim = qh*hd, kvh*hd, qh*hd
+    attr = {"layer": l, "q_heads": qh, "kv_heads": kvh, "head_dim": hd}
+
+    nid_LN1=f"L{l}_LN1"; g.add_node(TaskNode(nid_LN1,"LN",flops=b*s*dim,attrs=attr))
+    nid_Q=f"L{l}_Q"; nid_K=f"L{l}_K"; nid_V=f"L{l}_V"
+    g.add_node(TaskNode(nid_Q,"Q",flops=linear_flops(dim,q_dim)*b*(s if phase=='prefill' else 1),weight_id=f"L{l}_WQ",weight_size=dim*q_dim*dtype_bytes,attrs=attr))
+    g.add_node(TaskNode(nid_K,"K",flops=linear_flops(dim,kv_dim)*b*(s if phase=='prefill' else 1),weight_id=f"L{l}_WK",weight_size=dim*kv_dim*dtype_bytes,attrs=attr))
+    g.add_node(TaskNode(nid_V,"V",flops=linear_flops(dim,kv_dim)*b*(s if phase=='prefill' else 1),weight_id=f"L{l}_WV",weight_size=dim*kv_dim*dtype_bytes,attrs=attr))
+
+    nid_QK=f"L{l}_QK"; nid_SO=f"L{l}_Softmax"; nid_SV=f"L{l}_SV"
+    if phase=='prefill':
+        qk=2.0*b*qh*(s*s)*hd; sv=2.0*b*qh*(s*s)*hd
+    else:
+        qk=2.0*b*qh*(s*hd);   sv=2.0*b*qh*(s*hd)
+    g.add_node(TaskNode(nid_QK,"QK",flops=qk,attrs=attr))
+    g.add_node(TaskNode(nid_SO,"Softmax",flops=b*qh*(s if phase=='decode' else s*s),attrs=attr))
+    g.add_node(TaskNode(nid_SV,"SV",flops=sv,attrs=attr))
+
+    nid_O=f"L{l}_O"; g.add_node(TaskNode(nid_O,"O",flops=linear_flops(o_in_dim,dim)*b*(s if phase=='prefill' else 1),weight_id=f"L{l}_WO",weight_size=o_in_dim*dim*dtype_bytes,attrs=attr))
+    nid_Add1=f"L{l}_Add1"; g.add_node(TaskNode(nid_Add1,"Add",flops=b*dim*(s if phase=='prefill' else 1)))
+
+    nid_LN2=f"L{l}_LN2"; nid_W1=f"L{l}_FFN_W1"; nid_G=f"L{l}_GELU"; nid_W2=f"L{l}_FFN_W2"; nid_Add2=f"L{l}_Add2"
+    g.add_node(TaskNode(nid_LN2,"LN",flops=b*s*dim,attrs=attr))
+    g.add_node(TaskNode(nid_W1,"FFN_W1",flops=linear_flops(dim,ffn)*b*(s if phase=='prefill' else 1),weight_id=f"L{l}_W1",weight_size=dim*ffn*dtype_bytes,attrs=attr))
+    g.add_node(TaskNode(nid_G,"GELU",flops=b*ffn*(s if phase=='prefill' else 1),attrs=attr))
+    g.add_node(TaskNode(nid_W2,"FFN_W2",flops=linear_flops(ffn,dim)*b*(s if phase=='prefill' else 1),weight_id=f"L{l}_W2",weight_size=ffn*dim*dtype_bytes,attrs=attr))
+    g.add_node(TaskNode(nid_Add2,"Add",flops=b*dim*(s if phase=='prefill' else 1)))
+
+    if phase=='decode':
+        nid_KVr=f"L{l}_KV_read"; nid_KVw=f"L{l}_KV_write"
+        g.add_node(TaskNode(nid_KVr,"KV_read",attrs=attr))
+        g.add_node(TaskNode(nid_KVw,"KV_write",attrs=attr))
+
+    x_in=f"L{l-1}_Add2" if l>0 else None
+    if x_in:
+        nid_X=f"L{l}_X"; g.add_node(TaskNode(nid_X,"Identity"))
+        g.add_edge(x_in,nid_X); g.add_edge(nid_X,nid_LN1)
+
+    g.add_edge(nid_LN1,nid_Q); g.add_edge(nid_LN1,nid_K); g.add_edge(nid_LN1,nid_V)
+    if phase=='decode':
+        g.add_edge(nid_Q,nid_QK); g.add_edge(nid_QK,nid_SO); g.add_edge(nid_SO,nid_SV); g.add_edge(nid_SV,nid_O)
+        g.add_edge(nid_KVr,nid_QK); g.add_edge(nid_KVr,nid_SV)
+        g.add_edge(nid_K,nid_KVw); g.add_edge(nid_V,nid_KVw)
+    else:
+        g.add_edge(nid_Q,nid_QK); g.add_edge(nid_K,nid_QK); g.add_edge(nid_QK,nid_SO); g.add_edge(nid_SO,nid_SV); g.add_edge(nid_V,nid_SV); g.add_edge(nid_SV,nid_O)
+    g.add_edge(nid_O,nid_Add1); 
+    if x_in: g.add_edge(x_in,nid_Add1)
+
+    g.add_edge(nid_Add1,nid_LN2); g.add_edge(nid_LN2,nid_W1); g.add_edge(nid_W1,nid_G); g.add_edge(nid_G,nid_W2); g.add_edge(nid_W2,nid_Add2); g.add_edge(nid_Add1,nid_Add2)
+
+def add_palm_block(g: TaskGraph, l: int, shape: ModelShape, phase: str, dtype_bytes: int):
+    # PaLM uses pre-LN and PARALLEL residual: x + Attn(LN(x)) + MLP(LN(x))
+    b, s = shape.batch, shape.seq_len
+    dim, ffn = shape.dim, shape.ffn_dim
+    qh, kvh, hd = shape.n_heads, shape.n_kv_heads, shape.head_dim
+    # Many PaLM variants use MQA (kv_heads=1). head_dim uses dim//q_heads by default.
+    q_dim, kv_dim, o_in_dim = qh*hd, kvh*hd, qh*hd
+    attr = {"layer": l, "q_heads": qh, "kv_heads": kvh, "head_dim": hd}
+
+    nid_LN = f"L{l}_LN"  # one LN feeding both branches
+    g.add_node(TaskNode(nid_LN,"LN",flops=b*s*dim,attrs=attr))
+
+    # Attn branch
+    nid_Q=f"L{l}_Q"; nid_K=f"L{l}_K"; nid_V=f"L{l}_V"
+    g.add_node(TaskNode(nid_Q,"Q",flops=linear_flops(dim,q_dim)*b*(s if phase=='prefill' else 1),weight_id=f"L{l}_WQ",weight_size=dim*q_dim*dtype_bytes,attrs=attr))
+    g.add_node(TaskNode(nid_K,"K",flops=linear_flops(dim,kv_dim)*b*(s if phase=='prefill' else 1),weight_id=f"L{l}_WK",weight_size=dim*kv_dim*dtype_bytes,attrs=attr))
+    g.add_node(TaskNode(nid_V,"V",flops=linear_flops(dim,kv_dim)*b*(s if phase=='prefill' else 1),weight_id=f"L{l}_WV",weight_size=dim*kv_dim*dtype_bytes,attrs=attr))
+
+    nid_QK=f"L{l}_QK"; nid_SO=f"L{l}_Softmax"; nid_SV=f"L{l}_SV"
+    if phase=='prefill': qk=2.0*b*qh*(s*s)*hd; sv=2.0*b*qh*(s*s)*hd
+    else:               qk=2.0*b*qh*(s*hd);   sv=2.0*b*qh*(s*hd)
+    g.add_node(TaskNode(nid_QK,"QK",flops=qk,attrs=attr))
+    g.add_node(TaskNode(nid_SO,"Softmax",flops=b*qh*(s if phase=='decode' else s*s),attrs=attr))
+    g.add_node(TaskNode(nid_SV,"SV",flops=sv,attrs=attr))
+
+    nid_O=f"L{l}_O"
+    g.add_node(TaskNode(nid_O,"O",flops=linear_flops(o_in_dim,dim)*b*(s if phase=='prefill' else 1),weight_id=f"L{l}_WO",weight_size=o_in_dim*dim*dtype_bytes,attrs=attr))
+
+    # MLP branch (GELU)
+    nid_W1=f"L{l}_FFN_W1"; nid_G=f"L{l}_GELU"; nid_W2=f"L{l}_FFN_W2"
+    g.add_node(TaskNode(nid_W1,"FFN_W1",flops=linear_flops(dim,ffn)*b*(s if phase=='prefill' else 1),weight_id=f"L{l}_W1",weight_size=dim*ffn*dtype_bytes,attrs=attr))
+    g.add_node(TaskNode(nid_G,"GELU",flops=b*ffn*(s if phase=='prefill' else 1),attrs=attr))
+    g.add_node(TaskNode(nid_W2,"FFN_W2",flops=linear_flops(ffn,dim)*b*(s if phase=='prefill' else 1),weight_id=f"L{l}_W2",weight_size=ffn*dim*dtype_bytes,attrs=attr))
+
+    # Merge: X + Attn + MLP
+    nid_Add2=f"L{l}_Add2"; g.add_node(TaskNode(nid_Add2,"Add",flops=b*dim*(s if phase=='prefill' else 1)))
+
+    # KV ops on decode
+    if phase=='decode':
+        nid_KVr=f"L{l}_KV_read"; nid_KVw=f"L{l}_KV_write"
+        g.add_node(TaskNode(nid_KVr,"KV_read",attrs=attr))
+        g.add_node(TaskNode(nid_KVw,"KV_write",attrs=attr))
+
+    # Wire
+    x_in=f"L{l-1}_Add2" if l>0 else None
+    if x_in:
+        nid_X=f"L{l}_X"; g.add_node(TaskNode(nid_X,"Identity"))
+        g.add_edge(x_in,nid_X); g.add_edge(nid_X,nid_LN)
+
+    # Both branches from same LN
+    g.add_edge(nid_LN,nid_Q); g.add_edge(nid_LN,nid_K); g.add_edge(nid_LN,nid_V)
+    if phase=='decode':
+        g.add_edge(nid_Q,nid_QK); g.add_edge(nid_QK,nid_SO); g.add_edge(nid_SO,nid_SV); g.add_edge(nid_SV,nid_O)
+        g.add_edge(nid_KVr,nid_QK); g.add_edge(nid_KVr,nid_SV)
+        g.add_edge(nid_K,nid_KVw); g.add_edge(nid_V,nid_KVw)
+    else:
+        g.add_edge(nid_Q,nid_QK); g.add_edge(nid_K,nid_QK); g.add_edge(nid_QK,nid_SO); g.add_edge(nid_SO,nid_SV); g.add_edge(nid_V,nid_SV); g.add_edge(nid_SV,nid_O)
+    # MLP branch
+    g.add_edge(nid_LN,nid_W1); g.add_edge(nid_W1,nid_G); g.add_edge(nid_G,nid_W2)
+    # Merge both outputs plus residual X
+    if x_in: g.add_edge(x_in,nid_Add2)
+    g.add_edge(nid_O,nid_Add2); g.add_edge(nid_W2,nid_Add2)
+
+class LLaMADef:
     name = "llama"
-    def layer_blueprint(self):
-        ops = [
-            "X","LN1","Q","K","V","QK","Softmax","SV","O","Add1","LN2","FFN_W1","FFN_W3","SwiGLU","FFN_W2","Add2",
-        ]
-        edges = [
-            ("X", "LN1"),
-            ("LN1", "Q"), ("LN1", "K"), ("LN1", "V"),
-            ("Q", "QK"), ("K", "QK"),
-            ("QK", "Softmax"),
-            ("Softmax", "SV"), ("V", "SV"),
-            ("SV", "O"),
-            ("O", "Add1"), ("X", "Add1"),
-            ("Add1", "LN2"),
-            ("LN2", "FFN_W1"), ("LN2", "FFN_W3"),
-            ("FFN_W1", "SwiGLU"), ("FFN_W3", "SwiGLU"),
-            ("SwiGLU", "FFN_W2"),
-            ("FFN_W2", "Add2"), ("Add1", "Add2"),
-        ]
-        return ops, edges
+    def build(self, shape: ModelShape, phase: str, dtype_bytes: int) -> TaskGraph:
+        g = TaskGraph()
+        for l in range(shape.layer_num):
+            add_llama_block(g, l, shape, phase, dtype_bytes)
+        return g
 
-class OPTDef(BaseModelDef):
-    name = "opt"
-    def layer_blueprint(self):
-        ops = [
-            "X","LN1","Q","K","V","QK","Softmax","SV","O","Add1","LN2","FFN_W1","GELU","FFN_W2","Add2",
-        ]
-        edges = [
-            ("X","LN1"),
-            ("LN1","Q"), ("LN1","K"), ("LN1","V"),
-            ("Q","QK"), ("K","QK"),
-            ("QK","Softmax"),
-            ("Softmax","SV"), ("V","SV"),
-            ("SV","O"),
-            ("O","Add1"), ("X","Add1"),
-            ("Add1","LN2"),
-            ("LN2","FFN_W1"),
-            ("FFN_W1","GELU"),
-            ("GELU","FFN_W2"),
-            ("FFN_W2","Add2"), ("Add1","Add2"),
-        ]
-        return ops, edges
+class MPTDef:
+    name = "mpt"
+    def build(self, shape: ModelShape, phase: str, dtype_bytes: int) -> TaskGraph:
+        g = TaskGraph()
+        for l in range(shape.layer_num):
+            add_mpt_block(g, l, shape, phase, dtype_bytes)
+        return g
 
-class PaLMDef(BaseModelDef):
+class PaLMDef:
     name = "palm"
-    def layer_blueprint(self):
-        return LLaMADef().layer_blueprint()
+    def build(self, shape: ModelShape, phase: str, dtype_bytes: int) -> TaskGraph:
+        g = TaskGraph()
+        for l in range(shape.layer_num):
+            add_palm_block(g, l, shape, phase, dtype_bytes)
+        return g
 
-def get_model_def(model_type: str) -> BaseModelDef:
-    t = model_type.lower()
-    if t == "llama":
-        return LLaMADef()
-    if t == "opt":
-        return OPTDef()
-    if t == "palm":
-        return PaLMDef()
-    raise ValueError(f"Unknown model type: {model_type}")
+def make_model_def(family: str):
+    f = family.lower()
+    if f == "llama": return LLaMADef()
+    if f == "mpt":   return MPTDef()
+    if f == "palm":  return PaLMDef()
+    raise ValueError(f"Unknown model family: {family}")
