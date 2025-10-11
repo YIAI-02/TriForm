@@ -32,7 +32,7 @@ class Cluster:
         if a == b: return "LOCAL"
         return self.links.get((a,b), (12.0, "PCIe"))[1]
 
-    def devices_by_type(self, t: str) -> List[DeviceSpec]:
+    def devices_by_type(self, t: str) -> List[DeviceSpec]: #传进来t是cpu/npu/pim，筛选出是这个dev的所有设备
         return [d for d in self.devices.values() if d.type == t]
 
 def demo_cluster() -> Cluster:
