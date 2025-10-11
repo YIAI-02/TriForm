@@ -70,6 +70,30 @@ class HEFTScheduler:
         # external buffer manager (host + device weight caching / replacement)
         self.buffer = buffer or BufferManager()
 
+        # Pre-compute per-PIM device cache capacities for weights based on plan label
+        self._pim_cache_capacity: Dict[str, int] = {}
+        total_budget = int(getattr(self.label, "pim_weight_capacity_bytes", 0) or 0)
+        pim_devs = self.cluster.devices_by_type("pim")
+        if pim_devs:
+            n_dev = len(pim_devs)
+            share = total_budget // n_dev
+            remainder = total_budget % n_dev
+            for idx, d in enumerate(pim_devs):
+                cap = share + (1 if idx < remainder else 0)
+                max_dev_bytes = int(d.mem_capacity_GB * 1e9)
+                self._pim_cache_capacity[d.name] = min(max_dev_bytes, cap)
+            for d in pim_devs:
+                desired = max(0, self._pim_cache_capacity.get(d.name, int(d.mem_capacity_GB * 1e9)))
+                cache = self.buffer.device_cache.get(d.name)
+                if cache is not None:
+                    cache.capacity = desired
+                    while cache.used > cache.capacity and cache.order:
+                        ev = cache.order.pop(0)
+                        cache.pinned.discard(ev)
+                        cache.used -= cache.items.pop(ev, 0)
+                else:
+                    self.buffer.ensure_device_cache(d.name, desired)
+
         self.comm = CommManager(cluster)
         self.avail: Dict[str, float] = {name: 0.0 for name in self.cluster.devices}
 
@@ -91,6 +115,12 @@ class HEFTScheduler:
     def set_seq_len(self, seq_len: int) -> None:
         self.seq_len = int(seq_len)
 
+    def _pim_cache_capacity_for(self, dev: DeviceSpec) -> int:
+        cap = self._pim_cache_capacity.get(dev.name)
+        if cap is None:
+            return int(dev.mem_capacity_GB * 1e9)
+        return max(0, cap)
+
     # --------------------------
     # HEFT: upward rank helpers
     # --------------------------
@@ -99,20 +129,10 @@ class HEFTScheduler:
         total_compute = 0.0
         total_w = 0.0
         k = 0
-        # Dynamically adjust flops and weight_size by seq_len and batch
-        node_flops = node.flops
+        seq_len = int(getattr(self, "seq_len", 0) or 0)
+        batch = int(getattr(self, "batch", 0) or 0)
+        node_flops = self.cost.estimate_flops(node, batch, seq_len, phase)
         node_weight_size = node.weight_size
-        seq_len = getattr(self, "seq_len", None)
-        batch = getattr(self, "batch", None)
-        if hasattr(node, "attrs") and node.attrs:
-            base_seq = node.attrs.get("seq_len", None)
-            base_batch = node.attrs.get("batch", None)
-            if base_seq and seq_len and base_seq > 0 and seq_len != base_seq:
-                node_flops = node_flops * seq_len / base_seq
-                node_weight_size = node_weight_size * seq_len / base_seq
-            if base_batch and batch and base_batch > 0 and batch != base_batch:
-                node_flops = node_flops * batch / base_batch
-                node_weight_size = node_weight_size * batch / base_batch
         for d in devs:
             if not node.allowed.get(d.type, True):
                 continue
@@ -194,13 +214,10 @@ class HEFTScheduler:
         if not weight_id:
             return False
         mode = getattr(self.label, "pim_mode", "small")
-        if mode == "large":
-            return False
-        if mode == "medium":
-            pinned = getattr(self.label, "pinned_fc_on_pim", set())
-            return weight_id not in pinned
-        # small
-        return True
+        if mode == "small":
+            return True
+        total_budget = int(getattr(self.label, "pim_weight_capacity_bytes", 0) or 0)
+        return total_budget <= 0
 
     # --------------------------
     # Detailed timing helpers
@@ -213,9 +230,9 @@ class HEFTScheduler:
 
         # pim
         if dev.type == "pim":
+            cap_bytes = self._pim_cache_capacity_for(dev)
             if dev.name not in self.buffer.device_cache:
-                cap_bytes = int(self.cluster.devices[dev.name].mem_capacity_GB * 1e9 * 0.9)
-                self.buffer.ensure_device_cache(dev.name, cap_bytes)
+                self.buffer.ensure_device_cache(dev.name, max(0, cap_bytes))
 
             cached = self.buffer.is_cached(dev.name, wid)
             if cached and not self._needs_streaming_on_pim(wid):
@@ -242,13 +259,9 @@ class HEFTScheduler:
                 if dev.type == "pim":
                     # Legacy dict for compatibility
                     self.weight_cached[(dev.name, wid)] = True
-                    
+
                     # BufferManager LRU cache for PIM storage management
-                    pin_flag = False
-                    if getattr(self.label, "pim_mode", "small") == "medium":
-                        pin_set = getattr(self.label, "pinned_fc_on_pim", set())
-                        pin_flag = (wid in pin_set)
-                    self.buffer.mark_cached(dev.name, wid, node.weight_size, pinned=pin_flag)
+                    self.buffer.mark_cached(dev.name, wid, node.weight_size, pinned=False)
                 
                 # Store host format if unseen
                 if wid not in self.buffer.host_format and wid in self.storage_fmt_map:

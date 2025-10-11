@@ -4,8 +4,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from dataclasses import dataclass, field
-from typing import Dict, Set
+from dataclasses import dataclass
+from typing import Dict
 
 from hardware import demo_cluster, Cluster
 from model_parser import build_graph
@@ -30,8 +30,9 @@ DEBUG_MAIN = False
 class PlanLabel:
     pim_mode: str                 # "small" | "medium" | "large"
     kv_in_pim: bool
-    pinned_fc_on_pim: Set[str] = field(default_factory=set)
-    
+    pim_weight_capacity_bytes: int = 0
+    kv_cache_bytes: int = 0
+
     def print_debug(self) -> None:
         """Print all PlanLabel settings for debugging."""
         print("=" * 50)
@@ -39,22 +40,17 @@ class PlanLabel:
         print("=" * 50)
         print(f"PIM Mode: {self.pim_mode}")
         print(f"KV Cache in PIM: {self.kv_in_pim}")
-        print(f"Number of Pinned FC Weights: {len(self.pinned_fc_on_pim)}")
-        if self.pinned_fc_on_pim:
-            print("Pinned FC Weights:")
-            for weight_id in sorted(self.pinned_fc_on_pim):
-                print(f"  - {weight_id}")
-        else:
-            print("Pinned FC Weights: None")
+        print(f"KV Cache Bytes: {self.kv_cache_bytes:,}")
+        print(f"Weight Cache Capacity (Bytes): {self.pim_weight_capacity_bytes:,}")
         print("=" * 50)
 
 
 def plan_memory_and_label(cfg: Dict, cluster: Cluster) -> PlanLabel:
     """
-    Decide PIM mode and which FC weights to pin on PIM (if medium).
-    small:   PIM capacity < KV_total -> kv_in_pim=False, no pin
-    medium:  KV_total <= cap < (KV_total + FC_total) -> kv_in_pim=True, greedily pin FC
-    large:   cap >= KV_total + FC_total -> kv_in_pim=True, all FC pinned
+    Decide PIM mode and effective LRU budget for weights on PIM.
+    small:   PIM capacity < KV_total -> kv_in_pim=False, no persistent cache
+    medium:  KV_total <= cap < (KV_total + FC_total) -> kv_in_pim=True, weight cache budget = cap - KV_total
+    large:   cap >= KV_total + FC_total -> kv_in_pim=True, budget large enough to avoid eviction
     """
     # Build unified graph once to collect weight sizes
     g, shape = build_graph(cfg)
@@ -73,13 +69,13 @@ def plan_memory_and_label(cfg: Dict, cluster: Cluster) -> PlanLabel:
 
     # Sum FC (W1/W2/W3) and attention (Wq/Wk/Wv/Wo) weights sizes
     FC_total_bytes = 0
-    per_weight_size: Dict[str, int] = {}
+    fc_weight_count = 0
     for n in g.nodes.values():
         if getattr(n, "weight_id", None) and isinstance(n.weight_id, str):
             if (n.weight_id.endswith("W1") or n.weight_id.endswith("W2") or n.weight_id.endswith("W3") or
                 n.weight_id.endswith("WQ") or n.weight_id.endswith("WK") or n.weight_id.endswith("WV") or n.weight_id.endswith("WO")):
                 FC_total_bytes += int(getattr(n, "weight_size", 0))
-                per_weight_size[n.weight_id] = int(getattr(n, "weight_size", 0))
+                fc_weight_count += 1
 
     # PIM capacity (sum)
     pim_bytes = 0
@@ -93,25 +89,27 @@ def plan_memory_and_label(cfg: Dict, cluster: Cluster) -> PlanLabel:
         print(f"[DEBUG] KV total bytes: {KV_total_bytes:,} ({KV_total_bytes/1e9:.2f} GB)")
         print(f"[DEBUG] FC total bytes: {FC_total_bytes:,} ({FC_total_bytes/1e9:.2f} GB)")
         print(f"[DEBUG] PIM capacity: {pim_bytes:,} ({pim_bytes/1e9:.2f} GB)")
-        print(f"[DEBUG] Total weights found: {len(per_weight_size)}")
-    
+        print(f"[DEBUG] FC weight count: {fc_weight_count}")
+
     if pim_bytes < a:
-        label = PlanLabel(pim_mode="small", kv_in_pim=False, pinned_fc_on_pim=set())
-    elif pim_bytes >= b:
-        # pin all FC
-        pin = set([wid for wid in per_weight_size.keys()])
-        label = PlanLabel(pim_mode="large", kv_in_pim=True, pinned_fc_on_pim=pin)
+        label = PlanLabel(pim_mode="small", kv_in_pim=False, pim_weight_capacity_bytes=0, kv_cache_bytes=0)
     else:
-        # medium: greedily pin FC until capacity used
-        remaining = pim_bytes - a
-        pin_list = sorted(per_weight_size.items(), key=lambda kv: -kv[1])  # big first
-        pinned: Set[str] = set()
-        used = 0
-        for wid, sz in pin_list:
-            if used + sz <= remaining:
-                pinned.add(wid)
-                used += sz
-        label = PlanLabel(pim_mode="medium", kv_in_pim=True, pinned_fc_on_pim=pinned)
+        weight_budget = max(0, pim_bytes - a)
+        kv_bytes = a
+        if pim_bytes >= b:
+            label = PlanLabel(
+                pim_mode="large",
+                kv_in_pim=True,
+                pim_weight_capacity_bytes=weight_budget,
+                kv_cache_bytes=kv_bytes,
+            )
+        else:
+            label = PlanLabel(
+                pim_mode="medium",
+                kv_in_pim=True,
+                pim_weight_capacity_bytes=weight_budget,
+                kv_cache_bytes=kv_bytes,
+            )
     
     # Print debug info
     if DEBUG_MAIN:
