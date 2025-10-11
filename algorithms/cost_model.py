@@ -214,6 +214,81 @@ class CostModel:
         return 0, 0, n_heads
 
     # --------------------------
+    # Dynamic flop estimation
+    # --------------------------
+    def estimate_flops(self, node, batch: int, seq_len: int, phase: str) -> float:
+        attrs = getattr(node, "attrs", {}) or {}
+        default = float(getattr(node, "flops", 0.0) or 0.0)
+
+        b = int(batch or 0)
+        if b <= 0:
+            b = int(attrs.get("batch", 0) or 0)
+
+        dim = int(attrs.get("dim", 0) or 0)
+        ffn = int(attrs.get("ffn_dim", 0) or 0)
+        qh = int(attrs.get("q_heads", attrs.get("kv_heads", 0)) or 0)
+        kvh = int(attrs.get("kv_heads", attrs.get("n_kv_heads", 0)) or 0)
+        hd = int(attrs.get("head_dim", 0) or 0)
+        q_dim = int(attrs.get("q_dim", qh * hd) or 0)
+        kv_dim = int(attrs.get("kv_dim", kvh * hd) or 0)
+        o_dim = int(attrs.get("o_dim", qh * hd) or 0)
+
+        if b <= 0:
+            return default
+
+        token_len = seq_len if phase == "prefill" else 1
+        kv_len = seq_len
+
+        name = (node.name or "").upper()
+
+        if name == "LN" and dim > 0:
+            return float(b * token_len * dim)
+
+        if name in ("Q", "K", "V") and dim > 0:
+            out_dim = q_dim if name == "Q" else kv_dim
+            if out_dim <= 0:
+                return default
+            return float(2.0 * dim * out_dim * b * token_len)
+
+        if name == "QK" and qh > 0 and hd > 0:
+            if phase == "prefill":
+                return float(2.0 * b * qh * hd * token_len * token_len)
+            return float(2.0 * b * qh * hd * kv_len)
+
+        if name == "SOFTMAX" and qh > 0:
+            if phase == "prefill":
+                return float(b * qh * token_len * token_len)
+            return float(b * qh * kv_len)
+
+        if name == "SV" and qh > 0 and hd > 0:
+            if phase == "prefill":
+                return float(2.0 * b * qh * hd * token_len * token_len)
+            return float(2.0 * b * qh * hd * kv_len)
+
+        if name == "O" and dim > 0 and o_dim > 0:
+            return float(2.0 * o_dim * dim * b * token_len)
+
+        if name in ("FFN_W1", "FFN_W3") and dim > 0 and ffn > 0:
+            return float(2.0 * dim * ffn * b * token_len)
+
+        if name == "FFN_W2" and dim > 0 and ffn > 0:
+            return float(2.0 * ffn * dim * b * token_len)
+
+        if name in ("SWIGLU", "GELU") and ffn > 0:
+            return float(b * ffn * token_len)
+
+        if name == "ADD" and dim > 0:
+            return float(b * dim * token_len)
+
+        if name == "IDENTITY" and dim > 0:
+            return float(b * dim * token_len)
+
+        if name in ("KV_READ", "KV_WRITE"):
+            return 0.0
+
+        return default
+
+    # --------------------------
     # Node device cost
     # --------------------------
     def node_device_cost(self, node, dev: DeviceSpec, batch: int, seq_len: int, phase: str) -> float:
@@ -228,7 +303,7 @@ class CostModel:
 
         # NPU: baseline model
         if dev.type == "npu":
-            flops = float(getattr(node, "flops", 0.0) or 0.0)
+            flops = self.estimate_flops(node, batch, seq_len, phase)
             rd = int(getattr(node, "bytes_read", 0) or 0)
             wr = int(getattr(node, "bytes_write", 0) or 0)
             return self.flop_time(flops, dev) + self.mem_time(rd + wr, dev)
@@ -253,7 +328,7 @@ class CostModel:
 
 
         # Other / fallback: baseline (flops + mem)
-        flops = float(getattr(node, "flops", 0.0) or 0.0)
+        flops = self.estimate_flops(node, batch, seq_len, phase)
         rd = int(getattr(node, "bytes_read", 0) or 0)
         wr = int(getattr(node, "bytes_write", 0) or 0)
         return self.flop_time(flops, dev) + self.mem_time(rd + wr, dev)

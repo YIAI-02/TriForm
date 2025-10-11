@@ -99,20 +99,10 @@ class HEFTScheduler:
         total_compute = 0.0
         total_w = 0.0
         k = 0
-        # Dynamically adjust flops and weight_size by seq_len and batch
-        node_flops = node.flops
+        seq_len = int(getattr(self, "seq_len", 0) or 0)
+        batch = int(getattr(self, "batch", 0) or 0)
+        node_flops = self.cost.estimate_flops(node, batch, seq_len, phase)
         node_weight_size = node.weight_size
-        seq_len = getattr(self, "seq_len", None)
-        batch = getattr(self, "batch", None)
-        if hasattr(node, "attrs") and node.attrs:
-            base_seq = node.attrs.get("seq_len", None)
-            base_batch = node.attrs.get("batch", None)
-            if base_seq and seq_len and base_seq > 0 and seq_len != base_seq:
-                node_flops = node_flops * seq_len / base_seq
-                node_weight_size = node_weight_size * seq_len / base_seq
-            if base_batch and batch and base_batch > 0 and batch != base_batch:
-                node_flops = node_flops * batch / base_batch
-                node_weight_size = node_weight_size * batch / base_batch
         for d in devs:
             if not node.allowed.get(d.type, True):
                 continue
