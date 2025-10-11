@@ -17,16 +17,6 @@ DEFAULT_CONFIG = {
 # Hybrid scheduling params
 # =========================
 ALLOW_HYBRID: bool = True
-HYBRID_GATE_BY_DIFF: bool = True
-HYBRID_RELATIVE_DIFF: float = 0.05    # <=5% diff
-HYBRID_ABSOLUTE_MARGIN: float = 1e-3  # <=1 ms
-
-HYSTERESIS_ENABLE: bool = True
-HYST_REL_ENTER: float = 0.03          # <3%
-HYST_ABS_ENTER: float = 5e-4          # <0.5 ms
-HYST_REL_EXIT: float  = 0.10          # >10%
-HYST_ABS_EXIT: float  = 2e-3          # >2 ms
-
 # =========================
 # Rank-U weight load option
 # =========================
@@ -39,7 +29,7 @@ ENABLE_TWO_PASS_FORMAT_TUNING: bool = True
 WEIGHT_FORMAT_JSON_PATH: str = "./format_tuning/weight_storage_suggestion.json"
 
 # Progressive multi-pass tuning (iterate until converged or reach max passes)
-FORMAT_TUNING_MAX_PASSES: int = 1
+FORMAT_TUNING_MAX_PASSES: int = 10
 # stop when |Δtime| <= TIME_EPS AND mapping_change_ratio <= MAP_EPS
 FORMAT_TUNING_TIME_EPS: float = 1e-4      # 0.1 ms
 FORMAT_TUNING_MAP_EPS: float  = 0.01      # <=1% of weights changed
@@ -79,3 +69,39 @@ PIM_FORMULA_PATHS = [
 ]
 # PIM 频率（GHz）：cycles / (PIM_FREQ_GHZ * 1e9) = seconds
 PIM_FREQ_GHZ: float = 1.0
+
+# =========================
+# Operator device constraints
+# =========================
+# 定义哪些算子类型可以在哪些设备上运行
+# True 表示允许，False 表示禁止
+OPERATOR_DEVICE_ALLOWED = {
+    # Linear/GEMM 类算子 - NPU和PIM都支持
+    "Q": {"cpu": True, "npu": True, "pim": True},
+    "K": {"cpu": True, "npu": True, "pim": True},
+    "V": {"cpu": True, "npu": True, "pim": True},
+    "O": {"cpu": True, "npu": True, "pim": True},
+    "FFN_W1": {"cpu": True, "npu": True, "pim": True},
+    "FFN_W2": {"cpu": True, "npu": True, "pim": True},
+    "FFN_W3": {"cpu": True, "npu": True, "pim": True},
+    
+    # Attention 相关算子 - PIM支持QK/SV matmul
+    "QK": {"cpu": True, "npu": True, "pim": True},
+    "SV": {"cpu": True, "npu": True, "pim": True},
+    "Softmax": {"cpu": True, "npu": True, "pim": True},
+    
+    # 逐元素操作
+    "Add": {"cpu": True, "npu": True, "pim": False},
+    "LN": {"cpu": True, "npu": True, "pim": False},
+    "SwiGLU": {"cpu": True, "npu": True, "pim": False},
+    "GELU": {"cpu": True, "npu": True, "pim": False},
+    "Act": {"cpu": True, "npu": True, "pim": True}, 
+    
+    # 其他
+    "Identity": {"cpu": True, "npu": True, "pim": True},
+    "KV_read": {"cpu": True, "npu": True, "pim": True},
+    "KV_write": {"cpu": True, "npu": True, "pim": True},
+}
+
+# 默认策略：如果算子不在上面的列表中，使用这个
+DEFAULT_OPERATOR_ALLOWED = {"cpu": True, "npu": True, "pim": False}

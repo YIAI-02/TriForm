@@ -11,7 +11,7 @@ class TaskNode:
     bytes_write: float = 0.0
     weight_id: Optional[str] = None
     weight_size: int = 0
-    allowed: Dict[str, bool] = field(default_factory=lambda: {"cpu": True, "npu": True, "pim": True})
+    allowed: Dict[str, bool] = field(default_factory=dict)
     attrs: Dict[str, Any] = field(default_factory=dict)
 
 class TaskGraph:

@@ -248,11 +248,8 @@ class CostModel:
             if opf is not None:
                 V, N, H = self._infer_vnH_for_node(node, seq_len)
                 cycles = opf.eval_cycles(seqlen=seq_len, vector_dim=V, matrix_col=N, n_heads=H)
-                # Only debug for layer 0 nodes
-                if getattr(node, "attrs", {}).get("layer") == 0:
-                    # print(f"[PIM DEBUG] Node '{node.name}' matched key '{matched_key}': cycles={cycles:.0f}, (L,V,N,H)=({seq_len},{V},{N},{H})")
-                    if cycles > 0.0 and PIM_FREQ_GHZ > 0.0:
-                        return cycles / (PIM_FREQ_GHZ * 1e9)
+                if cycles > 0.0 and PIM_FREQ_GHZ > 0.0:
+                    return cycles / (PIM_FREQ_GHZ * 1e9)
 
 
         # Other / fallback: baseline (flops + mem)
@@ -282,3 +279,5 @@ class CostModel:
         read_elems = 2 * batch * n_kv * head_dim * seq_len  # K+V
         write_elems = 2 * batch * n_kv * head_dim           # append 1 token
         return read_elems * dtype_b, write_elems * dtype_b
+
+    

@@ -11,6 +11,8 @@ from hardware import demo_cluster, Cluster
 from model_parser import build_graph
 from scheduler import HEFTScheduler
 from cost_model import CostModel, DTYPE_BYTES
+from buffer_manager import BufferManager
+from task_graph import TaskGraph
 from config import (
     DEFAULT_CONFIG,
     ENABLE_TWO_PASS_FORMAT_TUNING,
@@ -54,9 +56,8 @@ def plan_memory_and_label(cfg: Dict, cluster: Cluster) -> PlanLabel:
     medium:  KV_total <= cap < (KV_total + FC_total) -> kv_in_pim=True, greedily pin FC
     large:   cap >= KV_total + FC_total -> kv_in_pim=True, all FC pinned
     """
-    # Build graph once to collect weight sizes (independent of seq_len)
-    seq_len = int(cfg.get("prefill_len", 128))
-    g, shape = build_graph(cfg, seq_len=seq_len, phase="prefill")
+    # Build unified graph once to collect weight sizes
+    g, shape = build_graph(cfg)
 
     dtype_bytes = int(DTYPE_BYTES.get(cfg.get("dtype", "fp16"), 2))
     # KV total bytes over prefill+decode
@@ -116,33 +117,35 @@ def plan_memory_and_label(cfg: Dict, cluster: Cluster) -> PlanLabel:
     if DEBUG_MAIN:
         label.print_debug()
     return label
+
 # ------------------------------
 # Progressive simulation helpers
 # ------------------------------
-def simulate_prefill(sched: HEFTScheduler, cfg: Dict) -> float:
-    """Prefill 调度（DAG 内部可并行，HEFT/Hybrid 会自动并发）。"""
+def simulate_prefill(sched: HEFTScheduler, cfg: Dict, graph: TaskGraph) -> float:
+    """
+    Simulate prefill phase: process entire prefix at once.
+    current_length = prefill_len
+    """
     prefill_len = int(cfg.get("prefill_len", 128))
-    sched.set_seq_len(prefill_len)
-    g_prefill, _ = build_graph(cfg, prefill_len, phase="prefill")
-    prefill_sched = sched.schedule(g_prefill, phase="prefill")
+    sched.set_seq_len(prefill_len)  # current_length for prefill
+    prefill_sched = sched.schedule(graph, phase="prefill")
     prefill_time = sched.makespan(prefill_sched)
     return prefill_time
 
 
-def simulate_decode_progressive(sched: HEFTScheduler, cfg: Dict, prefill_end: float) -> float:
+def simulate_decode_progressive(sched: HEFTScheduler, cfg: Dict, graph: TaskGraph, prefill_end: float) -> float:
     """
-    Progressive decode：token t 使用 seq_len = prefill_len + t；
-    累积调度，设备可用时间从 prefill_end 开始延续。
+    Simulate decode phase progressively: one token at a time.
+    current_length increases from (prefill_len) to (prefill_len + decode_len - 1)
     """
     prefill_len = int(cfg.get("prefill_len", 128))
     decode_len = int(cfg.get("decode_len", 32))
-
     global_end = prefill_end
-    for t in range(1, decode_len + 1):
-        cur_seq = prefill_len + t
-        sched.set_seq_len(cur_seq)
-        g_dec_t, _ = build_graph(cfg, cur_seq, phase="decode")
-        dec_sched_t = sched.schedule(g_dec_t, phase="decode")
+    
+    for t in range(decode_len):
+        current_length = prefill_len + t  # Total sequence length so far
+        sched.set_seq_len(current_length)
+        dec_sched_t = sched.schedule(graph, phase="decode")
         token_end = sched.makespan(dec_sched_t)
         if token_end > global_end:
             global_end = token_end
@@ -172,6 +175,7 @@ def run(cfg: Dict):
 
     prefill_len = int(cfg.get("prefill_len", 128))
     batch = int(cfg.get("batch", 1))
+    graph, shape = build_graph(cfg)
 
     # 多次迭代直至收敛
     fmt_map: Dict[str, str] = {}
@@ -179,15 +183,17 @@ def run(cfg: Dict):
     prev_map: Dict[str, str] = {}
     best_total: float = None  # type: ignore
 
+    # shared buffer manager across passes to accumulate stats
+    buffer_mgr = BufferManager()
     for p in range(1, FORMAT_TUNING_MAX_PASSES + 1):
         # 新建调度器（确保状态干净），并加载当前主存格式建议
-        sched = HEFTScheduler(cluster, cost, label, batch=batch, seq_len=prefill_len)
+        sched = HEFTScheduler(cluster, cost, label, batch=batch, seq_len=prefill_len, buffer=buffer_mgr)
         sched.set_storage_format_map(fmt_map)
 
         # Prefill
-        prefill_time = simulate_prefill(sched, cfg)
-        # Progressive Decode（seq_len 按 token 增长）
-        decode_time = simulate_decode_progressive(sched, cfg, prefill_end=prefill_time)
+        prefill_time = simulate_prefill(sched, cfg, graph)
+        # Progressive Decode（current_length 按 token 增长）
+        decode_time = simulate_decode_progressive(sched, cfg, graph, prefill_end=prefill_time)
 
         total_time = prefill_time + decode_time
         if best_total is None or total_time < best_total:

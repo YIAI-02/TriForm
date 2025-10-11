@@ -24,7 +24,7 @@ def load_shape_json(path: Path) -> Dict[str, Any]:
     with path.open("r", encoding="utf-8") as f:
         return json.load(f)
 
-def parse_model_shape_from_file(family: str, variant: str, batch: int, seq_len: int, override: Dict[str,Any]) -> ModelShape:
+def parse_model_shape_from_file(family: str, variant: str, batch: int, max_seq_len: int, override: Dict[str,Any]) -> ModelShape:
     shape_file = Path(override.get("shape_file", ""))
     if shape_file and shape_file.is_file():
         data = load_shape_json(shape_file)
@@ -47,14 +47,22 @@ def parse_model_shape_from_file(family: str, variant: str, batch: int, seq_len: 
         n_heads=q_head_num,
         n_kv_heads=kv_head_num,
         batch=batch,
-        seq_len=seq_len,
+        max_seq_len=max_seq_len,
     )
 
-def build_graph(cfg: Dict[str, Any], seq_len: int, phase: str):
+def build_graph(cfg: Dict[str, Any]):
+    """
+    Build a unified task graph that works for both prefill and decode.
+    The graph structure is phase-independent; only runtime costs vary.
+    """
     family = cfg.get("model_family", cfg.get("model_type","llama"))
     variant = cfg.get("model_variant", "7b")
     batch = cfg.get("batch", 1)
-    shape = parse_model_shape_from_file(family, variant, batch, seq_len, cfg)
+    # Use prefill_len + decode_len as max_seq_len for graph structure
+    max_seq_len = cfg.get("prefill_len", 128) + cfg.get("decode_len", 32)
+    
+    shape = parse_model_shape_from_file(family, variant, batch, max_seq_len, cfg)
     md = make_model_def(family)
     dtype_bytes = DTYPE_BYTES.get(cfg.get('dtype','fp16'), 2)
-    return md.build(shape, phase=phase, dtype_bytes=dtype_bytes), shape
+    
+    return md.build(shape, dtype_bytes=dtype_bytes), shape
