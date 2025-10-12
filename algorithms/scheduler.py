@@ -274,7 +274,7 @@ class HEFTScheduler:
         return max(0.0, end - t0)
 
     def _kv_transfer_time_if_needed(self, node: TaskNode, dev: DeviceSpec, phase: str, t0: float, commit: bool) -> float:
-        """Only for decode on PIM in small mode: host<->PIM KV movement."""
+        """Only for decode on PIM in small mode: trigger PIM LRU (no extra timeline)."""
         if phase != "decode":
             return 0.0
         if node.name not in ("KV_read", "KV_write"):
@@ -284,13 +284,32 @@ class HEFTScheduler:
         if getattr(self.label, "kv_in_pim", False):
             return 0.0
 
-        r, w = self.cost.kv_rw_bytes_decode(node, self.batch, self.seq_len)
-        host = self.cost.get_host_device().name
-        if node.name == "KV_read":
-            _, end = self.comm.reserve(host, dev.name, r, earliest=t0, commit=commit)
-        else:
-            _, end = self.comm.reserve(dev.name, host, w, earliest=t0, commit=commit)
-        return max(0.0, end - t0)
+        if not commit:
+            return 0.0
+
+        # Trigger PIM LRU eviction: KV streaming temporarily occupies buffer space.
+        cache = self.buffer.device_cache.get(dev.name)
+        if cache is None:
+            self.buffer.ensure_device_cache(dev.name, self._pim_cache_capacity_for(dev))
+            cache = self.buffer.device_cache.get(dev.name)
+        if cache is None or cache.capacity <= 0:
+            return 0.0
+
+        read_bytes, write_bytes = self.cost.kv_rw_bytes_decode(node, self.batch, self.seq_len)
+        temp_bytes = max(read_bytes, write_bytes)
+        if temp_bytes <= 0:
+            return 0.0
+
+        temp_key = f"__kv_stream__{node.attrs.get('layer', node.id)}"
+        added = cache.add(temp_key, temp_bytes, pinned=False)
+        if added:
+            cache.used -= cache.items.pop(temp_key, 0)
+        try:
+            cache.order.remove(temp_key)
+        except ValueError:
+            pass
+        cache.pinned.discard(temp_key)
+        return 0.0
 
     def _earliest_finish_on_device(self, g: TaskGraph, nid: str, dev: DeviceSpec, phase: str, commit: bool) -> Tuple[float, float]:
         node = g.nodes[nid]
@@ -332,7 +351,7 @@ class HEFTScheduler:
 
         # 4) overlap transfer
         wload_t = self._weight_load_time(node,dev,t0,commit)
-        kv_t = self._kv_transfer_time_if_needed(node,dev,phase,t0,commit)
+        self._kv_transfer_time_if_needed(node,dev,phase,t0,commit)
 
         # 5) npu overlap
         if dev.type == "npu":
@@ -340,13 +359,12 @@ class HEFTScheduler:
             if inbound_end_times:
                 max_inbound_end = max(inbound_end_times)
                 inbound_overlap = max(0,max_inbound_end-t0) #max_inbound_end 数据最晚可用时间和设备空闲时间是否有重叠，没有就取0
-            total = max(compute_t,wload_t,kv_t,inbound_overlap)
+            total = max(compute_t,wload_t,inbound_overlap)
             finish = t0 + total
         else:
             cursor = t0
             cursor += wload_t
             cursor += compute_t
-            cursor += kv_t
             finish = cursor
 
         if commit:
@@ -400,11 +418,11 @@ class HEFTScheduler:
 
         t_w_npu = self._weight_load_time(node, npu_dev, t_npu_free, commit)
         t_w_pim = self._weight_load_time(node, pim_dev, t_pim_free, commit)
-        t_kv_npu = self._kv_transfer_time_if_needed(node, npu_dev, phase, t_npu_free, commit)
-        t_kv_pim = self._kv_transfer_time_if_needed(node, pim_dev, phase, t_pim_free, commit)
+        self._kv_transfer_time_if_needed(node, npu_dev, phase, t_npu_free, commit)
+        self._kv_transfer_time_if_needed(node, pim_dev, phase, t_pim_free, commit)
 
-        start_npu = max(t_npu_free, t_ready_npu, t_npu_free + t_w_npu, t_npu_free + t_kv_npu)
-        start_pim = max(t_pim_free, t_ready_pim, t_pim_free + t_w_pim, t_pim_free + t_kv_pim)
+        start_npu = max(t_npu_free, t_ready_npu, t_npu_free + t_w_npu)
+        start_pim = max(t_pim_free, t_ready_pim, t_pim_free + t_w_pim)
 
         tN = self.cost.node_device_cost(node, npu_dev, self.batch, self.seq_len, phase)
         tP = self.cost.node_device_cost(node, pim_dev, self.batch, self.seq_len, phase)
