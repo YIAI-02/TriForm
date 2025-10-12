@@ -151,16 +151,9 @@ class HEFTScheduler:
         devs = list(self.cluster.devices.values())
         total = 0.0
         k = 0
-        bytes_nd = max(u.bytes_write, v.bytes_read, 16 * 1024)
-        seq_len = getattr(self, "seq_len", None)
-        batch = getattr(self, "batch", None)
-        if hasattr(u, "attrs") and u.attrs:
-            base_seq = u.attrs.get("seq_len", None)
-            base_batch = u.attrs.get("batch", None)
-            if base_seq and seq_len and base_seq > 0 and seq_len != base_seq:
-                bytes_nd = bytes_nd * seq_len / base_seq
-            if base_batch and batch and base_batch > 0 and batch != base_batch:
-                bytes_nd = bytes_nd * batch / base_batch
+        u_read, u_write = self._estimate_node_io_bytes(u)
+        v_read, _ = self._estimate_node_io_bytes(v)
+        payload_bytes = max(u_write, v_read, 16 * 1024)
         for i in range(len(devs)):
             for j in range(len(devs)):
                 di, dj = devs[i], devs[j]
@@ -168,7 +161,7 @@ class HEFTScheduler:
                     continue
                 src_fmt = self.cost.device_preferred_fmt(di)
                 dst_fmt = self.cost.device_preferred_fmt(dj)
-                payload_src = self.cost.format_size(int(bytes_nd), src_fmt)
+                payload_src = self.cost.format_size(int(payload_bytes), src_fmt)
                 t_link = self.cost.comm_cost(di, dj, payload_src)
                 t_conv = 0.0
                 if di.type != dj.type:
@@ -176,6 +169,47 @@ class HEFTScheduler:
                 total += (t_link + t_conv)
                 k += 1
         return total / k if k else 0.0
+
+    def _estimate_node_io_bytes(
+        self,
+        node: TaskNode,
+        *,
+        batch: Optional[int] = None,
+        seq_len: Optional[int] = None,
+    ) -> Tuple[int, int]:
+        batch = int(batch if batch is not None else getattr(self, "batch", 0) or 0)
+        seq_len = int(seq_len if seq_len is not None else getattr(self, "seq_len", 0) or 0)
+        attrs = getattr(node, "attrs", {}) or {}
+        base_seq = int(attrs.get("seq_len", attrs.get("base_seq_len", 0)) or 0)
+        base_batch = int(attrs.get("batch", attrs.get("base_batch", 0)) or 0)
+
+        if seq_len <= 0:
+            seq_len = base_seq if base_seq > 0 else 1
+        if batch <= 0:
+            batch = base_batch if base_batch > 0 else 1
+
+        read = int(getattr(node, "bytes_read", 0) or 0)
+        write = int(getattr(node, "bytes_write", 0) or 0)
+
+        # Dynamic estimation for KV ops uses dedicated helper
+        if (node.name or "").lower() in {"kv_read", "kv_write"}:
+            r, w = self.cost.kv_rw_bytes_decode(node, max(1, batch), max(1, seq_len))
+            if (node.name or "").lower() == "kv_read":
+                return max(r, 0), max(r, 0)
+            return max(w, 0), max(w, 0)
+
+        def scale(value: int) -> int:
+            out = float(value)
+            if base_seq > 0 and seq_len > 0:
+                out *= seq_len / float(base_seq)
+            if base_batch > 0 and batch > 0:
+                out *= batch / float(base_batch)
+            return int(max(out, 0.0))
+
+        read = scale(read)
+        write = scale(write)
+
+        return read, write
 
     def _upward_rank(self, g: TaskGraph, phase: str) -> List[str]:
         # compute rank_u bottom-up
@@ -289,21 +323,40 @@ class HEFTScheduler:
         node = g.nodes[nid]
 
         # 1) inputs ready (consider cross-device comm + dst format conversion)
-        ready_time = 0.0
+        inbound_start_times: List[float] = []
+        inbound_end_times: List[float] = []
+        node_read, _ = self._estimate_node_io_bytes(node)
         for u in g.predecessors(nid):
             pred_finish = self._node_finish_time.get(u, 0.0)
             pred_dev_name = self._node_placement.get(u, dev.name)
             pred_dev = self.cluster.devices[pred_dev_name]
             if pred_dev.name == dev.name:
-                ready_time = max(ready_time, pred_finish)
-            else:
-                payload_nd = max(g.nodes[u].bytes_write, node.bytes_read, 16 * 1024)
-                src_fmt = self._node_out_fmt.get(u, self.cost.device_preferred_fmt(pred_dev))
-                dst_fmt = self.cost.device_preferred_fmt(dev)
-                payload_src = self.cost.format_size(payload_nd, src_fmt)
-                _, link_end = self.comm.reserve(pred_dev.name, dev.name, payload_src, earliest=pred_finish, commit=commit)
-                dep_end = link_end + self.cost.format_conversion_time(payload_src, src_fmt, dst_fmt, dev)
-                ready_time = max(ready_time, dep_end)
+                inbound_start_times.append(pred_finish)
+                inbound_end_times.append(pred_finish)
+                continue
+
+            src_fmt = self._node_out_fmt.get(u, self.cost.device_preferred_fmt(pred_dev))
+            dst_fmt = self.cost.device_preferred_fmt(dev)
+            pred_node = g.nodes[u]
+            _, pred_write = self._estimate_node_io_bytes(pred_node)
+            payload_nd = max(pred_write, node_read, 16 * 1024)
+            payload_src = self.cost.format_size(payload_nd, src_fmt)
+            link_start, link_end = self.comm.reserve(
+                pred_dev.name,
+                dev.name,
+                payload_src,
+                earliest=pred_finish,
+                commit=commit,
+            )
+            conv_t = self.cost.format_conversion_time(payload_src, src_fmt, dst_fmt, dev)
+            dep_end = link_end + conv_t
+            inbound_start_times.append(link_start)
+            inbound_end_times.append(dep_end)
+
+        if dev.type == "npu":
+            ready_time = max(inbound_start_times, default=0.0)
+        else:
+            ready_time = max(inbound_end_times, default=0.0)
 
         # 2) device available
         t0 = max(self.avail[dev.name], ready_time)
@@ -315,8 +368,20 @@ class HEFTScheduler:
         wload_t = self._weight_load_time(node, dev, t0, commit)
         kv_t = self._kv_transfer_time_if_needed(node, dev, phase, t0, commit)
 
-        # 5) finish
-        finish = t0 + max(compute_t, wload_t, kv_t)
+        # 5) finish with device-specific overlap model
+        if dev.type == "npu":
+            inbound_overlap = 0.0
+            if inbound_end_times:
+                max_inbound_end = max(inbound_end_times)
+                inbound_overlap = max(0.0, max_inbound_end - t0)
+            total = max(compute_t, wload_t, kv_t, inbound_overlap)
+            finish = t0 + total
+        else:
+            cursor = t0
+            cursor += wload_t
+            cursor += compute_t
+            cursor += kv_t
+            finish = cursor
         if commit:
             self._node_out_fmt[nid] = self.cost.device_preferred_fmt(dev)
         return t0, finish
@@ -338,22 +403,33 @@ class HEFTScheduler:
 
     def _ready_time_for_device(self, g: TaskGraph, nid: str, dev: DeviceSpec, phase: str, commit: bool) -> float:
         node = g.nodes[nid]
-        ready = 0.0
+        inbound_start_times: List[float] = []
+        inbound_end_times: List[float] = []
+        node_read, _ = self._estimate_node_io_bytes(node)
         for u in g.predecessors(nid):
             pred_finish = self._node_finish_time.get(u, 0.0) #前驱节点完成时间
             pred_dev_name = self._node_placement.get(u, dev.name) #前驱节点被分配的设备名称
             pred_dev = self.cluster.devices[pred_dev_name] #前驱节点被分配的设备
             if pred_dev.name == dev.name: #同设备
-                ready = max(ready, pred_finish)
-            else:
-                payload_nd = max(g.nodes[u].bytes_write, node.bytes_read, 16 * 1024)
-                src_fmt = self._node_out_fmt.get(u, self.cost.device_preferred_fmt(pred_dev))
-                dst_fmt = self.cost.device_preferred_fmt(dev)
-                payload_src = self.cost.format_size(payload_nd, src_fmt)
-                _, link_end = self.comm.reserve(pred_dev.name, dev.name, payload_src, earliest=pred_finish, commit=commit)
-                dep_end = link_end + self.cost.format_conversion_time(payload_src, src_fmt, dst_fmt, dev)
-                ready = max(ready, dep_end)
-        return ready
+                inbound_start_times.append(pred_finish)
+                inbound_end_times.append(pred_finish)
+                continue
+
+            src_fmt = self._node_out_fmt.get(u, self.cost.device_preferred_fmt(pred_dev))
+            dst_fmt = self.cost.device_preferred_fmt(dev)
+            pred_node = g.nodes[u]
+            _, pred_write = self._estimate_node_io_bytes(pred_node)
+            payload_nd = max(pred_write, node_read, 16 * 1024)
+            payload_src = self.cost.format_size(payload_nd, src_fmt)
+            link_start, link_end = self.comm.reserve(pred_dev.name, dev.name, payload_src, earliest=pred_finish, commit=commit)
+            conv_t = self.cost.format_conversion_time(payload_src, src_fmt, dst_fmt, dev)
+            dep_end = link_end + conv_t
+            inbound_start_times.append(link_start)
+            inbound_end_times.append(dep_end)
+
+        if dev.type == "npu":
+            return max(inbound_start_times, default=0.0)
+        return max(inbound_end_times, default=0.0)
 
     def _earliest_finish_hybrid(self, g: TaskGraph, nid: str, phase: str, commit: bool) -> Optional[Dict[str, object]]:
         node = g.nodes[nid]
