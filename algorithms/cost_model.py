@@ -92,7 +92,6 @@ class CostModel:
     def __init__(self, cluster: Cluster, dtype: str = "fp16"):
         self.cluster = cluster
         self.dtype = dtype
-        # 尝试加载 PIM 公式
         self._pim_formula: Optional[PIMFormulaLatency] = PIMFormulaLatency.try_load_from_paths(PIM_FORMULA_PATHS)
 
     # --------------------------
@@ -135,7 +134,7 @@ class CostModel:
     def format_conversion_time(self, size_src_bytes: int, src_fmt: str, dst_fmt: str, dev: DeviceSpec) -> float:
         if src_fmt == dst_fmt:
             return 0.0
-        bw_gbs = float(FORMAT_CONV_BW_GBs.get(dev.type, FORMAT_CONV_BW_GBs.get("default", 50.0)))
+        bw_gbs = float(FORMAT_CONV_BW_GBs.get(dev.type, FORMAT_CONV_BW_GBs.get("default", 50.0))) #优先查找dev.type的，如果也没有就查找default，如果都没有就用默认
         bw = bw_gbs * 1e9
         return 0.0 if bw <= 0 else size_src_bytes / bw
 
@@ -143,7 +142,7 @@ class CostModel:
         host = self.get_host_device()
         t_move = self.link_time(size_src_bytes, host, dev)
         t_conv = self.format_conversion_time(size_src_bytes, src_fmt, dst_fmt, dev)
-        return t_move + t_conv
+        return max(t_move,t_conv)
 
     # --------------------------
     # PIM op -> formula key / args

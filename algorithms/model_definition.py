@@ -22,13 +22,9 @@ class ModelShape:
 
 # ---- Common helpers ----
 def get_op_allowed(op_name: str) -> Dict[str, bool]:
-    """根据算子名称获取设备约束"""
     return OPERATOR_DEVICE_ALLOWED.get(op_name, DEFAULT_OPERATOR_ALLOWED).copy()
 
-def linear_flops(inp, out):
-    return 2.0 * inp * out
-
-def add_llama_block(g: TaskGraph, l: int, shape: ModelShape, phase: str, dtype_bytes: int):
+def add_llama_block(g: TaskGraph, l: int, shape: ModelShape, dtype_bytes: int):
     b = shape.batch
     dim, ffn = shape.dim, shape.ffn_dim
     qh, kvh, hd = shape.n_heads, shape.n_kv_heads, shape.head_dim
@@ -93,11 +89,10 @@ def add_llama_block(g: TaskGraph, l: int, shape: ModelShape, phase: str, dtype_b
                         attrs=dict(base_attr), allowed=get_op_allowed("FFN_W2")))
     g.add_node(TaskNode(nid_Add2, "Add", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("Add")))
 
-    # KV explicit ops in decode
-    if phase == "decode":
-        nid_KVr=f"L{l}_KV_read"; nid_KVw=f"L{l}_KV_write"
-        g.add_node(TaskNode(nid_KVr, "KV_read", attrs=dict(base_attr), allowed=get_op_allowed("KV_read")))
-        g.add_node(TaskNode(nid_KVw, "KV_write", attrs=dict(base_attr), allowed=get_op_allowed("KV_write")))
+    # KV explicit ops (used during decode, no cost in prefill)
+    nid_KVr=f"L{l}_KV_read"; nid_KVw=f"L{l}_KV_write"
+    g.add_node(TaskNode(nid_KVr, "KV_read", attrs=dict(base_attr), allowed=get_op_allowed("KV_read")))
+    g.add_node(TaskNode(nid_KVw, "KV_write", attrs=dict(base_attr), allowed=get_op_allowed("KV_write")))
 
     # Wire connections (pre-norm, sequential)
     x_in = f"L{l-1}_Add2" if l>0 else None
@@ -106,12 +101,12 @@ def add_llama_block(g: TaskGraph, l: int, shape: ModelShape, phase: str, dtype_b
         g.add_edge(x_in, nid_X); g.add_edge(nid_X, nid_LN1)
 
     g.add_edge(nid_LN1, nid_Q); g.add_edge(nid_LN1, nid_K); g.add_edge(nid_LN1, nid_V)
-    if phase == "decode":
-        g.add_edge(nid_Q, nid_QK); g.add_edge(nid_QK, nid_SO); g.add_edge(nid_SO, nid_SV); g.add_edge(nid_SV, nid_O)
-        g.add_edge(nid_KVr, nid_QK); g.add_edge(nid_KVr, nid_SV)
-        g.add_edge(nid_K, nid_KVw); g.add_edge(nid_V, nid_KVw)
-    else:
-        g.add_edge(nid_Q, nid_QK); g.add_edge(nid_K, nid_QK); g.add_edge(nid_QK, nid_SO); g.add_edge(nid_SO, nid_SV); g.add_edge(nid_V, nid_SV); g.add_edge(nid_SV, nid_O)
+    g.add_edge(nid_Q, nid_QK); g.add_edge(nid_K, nid_QK)
+    g.add_edge(nid_KVr, nid_QK)
+    g.add_edge(nid_QK, nid_SO); g.add_edge(nid_SO, nid_SV)
+    g.add_edge(nid_V, nid_SV); g.add_edge(nid_KVr, nid_SV)
+    g.add_edge(nid_SV, nid_O)
+    g.add_edge(nid_K, nid_KVw); g.add_edge(nid_V, nid_KVw)
     g.add_edge(nid_O, nid_Add1);
     if x_in: g.add_edge(x_in, nid_Add1)
 
@@ -119,7 +114,7 @@ def add_llama_block(g: TaskGraph, l: int, shape: ModelShape, phase: str, dtype_b
     g.add_edge(nid_W1, nid_ACT); g.add_edge(nid_W3, nid_ACT)
     g.add_edge(nid_ACT, nid_W2); g.add_edge(nid_W2, nid_Add2); g.add_edge(nid_Add1, nid_Add2)
 
-def add_mpt_block(g: TaskGraph, l: int, shape: ModelShape, phase: str, dtype_bytes: int):
+def add_mpt_block(g: TaskGraph, l: int, shape: ModelShape, dtype_bytes: int):
     # Similar to LLaMA but MLP uses GELU (no W3 gate by default)
     b = shape.batch
     dim, ffn = shape.dim, shape.ffn_dim
@@ -159,10 +154,9 @@ def add_mpt_block(g: TaskGraph, l: int, shape: ModelShape, phase: str, dtype_byt
     g.add_node(TaskNode(nid_W2,"FFN_W2",flops=0.0,weight_id=f"L{l}_W2",weight_size=ffn*dim*dtype_bytes,attrs=dict(base_attr),allowed=get_op_allowed("FFN_W2")))
     g.add_node(TaskNode(nid_Add2,"Add",flops=0.0,attrs=dict(base_attr),allowed=get_op_allowed("Add")))
 
-    if phase=='decode':
-        nid_KVr=f"L{l}_KV_read"; nid_KVw=f"L{l}_KV_write"
-        g.add_node(TaskNode(nid_KVr,"KV_read",attrs=dict(base_attr),allowed=get_op_allowed("KV_read")))
-        g.add_node(TaskNode(nid_KVw,"KV_write",attrs=dict(base_attr),allowed=get_op_allowed("KV_write")))
+    nid_KVr=f"L{l}_KV_read"; nid_KVw=f"L{l}_KV_write"
+    g.add_node(TaskNode(nid_KVr,"KV_read",attrs=dict(base_attr),allowed=get_op_allowed("KV_read")))
+    g.add_node(TaskNode(nid_KVw,"KV_write",attrs=dict(base_attr),allowed=get_op_allowed("KV_write")))
 
     x_in=f"L{l-1}_Add2" if l>0 else None
     if x_in:
@@ -170,18 +164,18 @@ def add_mpt_block(g: TaskGraph, l: int, shape: ModelShape, phase: str, dtype_byt
         g.add_edge(x_in,nid_X); g.add_edge(nid_X,nid_LN1)
 
     g.add_edge(nid_LN1,nid_Q); g.add_edge(nid_LN1,nid_K); g.add_edge(nid_LN1,nid_V)
-    if phase=='decode':
-        g.add_edge(nid_Q,nid_QK); g.add_edge(nid_QK,nid_SO); g.add_edge(nid_SO,nid_SV); g.add_edge(nid_SV,nid_O)
-        g.add_edge(nid_KVr,nid_QK); g.add_edge(nid_KVr,nid_SV)
-        g.add_edge(nid_K,nid_KVw); g.add_edge(nid_V,nid_KVw)
-    else:
-        g.add_edge(nid_Q,nid_QK); g.add_edge(nid_K,nid_QK); g.add_edge(nid_QK,nid_SO); g.add_edge(nid_SO,nid_SV); g.add_edge(nid_V,nid_SV); g.add_edge(nid_SV,nid_O)
+    g.add_edge(nid_Q,nid_QK); g.add_edge(nid_K,nid_QK)
+    g.add_edge(nid_KVr,nid_QK)
+    g.add_edge(nid_QK,nid_SO); g.add_edge(nid_SO,nid_SV)
+    g.add_edge(nid_V,nid_SV); g.add_edge(nid_KVr,nid_SV)
+    g.add_edge(nid_SV,nid_O)
+    g.add_edge(nid_K,nid_KVw); g.add_edge(nid_V,nid_KVw)
     g.add_edge(nid_O,nid_Add1);
     if x_in: g.add_edge(x_in,nid_Add1)
 
     g.add_edge(nid_Add1,nid_LN2); g.add_edge(nid_LN2,nid_W1); g.add_edge(nid_W1,nid_G); g.add_edge(nid_G,nid_W2); g.add_edge(nid_W2,nid_Add2); g.add_edge(nid_Add1,nid_Add2)
 
-def add_palm_block(g: TaskGraph, l: int, shape: ModelShape, phase: str, dtype_bytes: int):
+def add_palm_block(g: TaskGraph, l: int, shape: ModelShape, dtype_bytes: int):
     # PaLM uses pre-LN and PARALLEL residual: x + Attn(LN(x)) + MLP(LN(x))
     b = shape.batch
     dim, ffn = shape.dim, shape.ffn_dim
@@ -227,10 +221,9 @@ def add_palm_block(g: TaskGraph, l: int, shape: ModelShape, phase: str, dtype_by
     nid_Add2=f"L{l}_Add2"; g.add_node(TaskNode(nid_Add2,"Add",flops=0.0,attrs=dict(base_attr),allowed=get_op_allowed("Add")))
 
     # KV ops on decode
-    if phase=='decode':
-        nid_KVr=f"L{l}_KV_read"; nid_KVw=f"L{l}_KV_write"
-        g.add_node(TaskNode(nid_KVr,"KV_read",attrs=dict(base_attr),allowed=get_op_allowed("KV_read")))
-        g.add_node(TaskNode(nid_KVw,"KV_write",attrs=dict(base_attr),allowed=get_op_allowed("KV_write")))
+    nid_KVr=f"L{l}_KV_read"; nid_KVw=f"L{l}_KV_write"
+    g.add_node(TaskNode(nid_KVr,"KV_read",attrs=dict(base_attr),allowed=get_op_allowed("KV_read")))
+    g.add_node(TaskNode(nid_KVw,"KV_write",attrs=dict(base_attr),allowed=get_op_allowed("KV_write")))
 
     # Wire
     x_in=f"L{l-1}_Add2" if l>0 else None
@@ -240,12 +233,12 @@ def add_palm_block(g: TaskGraph, l: int, shape: ModelShape, phase: str, dtype_by
 
     # Both branches from same LN
     g.add_edge(nid_LN,nid_Q); g.add_edge(nid_LN,nid_K); g.add_edge(nid_LN,nid_V)
-    if phase=='decode':
-        g.add_edge(nid_Q,nid_QK); g.add_edge(nid_QK,nid_SO); g.add_edge(nid_SO,nid_SV); g.add_edge(nid_SV,nid_O)
-        g.add_edge(nid_KVr,nid_QK); g.add_edge(nid_KVr,nid_SV)
-        g.add_edge(nid_K,nid_KVw); g.add_edge(nid_V,nid_KVw)
-    else:
-        g.add_edge(nid_Q,nid_QK); g.add_edge(nid_K,nid_QK); g.add_edge(nid_QK,nid_SO); g.add_edge(nid_SO,nid_SV); g.add_edge(nid_V,nid_SV); g.add_edge(nid_SV,nid_O)
+    g.add_edge(nid_Q,nid_QK); g.add_edge(nid_K,nid_QK)
+    g.add_edge(nid_KVr,nid_QK)
+    g.add_edge(nid_QK,nid_SO); g.add_edge(nid_SO,nid_SV)
+    g.add_edge(nid_V,nid_SV); g.add_edge(nid_KVr,nid_SV)
+    g.add_edge(nid_SV,nid_O)
+    g.add_edge(nid_K,nid_KVw); g.add_edge(nid_V,nid_KVw)
     # MLP branch
     g.add_edge(nid_LN,nid_W1); g.add_edge(nid_W1,nid_G); g.add_edge(nid_G,nid_W2)
     # Merge both outputs plus residual X
@@ -254,21 +247,27 @@ def add_palm_block(g: TaskGraph, l: int, shape: ModelShape, phase: str, dtype_by
 
 class LLaMADef:
     name = "llama"
-    def build(self, shape: ModelShape, phase: str, dtype_bytes: int) -> TaskGraph:
+    def build(self, shape: ModelShape, dtype_bytes: int) -> TaskGraph:
         g = TaskGraph()
         for l in range(shape.layer_num):
-            add_llama_block(g, l, shape, phase, dtype_bytes)
+            add_llama_block(g, l, shape, dtype_bytes)
         return g
 
 class MPTDef:
     name = "mpt"
-    def build(self, shape: ModelShape, phase: str, dtype_bytes: int) -> TaskGraph:
+    def build(self, shape: ModelShape, dtype_bytes: int) -> TaskGraph:
         g = TaskGraph()
         for l in range(shape.layer_num):
-            add_mpt_block(g, l, shape, phase, dtype_bytes)
+            add_mpt_block(g, l, shape, dtype_bytes)
         return g
 
 class PaLMDef:
+    name = "palm"
+    def build(self, shape: ModelShape, dtype_bytes: int) -> TaskGraph:
+        g = TaskGraph()
+        for l in range(shape.layer_num):
+            add_palm_block(g, l, shape, dtype_bytes)
+        return g
     name = "palm"
     def build(self, shape: ModelShape, phase: str, dtype_bytes: int) -> TaskGraph:
         g = TaskGraph()

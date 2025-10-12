@@ -51,6 +51,7 @@ FORMAT_SIZE_MULTIPLIER = {
     "PIM_OPT": 1.0,
 }
 
+#TODO
 # Format conversion bandwidth (GB/s) per device type
 FORMAT_CONV_BW_GBs = {
     "cpu": 50.0,

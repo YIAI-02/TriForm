@@ -30,6 +30,8 @@ DEBUG_MAIN = False
 class PlanLabel:
     pim_mode: str                 # "small" | "medium" | "large"
     kv_in_pim: bool
+    pim_weight_capacity_bytes: int = 0
+    kv_cache_bytes: int = 0
     pinned_fc_on_pim: Set[str] = field(default_factory=set)
     
     def print_debug(self) -> None:
@@ -51,10 +53,10 @@ class PlanLabel:
 
 def plan_memory_and_label(cfg: Dict, cluster: Cluster) -> PlanLabel:
     """
-    Decide PIM mode and which FC weights to pin on PIM (if medium).
-    small:   PIM capacity < KV_total -> kv_in_pim=False, no pin
-    medium:  KV_total <= cap < (KV_total + FC_total) -> kv_in_pim=True, greedily pin FC
-    large:   cap >= KV_total + FC_total -> kv_in_pim=True, all FC pinned
+    Decide PIM mode and effective LRU budget for weights on PIM.
+    small:   PIM capacity < KV_total -> kv_in_pim=False, no persistent cache
+    medium:  KV_total <= cap < (KV_total + FC_total) -> kv_in_pim=True, weight cache budget = cap - KV_total
+    large:   cap >= KV_total + FC_total -> kv_in_pim=True, budget large enough to avoid eviction
     """
     # Build unified graph once to collect weight sizes
     g, shape = build_graph(cfg)
@@ -85,9 +87,6 @@ def plan_memory_and_label(cfg: Dict, cluster: Cluster) -> PlanLabel:
     pim_bytes = 0
     for d in cluster.devices_by_type("pim"):
         pim_bytes += int(d.mem_capacity_GB * 1e9)
-
-    a = KV_total_bytes
-    b = KV_total_bytes + FC_total_bytes
     
     if DEBUG_MAIN:
         print(f"[DEBUG] KV total bytes: {KV_total_bytes:,} ({KV_total_bytes/1e9:.2f} GB)")
@@ -95,23 +94,12 @@ def plan_memory_and_label(cfg: Dict, cluster: Cluster) -> PlanLabel:
         print(f"[DEBUG] PIM capacity: {pim_bytes:,} ({pim_bytes/1e9:.2f} GB)")
         print(f"[DEBUG] Total weights found: {len(per_weight_size)}")
     
-    if pim_bytes < a:
-        label = PlanLabel(pim_mode="small", kv_in_pim=False, pinned_fc_on_pim=set())
-    elif pim_bytes >= b:
-        # pin all FC
-        pin = set([wid for wid in per_weight_size.keys()])
-        label = PlanLabel(pim_mode="large", kv_in_pim=True, pinned_fc_on_pim=pin)
+    if pim_bytes < KV_total_bytes:
+        label = PlanLabel(pim_mode="small", kv_in_pim=False, pim_weight_capacity_bytes=0, kv_cache_bytes=0)
+    elif pim_bytes >= (KV_total_bytes + FC_total_bytes):
+        label = PlanLabel(pim_mode="large", kv_in_pim=True, pim_weight_capacity_bytes=pim_bytes-KV_total_bytes,kv_cache_bytes=KV_total_bytes)
     else:
-        # medium: greedily pin FC until capacity used
-        remaining = pim_bytes - a
-        pin_list = sorted(per_weight_size.items(), key=lambda kv: -kv[1])  # big first
-        pinned: Set[str] = set()
-        used = 0
-        for wid, sz in pin_list:
-            if used + sz <= remaining:
-                pinned.add(wid)
-                used += sz
-        label = PlanLabel(pim_mode="medium", kv_in_pim=True, pinned_fc_on_pim=pinned)
+        label = PlanLabel(pim_mode="medium",kv_in_pim=True, pim_weight_capacity_bytes=pim_bytes-KV_total_bytes, kv_cache_bytes=KV_total_bytes)
     
     # Print debug info
     if DEBUG_MAIN:
@@ -186,9 +174,8 @@ def run(cfg: Dict):
     # shared buffer manager across passes to accumulate stats
     buffer_mgr = BufferManager()
     for p in range(1, FORMAT_TUNING_MAX_PASSES + 1):
-        # 新建调度器（确保状态干净），并加载当前主存格式建议
         sched = HEFTScheduler(cluster, cost, label, batch=batch, seq_len=prefill_len, buffer=buffer_mgr)
-        sched.set_storage_format_map(fmt_map)
+        sched.set_storage_format_map(fmt_map)#加载之前的format
 
         # Prefill
         prefill_time = simulate_prefill(sched, cfg, graph)
