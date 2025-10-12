@@ -4,12 +4,12 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from dataclasses import dataclass, field
-from typing import Dict, Set
+from typing import Dict
 from hardware import demo_cluster, Cluster
 from cost_model import CostModel, DTYPE_BYTES
 from buffer_manager import BufferManager
 from task_graph import TaskGraph
+from model_parser import build_graph
 from config import (
     DEFAULT_CONFIG,
     ENABLE_TWO_PASS_FORMAT_TUNING,
@@ -18,34 +18,10 @@ from config import (
     FORMAT_TUNING_TIME_EPS,
     FORMAT_TUNING_MAP_EPS,
 )
+from plan_label import PlanLabel
+from scheduler import HEFTScheduler
 
 DEBUG_MAIN = False
-# ------------------------------
-# Plan label (PIM memory planning)
-# ------------------------------
-@dataclass
-class PlanLabel:
-    pim_mode: str                 # "small" | "medium" | "large"
-    kv_in_pim: bool
-    pim_weight_capacity_bytes: int = 0
-    pinned_fc_on_pim: Set[str] = field(default_factory=set)
-    
-    def print_debug(self) -> None:
-        """Print all PlanLabel settings for debugging."""
-        print("=" * 50)
-        print("PIM MEMORY PLAN DEBUG INFO")
-        print("=" * 50)
-        print(f"PIM Mode: {self.pim_mode}")
-        print(f"KV Cache in PIM: {self.kv_in_pim}")
-        print(f"Number of Pinned FC Weights: {len(self.pinned_fc_on_pim)}")
-        if self.pinned_fc_on_pim:
-            print("Pinned FC Weights:")
-            for weight_id in sorted(self.pinned_fc_on_pim):
-                print(f"  - {weight_id}")
-        else:
-            print("Pinned FC Weights: None")
-        print("=" * 50)
-
 
 def plan_memory_and_label(cfg: Dict, cluster: Cluster) -> PlanLabel:
     """

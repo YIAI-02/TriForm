@@ -3,9 +3,9 @@ from dataclasses import dataclass
 from typing import Dict, Any, Tuple
 from pathlib import Path
 import json
-
 from model_definition import ModelShape, make_model_def
 from cost_model import DTYPE_BYTES
+DEFAULT_SHAPE_DIR = Path(__file__).resolve().parent.parent / "configs"
 
 DEFAULT_SHAPE_DIR = Path("../configs")
 

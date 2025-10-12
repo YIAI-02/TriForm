@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, List, Tuple, Optional
 from collections import defaultdict
-from main import PlanLabel
+from plan_label import PlanLabel
 from hardware import Cluster, DeviceSpec
 from task_graph import TaskGraph, TaskNode
 from cost_model import CostModel
@@ -201,7 +201,7 @@ class HEFTScheduler:
                 best = 0.0
                
                 for v in succ[nid]:
-                    comm_cost = self._avg_comm_cost(node, g.nodes[v])
+                    comm_cost = self._avg_comm_cost(node, g.nodes[v],phase)
                     path_cost = comm_cost + rank_u[v]
                     if path_cost > best:
                         best = path_cost
@@ -295,7 +295,7 @@ class HEFTScheduler:
         inbound_end_times: List[float] = []
         batch = int(getattr(self, "batch", 0) or 0)
         seq_len = int(getattr(self, "seq_len", 0) or 0)
-        node_read, _ = self.cost.estimate_activation_bytes(u, batch, seq_len, phase)
+        node_read, _ = self.cost.estimate_activation_bytes(node, batch, seq_len, phase)
 
         for u in g.predecessors(nid):
             pred_finish = self._node_finish_time.get(u, 0.0) #前驱节点完成时间
@@ -310,7 +310,7 @@ class HEFTScheduler:
                 src_fmt = self._node_out_fmt.get(u, self.cost.device_preferred_fmt(pred_dev))
                 dst_fmt = self.cost.device_preferred_fmt(dev)
                 pred_node = g.nodes[u]
-                _, pred_write = self.cost.estimate_activation_bytes(u, batch, seq_len, phase)
+                _, pred_write = self.cost.estimate_activation_bytes(pred_node, batch, seq_len, phase)
                 payload_nd = max(pred_write, node_read)
                 payload_src = self.cost.format_size(payload_nd, src_fmt)
                 link_start, link_end = self.comm.reserve(pred_dev.name, dev.name, payload_src, earliest=pred_finish, commit=commit)
@@ -338,8 +338,8 @@ class HEFTScheduler:
         start_npu = max(t_npu_free, t_ready_npu, t_npu_free + t_w_npu)
         start_pim = max(t_pim_free, t_ready_pim, t_pim_free + t_w_pim)
 
-        tN = self.cost.node_device_cost(node, npu_dev, self.batch, self.seq_len, phase)
-        tP = self.cost.node_device_cost(node, pim_dev, self.batch, self.seq_len, phase)
+        tN = self.cost.node_device_cost(node, npu_dev, self.label, self.batch, self.seq_len, phase)
+        tP = self.cost.node_device_cost(node, pim_dev, self.label, self.batch, self.seq_len, phase)
         rN = (0.0 if tN <= 0.0 else 1.0 / tN)
         rP = (0.0 if tP <= 0.0 else 1.0 / tP)
 
@@ -387,7 +387,7 @@ class HEFTScheduler:
                 best_npu_dev = None
                 best_npu_finish = float("inf")
                 for dev in self.cluster.devices_by_type("npu"):
-                    _, finish = self._earliest_finish_on_device(g, nid, dev, phase, commit=False)
+                    _, finish = self._earliest_finish_on_device(g, nid, dev, self.label, phase, commit=False)
                     if finish < best_npu_finish:
                         best_npu_finish = finish
                         best_npu_dev = dev  
@@ -399,7 +399,7 @@ class HEFTScheduler:
                 best_pim_dev = None
                 best_pim_finish = float("inf")  
                 for dev in self.cluster.devices_by_type("pim"):
-                    _, finish = self._earliest_finish_on_device(g, nid, dev, phase, commit=False)
+                    _, finish = self._earliest_finish_on_device(g, nid, dev, self.label,phase, commit=False)
                     if finish < best_pim_finish:
                         best_pim_finish = finish
                         best_pim_dev = dev  
@@ -434,7 +434,7 @@ class HEFTScheduler:
             else:
                 # Single device execution (NPU or PIM)
                 dev = chosen_data
-                start, finish = self._earliest_finish_on_device(g, nid, dev, phase, commit=True)
+                start, finish = self._earliest_finish_on_device(g, nid, dev, self.label,phase, commit=True)
                 
                 self.avail[dev.name] = finish
                 self._node_finish_time[nid] = finish
