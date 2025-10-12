@@ -109,21 +109,3 @@ class BufferManager:
         conv_t = self.convert_time(from_fmt, to_fmt, size_bytes)
         # DMA modeled elsewhere by link bw; here return just conv time proxy for rank
         return conv_t
-
-    def record_weight_load(self, wid: str, from_fmt: str, to_fmt: str, size_bytes: int, dev_name: str):
-        key = (wid, from_fmt, to_fmt)
-        self.stats_weight_loads[key] = self.stats_weight_loads.get(key, 0) + size_bytes
-
-    def recommend_host_formats(self) -> Dict[str, str]:
-        per_weight_bytes: Dict[str, Dict[str, int]] = {}
-        for (wid, _src, dst), bytes_amt in self.stats_weight_loads.items():
-            d = per_weight_bytes.setdefault(wid, {"NPU_OPT":0, "PIM_OPT":0, "ND":0})
-            d[dst.upper()] = d.get(dst.upper(), 0) + bytes_amt
-        rec: Dict[str, str] = {}
-        for wid, m in per_weight_bytes.items():
-            best_fmt = max(m.items(), key=lambda kv: kv[1])[0] #m是一个dict,m.items()是一个可迭代的(k,v)元组列表，kv[1]是value, 按照value排序，取value最大的那个key
-            rec[wid] = best_fmt
-        # include existing host formats for weights never moved
-        for wid, fmt in self.host_format.items():
-            rec.setdefault(wid, fmt) #setdefault:如果key不存在就设置这个key的值为fmt,如果存在就不变
-        return rec

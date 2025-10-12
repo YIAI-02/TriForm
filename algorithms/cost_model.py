@@ -5,8 +5,9 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Dict, Tuple, List
-
+from task_graph import TaskGraph, TaskNode
 from hardware import Cluster, DeviceSpec
+from main import PlanLabel
 from config import (
     HOST_NAME, DEVICE_PREFERRED_FORMAT,
     FORMAT_SIZE_MULTIPLIER, FORMAT_CONV_BW_GBs,
@@ -174,7 +175,7 @@ class CostModel:
     def _infer_vnH_for_node(self, node, seq_len: int) -> Tuple[int, int, int]:
         """
         推断 (V, N, H) 参数：
-        V=vector_dim，N=matrix_col（线性层右侧维度），H=多头数（注意力相关）。
+        V=vector_dim, N=matrix_col（线性层右侧维度），H=多头数（注意力相关）。
         若 attrs 信息不足，尽量使用合理近似；不足则返回 0。
         """
         attrs = getattr(node, "attrs", {}) or {}
@@ -342,7 +343,6 @@ class CostModel:
         else:
             attn_pairs = kv_len
 
-        # ---- 单算子 ----
         if name in ("LN") and D > 0:
             elems = b * active_tokens * D
             return to_bytes(elems), to_bytes(elems)
@@ -405,9 +405,8 @@ class CostModel:
             return to_bytes(attn_read + v_read), to_bytes(out_elems)
 
         if name in ("KV_READ", "KV_WRITE"):
-            if phase != "decode":
-                return 0, 0
-            read, write = self.kv_rw_bytes_decode(node, b, kv_len)
+            read = 2 * batch * kvh * hd * kv_len
+            write = 2 * batch * kvh * hd * active_tokens
             return read, write
 
         if D > 0:
@@ -420,66 +419,31 @@ class CostModel:
     # --------------------------
     # Node device cost
     # --------------------------
-    def node_device_cost(self, node, dev: DeviceSpec, batch: int, seq_len: int, phase: str) -> float:
-        """
-        Compute time on a device. For PIM, if a formula JSON is provided, use it;
-        otherwise fall back to (flops + mem) model. NPU uses (flops + mem).
-        """
-        # Special KV ops (decode)
-        if phase == "decode" and node.name in ("KV_read", "KV_write"):
-            r, w = self.kv_rw_bytes_decode(node, batch, seq_len)
-            return self.mem_time(r + w, dev)
-
-        # NPU: baseline model
+    def node_device_cost(self, node:TaskNode, dev: DeviceSpec, label:PlanLabel,batch: int, seq_len: int, phase: str) -> float:
+        # NPU:
         if dev.type == "npu":
             flops = self.estimate_flops(node, batch, seq_len, phase)
-            rd = int(getattr(node, "bytes_read", 0) or 0)
-            wr = int(getattr(node, "bytes_write", 0) or 0)
-            return self.flop_time(flops, dev) + self.mem_time(rd + wr, dev)
+            rd, wr = self.estimate_activation_bytes(node,batch,seq_len,phase)
+            return max(self.flop_time(flops, dev), self.mem_time(rd + wr, dev))
 
-        # PIM: try formula-based estimation
+        # PIM:
         if dev.type == "pim" and self._pim_formula is not None:
-            # 解析 op key
             keys = self._resolve_pim_key(node)
             opf: Optional[OpFormula] = None
-            matched_key = None
             for k in keys:
                 opf = self._pim_formula.get(k)
                 if opf is not None:
-                    matched_key = k
-                    break
-                    
-            if opf is not None:
-                V, N, H = self._infer_vnH_for_node(node, seq_len)
-                cycles = opf.eval_cycles(seqlen=seq_len, vector_dim=V, matrix_col=N, n_heads=H)
-                if cycles > 0.0 and PIM_FREQ_GHZ > 0.0:
-                    return cycles / (PIM_FREQ_GHZ * 1e9)
-
-
-        # Other / fallback: baseline (flops + mem)
-        flops = self.estimate_flops(node, batch, seq_len, phase)
-        rd = int(getattr(node, "bytes_read", 0) or 0)
-        wr = int(getattr(node, "bytes_write", 0) or 0)
-        return self.flop_time(flops, dev) + self.mem_time(rd + wr, dev)
-
-    # --------------------------
-    # KV read/write for decode
-    # --------------------------
-    def kv_rw_bytes_decode(self, node, batch: int, seq_len: int) -> Tuple[int, int]:
-        """
-        Estimate KV read/write bytes in decode.
-        Prefer node.attrs if provided: expect keys 'n_kv_heads', 'head_dim'.
-        """
-        attrs = getattr(node, "attrs", {}) or {}
-        n_kv = int(attrs.get("n_kv_heads", attrs.get("kv_heads", 0)) or 0)
-        head_dim = int(attrs.get("head_dim", 0) or 0)
-        dtype_b = int(DTYPE_BYTES.get(self.dtype, 2))
-
-        if n_kv <= 0 or head_dim <= 0 or batch <= 0:
-            return 0, 0
-
-        read_elems = 2 * batch * n_kv * head_dim * seq_len  # K+V
-        write_elems = 2 * batch * n_kv * head_dim           # append 1 token
-        return read_elems * dtype_b, write_elems * dtype_b
+                    V, N, H = self._infer_vnH_for_node(node, seq_len)
+                    cycles = opf.eval_cycles(seqlen=seq_len, vector_dim=V, matrix_col=N, n_heads=H)
+                    if cycles > 0.0 and PIM_FREQ_GHZ > 0.0:
+                        compute_time = cycles / (PIM_FREQ_GHZ * 1e9)
+        
+            kv_in_pim = getattr(label, "kv_in_lable", False)
+            if kv_in_pim:
+                mem_time = 0.0
+            else:
+                rd, wr = self.estimate_activation_bytes(node,batch,seq_len,phase)
+                mem_time = self.mem_time((rd + wr),dev)
+            return compute_time + mem_time
 
     

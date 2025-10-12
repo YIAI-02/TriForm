@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, List, Tuple, Optional
 from collections import defaultdict
-
+from main import PlanLabel
 from hardware import Cluster, DeviceSpec
 from task_graph import TaskGraph, TaskNode
 from cost_model import CostModel
@@ -61,7 +61,7 @@ class CommManager:
 # HEFT Scheduler with Hybrid + two-pass format tuning
 # ------------------------------
 class HEFTScheduler:
-    def __init__(self, cluster: Cluster, cost: CostModel, label, batch: int, seq_len: int, buffer: BufferManager):
+    def __init__(self, cluster: Cluster, cost: CostModel, label:PlanLabel, batch: int, seq_len: int, buffer: BufferManager):
         self.cluster = cluster
         self.cost = cost
         self.label = label
@@ -212,18 +212,6 @@ class HEFTScheduler:
         return sorted_nodes
 
     # --------------------------
-    # Streaming rule on PIM
-    # --------------------------
-    def _needs_streaming_on_pim(self, weight_id: Optional[str]) -> bool:
-        if not weight_id:
-            return False
-        mode = getattr(self.label, "pim_mode", "small")
-        if mode == "small":
-            return True
-        total_budget = int(getattr(self.label, "pim_weight_capacity_bytes", 0) or 0)
-        return total_budget <= 0
-
-    # --------------------------
     # Detailed timing helpers
     # --------------------------
     def _weight_load_time(self, node: TaskNode, dev: DeviceSpec, t0: float, commit: bool) -> float:
@@ -232,121 +220,52 @@ class HEFTScheduler:
             return 0.0
         wid = node.weight_id
 
-        # pim
-        if dev.type == "pim":
-            cap_bytes = self._pim_cache_capacity_for(dev)
-            if dev.name not in self.buffer.device_cache:
-                self.buffer.ensure_device_cache(dev.name, max(0, cap_bytes))
-            
-            cached = self.buffer.is_cached(dev.name, wid)
-            if cached and not self._needs_streaming_on_pim(wid):
-                return 0.0
+        # 判断是否已缓存
+        if dev.type == "pim" and self.buffer.is_cached(dev.name, wid):
+            if commit:
+                self.buffer.device_cache[dev.name].touch(wid)
+            return 0.0
 
-        must_stream = (dev.type == "pim" and self._needs_streaming_on_pim(wid))
         host = self.cost.get_host_device().name
         stored_fmt = self.storage_fmt_map.get(wid, self.buffer.get_host_fmt(wid) or "ND")
-        if not stored_fmt:
-            stored_fmt = "ND"
         size_src = self.cost.format_size(node.weight_size, stored_fmt)
-
-        # 1) transfer
         _, link_end = self.comm.reserve(host, dev.name, size_src, earliest=t0, commit=commit)
-        # 2) convert on device
         conv_t = self.cost.format_conversion_time(size_src, stored_fmt, self.cost.device_preferred_fmt(dev), dev)
         end = link_end + conv_t
 
         if commit:
             self._weight_load_count[(wid, dev.type)] += 1
             self._weight_sizes[wid] = node.weight_size
-            if not must_stream:
-                # Only PIM manages cache state (NPU always reloads from host)
-                if dev.type == "pim":
-                    # Legacy dict for compatibility
-                    self.weight_cached[(dev.name, wid)] = True
-                    
-                    # BufferManager LRU cache for PIM storage management
-                    self.buffer.mark_cached(dev.name, wid, node.weight_size, pinned=False)
-                
-                # Store host format if unseen
-                if wid not in self.buffer.host_format and wid in self.storage_fmt_map:
-                    self.buffer.set_host_fmt(wid, self.storage_fmt_map[wid])
+            if dev.type == "pim":
+                # 加载后缓存并更新顺序
+                self.weight_cached[(dev.name, wid)] = True
+                self.buffer.mark_cached(dev.name, wid, node.weight_size, pinned=False)
+            if wid not in self.buffer.host_format and wid in self.storage_fmt_map:
+                self.buffer.set_host_fmt(wid, self.storage_fmt_map[wid])
 
         return max(0.0, end - t0)
 
-    def _kv_transfer_time_if_needed(self, node: TaskNode, dev: DeviceSpec, phase: str, t0: float, commit: bool) -> float:
-        """Only for decode on PIM in small mode: host<->PIM KV movement."""
-        if phase != "decode":
-            return 0.0
-        if node.name not in ("KV_read", "KV_write"):
-            return 0.0
-        if dev.type != "pim":
-            return 0.0
-        if getattr(self.label, "kv_in_pim", False):
-            return 0.0
-
-        r, w = self.cost.kv_rw_bytes_decode(node, self.batch, self.seq_len)
-        host = self.cost.get_host_device().name
-        if node.name == "KV_read":
-            _, end = self.comm.reserve(host, dev.name, r, earliest=t0, commit=commit)
-        else:
-            _, end = self.comm.reserve(dev.name, host, w, earliest=t0, commit=commit)
-        return max(0.0, end - t0)
-
-    def _earliest_finish_on_device(self, g: TaskGraph, nid: str, dev: DeviceSpec, phase: str, commit: bool) -> Tuple[float, float]:
+    def _earliest_finish_on_device(self, g: TaskGraph, nid: str, dev: DeviceSpec, label:PlanLabel, phase: str, commit: bool) -> Tuple[float, float]:
         node = g.nodes[nid]
 
         # 1) inputs ready (consider cross-device comm + dst format conversion)
-        inbound_start_times: List[float] = []
-        inbound_end_times: List[float] = []
-        node_read, _ = self.cost.estimate_activation_bytes(node,self.batch,self.seq_len,phase)
-
-        for u in g.predecessors(nid):
-            pred_finish = self._node_finish_time.get(u, 0.0)
-            pred_dev_name = self._node_placement.get(u, dev.name)
-            pred_dev = self.cluster.devices[pred_dev_name]
-            if pred_dev.name == dev.name:
-                inbound_start_times.append(pred_finish)
-                inbound_end_times.append(pred_finish)
-                continue
-            else:
-                src_fmt = self._node_out_fmt.get(u, self.cost.device_preferred_fmt(pred_dev))
-                dst_fmt = self.cost.device_preferred_fmt(dev)
-                _ , pred_write = self.cost.estimate_activation_bytes(g.nodes[u],self.batch,self.seq_len,phase)
-                payload_nd = max(node_read,pred_write)
-                payload_src = self.cost.format_size(payload_nd,src_fmt)
-                link_start, link_end = self.comm.reserve(pred_dev.name,dev.name,payload_src,pred_finish,commit)
-                conv_t = self.cost.format_conversion_time(payload_src,src_fmt,dst_fmt,dev)
-                dep_end = link_end + conv_t
-                inbound_start_times.append(link_start)
-                inbound_end_times.append(dep_end)
-        if dev.type == "npu": #npu copyin,compute,copyout 重叠，prev算完就可以开始
-            ready_time = max(inbound_start_times,default=0.0)
-        else:
-            ready_time = max(inbound_end_times)
+        ready_time = self._ready_time_for_device(g,nid,dev,phase,commit)
 
         # 2）device available
         t0 = max(self.avail[dev.name],ready_time)
 
         # 3) compute
-        compute_t = self.cost.node_device_cost(node,dev,self.batch,self.seq_len,phase)
-
-        # 4) overlap transfer
+        compute_t = self.cost.node_device_cost(node,dev,label,self.batch,self.seq_len,phase)
         wload_t = self._weight_load_time(node,dev,t0,commit)
-        kv_t = self._kv_transfer_time_if_needed(node,dev,phase,t0,commit)
-
+        
         # 5) npu overlap
         if dev.type == "npu":
-            inbound_overlap = 0.0
-            if inbound_end_times:
-                max_inbound_end = max(inbound_end_times)
-                inbound_overlap = max(0,max_inbound_end-t0) #max_inbound_end 数据最晚可用时间和设备空闲时间是否有重叠，没有就取0
-            total = max(compute_t,wload_t,kv_t,inbound_overlap)
+            total = max(compute_t,wload_t)
             finish = t0 + total
         else:
             cursor = t0
             cursor += wload_t
             cursor += compute_t
-            cursor += kv_t
             finish = cursor
 
         if commit:
@@ -371,22 +290,37 @@ class HEFTScheduler:
 
     def _ready_time_for_device(self, g: TaskGraph, nid: str, dev: DeviceSpec, phase: str, commit: bool) -> float:
         node = g.nodes[nid]
-        ready = 0.0
+
+        inbound_start_times: List[float] = []
+        inbound_end_times: List[float] = []
+        batch = int(getattr(self, "batch", 0) or 0)
+        seq_len = int(getattr(self, "seq_len", 0) or 0)
+        node_read, _ = self.cost.estimate_activation_bytes(u, batch, seq_len, phase)
+
         for u in g.predecessors(nid):
             pred_finish = self._node_finish_time.get(u, 0.0) #前驱节点完成时间
             pred_dev_name = self._node_placement.get(u, dev.name) #前驱节点被分配的设备名称
             pred_dev = self.cluster.devices[pred_dev_name] #前驱节点被分配的设备
             if pred_dev.name == dev.name: #同设备
-                ready = max(ready, pred_finish)
+                inbound_start_times.append(pred_finish)
+                inbound_end_times.append(pred_finish)
+                continue
+
             else:
-                payload_nd = max(g.nodes[u].bytes_write, node.bytes_read, 16 * 1024)
                 src_fmt = self._node_out_fmt.get(u, self.cost.device_preferred_fmt(pred_dev))
                 dst_fmt = self.cost.device_preferred_fmt(dev)
+                pred_node = g.nodes[u]
+                _, pred_write = self.cost.estimate_activation_bytes(u, batch, seq_len, phase)
+                payload_nd = max(pred_write, node_read)
                 payload_src = self.cost.format_size(payload_nd, src_fmt)
-                _, link_end = self.comm.reserve(pred_dev.name, dev.name, payload_src, earliest=pred_finish, commit=commit)
-                dep_end = link_end + self.cost.format_conversion_time(payload_src, src_fmt, dst_fmt, dev)
-                ready = max(ready, dep_end)
-        return ready
+                link_start, link_end = self.comm.reserve(pred_dev.name, dev.name, payload_src, earliest=pred_finish, commit=commit)
+                conv_t = self.cost.format_conversion_time(payload_src, src_fmt, dst_fmt, dev)
+                dep_end = link_end + conv_t
+                inbound_start_times.append(link_start)
+                inbound_end_times.append(dep_end)
+        if dev.type == "npu":
+            return max(inbound_start_times, default=0.0)
+        return max(inbound_end_times, default=0.0)
 
     def _earliest_finish_hybrid(self, g: TaskGraph, nid: str, phase: str, commit: bool) -> Optional[Dict[str, object]]:
         node = g.nodes[nid]
@@ -400,11 +334,9 @@ class HEFTScheduler:
 
         t_w_npu = self._weight_load_time(node, npu_dev, t_npu_free, commit)
         t_w_pim = self._weight_load_time(node, pim_dev, t_pim_free, commit)
-        t_kv_npu = self._kv_transfer_time_if_needed(node, npu_dev, phase, t_npu_free, commit)
-        t_kv_pim = self._kv_transfer_time_if_needed(node, pim_dev, phase, t_pim_free, commit)
 
-        start_npu = max(t_npu_free, t_ready_npu, t_npu_free + t_w_npu, t_npu_free + t_kv_npu)
-        start_pim = max(t_pim_free, t_ready_pim, t_pim_free + t_w_pim, t_pim_free + t_kv_pim)
+        start_npu = max(t_npu_free, t_ready_npu, t_npu_free + t_w_npu)
+        start_pim = max(t_pim_free, t_ready_pim, t_pim_free + t_w_pim)
 
         tN = self.cost.node_device_cost(node, npu_dev, self.batch, self.seq_len, phase)
         tP = self.cost.node_device_cost(node, pim_dev, self.batch, self.seq_len, phase)
@@ -419,7 +351,6 @@ class HEFTScheduler:
         lead_interval = max(0.0, tail_start - lead_start)
         work_done = r_lead * lead_interval
         
-
         print(f"tN: {tN}, tP: {tP}")
         agg = rN + rP #合起来处理的计算速率
         finish = tail_start + (1.0 - work_done) / agg
@@ -558,6 +489,13 @@ class HEFTScheduler:
         self.avail = {name: 0.0 for name in self.cluster.devices}
         self._node_finish_time.clear()
         self._node_placement.clear()
+        self._node_out_fmt.clear()
+        self.weight_cached.clear()
+        self.mode_mem.clear()
+        # Keep buffer statistics but clear PIM cache states for deterministic reruns
+        # (only PIM devices have LRU cache for storage management)
+        for cache in self.buffer.device_cache.values():
+            cache.items.clear(); cache.order.clear(); cache.used = 0; cache.pinned.intersection_update(cache.pinned)
         self._node_out_fmt.clear()
         self.weight_cached.clear()
         self.mode_mem.clear()
