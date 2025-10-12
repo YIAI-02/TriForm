@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional, Dict, Tuple, List
 from task_graph import TaskGraph, TaskNode
 from hardware import Cluster, DeviceSpec
-from main import PlanLabel
+from plan_label import PlanLabel
 from config import (
     HOST_NAME, DEVICE_PREFERRED_FORMAT,
     FORMAT_SIZE_MULTIPLIER, FORMAT_CONV_BW_GBs,
