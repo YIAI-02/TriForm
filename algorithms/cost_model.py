@@ -219,73 +219,203 @@ class CostModel:
         attrs = getattr(node, "attrs", {}) or {}
         default = float(getattr(node, "flops", 0.0) or 0.0)
 
-        b = int(batch or 0)
-        if b <= 0:
-            b = int(attrs.get("batch", 0) or 0)
-
-        dim = int(attrs.get("dim", 0) or 0)
-        ffn = int(attrs.get("ffn_dim", 0) or 0)
-        qh = int(attrs.get("q_heads", attrs.get("kv_heads", 0)) or 0)
-        kvh = int(attrs.get("kv_heads", attrs.get("n_kv_heads", 0)) or 0)
-        hd = int(attrs.get("head_dim", 0) or 0)
-        q_dim = int(attrs.get("q_dim", qh * hd) or 0)
-        kv_dim = int(attrs.get("kv_dim", kvh * hd) or 0)
-        o_dim = int(attrs.get("o_dim", qh * hd) or 0)
-
+        b = int(batch or attrs.get("batch", 0) or 0)
         if b <= 0:
             return default
 
-        token_len = seq_len if phase == "prefill" else 1
-        kv_len = seq_len
+        # 维度
+        D   = int(attrs.get("dim", 0) or 0)                       # model dim
+        Hf  = int(attrs.get("ffn_dim", attrs.get("hidden_dim", 0)) or 0)
+        qh  = int(attrs.get("q_heads", attrs.get("n_head", attrs.get("kv_heads", 0))) or 0)
+        kvh = int(attrs.get("kv_heads", attrs.get("n_kv_heads", qh)) or 0)
+        hd  = int(attrs.get("head_dim", D // max(qh, 1)) or 0)
 
-        name = (node.name or "").upper()
+        q_dim = int(attrs.get("q_dim", qh * hd) or 0)
+        kv_dim = int(attrs.get("kv_dim", kvh * hd) or 0)
+        o_dim  = int(attrs.get("o_dim", qh * hd) or 0)
+        q_len  = seq_len if phase == "prefill" else 1
+        kv_len = int(attrs.get("kv_len", attrs.get("past_kv_len", seq_len)) or seq_len)
+        causal = bool(attrs.get("causal", True))  # 因果注意力
+        def tri(n: int) -> int:
+            return n * (n + 1) // 2
 
-        if name == "LN" and dim > 0:
-            return float(b * token_len * dim)
+        C_MATMUL  = 2.0   # matmul: MAC -> 2 FLOPs
+        C_LN      = 5.0   # LN: 均值、方差、归一化、仿射
+        C_SOFTMAX = 5.0   # softmax: max/sub/exp/sum/div（不细算exp代价）
+        C_GELU    = 6.0   # GELU 近似
+        C_SILU    = 5.0   # SiLU(x)=x*sigmoid(x) 近似
 
-        if name in ("Q", "K", "V") and dim > 0:
+        name = (getattr(node, "name", "") or "").upper()
+
+        if name in ("LN") and D > 0:
+            return float(b * q_len * D * C_LN)
+
+        if name in ("Q", "K", "V") and D > 0:
             out_dim = q_dim if name == "Q" else kv_dim
             if out_dim <= 0:
                 return default
-            return float(2.0 * dim * out_dim * b * token_len)
+            return float(C_MATMUL * D * out_dim * b * q_len)
 
-        if name == "QK" and qh > 0 and hd > 0:
+        if name in ("QK") and qh > 0 and hd > 0:
             if phase == "prefill":
-                return float(2.0 * b * qh * hd * token_len * token_len)
-            return float(2.0 * b * qh * hd * kv_len)
+                pairs = tri(q_len) if causal else q_len * q_len
+            else:
+                pairs = kv_len  # q_len==1
+            return float(C_MATMUL * b * qh * hd * pairs)
 
-        if name == "SOFTMAX" and qh > 0:
+        if name in ("SOFTMAX") and qh > 0:
             if phase == "prefill":
-                return float(b * qh * token_len * token_len)
-            return float(b * qh * kv_len)
+                elems = tri(q_len) if causal else q_len * q_len
+            else:
+                elems = kv_len
+            return float(b * qh * elems * C_SOFTMAX)
 
-        if name == "SV" and qh > 0 and hd > 0:
+        if name in ("SV") and qh > 0 and hd > 0:
             if phase == "prefill":
-                return float(2.0 * b * qh * hd * token_len * token_len)
-            return float(2.0 * b * qh * hd * kv_len)
+                pairs = tri(q_len) if causal else q_len * q_len
+            else:
+                pairs = kv_len
+            return float(C_MATMUL * b * qh * hd * pairs)
 
-        if name == "O" and dim > 0 and o_dim > 0:
-            return float(2.0 * o_dim * dim * b * token_len)
+        if name in ("O") and D > 0 and o_dim > 0:
+            return float(C_MATMUL * o_dim * D * b * q_len)
 
-        if name in ("FFN_W1", "FFN_W3") and dim > 0 and ffn > 0:
-            return float(2.0 * dim * ffn * b * token_len)
+        if name in ("FFN_W1", "FFN_W3", "FFN_UP", "FFN_GATE") and D > 0 and Hf > 0:
+            # SwiGLU 的 W1/W3（或门控/上投影）
+            return float(C_MATMUL * D * Hf * b * q_len)
 
-        if name == "FFN_W2" and dim > 0 and ffn > 0:
-            return float(2.0 * ffn * dim * b * token_len)
+        if name in ("FFN_W2", "FFN_DOWN") and D > 0 and Hf > 0:
+            return float(C_MATMUL * Hf * D * b * q_len)
 
-        if name in ("SWIGLU", "GELU") and ffn > 0:
-            return float(b * ffn * token_len)
+        if name in ("SWIGLU", "SILU_GLU") and Hf > 0:
+            # SiLU(Hf) + 与另一条支路做逐元素乘（门控）
+            return float(b * q_len * Hf * (C_SILU + 1.0))
 
-        if name == "ADD" and dim > 0:
-            return float(b * dim * token_len)
+        if name in ("GELU",) and Hf > 0:
+            return float(b * q_len * Hf * C_GELU)
 
-        if name == "IDENTITY" and dim > 0:
-            return float(b * dim * token_len)
+        if name == "ADD" and D > 0:
+            return float(b * q_len * D)  # 残差加
 
-        if name in ("KV_READ", "KV_WRITE"):
-            return 0.0
+        if name in ("IDENTITY", "RESIDUAL", "DROPOUT") and D > 0:
+            return float(b * q_len * D)
+
+        if name in ("KV_READ", "KV_WRITE", "ROPE", "ALIBI"):
+            return 0.0  # 仅内存/索引或轻量计算，这里不计入 FLOPs
 
         return default
+
+    def estimate_activation_bytes(self, node, batch: int, seq_len: int, phase: str):
+
+        attrs = getattr(node, "attrs", {}) or {}
+        dtype_bytes = int(DTYPE_BYTES.get(self.dtype, 2))
+
+        def to_bytes(elems: float) -> int:
+            return int(max(0.0, float(elems))) * dtype_bytes
+
+        b = int(batch or attrs.get("batch", 0) or 1)
+
+        T = int(seq_len or 0)
+        if T <= 0:
+            return 0, 0
+
+        kv_len = int(attrs.get("kv_len", attrs.get("past_kv_len", T)) or T)
+        active_tokens  = T if phase == "prefill" else 1
+
+        causal = bool(attrs.get("causal", True))
+        def tri(n: int) -> int:
+            return n * (n + 1) // 2
+
+        D       = int(attrs.get("dim", attrs.get("hidden_size", 0)) or 0)
+        Hf      = int(attrs.get("ffn_dim", attrs.get("mlp_dim", 0)) or 0)
+        hd      = int(attrs.get("head_dim", 0) or 0)
+        qh      = int(attrs.get("q_heads", attrs.get("n_heads", 0)) or 0)
+        kvh     = int(attrs.get("n_kv_heads", attrs.get("kv_heads", qh)) or 0)
+        q_dim   = int(attrs.get("q_dim", qh * hd) or 0)
+        kv_dim  = int(attrs.get("kv_dim", kvh * hd) or 0)
+        o_dim   = int(attrs.get("o_dim", qh * hd) or 0)
+
+        name = (getattr(node, "name", attrs.get("op", "")) or "").upper()
+
+        if phase == "prefill":
+            attn_pairs = tri(T) if causal else T * T #是否有mask
+        else:
+            attn_pairs = kv_len
+
+        # ---- 单算子 ----
+        if name in ("LN") and D > 0:
+            elems = b * active_tokens * D
+            return to_bytes(elems), to_bytes(elems)
+
+        if name == "Q" and D > 0:
+            out_dim = q_dim if q_dim > 0 else D
+            return to_bytes(b * active_tokens * D), to_bytes(b * active_tokens * out_dim)
+
+        if name in ("K", "V") and D > 0:
+            out_dim = kv_dim if kv_dim > 0 else D
+            write_tokens = active_tokens  # prefill=T, decode=1
+            return to_bytes(b * active_tokens * D), to_bytes(b * write_tokens * out_dim)
+
+        if name in ("O") and D > 0:
+            inp_dim = o_dim if o_dim > 0 else D
+            return to_bytes(b * active_tokens * inp_dim), to_bytes(b * active_tokens * D)
+
+        if name in ("FFN_W1", "FFN_W3") and D > 0 and Hf > 0:
+            return to_bytes(b * active_tokens * D), to_bytes(b * active_tokens * Hf)
+
+        if name in ("FFN_W2",) and D > 0 and Hf > 0:
+            return to_bytes(b * active_tokens * Hf), to_bytes(b * active_tokens * D)
+
+        if name in ("SWIGLU", "SILU_GLU") and Hf > 0:
+            # 读 gate(Hf) 与 up(Hf)，写 Hf
+            return to_bytes(b * active_tokens * (2 * Hf)), to_bytes(b * active_tokens * Hf)
+
+        if name in ("GELU", "RELU"):
+            width = Hf if Hf > 0 else D
+            return to_bytes(b * active_tokens * width), to_bytes(b * active_tokens * width)
+
+        if name == "ADD" and D > 0:
+            # 读两路，写一路
+            read_elems = b * active_tokens * D * 2
+            write_elems = b * active_tokens * D
+            return to_bytes(read_elems), to_bytes(write_elems)
+
+        if name in ("IDENTITY",):
+            elems = b * active_tokens * D
+            return to_bytes(elems), to_bytes(elems)
+
+        if name in ("QK") and qh > 0 and hd > 0:
+            q_read = b * active_tokens * q_dim
+            k_read = b * (T if phase == "prefill" else kv_len) * kv_dim
+            # 写出：每个 head 上的有效元素（考虑三角）
+            write_elems = b * qh * attn_pairs
+            return to_bytes(q_read + k_read), to_bytes(write_elems)
+
+        if name in ("SOFTMAX", "ATTN_SOFTMAX") and qh > 0:
+            # 读/写形状相同（常见实现原地）
+            elems = b * qh * attn_pairs
+            return to_bytes(elems), to_bytes(elems)
+
+        if name in ("SV") and qh > 0 and hd > 0:
+            # 读：注意力权重 + V；写：b * qh * q_len * hd
+            attn_read = b * qh * attn_pairs
+            v_read    = b * (T if phase == "prefill" else kv_len) * kv_dim
+            out_elems = b * qh * q_dim * hd
+            # 注：这里按每个 group 共享 V，不乘 qh/kvh，作为一次性读取的上界
+            return to_bytes(attn_read + v_read), to_bytes(out_elems)
+
+        if name in ("KV_READ", "KV_WRITE"):
+            if phase != "decode":
+                return 0, 0
+            read, write = self.kv_rw_bytes_decode(node, b, kv_len)
+            return read, write
+
+        if D > 0:
+            elems = b * active_tokens * D
+            return to_bytes(elems), to_bytes(elems)
+
+        return 0, 0
+
 
     # --------------------------
     # Node device cost
@@ -348,8 +478,6 @@ class CostModel:
         if n_kv <= 0 or head_dim <= 0 or batch <= 0:
             return 0, 0
 
-        # K and V per token vector size: n_kv * head_dim
-        # Read: full seq_len history; Write: current token
         read_elems = 2 * batch * n_kv * head_dim * seq_len  # K+V
         write_elems = 2 * batch * n_kv * head_dim           # append 1 token
         return read_elems * dtype_b, write_elems * dtype_b

@@ -113,11 +113,23 @@ class HEFTScheduler:
     # Public: allow progressive decode to update seq_len
     def set_seq_len(self, seq_len: int) -> None:
         self.seq_len = int(seq_len)
+
     def _pim_cache_capacity_for(self, dev: DeviceSpec) -> int:
         cap = self._pim_cache_capacity.get(dev.name)
         if cap is None:
             return int(dev.mem_capacity_GB * 1e9)
         return max(0, cap)
+    
+    def _estimate_node_io_bytes(
+        self,
+        node: TaskNode,
+        phase: str,
+        *,
+        batch: Optional[int] = None,
+        seq_len: Optional[int] = None,
+    ) -> Tuple[int, int]:
+        batch = int(batch if batch is not None else getattr(self, "batch", 0) or 0)
+        seq_len = int(seq_len if seq_len is not None else getattr(self, "seq_len", 0) or 0)
     # --------------------------
     # HEFT: upward rank helpers
     # --------------------------
@@ -147,28 +159,23 @@ class HEFTScheduler:
         total_avg = avg_compute + avg_w
         return total_avg
 
-    def _avg_comm_cost(self, u: TaskNode, v: TaskNode) -> float:
+    def _avg_comm_cost(self, u: TaskNode, v: TaskNode, phase:str) -> float:
         devs = list(self.cluster.devices.values())
         total = 0.0
         k = 0
-        bytes_nd = max(u.bytes_write, v.bytes_read, 16 * 1024)
-        seq_len = getattr(self, "seq_len", None)
-        batch = getattr(self, "batch", None)
-        if hasattr(u, "attrs") and u.attrs:
-            base_seq = u.attrs.get("seq_len", None)
-            base_batch = u.attrs.get("batch", None)
-            if base_seq and seq_len and base_seq > 0 and seq_len != base_seq:
-                bytes_nd = bytes_nd * seq_len / base_seq
-            if base_batch and batch and base_batch > 0 and batch != base_batch:
-                bytes_nd = bytes_nd * batch / base_batch
+        batch = int(getattr(self, "batch", 0) or 0)
+        seq_len = int(getattr(self, "seq_len", 0) or 0)
+        u_read,u_write = self.cost.estimate_activation_bytes(u, batch, seq_len, phase)
+        v_read,_ = self.cost.estimate_activation_bytes(v, batch, seq_len, phase)
+        payload_bytes = max(u_write, v_read, 16 * 1024)
         for i in range(len(devs)):
             for j in range(len(devs)):
-                di, dj = devs[i], devs[j]
+                di, dj = devs[i],devs[j]
                 if not (u.allowed.get(di.type, True) and v.allowed.get(dj.type, True)):
                     continue
                 src_fmt = self.cost.device_preferred_fmt(di)
                 dst_fmt = self.cost.device_preferred_fmt(dj)
-                payload_src = self.cost.format_size(int(bytes_nd), src_fmt)
+                payload_src = self.cost.format_size(int(payload_bytes), src_fmt)
                 t_link = self.cost.comm_cost(di, dj, payload_src)
                 t_conv = 0.0
                 if di.type != dj.type:
@@ -289,36 +296,62 @@ class HEFTScheduler:
         node = g.nodes[nid]
 
         # 1) inputs ready (consider cross-device comm + dst format conversion)
-        ready_time = 0.0
+        inbound_start_times: List[float] = []
+        inbound_end_times: List[float] = []
+        node_read, _ = self.cost.estimate_activation_bytes(node,self.batch,self.seq_len,phase)
+
         for u in g.predecessors(nid):
             pred_finish = self._node_finish_time.get(u, 0.0)
             pred_dev_name = self._node_placement.get(u, dev.name)
             pred_dev = self.cluster.devices[pred_dev_name]
             if pred_dev.name == dev.name:
-                ready_time = max(ready_time, pred_finish)
+                inbound_start_times.append(pred_finish)
+                inbound_end_times.append(pred_finish)
+                continue
             else:
-                payload_nd = max(g.nodes[u].bytes_write, node.bytes_read, 16 * 1024)
                 src_fmt = self._node_out_fmt.get(u, self.cost.device_preferred_fmt(pred_dev))
                 dst_fmt = self.cost.device_preferred_fmt(dev)
-                payload_src = self.cost.format_size(payload_nd, src_fmt)
-                _, link_end = self.comm.reserve(pred_dev.name, dev.name, payload_src, earliest=pred_finish, commit=commit)
-                dep_end = link_end + self.cost.format_conversion_time(payload_src, src_fmt, dst_fmt, dev)
-                ready_time = max(ready_time, dep_end)
+                _ , pred_write = self.cost.estimate_activation_bytes(g.nodes[u],self.batch,self.seq_len,phase)
+                payload_nd = max(node_read,pred_write)
+                payload_src = self.cost.format_size(payload_nd,src_fmt)
+                link_start, link_end = self.comm.reserve(pred_dev.name,dev.name,payload_src,pred_finish,commit)
+                conv_t = self.cost.format_conversion_time(payload_src,src_fmt,dst_fmt,dev)
+                dep_end = link_end + conv_t
+                inbound_start_times.append(link_start)
+                inbound_end_times.append(dep_end)
+        if dev.type == "npu": #npu copyin,compute,copyout 重叠，prev算完就可以开始
+            ready_time = max(inbound_start_times,default=0.0)
+        else:
+            ready_time = max(inbound_end_times)
 
-        # 2) device available
-        t0 = max(self.avail[dev.name], ready_time)
+        # 2）device available
+        t0 = max(self.avail[dev.name],ready_time)
 
         # 3) compute
-        compute_t = self.cost.node_device_cost(node, dev, self.batch, self.seq_len, phase)
+        compute_t = self.cost.node_device_cost(node,dev,self.batch,self.seq_len,phase)
 
-        # 4) overlappable transfers
-        wload_t = self._weight_load_time(node, dev, t0, commit)
-        kv_t = self._kv_transfer_time_if_needed(node, dev, phase, t0, commit)
+        # 4) overlap transfer
+        wload_t = self._weight_load_time(node,dev,t0,commit)
+        kv_t = self._kv_transfer_time_if_needed(node,dev,phase,t0,commit)
 
-        # 5) finish
-        finish = t0 + max(compute_t, wload_t, kv_t)
+        # 5) npu overlap
+        if dev.type == "npu":
+            inbound_overlap = 0.0
+            if inbound_end_times:
+                max_inbound_end = max(inbound_end_times)
+                inbound_overlap = max(0,max_inbound_end-t0) #max_inbound_end 数据最晚可用时间和设备空闲时间是否有重叠，没有就取0
+            total = max(compute_t,wload_t,kv_t,inbound_overlap)
+            finish = t0 + total
+        else:
+            cursor = t0
+            cursor += wload_t
+            cursor += compute_t
+            cursor += kv_t
+            finish = cursor
+
         if commit:
             self._node_out_fmt[nid] = self.cost.device_preferred_fmt(dev)
+
         return t0, finish
 
     # --------------------------
