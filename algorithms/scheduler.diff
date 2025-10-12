@@ -1,0 +1,239 @@
+diff --git a/algorithms/scheduler.py b/algorithms/scheduler.py
+index 499d0ef8f4db0612550039a422f32abf1bb04697..da36202ecf2d20e8526a702c9aa61c21ef1e4967 100644
+--- a/algorithms/scheduler.py
++++ b/algorithms/scheduler.py
+@@ -251,182 +251,200 @@ class HEFTScheduler:
+ 
+         # 1) transfer
+         _, link_end = self.comm.reserve(host, dev.name, size_src, earliest=t0, commit=commit)
+         # 2) convert on device
+         conv_t = self.cost.format_conversion_time(size_src, stored_fmt, self.cost.device_preferred_fmt(dev), dev)
+         end = link_end + conv_t
+ 
+         if commit:
+             self._weight_load_count[(wid, dev.type)] += 1
+             self._weight_sizes[wid] = node.weight_size
+             if not must_stream:
+                 # Only PIM manages cache state (NPU always reloads from host)
+                 if dev.type == "pim":
+                     # Legacy dict for compatibility
+                     self.weight_cached[(dev.name, wid)] = True
+                     
+                     # BufferManager LRU cache for PIM storage management
+                     self.buffer.mark_cached(dev.name, wid, node.weight_size, pinned=False)
+                 
+                 # Store host format if unseen
+                 if wid not in self.buffer.host_format and wid in self.storage_fmt_map:
+                     self.buffer.set_host_fmt(wid, self.storage_fmt_map[wid])
+ 
+         return max(0.0, end - t0)
+ 
+-    def _kv_transfer_time_if_needed(self, node: TaskNode, dev: DeviceSpec, phase: str, t0: float, commit: bool) -> float:
+-        """Only for decode on PIM in small mode: host<->PIM KV movement."""
+-        if phase != "decode":
+-            return 0.0
+-        if node.name not in ("KV_read", "KV_write"):
+-            return 0.0
+-        if dev.type != "pim":
+-            return 0.0
+-        if getattr(self.label, "kv_in_pim", False):
+-            return 0.0
+-
+-        r, w = self.cost.kv_rw_bytes_decode(node, self.batch, self.seq_len)
+-        host = self.cost.get_host_device().name
+-        if node.name == "KV_read":
+-            _, end = self.comm.reserve(host, dev.name, r, earliest=t0, commit=commit)
+-        else:
+-            _, end = self.comm.reserve(dev.name, host, w, earliest=t0, commit=commit)
+-        return max(0.0, end - t0)
++    def _kv_transfer_time_if_needed(self, node: TaskNode, dev: DeviceSpec, phase: str, t0: float, commit: bool) -> float:
++        """Only for decode on PIM in small mode: trigger PIM LRU (no extra timeline)."""
++        if phase != "decode":
++            return 0.0
+
++        if dev.type != "pim":
++            return 0.0
++        if getattr(self.label, "kv_in_pim", False):
++            return 0.0
++
++        if not commit:
++            return 0.0
++
++        # Trigger PIM LRU eviction: KV streaming temporarily occupies buffer space.
++        cache = self.buffer.device_cache.get(dev.name)
++        if cache is None:
++            self.buffer.ensure_device_cache(dev.name, self._pim_cache_capacity_for(dev))
++            cache = self.buffer.device_cache.get(dev.name)
++        if cache is None or cache.capacity <= 0:
++            return 0.0
++
++        read_bytes, write_bytes = self.cost.kv_rw_bytes_decode(node, self.batch, self.seq_len)
++        temp_bytes = max(read_bytes, write_bytes)
++        if temp_bytes <= 0:
++            return 0.0
++
++        temp_key = f"__kv_stream__{node.attrs.get('layer', node.id)}"
++        added = cache.add(temp_key, temp_bytes, pinned=False)
++        if added:
++            cache.used -= cache.items.pop(temp_key, 0)
++        try:
++            cache.order.remove(temp_key)
++        except ValueError:
++            pass
++        cache.pinned.discard(temp_key)
++        return 0.0
+ 
+     def _earliest_finish_on_device(self, g: TaskGraph, nid: str, dev: DeviceSpec, phase: str, commit: bool) -> Tuple[float, float]:
+         node = g.nodes[nid]
+ 
+         # 1) inputs ready (consider cross-device comm + dst format conversion)
+         inbound_start_times: List[float] = []
+         inbound_end_times: List[float] = []
+         node_read, _ = self.cost.estimate_activation_bytes(node,self.batch,self.seq_len,phase)
+ 
+         for u in g.predecessors(nid):
+             pred_finish = self._node_finish_time.get(u, 0.0)
+             pred_dev_name = self._node_placement.get(u, dev.name)
+             pred_dev = self.cluster.devices[pred_dev_name]
+             if pred_dev.name == dev.name:
+                 inbound_start_times.append(pred_finish)
+                 inbound_end_times.append(pred_finish)
+                 continue
+             else:
+                 src_fmt = self._node_out_fmt.get(u, self.cost.device_preferred_fmt(pred_dev))
+                 dst_fmt = self.cost.device_preferred_fmt(dev)
+                 _ , pred_write = self.cost.estimate_activation_bytes(g.nodes[u],self.batch,self.seq_len,phase)
+                 payload_nd = max(node_read,pred_write)
+                 payload_src = self.cost.format_size(payload_nd,src_fmt)
+                 link_start, link_end = self.comm.reserve(pred_dev.name,dev.name,payload_src,pred_finish,commit)
+                 conv_t = self.cost.format_conversion_time(payload_src,src_fmt,dst_fmt,dev)
+                 dep_end = link_end + conv_t
+                 inbound_start_times.append(link_start)
+                 inbound_end_times.append(dep_end)
+         if dev.type == "npu": #npu copyin,compute,copyout 重叠，prev算完就可以开始
+             ready_time = max(inbound_start_times,default=0.0)
+         else:
+             ready_time = max(inbound_end_times)
+ 
+         # 2）device available
+         t0 = max(self.avail[dev.name],ready_time)
+ 
+         # 3) compute
+         compute_t = self.cost.node_device_cost(node,dev,self.batch,self.seq_len,phase)
+ 
+         # 4) overlap transfer
+-        wload_t = self._weight_load_time(node,dev,t0,commit)
+-        kv_t = self._kv_transfer_time_if_needed(node,dev,phase,t0,commit)
++        wload_t = self._weight_load_time(node,dev,t0,commit)
++        self._kv_transfer_time_if_needed(node,dev,phase,t0,commit)
+ 
+         # 5) npu overlap
+         if dev.type == "npu":
+             inbound_overlap = 0.0
+             if inbound_end_times:
+                 max_inbound_end = max(inbound_end_times)
+                 inbound_overlap = max(0,max_inbound_end-t0) #max_inbound_end 数据最晚可用时间和设备空闲时间是否有重叠，没有就取0
+-            total = max(compute_t,wload_t,kv_t,inbound_overlap)
+-            finish = t0 + total
+-        else:
+-            cursor = t0
+-            cursor += wload_t
+-            cursor += compute_t
+-            cursor += kv_t
+-            finish = cursor
++            total = max(compute_t,wload_t,inbound_overlap)
++            finish = t0 + total
++        else:
++            cursor = t0
++            cursor += wload_t
++            cursor += compute_t
++            finish = cursor
+ 
+         if commit:
+             self._node_out_fmt[nid] = self.cost.device_preferred_fmt(dev)
+ 
+         return t0, finish
+ 
+     # --------------------------
+     # Hybrid helpers
+     # --------------------------
+     def _earliest_free_device(self, dev_type: str) -> Tuple[Optional[DeviceSpec], float]:
+         devs = self.cluster.devices_by_type(dev_type)
+         if not devs:
+             return None, float("inf")
+         best = None
+         best_t = float("inf")
+         for d in devs:
+             t = self.avail.get(d.name, 0.0)
+             if t < best_t:
+                 best, best_t = d, t
+         return best, best_t
+ 
+     def _ready_time_for_device(self, g: TaskGraph, nid: str, dev: DeviceSpec, phase: str, commit: bool) -> float:
+         node = g.nodes[nid]
+         ready = 0.0
+         for u in g.predecessors(nid):
+             pred_finish = self._node_finish_time.get(u, 0.0) #前驱节点完成时间
+             pred_dev_name = self._node_placement.get(u, dev.name) #前驱节点被分配的设备名称
+             pred_dev = self.cluster.devices[pred_dev_name] #前驱节点被分配的设备
+             if pred_dev.name == dev.name: #同设备
+                 ready = max(ready, pred_finish)
+             else:
+                 payload_nd = max(g.nodes[u].bytes_write, node.bytes_read, 16 * 1024)
+                 src_fmt = self._node_out_fmt.get(u, self.cost.device_preferred_fmt(pred_dev))
+                 dst_fmt = self.cost.device_preferred_fmt(dev)
+                 payload_src = self.cost.format_size(payload_nd, src_fmt)
+                 _, link_end = self.comm.reserve(pred_dev.name, dev.name, payload_src, earliest=pred_finish, commit=commit)
+                 dep_end = link_end + self.cost.format_conversion_time(payload_src, src_fmt, dst_fmt, dev)
+                 ready = max(ready, dep_end)
+         return ready
+ 
+     def _earliest_finish_hybrid(self, g: TaskGraph, nid: str, phase: str, commit: bool) -> Optional[Dict[str, object]]:
+         node = g.nodes[nid]
+         npu_dev, t_npu_free = self._earliest_free_device("npu")
+         pim_dev, t_pim_free = self._earliest_free_device("pim")
+         if (npu_dev is None) or (pim_dev is None):
+             return None
+ 
+         t_ready_npu = self._ready_time_for_device(g, nid, npu_dev, phase, commit)
+         t_ready_pim = self._ready_time_for_device(g, nid, pim_dev, phase, commit)
+ 
+-        t_w_npu = self._weight_load_time(node, npu_dev, t_npu_free, commit)
+-        t_w_pim = self._weight_load_time(node, pim_dev, t_pim_free, commit)
+-        t_kv_npu = self._kv_transfer_time_if_needed(node, npu_dev, phase, t_npu_free, commit)
+-        t_kv_pim = self._kv_transfer_time_if_needed(node, pim_dev, phase, t_pim_free, commit)
+-
+-        start_npu = max(t_npu_free, t_ready_npu, t_npu_free + t_w_npu, t_npu_free + t_kv_npu)
+-        start_pim = max(t_pim_free, t_ready_pim, t_pim_free + t_w_pim, t_pim_free + t_kv_pim)
++        t_w_npu = self._weight_load_time(node, npu_dev, t_npu_free, commit)
++        t_w_pim = self._weight_load_time(node, pim_dev, t_pim_free, commit)
++        self._kv_transfer_time_if_needed(node, npu_dev, phase, t_npu_free, commit)
++        self._kv_transfer_time_if_needed(node, pim_dev, phase, t_pim_free, commit)
++
++        start_npu = max(t_npu_free, t_ready_npu, t_npu_free + t_w_npu)
++        start_pim = max(t_pim_free, t_ready_pim, t_pim_free + t_w_pim)
+ 
+         tN = self.cost.node_device_cost(node, npu_dev, self.batch, self.seq_len, phase)
+         tP = self.cost.node_device_cost(node, pim_dev, self.batch, self.seq_len, phase)
+         rN = (0.0 if tN <= 0.0 else 1.0 / tN)
+         rP = (0.0 if tP <= 0.0 else 1.0 / tP)
+ 
+         if start_npu <= start_pim:
+             lead_start = start_npu; tail_start = start_pim; r_lead = rN
+         else:
+             lead_start = start_pim; tail_start = start_npu; r_lead = rP
+ 
+         lead_interval = max(0.0, tail_start - lead_start)
+         work_done = r_lead * lead_interval
+         
+ 
+         print(f"tN: {tN}, tP: {tP}")
+         agg = rN + rP #合起来处理的计算速率
+         finish = tail_start + (1.0 - work_done) / agg
+         # choose output ownership by contribution
+         contrib_n = max(0.0, finish - start_npu) * rN
+         contrib_p = max(0.0, finish - start_pim) * rP
+         out_dev = npu_dev if contrib_n >= contrib_p else pim_dev
+         return {
+             "mode": "HYBRID",
+             "start_npu": start_npu,

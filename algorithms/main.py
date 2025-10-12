@@ -6,10 +6,7 @@ import json
 import os
 from dataclasses import dataclass, field
 from typing import Dict, Set
-
 from hardware import demo_cluster, Cluster
-from model_parser import build_graph
-from scheduler import HEFTScheduler
 from cost_model import CostModel, DTYPE_BYTES
 from buffer_manager import BufferManager
 from task_graph import TaskGraph
@@ -31,7 +28,6 @@ class PlanLabel:
     pim_mode: str                 # "small" | "medium" | "large"
     kv_in_pim: bool
     pim_weight_capacity_bytes: int = 0
-    kv_cache_bytes: int = 0
     pinned_fc_on_pim: Set[str] = field(default_factory=set)
     
     def print_debug(self) -> None:
@@ -95,11 +91,11 @@ def plan_memory_and_label(cfg: Dict, cluster: Cluster) -> PlanLabel:
         print(f"[DEBUG] Total weights found: {len(per_weight_size)}")
     
     if pim_bytes < KV_total_bytes:
-        label = PlanLabel(pim_mode="small", kv_in_pim=False, pim_weight_capacity_bytes=0, kv_cache_bytes=0)
+        label = PlanLabel(pim_mode="small", kv_in_pim=False, pim_weight_capacity_bytes=0)
     elif pim_bytes >= (KV_total_bytes + FC_total_bytes):
-        label = PlanLabel(pim_mode="large", kv_in_pim=True, pim_weight_capacity_bytes=pim_bytes-KV_total_bytes,kv_cache_bytes=KV_total_bytes)
+        label = PlanLabel(pim_mode="large", kv_in_pim=True, pim_weight_capacity_bytes=pim_bytes-KV_total_bytes)
     else:
-        label = PlanLabel(pim_mode="medium",kv_in_pim=True, pim_weight_capacity_bytes=pim_bytes-KV_total_bytes, kv_cache_bytes=KV_total_bytes)
+        label = PlanLabel(pim_mode="medium",kv_in_pim=True, pim_weight_capacity_bytes=pim_bytes-KV_total_bytes)
     
     # Print debug info
     if DEBUG_MAIN:
