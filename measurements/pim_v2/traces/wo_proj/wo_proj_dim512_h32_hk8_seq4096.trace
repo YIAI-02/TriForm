@@ -1,0 +1,14 @@
+AiM WR_GB 16 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM MAC_ABK 16 0xffffffff 78
+AiM MAC_ABK 16 0xffffffff 80
+AiM RD_MAC 0 0xffffffff
+AiM RD_MAC 0 0xffffffff
+AiM WR_GB 16 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM MAC_ABK 16 0xffffffff 79
+AiM MAC_ABK 16 0xffffffff 81
+AiM RD_MAC 0 0xffffffff
+AiM RD_MAC 0 0xffffffff

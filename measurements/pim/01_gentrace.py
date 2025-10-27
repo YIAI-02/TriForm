@@ -6,13 +6,12 @@ import argparse, json, sys
 from pathlib import Path
 from typing import Optional, List
 
-# 共享工具
+
 from aim_shared import (
     ensure_cent_on_path, load_pim_config, make_tb_args_from_pim, make_dic_model,
     emit_single_op_trace, parse_int_list, load_model_shape
 )
 
-# 引入 CENT 的模块（确保搜索路径）
 ensure_cent_on_path()
 from TransformerBlock import TransformerBlock  # type: ignore
 
@@ -25,17 +24,16 @@ def main():
     ap.add_argument("--vector-dims", type=str, default=None, help="for weight")
     ap.add_argument("--matrix-cols", type=str, default=None, help="for weight")
     ap.add_argument("--with-af", action="store_true", help="Append AF+RD_AF after weight GEMV")
-    ap.add_argument("--dim", type=int, default=None, help="若未显式给出，优先从 --model-shape 中读取")
-    ap.add_argument("--n-heads", type=int, default=None, help="若未显式给出，优先从 --model-shape 中读取")
-    ap.add_argument("--n-kv-heads", type=int, default=None, help="若未显式给出，尝试从 --model-shape 读取，否则等于 n-heads")
-    ap.add_argument("--model-shape", type=Path, default=None, help="读取 ../configs/*_shape.json，提取 dim/n_heads/n_kv_heads/seq_length")
+    ap.add_argument("--dim", type=int, default=None)
+    ap.add_argument("--n-heads", type=int, default=None)
+    ap.add_argument("--n-kv-heads", type=int, default=None)
+    ap.add_argument("--model-shape", type=Path, default=None)
     args = ap.parse_args()
 
     shape = None
     if args.model_shape:
         shape = load_model_shape(args.model_shape)
 
-    # 解析/覆盖 模型形状
     dim = args.dim if args.dim is not None else (shape["dim"] if shape else 256)
     n_heads = args.n_heads if args.n_heads is not None else (shape["n_heads"] if shape else 8)
     n_kv_heads = args.n_kv_heads if args.n_kv_heads is not None else (shape["n_kv_heads"] if shape else n_heads)
@@ -49,7 +47,6 @@ def main():
     v_dims = parse_int_list(args.vector_dims)
     m_cols = parse_int_list(args.matrix_cols)
 
-    # 默认 seqlen：若 shape 指明 seq_length，则默认取[16..seq_length]的一个对数间隔采样；否则用一组常用点
     if any(o in ("score","output") for o in ops) and not seqlens:
         if shape and shape.get("seq_length"):
             Lmax = int(shape["seq_length"])
@@ -61,7 +58,6 @@ def main():
         v_dims = [dim]
         m_cols = [dim, 4*dim]
 
-    # 构造模型字典（用于 TransformerBlock）
     dic_model = make_dic_model(dim, n_heads, n_kv_heads, seqlens[0] if seqlens else 16)
     row_index_matrix = 0
 

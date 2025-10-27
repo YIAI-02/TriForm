@@ -1,0 +1,135 @@
+AiM WR_GB 16 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM MAC_ABK 16 0xffffffff 149
+AiM MAC_ABK 16 0xffffffff 152
+AiM MAC_ABK 16 0xffffffff 155
+AiM MAC_ABK 16 0xffffffff 158
+AiM MAC_ABK 16 0xffffffff 161
+AiM MAC_ABK 16 0xffffffff 164
+AiM MAC_ABK 16 0xffffffff 167
+AiM MAC_ABK 16 0xffffffff 170
+AiM MAC_ABK 16 0xffffffff 173
+AiM MAC_ABK 16 0xffffffff 176
+AiM MAC_ABK 16 0xffffffff 179
+AiM MAC_ABK 16 0xffffffff 182
+AiM RD_MAC 0 0xffffffff
+AiM RD_MAC 0 0xffffffff
+AiM RD_MAC 0 0xffffffff
+AiM RD_MAC 0 0xffffffff
+AiM RD_MAC 0 0xffffffff
+AiM RD_MAC 0 0xffffffff
+AiM RD_MAC 0 0xffffffff
+AiM RD_MAC 0 0xffffffff
+AiM RD_MAC 0 0xffffffff
+AiM RD_MAC 0 0xffffffff
+AiM RD_MAC 0 0xffffffff
+AiM RD_MAC 0 0xffffffff
+AiM WR_GB 16 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM MAC_ABK 16 0xffffffff 150
+AiM MAC_ABK 16 0xffffffff 153
+AiM MAC_ABK 16 0xffffffff 156
+AiM MAC_ABK 16 0xffffffff 159
+AiM MAC_ABK 16 0xffffffff 162
+AiM MAC_ABK 16 0xffffffff 165
+AiM MAC_ABK 16 0xffffffff 168
+AiM MAC_ABK 16 0xffffffff 171
+AiM MAC_ABK 16 0xffffffff 174
+AiM MAC_ABK 16 0xffffffff 177
+AiM MAC_ABK 16 0xffffffff 180
+AiM MAC_ABK 16 0xffffffff 183
+AiM RD_MAC 0 0xffffffff
+AiM RD_MAC 0 0xffffffff
+AiM RD_MAC 0 0xffffffff
+AiM RD_MAC 0 0xffffffff
+AiM RD_MAC 0 0xffffffff
+AiM RD_MAC 0 0xffffffff
+AiM RD_MAC 0 0xffffffff
+AiM RD_MAC 0 0xffffffff
+AiM RD_MAC 0 0xffffffff
+AiM RD_MAC 0 0xffffffff
+AiM RD_MAC 0 0xffffffff
+AiM RD_MAC 0 0xffffffff
+AiM WR_GB 16 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM WR_BIAS 0 0xffffffff
+AiM MAC_ABK 16 0xffffffff 151
+AiM MAC_ABK 16 0xffffffff 154
+AiM MAC_ABK 16 0xffffffff 157
+AiM MAC_ABK 16 0xffffffff 160
+AiM MAC_ABK 16 0xffffffff 163
+AiM MAC_ABK 16 0xffffffff 166
+AiM MAC_ABK 16 0xffffffff 169
+AiM MAC_ABK 16 0xffffffff 172
+AiM MAC_ABK 16 0xffffffff 175
+AiM MAC_ABK 16 0xffffffff 178
+AiM MAC_ABK 16 0xffffffff 181
+AiM MAC_ABK 16 0xffffffff 184
+AiM AF 0xffffffff
+AiM RD_AF 0 0xffffffff
+AiM AF 0xffffffff
+AiM RD_AF 0 0xffffffff
+AiM AF 0xffffffff
+AiM RD_AF 0 0xffffffff
+AiM AF 0xffffffff
+AiM RD_AF 0 0xffffffff
+AiM AF 0xffffffff
+AiM RD_AF 0 0xffffffff
+AiM AF 0xffffffff
+AiM RD_AF 0 0xffffffff
+AiM AF 0xffffffff
+AiM RD_AF 0 0xffffffff
+AiM AF 0xffffffff
+AiM RD_AF 0 0xffffffff
+AiM AF 0xffffffff
+AiM RD_AF 0 0xffffffff
+AiM AF 0xffffffff
+AiM RD_AF 0 0xffffffff
+AiM AF 0xffffffff
+AiM RD_AF 0 0xffffffff
+AiM AF 0xffffffff
+AiM RD_AF 0 0xffffffff
+AiM RD_MAC 0 0xffffffff
+AiM RD_MAC 0 0xffffffff
+AiM RD_MAC 0 0xffffffff
+AiM RD_MAC 0 0xffffffff
+AiM RD_MAC 0 0xffffffff
+AiM RD_MAC 0 0xffffffff
+AiM RD_MAC 0 0xffffffff
+AiM RD_MAC 0 0xffffffff
+AiM RD_MAC 0 0xffffffff
+AiM RD_MAC 0 0xffffffff
+AiM RD_MAC 0 0xffffffff
+AiM RD_MAC 0 0xffffffff
