@@ -1,0 +1,21 @@
+{
+  "op": "ffn_gate",
+  "dim": 768,
+  "n_heads": 12,
+  "n_kv_heads": 3,
+  "ffn_dim": 3072,
+  "seqlen": 2048,
+  "vector_dim": 768,
+  "matrix_col": 3072,
+  "with_af": 0,
+  "trace_file": "traces/ffn_gate/ffn_gate_dim768_h12_hk3_seq2048.trace",
+  "DRAM_column": 256,
+  "DRAM_row": 64,
+  "burst_length": 16,
+  "num_banks": 8,
+  "num_channels": 32,
+  "threads": 1,
+  "reuse_size": 32,
+  "channels_per_block": 32,
+  "max_seq_len": 4096
+}

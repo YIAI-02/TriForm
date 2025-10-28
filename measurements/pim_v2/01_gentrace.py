@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from __future__ import annotations
@@ -116,8 +115,7 @@ def _build_param_grid(
     return grid
 
 # ------------------------------ helper ------------------------------
-def _mk_trace_name(op: str,
-                   dim: int, n_heads: int, n_kv_heads: int,
+def _mk_trace_name(op: str, dim: int, n_heads: int, n_kv_heads: int,
                    seqlen: Optional[int], V: Optional[int], N: Optional[int],
                    with_af: bool) -> str:
     parts = [op, f"dim{dim}_h{n_heads}_hk{n_kv_heads}"]
@@ -141,7 +139,6 @@ def _calc_channels(block):
     channel_multi_tb_required = int((num_channels // channels_required) * channels_required)
     channel_lst = [channel for channel in range(channel_multi_tb_required)]
     return channel_lst, FC_total_banks, channels_required
-
 
 def _make_dic_model(dim: int, n_heads: int, n_kv_heads: Optional[int], seqlen: int, ffn_dim: int) -> Dict[str, Any]:
     if n_kv_heads is None:
@@ -179,7 +176,6 @@ def _make_dic_model(dim: int, n_heads: int, n_kv_heads: Optional[int], seqlen: i
         "ffn": torch.zeros((1, 1, dim))
     }
 
-
 def _load_pim_config(path: Path) -> Dict[str, Any]:
     cfg = json.loads(path.read_text(encoding="utf-8"))
     std: Dict[str, Any] = {}
@@ -210,12 +206,11 @@ def _load_pim_config(path: Path) -> Dict[str, Any]:
     std.setdefault("num_channels", 4)
     std.setdefault("threads", 1)
     std.setdefault("reuse_size", 32)
-    std.setdefault("channels_per_block", None)  # None -> 用 num_channels
+    std.setdefault("channels_per_block", None)
     std.setdefault("max_seq_len", 4096)
     return std
 
 def _make_tb_args_from_pim(cfg: Dict[str, Any], trace_file: str):
-    """把 PIM 配置组合成 TransformerBlock 所需的 SimpleNamespace"""
     from types import SimpleNamespace
     return SimpleNamespace(
         DRAM_column        = int(cfg["DRAM_column"]),
@@ -227,34 +222,29 @@ def _make_tb_args_from_pim(cfg: Dict[str, Any], trace_file: str):
         reuse_size         = int(cfg["reuse_size"]),
         channels_per_block = int(cfg["channels_per_block"]),
         max_seq_len        = int(cfg["max_seq_len"]),
-        # tracing toggles
         only_trace         = True, 
         op_trace           = False, 
         trace_file         = trace_file,
-        # TB-specific
         pim_compute        = True, 
         model              = "llama_like", 
         embedding          = "rope",
         seqlen             = 16, 
-        model_parallel=False, 
-        FC_devices=1,
-        pipeline_parallel=False, 
+        model_parallel     = False, 
+        FC_devices         = 1,
+        pipeline_parallel  = False, 
         inter_device_attention=False, 
-        only_FC=False,
-        trace_prepare=False, 
-        trace_norm=False, 
-        trace_fc_kqvo=False, 
-        trace_attention=False,
-        trace_softmax=False, 
-        trace_fc_ffn=False, 
-        trace_activation=False,
-        GEMV="reuse-GB",
+        only_FC            = False,
+        trace_prepare      = False, 
+        trace_norm         = False, 
+        trace_fc_kqvo      = False, 
+        trace_attention    = False,
+        trace_softmax      = False, 
+        trace_fc_ffn       = False, 
+        trace_activation   = False,
+        GEMV               = "reuse-GB",
     )
 
 def _ensure_cent_on_path(start: Optional[Path] = None) -> tuple[Path, Path]:
-    """
-    把 <repo root>/submodules/CENT/cent_simulation 与 <repo root> 放入 sys.path，返回 (PROJECT_ROOT, CENT_SIM_DIR)。
-    """
     here = (start or Path(__file__)).resolve()
     for p in [here.parent] + list(here.parents):
         cand = p / "submodules" / "CENT" / "cent_simulation"
@@ -267,51 +257,44 @@ def _ensure_cent_on_path(start: Optional[Path] = None) -> tuple[Path, Path]:
     raise RuntimeError(f"Cannot find 'submodules/CENT/cent_simulation' above {here}")
 
 def _emit_single_op_trace(block, op:str, dim:int, n_heads:int, n_kv_heads:int, ffn_dim:int, seqlens:int):
-    channel_lst, FC_total_banks,channels_required = _calc_channels(block)
+    channel_lst, FC_total_banks, channels_required = _calc_channels(block)
     if op in ("q_proj", "k_proj", "v_proj", "wo_proj", "ffn_up", "ffn_gate", "ffn_down"):
-            V = N = None #vector_dim,maxtrix_col [1,vector_dim]*[vector_dim,maxtrix_col]
-            if  op == "q_proj":
-                row_tag, V, N = "wq_row_index", dim, dim #[1 d_model] [d_model dhead*head_dim] 很多模型中 d_model = dhead*head_dim
-                block.Vector_Matrix_Mul_weight_pim_only_trace(channel_lst, getattr(block, row_tag), V, N, FC_total_banks, "breakdown_sa_weight")
-            elif op == "k_proj":
-                row_tag, V, N = "wk_row_index", dim, n_kv_heads * dim/n_heads #[1 d_model] [d_model dhead*head_dim] 如果用group head，head_dim仍然相同，但是n_head少，几个头共用，而不改变头的维度
-                block.Vector_Matrix_Mul_weight_pim_only_trace(channel_lst, getattr(block, row_tag), V, N, FC_total_banks, "breakdown_sa_weight")
-            elif op == "v_proj":
-                row_tag, V, N = "wv_row_index", dim, n_kv_heads * dim/n_heads
-                block.Vector_Matrix_Mul_weight_pim_only_trace(channel_lst, getattr(block, row_tag), V, N, FC_total_banks, "breakdown_sa_weight")
-            elif op == "wo_proj":
-                row_tag, V, N = "wo_row_index", dim, dim
-                block.Vector_Matrix_Mul_weight_pim_only_trace(channel_lst, getattr(block, row_tag), V, N, FC_total_banks, "breakdown_sa_weight")
-
-            elif op == "ffn_up":
-                row_tag, V, N = "w1_row_index", dim, ffn_dim
-                block.Vector_Matrix_Mul_weight_pim_only_trace(channel_lst, getattr(block, row_tag), V, N, FC_total_banks, "breakdown_ffn_weight")
-            elif op == "ffn_gate":
-                row_tag, V, N = "w3_row_index", dim, ffn_dim
-                block.Vector_Matrix_Mul_weight_af_pim_only_trace(channel_lst, getattr(block, row_tag), V, N, FC_total_banks, "breakdown_ffn_weight")
-            elif op == "ffn_down":
-                row_tag, V, N = "w2_row_index", ffn_dim, dim
-                block.Vector_Matrix_Mul_weight_pim_only_trace(channel_lst, getattr(block, row_tag), V, N, FC_total_banks, "breakdown_ffn_weight")
-                
-
+        V = N = None
+        if  op == "q_proj":
+            row_tag, V, N = "wq_row_index", dim, dim
+            block.Vector_Matrix_Mul_weight_pim_only_trace(channel_lst, getattr(block, row_tag), V, N, FC_total_banks, "breakdown_sa_weight")
+        elif op == "k_proj":
+            row_tag, V, N = "wk_row_index", dim, n_kv_heads * dim/n_heads
+            block.Vector_Matrix_Mul_weight_pim_only_trace(channel_lst, getattr(block, row_tag), V, N, FC_total_banks, "breakdown_sa_weight")
+        elif op == "v_proj":
+            row_tag, V, N = "wv_row_index", dim, n_kv_heads * dim/n_heads
+            block.Vector_Matrix_Mul_weight_pim_only_trace(channel_lst, getattr(block, row_tag), V, N, FC_total_banks, "breakdown_sa_weight")
+        elif op == "wo_proj":
+            row_tag, V, N = "wo_row_index", dim, dim
+            block.Vector_Matrix_Mul_weight_pim_only_trace(channel_lst, getattr(block, row_tag), V, N, FC_total_banks, "breakdown_sa_weight")
+        elif op == "ffn_up":
+            row_tag, V, N = "w1_row_index", dim, ffn_dim
+            block.Vector_Matrix_Mul_weight_pim_only_trace(channel_lst, getattr(block, row_tag), V, N, FC_total_banks, "breakdown_ffn_weight")
+        elif op == "ffn_gate":
+            row_tag, V, N = "w3_row_index", dim, ffn_dim
+            block.Vector_Matrix_Mul_weight_af_pim_only_trace(channel_lst, getattr(block, row_tag), V, N, FC_total_banks, "breakdown_ffn_weight")
+        elif op == "ffn_down":
+            row_tag, V, N = "w2_row_index", ffn_dim, dim
+            block.Vector_Matrix_Mul_weight_pim_only_trace(channel_lst, getattr(block, row_tag), V, N, FC_total_banks, "breakdown_ffn_weight")
 
     elif op in ("score","softmax","output"):
         for S in seqlens or [1]:
             if op == "score":
-                block.Vector_Matrix_Mul_score_pim_only_trace(block.cache_k_row_index, S, "breakdown_sa_score") ## row_index????
+                block.Vector_Matrix_Mul_score_pim_only_trace(block.cache_k_row_index, S, "breakdown_sa_score")
             elif op == "output":
                 block.Vector_Matrix_Mul_output_pim_only_trace(block.cache_v_row_index, S, "breakdown_sa_output")
-            elif op == "softmax": #部分在PNM 上实现
-                # 1) Scale scores（EWMUL）
+            elif op == "softmax":
                 rows_per_score = (S - 1) // block.DRAM_column + 1
                 for r in range(rows_per_score):
-                    # EWMUL
                     op_size = block.DRAM_column // block.burst_length if r < rows_per_score-1 else (S - block.DRAM_column*r - 1)//block.burst_length + 1
                     block.EWMUL_only_trace(channel_lst, block.scores_row_index + r, op_size)
-                # 2) RD_SBK -> PNM EXP/RED/ACC 
                 block.time["RD_SBK"] += block.timing_constant["RD_SBK"] + (S * block.n_heads) // block.burst_length
                 block.load_from_EWMUL_score_only_trace(channels_required, block.scores_row_index, block.total_banks, 2, S)
-                # 3) WR_SBK 回写 exp 结果，再做EWMUL
                 block.time["WR_SBK"] += block.timing_constant["WR_SBK"] + (S * block.n_heads) // block.burst_length
                 block.store_for_EWMUL_score_only_trace(channels_required, block.scores_row_index, block.total_banks, 0, S)
                 rows_per_score = (S - 1) // block.DRAM_column + 1
@@ -319,15 +302,12 @@ def _emit_single_op_trace(block, op:str, dim:int, n_heads:int, n_kv_heads:int, f
                     op_size = block.DRAM_column // block.burst_length if r < rows_per_score-1 else (S - block.DRAM_column*r - 1)//block.burst_length + 1
                     block.EWMUL_only_trace(channel_lst, block.scores_row_index + r, op_size)
                 block.load_from_EWMUL_score_only_trace(channels_required, block.scores_row_index, block.total_banks, 2, S)
-                # block.SYNC_only_trace()
 
     elif op == "rmsnorm":
-        # 1) ∑x^2：MAC_ABK
         input_len = (dim - 1)//(block.total_banks//2) + 1
         block.WR_BIAS_only_trace(channel_lst)
-        block.MAC_ABK_only_trace(channel_lst, block.x_row_index, (input_len - 1)//block.burst_length + 1, "breakdown_rms_pow")
+        block.MAC_ABK_only_trace(channel_lst, block.x_row_index, (input_len - 1)//block.burst_length + 1, "breakdown_sa_pow")
         block.RD_MAC_only_trace(channel_lst)
-        # 2) 广播缩放因子，EWMUL×2
         ew_len = (dim - 1)//(block.total_banks//4) + 1
         ew_banks = (dim - 1)//ew_len + 1
         block.time["WR_SBK"] += block.timing_constant["WR_SBK"] + dim // block.burst_length
@@ -343,18 +323,14 @@ def _emit_single_op_trace(block, op:str, dim:int, n_heads:int, n_kv_heads:int, f
         block.SYNC_only_trace()
     
     elif op == "rope":
-        # 简化：按图 10(e)，两次 EWMUL + COPY_* 复数乘
         ew_len = (dim/n_heads - 1)//(block.total_banks//4) + 1
         ew_size = (ew_len - 1)//block.burst_length + 1
-        # Q 的 RoPE
         block.store_for_EWMUL_input_only_trace(block.channels_per_block, (dim - 1)//ew_len + 1, 1, block.xq_row_index, ew_len)
         block.EWMUL_only_trace(channel_lst, block.xq_row_index, ew_size)
-        # K 的 RoPE
         block.store_for_EWMUL_input_only_trace(block.channels_per_block, (dim - 1)//ew_len + 1, 1, block.xk_row_index, ew_len)
         block.EWMUL_only_trace(channel_lst, block.xk_row_index, ew_size)
-        # block.SYNC_only_trace()
+        
     elif op in ("silu", "gelu"):
-        # 近似：一次 AF（在 PNM，对 02 来说体现为 RD/WR_SBK） + 两次 EWMUL
         ew_len = (ffn_dim - 1)//(block.total_banks//4) + 1
         ew_banks = (ffn_dim - 1)//ew_len + 1
         block.time["WR_SBK"] += block.timing_constant["WR_SBK"] + ffn_dim // block.burst_length
@@ -367,46 +343,48 @@ def _emit_single_op_trace(block, op:str, dim:int, n_heads:int, n_kv_heads:int, f
         block.EWMUL_only_trace(channel_lst, block.ffn_row_index, (ew_len - 1)//block.burst_length + 1)
         block.time["RD_SBK"] += block.timing_constant["RD_SBK"] + ffn_dim// block.burst_length
         block.SYNC_only_trace()
+        
     elif op == "residual":
         op_size = block.dim // block.burst_length
-        block.EWADD_only_trace(channel_lst, op_size)
-
+        block.EWADD_only_trace(op_size)
     else:
         raise ValueError(f"Unsupported op: {op}")
+    
+    if hasattr(block, "file") and block.file:
+        block.file.write("AiM EOC\n")
+        block.file.flush()
 
 def main():
     ap = argparse.ArgumentParser(description="CENT op trace generator")
     ap.add_argument("--pim-config", type=Path, required=True)
-    ap.add_argument("--ops", type=str, required=True,
-                    help="score,output,weight,weight_af,q_proj,k_proj,v_proj,wo_proj,ffn_up,ffn_gate,ffn_down,score,softmax,output,rmsnorm,rope,silu,gelu,residual,gemv,gemv_af")
+    ap.add_argument("--ops", type=str, default="q_proj, k_proj, v_proj, wo_proj, ffn_up, ffn_gate, ffn_down,score,softmax,output,rmsnorm,rope,silu,gelu,residual")
     ap.add_argument("--out-dir", type=Path, required=True)
     ap.add_argument("--mode", choices=["single","sweep"], default="single")
     ap.add_argument("--with-af", action="store_true")
 
-    # single mode shape
+    # single mode
     ap.add_argument("--dim", type=int, default=None)
     ap.add_argument("--n-heads", type=int, default=None)
     ap.add_argument("--n-kv-heads", type=int, default=None)
-    ap.add_argument("--seqlens", type=str, default=None, help="Comma-separated seqlens for score/softmax/out (e.g. '128,256,512')")
+    ap.add_argument("--seqlens", type=str, default=None)
     ap.add_argument("--ffn-mult", type=float, default=4.0)
-    ap.add_argument("--model-shape", type=Path, default=None, help="Optional model-shape JSON: keys like dim/hidden_size, n_heads/num_attention_heads, n_kv_heads/num_key_value_heads")
+    ap.add_argument("--model-shape", type=Path, default=None)
 
-    # sweep knobs
-    ap.add_argument("--presets", type=str, default="common", help="Comma-separated presets: common,tiny,bert,gpt2,llama,mistral")
-    ap.add_argument("--dims", type=str, default=None, help="Override sweep dims (comma-separated ints)")
-    ap.add_argument("--heads", type=str, default=None, help="Override sweep n_heads (comma-separated ints)")
-    ap.add_argument("--kv-head-policy", type=str, default="same,quarter", help="Policies or explicit kv heads. Policies: 'same' (MHA) and/or 'quarter' (GQA). Or pass ints.")
-    ap.add_argument("--seq-candidates", type=str, default=None, help="Override candidate seqlens for sweep (comma-separated)")
-    ap.add_argument("--max-seqlen", type=int, default=4096, help="Upper bound for seqlens in sweep")
-    ap.add_argument("--limit", type=int, default=None, help="Cap number of (dim,heads,kv) combos for quick tests")
+    # sweep mode
+    ap.add_argument("--presets", type=str, default="common")
+    ap.add_argument("--dims", type=str, default=None)
+    ap.add_argument("--heads", type=str, default=None)
+    ap.add_argument("--kv-head-policy", type=str, default="same,quarter")
+    ap.add_argument("--seq-candidates", type=str, default=None)
+    ap.add_argument("--max-seqlen", type=int, default=4096)
+    ap.add_argument("--limit", type=int, default=None)
 
     args = ap.parse_args()
     _ensure_cent_on_path()
     try:
-        from Llama import TransformerBlockLlama as TransformerBlock  # type: ignore
+        from Llama import TransformerBlockLlama as TransformerBlock
     except Exception:
-        # Fallback to local TransformerBlock if available
-        from TransformerBlock import TransformerBlock  # type: ignore
+        from TransformerBlock import TransformerBlock
 
     pim_cfg = _load_pim_config(args.pim_config)
     out_dir: Path = args.out_dir
@@ -414,7 +392,8 @@ def main():
 
     raw_ops = [o.strip() for o in (args.ops or "").split(",") if o.strip()]
     if not raw_ops:
-        raw_ops = ["q_proj","k_proj","v_proj","wo_proj","score","softmax","output","ffn_up","ffn_gate","ffn_down","rmsnorm","rope","silu","gelu","residual"]
+        raw_ops = ["q_proj","k_proj","v_proj","wo_proj","score","softmax","output",
+                   "ffn_up","ffn_gate","ffn_down","rmsnorm","rope","silu","gelu","residual"]
     ops: list[str] = raw_ops
 
     jobs: list[dict] = []
@@ -422,7 +401,7 @@ def main():
     if args.mode == "single":
         dim = args.dim
         n_heads = args.n_heads
-        n_kv_heads = args.n_kv_heads if n_kv_heads is not None else n_heads
+        n_kv_heads = args.n_kv_heads
         if args.model_shape:
             try:
                 shape = json.loads(Path(args.model_shape).read_text(encoding="utf-8"))
@@ -432,7 +411,7 @@ def main():
             except Exception as e:
                 raise SystemExit(f"Failed to read --model-shape: {e}")
         if dim is None or n_heads is None:
-            raise SystemExit("single mode requires --dim and --n-heads (or provide --model-shape).")
+            raise SystemExit("single mode requires --dim and --n-heads")
         if n_kv_heads is None:
             n_kv_heads = n_heads
         if dim % n_heads != 0:
@@ -471,39 +450,63 @@ def main():
             grid = grid[:args.limit]
         jobs = grid
 
-# -------- run generation --------
+    # 生成trace并保存metadata
     total_written = 0
+    metadata_list = []
+    
     for job in jobs:
-        dim = job["dim"]; n_heads = job["n_heads"]; n_kv_heads = job["n_kv_heads"]
-        ffn_dim = job["ffn_dim"]; seqlens = job["seqlens"]
+        dim = job["dim"]
+        n_heads = job["n_heads"]
+        n_kv_heads = job["n_kv_heads"]
+        ffn_dim = job["ffn_dim"]
+        seqlens = job["seqlens"]
         max_seq_for_alloc = max(seqlens) if seqlens else 1
 
-        # instantiate a fresh block per op (so each op gets its own trace file)
         for op in ops:
-            # Build output path: <out_dir>/<op>/<trace_file_name>
             trace_name = _mk_trace_name(op, dim, n_heads, n_kv_heads, max_seq_for_alloc, None, None, args.with_af)
             op_dir = out_dir / op
             op_dir.mkdir(parents=True, exist_ok=True)
             trace_path = op_dir / trace_name
 
-            # Build args for this run
             block_args = _make_tb_args_from_pim(pim_cfg, str(trace_path))
             block_args.op_trace = True
             block_args.seqlen = max_seq_for_alloc
 
-            # Make a minimal dic_model for shapes
             dic_model = _make_dic_model(dim, n_heads, n_kv_heads, block_args.seqlen, ffn_dim)
-
             block = TransformerBlock(dic_model, block_args)
-            # Expand memory mapping if available
+            
             if hasattr(block, "memory_mapping"):
                 block.memory_mapping()
 
             try:
                 _emit_single_op_trace(block, op, dim, n_heads, n_kv_heads, ffn_dim, seqlens)
+                
+                # 保存metadata到JSON
+                meta = {
+                    "op": op,
+                    "dim": dim,
+                    "n_heads": n_heads,
+                    "n_kv_heads": n_kv_heads,
+                    "ffn_dim": ffn_dim,
+                    "seqlen": max_seq_for_alloc,
+                    "vector_dim": dim,
+                    "matrix_col": dim if op in ["q_proj", "wo_proj"] else (
+                        int(n_kv_heads * dim / n_heads) if op in ["k_proj", "v_proj"] else
+                        ffn_dim if op in ["ffn_up", "ffn_gate"] else
+                        dim if op == "ffn_down" else None
+                    ),
+                    "with_af": 1 if args.with_af else 0,
+                    "trace_file": str(trace_path),
+                    **pim_cfg 
+                }
+                
+                json_path = trace_path.with_suffix(".json")
+                json_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+                
+                metadata_list.append(meta)
                 total_written += 1
+                
             finally:
-                # Ensure file handle closes
                 f = getattr(block, "file", None)
                 try:
                     if f:
@@ -511,8 +514,12 @@ def main():
                 except Exception:
                     pass
 
+    # 保存所有metadata到一个汇总文件
+    summary_path = out_dir / "trace_metadata.json"
+    summary_path.write_text(json.dumps(metadata_list, indent=2), encoding="utf-8")
+
     print(f"[ok] wrote {total_written} traces under: {out_dir}")
+    print(f"[ok] metadata summary: {summary_path}")
 
 if __name__ == "__main__":
     main()
-

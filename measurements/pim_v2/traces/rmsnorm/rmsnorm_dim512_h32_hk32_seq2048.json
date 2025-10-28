@@ -1,0 +1,21 @@
+{
+  "op": "rmsnorm",
+  "dim": 512,
+  "n_heads": 32,
+  "n_kv_heads": 32,
+  "ffn_dim": 2048,
+  "seqlen": 2048,
+  "vector_dim": 512,
+  "matrix_col": null,
+  "with_af": 0,
+  "trace_file": "traces/rmsnorm/rmsnorm_dim512_h32_hk32_seq2048.trace",
+  "DRAM_column": 256,
+  "DRAM_row": 64,
+  "burst_length": 16,
+  "num_banks": 8,
+  "num_channels": 32,
+  "threads": 1,
+  "reuse_size": 32,
+  "channels_per_block": 32,
+  "max_seq_len": 4096
+}
