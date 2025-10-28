@@ -7,12 +7,11 @@ import os
 from typing import Dict
 from hardware import demo_cluster, Cluster
 from cost_model import CostModel, DTYPE_BYTES
-from buffer_manager import BufferManager
+from buffer_manager import GlobalMemoryManager
 from task_graph import TaskGraph
 from model_parser import build_graph
 from config import (
     DEFAULT_CONFIG,
-    ENABLE_TWO_PASS_FORMAT_TUNING,
     WEIGHT_FORMAT_JSON_PATH,
     FORMAT_TUNING_MAX_PASSES,
     FORMAT_TUNING_TIME_EPS,
@@ -144,7 +143,7 @@ def run(cfg: Dict):
     best_total: float = None  # type: ignore
 
     # shared buffer manager across passes to accumulate stats
-    buffer_mgr = BufferManager()
+    buffer_mgr = GlobalMemoryManager()
     for p in range(1, FORMAT_TUNING_MAX_PASSES + 1):
         sched = HEFTScheduler(cluster, cost, label, batch=batch, seq_len=prefill_len, buffer=buffer_mgr)
         sched.set_storage_format_map(fmt_map)#加载之前的format

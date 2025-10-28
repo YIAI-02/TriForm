@@ -57,7 +57,7 @@ class LRUCache:
         return False
 
 @dataclass
-class BufferManager:
+class GlobalMemoryManager:
     # Host-side storage format per weight_id: 'ND' | 'npu-opt' | 'pim-opt'
     host_format: Dict[str, str] = field(default_factory=dict)
     # Conversion throughputs (GB/s) for format conversion

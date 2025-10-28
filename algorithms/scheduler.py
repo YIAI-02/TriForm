@@ -8,7 +8,7 @@ from plan_label import PlanLabel
 from hardware import Cluster, DeviceSpec
 from task_graph import TaskGraph, TaskNode
 from cost_model import CostModel
-from buffer_manager import BufferManager, LRUCache
+from buffer_manager import GlobalMemoryManager, LRUCache
 from config import (
     ALLOW_HYBRID,
     RANKU_INCLUDE_AVG_WEIGHT_LOAD,
@@ -61,14 +61,14 @@ class CommManager:
 # HEFT Scheduler with Hybrid + two-pass format tuning
 # ------------------------------
 class HEFTScheduler:
-    def __init__(self, cluster: Cluster, cost: CostModel, label:PlanLabel, batch: int, seq_len: int, buffer: BufferManager):
+    def __init__(self, cluster: Cluster, cost: CostModel, label:PlanLabel, batch: int, seq_len: int, buffer: GlobalMemoryManager):
         self.cluster = cluster
         self.cost = cost
         self.label = label
         self.batch = batch
         self.seq_len = seq_len
         # external buffer manager (host + device weight caching / replacement)
-        self.buffer = buffer or BufferManager() #所有的pim一个buffermanager
+        self.buffer = buffer or GlobalMemoryManager() #所有的pim一个GlobalMemoryManager
         self._pim_cache_capacity: Dict[str, int] = {}
         total_budget = int(getattr(self.label, "pim_weight_capacity_bytes", 0) or 0)
         pim_devs = self.cluster.devices_by_type("pim")
@@ -180,7 +180,7 @@ class HEFTScheduler:
                 t_conv = 0.0
                 if di.type != dj.type:
                     t_conv = self.cost.format_conversion_time(payload_src, src_fmt, dst_fmt, dj)
-                total += (t_link + t_conv)
+                total += max(t_link,t_conv)
                 k += 1
         return total / k if k else 0.0
 
@@ -258,7 +258,7 @@ class HEFTScheduler:
         compute_t = self.cost.node_device_cost(node,dev,label,self.batch,self.seq_len,phase)
         wload_t = self._weight_load_time(node,dev,t0,commit)
         
-        # 5) npu overlap
+        # 4) npu overlap
         if dev.type == "npu":
             total = max(compute_t,wload_t)
             finish = t0 + total
