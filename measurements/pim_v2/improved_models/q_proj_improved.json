@@ -1,0 +1,49 @@
+{
+  "op": "q_proj",
+  "feature_names": [
+    "vector_dim",
+    "matrix_col"
+  ],
+  "num_samples": 10,
+  "model_params": {
+    "type": "poly_2d_improved",
+    "degree": 1,
+    "feature_names": [
+      "1",
+      "vector_dim",
+      "matrix_col"
+    ],
+    "coef": [
+      0.0,
+      186.65111840007825,
+      186.65111840007827
+    ],
+    "intercept": 1018.8,
+    "scale_mean": [
+      1.0,
+      614.4,
+      614.4
+    ],
+    "scale_std": [
+      1.0,
+      125.41387483049873,
+      125.41387483049873
+    ],
+    "X_range": [
+      [
+        512.0,
+        768.0
+      ],
+      [
+        512.0,
+        768.0
+      ]
+    ]
+  },
+  "metrics": {
+    "r2": 1.0,
+    "rmse": 1.686248307827478e-13,
+    "mae": 1.5916157281026243e-13,
+    "mape": 1.571540399831954e-14
+  }
+}

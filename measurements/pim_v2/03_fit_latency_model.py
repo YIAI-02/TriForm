@@ -20,16 +20,10 @@ OP_FEATURE_SPEC: Dict[str, List[str]] = {
     "attn_out":   ["seqlen", "n_heads"],
     "output":     ["seqlen", "n_heads"],
     
-    # weight projection: based on vector_dim and matrix_col
-    "weight":     ["vector_dim", "matrix_col"],
+    # weight projection: 统一的矩阵乘法
+    "matmul":     ["vector_dim", "matrix_col"],
+    # weight_af 单独处理
     "weight_af":  ["vector_dim", "matrix_col"],
-    "q_proj":     ["vector_dim", "matrix_col"],
-    "k_proj":     ["vector_dim", "matrix_col"],
-    "v_proj":     ["vector_dim", "matrix_col"],
-    "wo_proj":    ["vector_dim", "matrix_col"],
-    "ffn_up":     ["vector_dim", "matrix_col"],
-    "ffn_gate":   ["vector_dim", "matrix_col"],
-    "ffn_down":   ["vector_dim", "matrix_col"],
     
     # vector: based on vector_dim (dim)
     "rmsnorm":    ["dim"],
@@ -39,13 +33,15 @@ OP_FEATURE_SPEC: Dict[str, List[str]] = {
     "residual":   ["dim"],
 }
 
-# 操作类型分类
+MATMUL_OPS = ["weight", "q_proj", "k_proj", "v_proj", 
+              "wo_proj", "ffn_up", "ffn_gate", "ffn_down"]
+
 OP_CATEGORIES = {
     "vector": ["rmsnorm", "rope", "silu", "gelu", "residual"],
-    "weight_projection": ["weight", "weight_af", "q_proj", "k_proj", "v_proj", 
-                          "wo_proj", "ffn_up", "ffn_gate", "ffn_down"],
+    "weight_projection": ["matmul", "weight_af"],
     "attention": ["score", "attn_score", "softmax", "attn_out", "output"],
 }
+
 
 # 为每种操作类型指定拟合方法
 FITTING_STRATEGIES = {
@@ -69,9 +65,14 @@ def extract_samples_for_op(rows: List[Dict[str, Any]], op: str) -> Tuple[np.ndar
     samples_X = []
     samples_y = []
     
+    # 如果是 matmul，需要从多个操作中提取数据
+    target_ops = MATMUL_OPS if op == "matmul" else [op]
+    
     for row in rows:
-        if row.get("op", "").strip() != op:
+        row_op = row.get("op", "").strip()
+        if row_op not in target_ops:
             continue
+        
         cycles_str = row.get("cycles", "").strip()
         if not cycles_str or cycles_str == "N/A":
             continue
@@ -266,16 +267,28 @@ def fit_all_ops(results_csv: Path, out_model: Path,
     
     print(f"Found {len(op_counts)} unique ops with data:")
     for op, count in sorted(op_counts.items()):
-        strategy = get_fitting_strategy(op)
-        print(f"  {op}: {count} samples (strategy: {strategy})")
+        print(f"  {op}: {count} samples")
+    
+    # 为 matmul 统计样本数(来自所有 MATMUL_OPS)
+    matmul_count = sum(op_counts.get(op, 0) for op in MATMUL_OPS)
+    if matmul_count > 0:
+        print(f"\n  matmul (merged): {matmul_count} samples (from {', '.join(MATMUL_OPS)})")
     
     models = {}
     summary_rows = []
     
     for op in OP_FEATURE_SPEC.keys():
-        if op not in op_counts:
-            print(f"\nSkipping {op}: no data")
-            continue
+        # 特殊处理 matmul
+        if op == "matmul":
+            if matmul_count == 0:
+                print(f"\nSkipping {op}: no data")
+                continue
+            sample_count = matmul_count
+        else:
+            if op not in op_counts:
+                print(f"\nSkipping {op}: no data")
+                continue
+            sample_count = op_counts[op]
         
         strategy = get_fitting_strategy(op)
         print(f"\nFitting {op} (strategy: {strategy})...", end=" ")
@@ -333,122 +346,18 @@ def fit_all_ops(results_csv: Path, out_model: Path,
             writer.writerows(summary_rows)
         print(f"[SUCCESS] Saved summary to {out_summary_csv}")
 
-def predict_cycles(model_json: Path, op: str, **kwargs) -> float:
-    """
-    使用拟合的模型预测延迟
-    """
-    with model_json.open("r", encoding="utf-8") as f:
-        data = json.load(f)
-    
-    models = data["models"]
-    
-    if op not in models:
-        raise ValueError(f"Op '{op}' not found in model. Available ops: {list(models.keys())}")
-    
-    model = models[op]
-    feature_names = model["feature_names"]
-    model_params = model["model_params"]
-    model_type = model_params["type"]
-
-    # 提取查询特征
-    query_features = []
-    for feat in feature_names:
-        if feat not in kwargs:
-            raise ValueError(f"Missing feature '{feat}' for op '{op}'. Required: {feature_names}")
-        query_features.append(float(kwargs[feat]))
-
-    query_point = np.array([query_features])
-    
-    # 根据模型类型进行预测
-    if model_type == "linear_1d":
-        prediction = model_params["coef"] * query_features[0] + model_params["intercept"]
-        
-        # 检查是否超出训练范围
-        x_min, x_max = model_params["X_range"]
-        if query_features[0] < x_min or query_features[0] > x_max:
-            print(f"Warning: Query point {query_features[0]} is outside training range [{x_min}, {x_max}]", 
-                  file=sys.stderr)
-    
-    elif model_type == "poly_2d":
-        poly_features = PolynomialFeatures(degree=model_params["degree"], include_bias=True)
-        X_poly = poly_features.fit_transform(query_point)
-        prediction = float(np.dot(X_poly, model_params["coef"]) + model_params["intercept"])
-        
-        # 检查是否超出训练范围
-        for i, (x_min, x_max) in enumerate(model_params["X_range"]):
-            if query_features[i] < x_min or query_features[i] > x_max:
-                print(f"Warning: Feature {i} ({query_features[i]}) is outside training range [{x_min}, {x_max}]", 
-                      file=sys.stderr)
-    
-    elif model_type == "linear_nd":
-        X_train = np.array(model_params["X"])
-        y_train = np.array(model_params["y"])
-        interpolator = LinearNDInterpolator(X_train, y_train, fill_value=np.nan)
-        prediction = interpolator(query_point)[0]
-        
-        if np.isnan(prediction):
-            print(f"Warning: Linear interpolation failed (extrapolation). Using nearest neighbor.", 
-                  file=sys.stderr)
-            nearest_interp = NearestNDInterpolator(X_train, y_train)
-            prediction = nearest_interp(query_point)[0]
-    
-    else:
-        raise ValueError(f"Unknown model type: {model_type}")
-    
-    return float(prediction)
-
 def main():
     ap = argparse.ArgumentParser(description="Fit and predict latency models with adaptive strategies")
-
-    # fit
-    sub = ap.add_subparsers(dest="cmd", required=True)
-    fit_parser = sub.add_parser("fit", help="Fit models with adaptive strategies")
-    fit_parser.add_argument("--results-csv", type=Path, required=True,
+    ap.add_parser("fit", help="Fit models with adaptive strategies")
+    ap.add_argument("--results-csv", type=Path, required=True,
                             help="CSV file from 02_run_ramulator.py")
-    fit_parser.add_argument("--out-model", type=Path, required=True,
+    ap.add_argument("--out-model", type=Path, required=True,
                             help="Output model JSON file")
-    fit_parser.add_argument("--out-summary-csv", type=Path, default=None,
+    ap.add_argument("--out-summary-csv", type=Path, default=None,
                             help="Optional summary CSV")
-    
-    # Predict
-    pred_parser = sub.add_parser("predict", help="Predict cycles for a given configuration")
-    pred_parser.add_argument("--model-json", type=Path, required=True,
-                             help="Model JSON file from fit command")
-    pred_parser.add_argument("--op", type=str, required=True,
-                             help="Operation name")
-    pred_parser.add_argument("--dim", type=int, help="Model dimension")
-    pred_parser.add_argument("--seqlen", type=int, help="Sequence length")
-    pred_parser.add_argument("--n-heads", type=int, help="Number of heads")
-    pred_parser.add_argument("--vector-dim", type=int, help="Vector dimension")
-    pred_parser.add_argument("--matrix-col", type=int, help="Matrix columns")
-    pred_parser.add_argument("--ffn-dim", type=int, help="FFN dimension")
-    
+
     args = ap.parse_args()
-    
-    if args.cmd == "fit":
-        fit_all_ops(args.results_csv, args.out_model, args.out_summary_csv)
-    
-    elif args.cmd == "predict":
-        kwargs = {}
-        if args.dim is not None:
-            kwargs["dim"] = args.dim
-        if args.seqlen is not None:
-            kwargs["seqlen"] = args.seqlen
-        if args.n_heads is not None:
-            kwargs["n_heads"] = args.n_heads
-        if args.vector_dim is not None:
-            kwargs["vector_dim"] = args.vector_dim
-        if args.matrix_col is not None:
-            kwargs["matrix_col"] = args.matrix_col
-        if args.ffn_dim is not None:
-            kwargs["ffn_dim"] = args.ffn_dim
-        
-        try:
-            cycles = predict_cycles(args.model_json, args.op, **kwargs)
-            print(f"{cycles:.2f}")
-        except Exception as e:
-            print(f"Error: {e}", file=sys.stderr)
-            sys.exit(1)
+    fit_all_ops(args.results_csv, args.out_model, args.out_summary_csv)
 
 if __name__ == "__main__":
     main()

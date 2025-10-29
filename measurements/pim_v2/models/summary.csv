@@ -1,11 +1,5 @@
 op,num_samples,features,strategy,rmse,mae,r2
-q_proj,10,"vector_dim,matrix_col",poly_2d,0.00,0.00,1.0000
-k_proj,10,"vector_dim,matrix_col",poly_2d,0.00,0.00,1.0000
-v_proj,10,"vector_dim,matrix_col",poly_2d,0.00,0.00,1.0000
-wo_proj,10,"vector_dim,matrix_col",poly_2d,0.00,0.00,1.0000
-ffn_up,10,"vector_dim,matrix_col",poly_2d,0.00,0.00,1.0000
-ffn_gate,10,"vector_dim,matrix_col",poly_2d,0.00,0.00,1.0000
-ffn_down,10,"vector_dim,matrix_col",poly_2d,0.00,0.00,1.0000
+matmul,70,"vector_dim,matrix_col",poly_2d,1083.24,762.57,0.6377
 rmsnorm,10,dim,linear_1d,0.00,0.00,nan
 rope,10,dim,linear_1d,242.86,153.60,0.0625
 silu,10,ffn_dim,linear_1d,0.00,0.00,1.0000

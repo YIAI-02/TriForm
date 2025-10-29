@@ -1,0 +1,13 @@
+{
+  "op": "q_proj",
+  "dim": 4096,
+  "n_heads": 32,
+  "n_kv_heads": 32,
+  "seqlen": null,
+  "ffn_dim_mul": 4.0,
+  "predicted_cycles": 66744.40012202876,
+  "ground_truth_cycles": 35952,
+  "absolute_error": 30792.40012202876,
+  "relative_error_pct": 85.64864297404529,
+  "trace_path": "/tmp/validate_502eqtxb/q_proj/q_proj_dim4096_h32_hk32_seq2048.trace"
+}
