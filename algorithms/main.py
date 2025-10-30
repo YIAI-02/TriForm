@@ -19,6 +19,7 @@ from config import (
 )
 from plan_label import PlanLabel
 from scheduler import HEFTScheduler
+from pathlib import Path
 
 DEBUG_MAIN = False
 
@@ -126,64 +127,6 @@ def mapping_diff_ratio(a: Dict[str, str], b: Dict[str, str]) -> float:
 # ------------------------------
 # CLI & run
 # ------------------------------
-def run(cfg: Dict):
-    # Setup
-    cluster = demo_cluster()
-    cost = CostModel(cluster, dtype=cfg.get("dtype", "fp16"))
-    label = plan_memory_and_label(cfg, cluster)
-
-    prefill_len = int(cfg.get("prefill_len", 128))
-    batch = int(cfg.get("batch", 1))
-    graph, shape = build_graph(cfg)
-
-    # 多次迭代直至收敛
-    fmt_map: Dict[str, str] = {}
-    prev_total: float = None  # type: ignore
-    prev_map: Dict[str, str] = {}
-    best_total: float = None  # type: ignore
-
-    # shared buffer manager across passes to accumulate stats
-    buffer_mgr = GlobalMemoryManager()
-    for p in range(1, FORMAT_TUNING_MAX_PASSES + 1):
-        sched = HEFTScheduler(cluster, cost, label, batch=batch, seq_len=prefill_len, buffer=buffer_mgr)
-        sched.set_storage_format_map(fmt_map)#加载之前的format
-
-        # Prefill
-        prefill_time = simulate_prefill(sched, cfg, graph)
-        # Progressive Decode（current_length 按 token 增长）
-        decode_time = simulate_decode_progressive(sched, cfg, graph, prefill_end=prefill_time)
-
-        total_time = prefill_time + decode_time
-        if best_total is None or total_time < best_total:
-            best_total = total_time
-
-        print(f"[PASS{p}] prefill={prefill_time:.6f}s decode={decode_time:.6f}s total={total_time:.6f}s")
-
-        # 基于“实际加载/流式”统计给出新的主存格式建议
-        fmt_suggestion = sched.suggest_weight_storage_formats()
-
-        # 覆盖写 JSON：确保目录存在（你要求的这段）
-        os.makedirs(os.path.dirname(WEIGHT_FORMAT_JSON_PATH), exist_ok=True)
-        with open(WEIGHT_FORMAT_JSON_PATH, "w") as f:
-            json.dump(fmt_suggestion, f, indent=2, sort_keys=True)
-        print(f"[INFO] weight storage suggestion saved: {WEIGHT_FORMAT_JSON_PATH}")
-
-        # 收敛判定：时间与映射差异同时达标则停止
-        if prev_total is not None:
-            time_improve = prev_total - total_time
-            map_delta = mapping_diff_ratio(prev_map, fmt_suggestion)
-            print(f"[DELTA] Δtime={time_improve:+.6f}s, map_change_ratio={map_delta:.4f}")
-            if abs(time_improve) <= FORMAT_TUNING_TIME_EPS and map_delta <= FORMAT_TUNING_MAP_EPS:
-                print(f"[STOP] Converged at pass {p}.")
-                break
-
-        prev_total = total_time
-        prev_map = fmt_suggestion
-        fmt_map = fmt_suggestion  # 下一轮采用新的主存权重格式
-
-    print(f"[BEST] best_total={best_total:.6f}s")
-
-
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--model_family", type=str, default=DEFAULT_CONFIG["model_family"])
@@ -192,7 +135,88 @@ def parse_args():
     p.add_argument("--batch", type=int, default=DEFAULT_CONFIG["batch"])
     p.add_argument("--prefill_len", type=int, default=DEFAULT_CONFIG["prefill_len"])
     p.add_argument("--decode_len", type=int, default=DEFAULT_CONFIG["decode_len"])
+    p.add_argument("--pim_config_path", type=str, required=True, help="Path to the PIM configuration file")
+    p.add_argument("--ramulator_config_path", type=str, required=True, help="Path to the Ramulator configuration file")
+    p.add_argument("--simulation_log_file", type=str, default="pim_simulation.txt", help="Output log file")  # 添加这个参数
     return p.parse_args()
+
+
+def run(cfg: Dict):
+    # Setup
+    cluster = demo_cluster()
+    pim_config_path = Path(cfg["pim_config_path"])
+    ramulator_config_path = Path(cfg["ramulator_config_path"])
+    
+    # 创建 CostModel 时指定日志文件
+    log_file = Path(cfg.get("simulation_log_file", "pim_simulation.txt"))
+    cost = CostModel(
+        cluster, 
+        dtype=cfg.get("dtype", "fp16"), 
+        pim_config_path=pim_config_path, 
+        ramulator_config_path=ramulator_config_path,
+        simulation_log_file=log_file
+    )
+    
+    # 开始仿真计时
+    cost.logger.start_simulation()
+    
+    try:
+        label = plan_memory_and_label(cfg, cluster)
+        prefill_len = int(cfg.get("prefill_len", 128))
+        batch = int(cfg.get("batch", 1))
+        graph, shape = build_graph(cfg)
+
+        # 多次迭代直至收敛
+        fmt_map: Dict[str, str] = {}
+        prev_total: float = None  # type: ignore
+        prev_map: Dict[str, str] = {}
+        best_total: float = None  # type: ignore
+
+        # shared buffer manager across passes to accumulate stats
+        buffer_mgr = GlobalMemoryManager()
+        for p in range(1, FORMAT_TUNING_MAX_PASSES + 1):
+            sched = HEFTScheduler(cluster, cost, label, batch=batch, seq_len=prefill_len, buffer=buffer_mgr)
+            sched.set_storage_format_map(fmt_map)  # 加载之前的 format
+
+            # Prefill
+            prefill_time = simulate_prefill(sched, cfg, graph)
+            # Progressive Decode（current_length 按 token 增长）
+            decode_time = simulate_decode_progressive(sched, cfg, graph, prefill_end=prefill_time)
+
+            total_time = prefill_time + decode_time
+            if best_total is None or total_time < best_total:
+                best_total = total_time
+
+            print(f"[PASS{p}] prefill={prefill_time:.6f}s decode={decode_time:.6f}s total={total_time:.6f}s")
+
+            # 基于“实际加载/流式”统计给出新的主存格式建议
+            fmt_suggestion = sched.suggest_weight_storage_formats()
+
+            # 覆盖写 JSON：确保目录存在
+            os.makedirs(os.path.dirname(WEIGHT_FORMAT_JSON_PATH), exist_ok=True)
+            with open(WEIGHT_FORMAT_JSON_PATH, "w") as f:
+                json.dump(fmt_suggestion, f, indent=2, sort_keys=True)
+            print(f"[INFO] weight storage suggestion saved: {WEIGHT_FORMAT_JSON_PATH}")
+
+            # 收敛判定：时间与映射差异同时达标则停止
+            if prev_total is not None:
+                time_improve = prev_total - total_time
+                map_delta = mapping_diff_ratio(prev_map, fmt_suggestion)
+                print(f"[DELTA] Δtime={time_improve:+.6f}s, map_change_ratio={map_delta:.4f}")
+                if abs(time_improve) <= FORMAT_TUNING_TIME_EPS and map_delta <= FORMAT_TUNING_MAP_EPS:
+                    print(f"[STOP] Converged at pass {p}.")
+                    break
+
+            prev_total = total_time
+            prev_map = fmt_suggestion
+            fmt_map = fmt_suggestion  # 下一轮采用新的主存权重格式
+
+        print(f"[BEST] best_total={best_total:.6f}s")
+    
+    finally:
+        # 结束仿真并打印统计
+        cost.logger.end_simulation()
+        cost.logger.close()
 
 
 def main():
@@ -204,9 +228,11 @@ def main():
         "batch": args.batch,
         "prefill_len": args.prefill_len,
         "decode_len": args.decode_len,
+        "pim_config_path": args.pim_config_path,
+        "ramulator_config_path": args.ramulator_config_path,
+        "simulation_log_file": args.simulation_log_file,
     }
     run(cfg)
-
 
 if __name__ == "__main__":
     main()

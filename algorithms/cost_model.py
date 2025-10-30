@@ -5,13 +5,24 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Dict, Tuple, List
+import subprocess
+import tempfile
+import re
+import sys
+import shutil
+import hashlib
+import pickle
+from threading import Lock
+import time
+from datetime import datetime
+from collections import defaultdict
+
 from task_graph import TaskGraph, TaskNode
 from hardware import Cluster, DeviceSpec
 from plan_label import PlanLabel
 from config import (
     HOST_NAME, DEVICE_PREFERRED_FORMAT,
-    FORMAT_SIZE_MULTIPLIER, FORMAT_CONV_BW_GBs,
-    PIM_FORMULA_PATHS, PIM_FREQ_GHZ,
+    FORMAT_SIZE_MULTIPLIER, FORMAT_CONV_BW_GBs,PIM_FREQ_GHZ,
 )
 
 DTYPE_BYTES: Dict[str, int] = {
@@ -23,77 +34,604 @@ DTYPE_BYTES: Dict[str, int] = {
 }
 
 # =========================
-# PIM formula support
+# CENT trace generation helpers (from 01_gentrace.py)
 # =========================
 
-@dataclass
-class OpFormula:
-    basis: List[str]
-    coeffs: List[float]
+def _ensure_cent_on_path(start: Optional[Path] = None) -> Tuple[Path, Path]:
+    here = (start or Path(__file__)).resolve()
+    for p in [here.parent] + list(here.parents):
+        cand = p / "submodules" / "CENT" / "cent_simulation"
+        if cand.exists():
+            if str(cand) not in sys.path:
+                sys.path.insert(0, str(cand))
+            return cand, p
+    raise RuntimeError(f"Cannot find 'submodules/CENT/cent_simulation' above {here}")
 
-    def eval_cycles(
-        self,
-        *,
-        seqlen: int = 0,
-        vector_dim: int = 0,
-        matrix_col: int = 0,
-        n_heads: int = 0,
-    ) -> float:
-        def val(name: str) -> float:
-            if name == "1":    return 1.0
-            if name == "L":    return float(seqlen)
-            if name == "L2":   return float(seqlen) ** 2
-            if name == "H":    return float(n_heads)
-            if name == "LxH":  return float(seqlen) * float(n_heads)
-            if name == "V":    return float(vector_dim)
-            if name == "N":    return float(matrix_col)
-            if name == "VxN":  return float(vector_dim) * float(matrix_col)
-            return 0.0
-        return sum(float(c) * val(b) for b, c in zip(self.basis, self.coeffs))
+def _load_pim_config(path: Path) -> Dict[str, any]:
+    cfg = json.loads(path.read_text(encoding="utf-8"))
+    std: Dict[str, any] = {}
+    
+    alias = {
+        "DRAM_column": ["dram_column", "DRAMCol", "dramCol", "dram_col"],
+        "DRAM_row": ["dram_row", "DRAMRow", "dramRow"],
+        "burst_length": ["burst", "burstLength", "BL"],
+        "num_banks": ["banks", "numBanks"],
+        "num_channels": ["channels", "numChannels"],
+        "threads": ["thread", "nThreads"],
+        "reuse_size": ["reuseSize", "reuse", "RS"],
+        "channels_per_block": ["channelsPerBlock", "cpb"],
+        "max_seq_len": ["maxSeqLen", "max_seq_length"],
+    }
+    
+    for k, v in cfg.items():
+        matched = False
+        for stdk, alist in alias.items():
+            if k in alist or k == stdk:
+                std[stdk] = v
+                matched = True
+                break
+        if not matched:
+            std[k] = v
+    
+    std.setdefault("DRAM_column", 256)
+    std.setdefault("DRAM_row", 64)
+    std.setdefault("burst_length", 16)
+    std.setdefault("num_banks", 8)
+    std.setdefault("num_channels", 4)
+    std.setdefault("threads", 1)
+    std.setdefault("reuse_size", 32)
+    std.setdefault("channels_per_block", None)
+    std.setdefault("max_seq_len", 4096)
+    
+    return std
+
+def _make_tb_args_from_pim(cfg: Dict[str, any], trace_file: str):
+    """创建 TransformerBlock 参数"""
+    from types import SimpleNamespace
+    
+    cpb = cfg["channels_per_block"]
+    if cpb is None:
+        cpb = cfg["num_channels"]
+    
+    return SimpleNamespace(
+        DRAM_column        = int(cfg["DRAM_column"]),
+        DRAM_row           = int(cfg["DRAM_row"]),
+        burst_length       = int(cfg["burst_length"]),
+        num_banks          = int(cfg["num_banks"]),
+        num_channels       = int(cfg["num_channels"]),
+        threads            = int(cfg["threads"]),
+        reuse_size         = int(cfg["reuse_size"]),
+        channels_per_block = int(cpb),
+        max_seq_len        = int(cfg["max_seq_len"]),
+        only_trace         = True,
+        op_trace           = False,
+        trace_file         = trace_file,
+        pim_compute        = True,
+        model              = "llama_like",
+        embedding          = "rope",
+        seqlen             = 16,
+        model_parallel     = False,
+        FC_devices         = 1,
+        pipeline_parallel  = False,
+        inter_device_attention = False,
+        only_FC            = False,
+        trace_prepare      = False,
+        trace_norm         = False,
+        trace_fc_kqvo      = False,
+        trace_attention    = False,
+        trace_softmax      = False,
+        trace_fc_ffn       = False,
+        trace_activation   = False,
+        GEMV               = "reuse-GB",
+    )
+
+def _calc_channels(block):
+    """计算通道列表"""
+    if getattr(block, "model_parallel", False):
+        FC_total_banks = int(block.total_banks) * int(block.FC_devices)
+        channels_required = int(block.num_channels)
+    else:
+        FC_total_banks = int(block.total_banks)
+        channels_required = int(block.channels_per_block)
+
+    num_channels = int(block.num_channels)
+    channels_required = int(channels_required)
+
+    channel_multi_tb_required = int((num_channels // channels_required) * channels_required)
+    channel_lst = [channel for channel in range(channel_multi_tb_required)]
+    
+    return channel_lst, FC_total_banks, channels_required
+
+def _emit_single_op_trace(
+    block,
+    op: str,
+    dim: int,
+    n_heads: int,
+    n_kv_heads: int,
+    ffn_dim: int,
+    seqlens: Optional[List[int]]
+):
+
+    channel_lst, FC_total_banks, channels_required = _calc_channels(block)
+    head_dim = dim // max(1, n_heads)
+
+    if op in ("q_proj", "k_proj", "v_proj", "wo_proj", "ffn_up", "ffn_gate", "ffn_down"):
+        if op == "q_proj":
+            row_tag, V, N = "wq_row_index", dim, dim
+            block.Vector_Matrix_Mul_weight_pim_only_trace(channel_lst, getattr(block, row_tag), V, N, FC_total_banks, "breakdown_sa_weight")
+        elif op == "k_proj":
+            row_tag, V, N = "wk_row_index", dim, n_kv_heads * head_dim
+            block.Vector_Matrix_Mul_weight_pim_only_trace(channel_lst, getattr(block, row_tag), V, N, FC_total_banks, "breakdown_sa_weight")
+        elif op == "v_proj":
+            row_tag, V, N = "wv_row_index", dim, n_kv_heads * head_dim
+            block.Vector_Matrix_Mul_weight_pim_only_trace(channel_lst, getattr(block, row_tag), V, N, FC_total_banks, "breakdown_sa_weight")
+        elif op == "wo_proj":
+            row_tag, V, N = "wo_row_index", dim, dim
+            block.Vector_Matrix_Mul_weight_pim_only_trace(channel_lst, getattr(block, row_tag), V, N, FC_total_banks, "breakdown_sa_weight")
+        elif op == "ffn_up":
+            row_tag, V, N = "w1_row_index", dim, ffn_dim
+            block.Vector_Matrix_Mul_weight_pim_only_trace(channel_lst, getattr(block, row_tag), V, N, FC_total_banks, "breakdown_ffn_weight")
+        elif op == "ffn_gate":
+            row_tag, V, N = "w3_row_index", dim, ffn_dim
+            block.Vector_Matrix_Mul_weight_af_pim_only_trace(channel_lst, getattr(block, row_tag), V, N, FC_total_banks, "breakdown_ffn_weight")
+        elif op == "ffn_down":
+            row_tag, V, N = "w2_row_index", ffn_dim, dim
+            block.Vector_Matrix_Mul_weight_pim_only_trace(channel_lst, getattr(block, row_tag), V, N, FC_total_banks, "breakdown_ffn_weight")
+
+    elif op in ("score", "softmax", "output"):
+        for S in (seqlens or [1]):
+            if op == "score":
+                block.Vector_Matrix_Mul_score_pim_only_trace(block.cache_k_row_index, S, "breakdown_sa_score")
+            elif op == "output":
+                block.Vector_Matrix_Mul_output_pim_only_trace(block.cache_v_row_index, S, "breakdown_sa_output")
+            elif op == "softmax":
+                rows_per_score = (S - 1) // block.DRAM_column + 1
+                for r in range(rows_per_score):
+                    op_size = (block.DRAM_column // block.burst_length
+                               if r < rows_per_score - 1
+                               else (S - block.DRAM_column * r - 1) // block.burst_length + 1)
+                    block.EWMUL_only_trace(channel_lst, block.scores_row_index + r, op_size)
+
+                block.time["RD_SBK"] += block.timing_constant["RD_SBK"] + (S * block.n_heads) // block.burst_length
+                block.load_from_EWMUL_score_only_trace(channels_required, block.scores_row_index, block.total_banks, 2, S)
+
+                block.time["WR_SBK"] += block.timing_constant["WR_SBK"] + (S * block.n_heads) // block.burst_length
+                block.store_for_EWMUL_score_only_trace(channels_required, block.scores_row_index, block.total_banks, 0, S)
+
+                rows_per_score = (S - 1) // block.DRAM_column + 1
+                for r in range(rows_per_score):
+                    op_size = (block.DRAM_column // block.burst_length
+                               if r < rows_per_score - 1
+                               else (S - block.DRAM_column * r - 1) // block.burst_length + 1)
+                    block.EWMUL_only_trace(channel_lst, block.scores_row_index + r, op_size)
+
+                block.load_from_EWMUL_score_only_trace(channels_required, block.scores_row_index, block.total_banks, 2, S)
+
+    elif op == "rmsnorm":
+        input_len = (dim - 1) // (block.total_banks // 2) + 1
+        block.WR_BIAS_only_trace(channel_lst)
+        block.MAC_ABK_only_trace(channel_lst, block.x_row_index, (input_len - 1) // block.burst_length + 1, "breakdown_sa_pow")
+        block.RD_MAC_only_trace(channel_lst)
+
+        ew_len = (dim - 1) // (block.total_banks // 4) + 1
+        ew_banks = (dim - 1) // ew_len + 1
+
+        block.time["WR_SBK"] += block.timing_constant["WR_SBK"] + dim // block.burst_length
+        block.store_for_EWMUL_input_only_trace(channels_required, ew_banks, 1, block.x_copy_row_index, ew_len)
+        block.EWMUL_only_trace(channel_lst, block.x_copy_row_index, (ew_len - 1) // block.burst_length + 1)
+
+        for bank in range(block.num_banks):
+            if bank % 4 == 2:
+                block.COPY_BK_GB_only_trace(channel_lst, bank, block.x_copy_row_index, (ew_len - 1) // block.burst_length + 1)
+                block.COPY_GB_BK_only_trace(channel_lst, bank - 1, block.SANorm_row_index, (ew_len - 1) // block.burst_length + 1)
+
+        block.EWMUL_only_trace(channel_lst, block.SANorm_row_index, (ew_len - 1) // block.burst_length + 1)
+        block.time["RD_SBK"] += block.timing_constant["RD_SBK"] + block.dim // block.burst_length
+        block.load_from_EWMUL_input_only_trace(channels_required, ew_banks, 2, block.SANorm_row_index, ew_len)
+        block.SYNC_only_trace()
+
+    elif op == "rope":
+        ew_len = (head_dim - 1) // (block.total_banks // 4) + 1
+        ew_size = (ew_len - 1) // block.burst_length + 1
+        block.store_for_EWMUL_input_only_trace(block.channels_per_block, (dim - 1) // ew_len + 1, 1, block.xq_row_index, ew_len)
+        block.EWMUL_only_trace(channel_lst, block.xq_row_index, ew_size)
+        block.store_for_EWMUL_input_only_trace(block.channels_per_block, (dim - 1) // ew_len + 1, 1, block.xk_row_index, ew_len)
+        block.EWMUL_only_trace(channel_lst, block.xk_row_index, ew_size)
+
+    elif op in ("silu", "gelu"):
+        ew_len = (ffn_dim - 1) // (block.total_banks // 4) + 1
+        ew_banks = (ffn_dim - 1) // ew_len + 1
+        block.time["WR_SBK"] += block.timing_constant["WR_SBK"] + ffn_dim // block.burst_length
+        block.store_for_EWMUL_input_only_trace(block.channels_per_block, ew_banks, 1, block.ffn_row_index, ew_len)
+        block.EWMUL_only_trace(channel_lst, block.ffn_row_index, (ew_len - 1) // block.burst_length + 1)
+        for bank in range(block.num_banks):
+            if bank % 4 == 2:
+                block.COPY_BK_GB_only_trace(channel_lst, bank, block.ffn_row_index, (ew_len - 1) // block.burst_length + 1)
+                block.COPY_GB_BK_only_trace(channel_lst, bank - 1, block.ffn_row_index, (ew_len - 1) // block.burst_length + 1)
+        block.EWMUL_only_trace(channel_lst, block.ffn_row_index, (ew_len - 1) // block.burst_length + 1)
+        block.time["RD_SBK"] += block.timing_constant["RD_SBK"] + ffn_dim // block.burst_length
+        block.SYNC_only_trace()
+
+    elif op == "residual":
+        op_size = block.dim // block.burst_length
+        block.EWADD_only_trace(op_size)
+
+    else:
+        raise ValueError(f"Unsupported op: {op}")
+
+    if hasattr(block, "file") and block.file:
+        block.file.write("AiM EOC\n")
+        block.file.flush()
 
 
-@dataclass
-class PIMFormulaLatency:
-    per_op: Dict[str, OpFormula]  # key: lower-case op key
+def _generate_pim_trace(
+    op: str,
+    pim_config: Path,
+    dim: int,
+    n_heads: int,
+    n_kv_heads: int,
+    ffn_dim: int,
+    seqlen: Optional[int],
+    trace_file: Path
+) -> None:
+    try:
+        _ensure_cent_on_path()
+        from Llama import TransformerBlockLlama as TransformerBlock
+    except Exception:
+        try:
+            from TransformerBlock import TransformerBlock
+        except ImportError:
+            raise RuntimeError("Cannot import TransformerBlock from CENT")
 
-    @staticmethod
-    def _from_json_obj(obj: dict) -> "PIMFormulaLatency":
-        if "per_op_formula" in obj:
-            per = obj["per_op_formula"]
-        elif "per_op" in obj:
-            per = obj["per_op"]
+    pim_cfg = _load_pim_config(pim_config)
+    args = _make_tb_args_from_pim(pim_cfg, str(trace_file))
+    args.op_trace = True
+    args.seqlen = int(seqlen or args.seqlen or 16)
+
+
+    def _make_dic_model(dim_: int, n_heads_: int, n_kv_heads_: int, seqlen_: int, ffn_dim_: int):
+        import torch
+        head_dim_ = dim_ // max(1, n_heads_)
+        TP_param = 1
+        return {
+            "TP_param": torch.tensor(TP_param),
+            "dim": torch.tensor(dim_),
+            "n_heads": torch.tensor(n_heads_),
+            "n_kv_heads": torch.tensor(n_kv_heads_),
+            "x": torch.zeros((1, 1, dim_)),
+            "SANorm": torch.zeros(dim_),
+            "FFNNorm": torch.zeros(dim_),
+            "sa": torch.zeros((1, 1, dim_)),
+            "h": torch.zeros((1, 1, dim_)),
+            "out": torch.zeros((1, 1, dim_)),
+            "wq": torch.zeros((dim_ // TP_param, dim_)),
+            "wk": torch.zeros((head_dim_ * n_kv_heads_), dim_),
+            "wv": torch.zeros((head_dim_ * n_kv_heads_), dim_),
+            "xq": torch.zeros((1, 1, dim_)),
+            "xk": torch.zeros((1, 1, head_dim_ * n_heads_)),
+            "xv": torch.zeros((1, 1, head_dim_ * n_heads_)),
+            "start_pos": torch.tensor(max(1, seqlen_) - 1),
+            "cache_k": torch.zeros((1, seqlen_, n_kv_heads_, head_dim_)),
+            "cache_v": torch.zeros((1, seqlen_, n_kv_heads_, head_dim_)),
+            "scores": torch.zeros((1, n_heads_, 1, seqlen_)),
+            "output": torch.zeros((1, 1, dim_)),
+            "wo": torch.zeros((dim_ // TP_param, dim_)),
+            "w1": torch.zeros((ffn_dim_ // TP_param, dim_)),
+            "w3": torch.zeros((ffn_dim_ // TP_param, dim_)),
+            "w2": torch.zeros((dim_ // TP_param, ffn_dim_)),
+            "ffn": torch.zeros((1, 1, dim_)),
+        }
+
+    dic_model = _make_dic_model(dim, n_heads, n_kv_heads, args.seqlen, ffn_dim)
+    block = TransformerBlock(dic_model, args)
+    if hasattr(block, "memory_mapping"):
+        block.memory_mapping()
+
+    seqlens_list = [seqlen] if seqlen else None
+    _emit_single_op_trace(block, op, dim, n_heads, n_kv_heads, ffn_dim, seqlens_list)
+
+    if hasattr(block, "file") and block.file:
+        block.file.flush()
+        block.file.close()
+
+    if not trace_file.exists():
+        raise RuntimeError(f"Trace file not generated: {trace_file}")
+    if trace_file.stat().st_size == 0:
+        raise RuntimeError(f"Trace file is empty: {trace_file}")
+
+# =========================
+# Ramulator runner
+# =========================
+
+def _run_ramulator(trace_path: Path, ramulator_config: Path, timeout: int = 300) -> int:
+    cmd = f"./ramulator2 -f {ramulator_config} -t {trace_path}"
+    
+    print(f"[PIM] Running ramulator: {cmd}")
+    
+    try:
+        result = subprocess.run(
+            cmd,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=timeout 
+        )
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"Ramulator execution timeout after {timeout}s for {trace_path}")
+    
+    if result.returncode != 0:
+        raise RuntimeError(f"Ramulator failed with return code {result.returncode}:\n{result.stderr}")
+
+    pattern = r"memory_system_cycles:\s*([0-9]+)"
+    match = re.search(pattern, result.stdout)
+    
+    if not match:
+        print(f"[PIM] Ramulator stdout:\n{result.stdout}")
+        print(f"[PIM] Ramulator stderr:\n{result.stderr}")
+        raise RuntimeError(f"Could not parse cycles from ramulator output")
+    
+    cycles = int(match.group(1))
+    print(f"[PIM] Ramulator completed: {cycles} cycles")
+    
+    return cycles
+
+# =========================
+# PIM latency cache
+# =========================
+
+class PIMLatencyCache:
+    """缓存 PIM 延迟结果，避免重复仿真"""
+    
+    def __init__(self, cache_file: Optional[Path] = None):
+        self.cache_file = cache_file or Path(".pim_latency_cache.pkl")
+        self.cache: Dict[str, float] = {}
+        self.lock = Lock()
+        self._load_cache()
+    
+    def _load_cache(self):
+        if self.cache_file.exists():
+            try:
+                with open(self.cache_file, "rb") as f:
+                    self.cache = pickle.load(f)
+                print(f"[PIM Cache] Loaded {len(self.cache)} entries from {self.cache_file}")
+            except Exception as e:
+                print(f"[PIM Cache] Failed to load cache: {e}")
+                self.cache = {}
+    
+    def _save_cache(self):
+        try:
+            with open(self.cache_file, "wb") as f:
+                pickle.dump(self.cache, f)
+        except Exception as e:
+            print(f"[PIM Cache] Failed to save cache: {e}")
+    
+    def _make_key(self, op: str, dim: int, n_heads: int, n_kv_heads: int, 
+                  ffn_dim: int, seqlen: Optional[int],
+                  pim_config: Path, ramulator_config: Path) -> str:
+        params = f"{op}_{dim}_{n_heads}_{n_kv_heads}_{ffn_dim}_{seqlen}"
+        configs = f"{pim_config.name}_{ramulator_config.name}"
+        key = f"{params}_{configs}"
+        return hashlib.md5(key.encode()).hexdigest()
+    
+    def get(self, op: str, dim: int, n_heads: int, n_kv_heads: int,
+            ffn_dim: int, seqlen: Optional[int],
+            pim_config: Path, ramulator_config: Path) -> Optional[float]:
+        key = self._make_key(op, dim, n_heads, n_kv_heads, ffn_dim, seqlen, 
+                            pim_config, ramulator_config)
+        with self.lock:
+            return self.cache.get(key)
+    
+    def set(self, op: str, dim: int, n_heads: int, n_kv_heads: int,
+            ffn_dim: int, seqlen: Optional[int],
+            pim_config: Path, ramulator_config: Path, latency: float):
+        key = self._make_key(op, dim, n_heads, n_kv_heads, ffn_dim, seqlen,
+                            pim_config, ramulator_config)
+        with self.lock:
+            self.cache[key] = latency
+            self._save_cache()
+
+_pim_cache = PIMLatencyCache()
+
+# =========================
+# Combined PIM trace-based latency
+# =========================
+
+# 全局统计和日志
+class SimulationLogger:
+    """仿真日志和统计"""
+    
+    def __init__(self, log_file: Optional[Path] = None):
+        self.log_file = log_file or Path("pim_simulation.log")
+        self.start_time: Optional[float] = None
+        self.end_time: Optional[float] = None
+        
+        # 统计不重复的算子配置
+        self.simulated_ops: Dict[str, set] = defaultdict(set)
+        self.lock = Lock()
+        
+        # 确保目录存在
+        if isinstance(self.log_file, str):
+            self.log_file = Path(self.log_file)
+        self.log_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        # 打开日志文件
+        self._log_handle = open(self.log_file, 'w', encoding='utf-8')
+        self._log(f"{'='*80}")
+        self._log(f"PIM Simulation Log - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        self._log(f"{'='*80}\n")
+    
+    def _log(self, message: str):
+        """写入日志文件并打印到控制台"""
+        print(message)
+        self._log_handle.write(message + '\n')
+        self._log_handle.flush()
+    
+    def start_simulation(self):
+        """开始计时"""
+        self.start_time = time.time()
+        self._log(f"\n{'='*80}")
+        self._log(f"Simulation Started at {datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")
+        self._log(f"{'='*80}\n")
+    
+    def end_simulation(self):
+        """结束计时并统计"""
+        self.end_time = time.time()
+        elapsed = self.end_time - self.start_time if self.start_time else 0.0
+        
+        self._log(f"\n{'='*80}")
+        self._log(f"Simulation Completed at {datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")
+        self._log(f"Total Simulation Time: {elapsed:.3f} seconds ({elapsed/60:.2f} minutes)")
+        self._log(f"{'='*80}\n")
+        
+        self._print_statistics()
+    
+    def record_simulation(self, op: str, dim: int, n_heads: int, n_kv_heads: int, 
+                         ffn_dim: int, seqlen: Optional[int]):
+        """记录一次仿真"""
+        with self.lock:
+            config = (dim, n_heads, n_kv_heads, ffn_dim, seqlen or 0)
+            self.simulated_ops[op].add(config)
+    
+    def _print_statistics(self):
+        """打印统计信息"""
+        self._log(f"\n{'='*80}")
+        self._log("Simulated Operations Summary")
+        self._log(f"{'='*80}")
+        
+        total_unique = sum(len(configs) for configs in self.simulated_ops.values())
+        self._log(f"\nTotal unique operations simulated: {total_unique}")
+        self._log(f"Total operation types: {len(self.simulated_ops)}\n")
+        
+        for op in sorted(self.simulated_ops.keys()):
+            configs = self.simulated_ops[op]
+            self._log(f"\n{op.upper()}:")
+            self._log(f"  - Unique configurations: {len(configs)}")
+            
+            for config in sorted(configs):
+                dim, n_heads, n_kv_heads, ffn_dim, seqlen = config
+                self._log(f"    * dim={dim}, heads={n_heads}, kv_heads={n_kv_heads}, "
+                         f"ffn_dim={ffn_dim}, seqlen={seqlen if seqlen > 0 else 'None'}")
+        
+        self._log(f"\n{'='*80}\n")
+    
+    def close(self):
+        """关闭日志文件"""
+        if self._log_handle and not self._log_handle.closed:
+            self._log_handle.close()
+
+# 全局日志实例
+_sim_logger: Optional[SimulationLogger] = None
+
+def get_simulation_logger(log_file: Optional[Path] = None) -> SimulationLogger:
+    """获取全局日志实例"""
+    global _sim_logger
+    if _sim_logger is None:
+        _sim_logger = SimulationLogger(log_file)
+    return _sim_logger
+
+def _get_pim_latency_via_trace(
+    op: str,
+    pim_config: Path,
+    ramulator_config: Path,
+    dim: int,
+    n_heads: int,
+    n_kv_heads: int,
+    ffn_dim: int,
+    seqlen: Optional[int],
+    use_cache: bool = True
+) -> float:
+    """
+    Generate trace and run Ramulator, returning the latency (in seconds).
+    This function blocks until Ramulator finishes the simulation and returns the result.
+    """
+    logger = get_simulation_logger()
+    logger.record_simulation(op, dim, n_heads, n_kv_heads, ffn_dim, seqlen)
+    
+    if use_cache:
+        cached = _pim_cache.get(op, dim, n_heads, n_kv_heads, ffn_dim, seqlen,
+                               pim_config, ramulator_config)
+        if cached is not None:
+            msg = f"[PIM Cache] Hit for {op} (dim={dim}, heads={n_heads}, seq={seqlen})"
+            logger._log(msg)
+            return cached
+    
+    msg = f"[PIM] Computing latency for {op} (dim={dim}, heads={n_heads}, seq={seqlen})"
+    logger._log(msg)
+    
+    # temp dir
+    temp_dir = Path(tempfile.mkdtemp(prefix="pim_trace_"))
+    
+    try:
+        # generate trace
+        trace_path = temp_dir / f"{op}_trace.trace"
+        print(f"[PIM] Generating trace: {trace_path}")
+        _generate_pim_trace(
+            op=op,
+            pim_config=pim_config,
+            dim=dim,
+            n_heads=n_heads,
+            n_kv_heads=n_kv_heads,
+            ffn_dim=ffn_dim,
+            seqlen=seqlen,
+            trace_file=trace_path
+        )
+        print(f"[PIM] Trace generation completed")
+        print(f"[PIM] Starting ramulator simulation...")
+        cycles = _run_ramulator(trace_path, ramulator_config)
+        
+        # convert cycles to latency
+        if PIM_FREQ_GHZ > 0.0:
+            latency = float(cycles) / (PIM_FREQ_GHZ * 1e9)
         else:
-            raise ValueError("Unrecognized PIM formula JSON structure")
-        per_op: Dict[str, OpFormula] = {}
-        for k, v in per.items():
-            if isinstance(v, dict) and ("basis" in v) and ("coeffs" in v):
-                per_op[k.lower()] = OpFormula(
-                    basis=list(v["basis"]),
-                    coeffs=[float(x) for x in v["coeffs"]],
-                )
-        return PIMFormulaLatency(per_op=per_op)
+            latency = 0.0
+        
+        print(f"[PIM] Latency computed: {latency:.6e} seconds ({cycles} cycles)")
+        
+        if use_cache:
+            _pim_cache.set(op, dim, n_heads, n_kv_heads, ffn_dim, seqlen,
+                          pim_config, ramulator_config, latency)
+        
+        return latency
+    
+    except Exception as e:
+        print(f"[PIM] Error during latency computation: {e}")
+        raise
+    
+    finally:
+        try:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+        except Exception as e:
+            print(f"[PIM] Warning: Failed to cleanup temp dir {temp_dir}: {e}")
 
-    @classmethod
-    def try_load_from_paths(cls, paths: List[str]) -> Optional["PIMFormulaLatency"]:
-        for p in paths:
-            path = Path(p)
-            if path.is_file():
-                try:
-                    obj = json.loads(path.read_text(encoding="utf-8"))
-                    return cls._from_json_obj(obj)
-                except Exception:
-                    continue
-        return None
-
-    def get(self, key: str) -> Optional[OpFormula]:
-        return self.per_op.get(key.lower())
-
+# =========================
+# CostModel
+# =========================
 
 class CostModel:
-    def __init__(self, cluster: Cluster, dtype: str = "fp16"):
+    def __init__(
+        self,
+        cluster: Cluster,
+        dtype: str = "fp16",
+        pim_config_path: Optional[Path] = None,
+        ramulator_config_path: Optional[Path] = None,
+        pim_cache_enabled: bool = True,
+        simulation_log_file: Optional[Path] = None
+    ):
         self.cluster = cluster
         self.dtype = dtype
-        self._pim_formula: Optional[PIMFormulaLatency] = PIMFormulaLatency.try_load_from_paths(PIM_FORMULA_PATHS)
+        self.pim_config_path = pim_config_path
+        self.ramulator_config_path = ramulator_config_path
+        self.pim_cache_enabled = pim_cache_enabled
+        self.logger = get_simulation_logger(simulation_log_file)
+        
+        # PIM 模式需要的配置检查
+        if pim_config_path:
+            if not pim_config_path.exists():
+                raise ValueError(f"PIM config not found: {pim_config_path}")
+        
+        if ramulator_config_path:
+            if not ramulator_config_path.exists():
+                raise ValueError(f"Ramulator config not found: {ramulator_config_path}")
 
     # --------------------------
     # Basic times
@@ -135,7 +673,7 @@ class CostModel:
     def format_conversion_time(self, size_src_bytes: int, src_fmt: str, dst_fmt: str, dev: DeviceSpec) -> float:
         if src_fmt == dst_fmt:
             return 0.0
-        bw_gbs = float(FORMAT_CONV_BW_GBs.get(dev.type, FORMAT_CONV_BW_GBs.get("default", 50.0))) #优先查找dev.type的，如果也没有就查找default，如果都没有就用默认
+        bw_gbs = float(FORMAT_CONV_BW_GBs.get(dev.type, FORMAT_CONV_BW_GBs.get("default", 50.0)))
         bw = bw_gbs * 1e9
         return 0.0 if bw <= 0 else size_src_bytes / bw
 
@@ -143,78 +681,58 @@ class CostModel:
         host = self.get_host_device()
         t_move = self.link_time(size_src_bytes, host, dev)
         t_conv = self.format_conversion_time(size_src_bytes, src_fmt, dst_fmt, dev)
-        return max(t_move,t_conv)
+        return max(t_move, t_conv)
 
     # --------------------------
-    # PIM op -> formula key / args
+    # PIM op -> key mapping
     # --------------------------
     def _resolve_pim_key(self, node) -> List[str]:
-        """
-        - score: QK matmul operations  
-        - output: SV matmul operations
-        - weight: Linear layers (Q/K/V/O/FFN)
-        - weight_af: Linear layers with activation fusion
-        """
+        """将 node 映射到 PIM op key"""
         keys: List[str] = []
         name = (node.name or "").upper()
-        if ("QK" in name) or ("QK_MATMUL" in name) or ("ATTN_QK" in name) or ("SCORE" in name):
+        
+        # Attention projections
+        if name in ("Q", "Q_PROJ"):
+            keys.append("q_proj")
+        elif name in ("K", "K_PROJ"):
+            keys.append("k_proj")
+        elif name in ("V", "V_PROJ"):
+            keys.append("v_proj")
+        elif name in ("O", "WO", "WO_PROJ", "O_PROJ"):
+            keys.append("wo_proj")
+        
+        # FFN layers
+        elif name in ("FFN_W1", "FFN_UP"):
+            keys.append("ffn_up")
+        elif name in ("FFN_W3", "FFN_GATE"):
+            keys.append("ffn_gate")
+        elif name in ("FFN_W2", "FFN_DOWN"):
+            keys.append("ffn_down")
+        
+        # Attention operations
+        elif ("QK" in name) or ("SCORE" in name):
             keys.append("score")
-        elif ("SV" in name) or ("SV_MATMUL" in name) or ("ATTN_SV" in name) or ("OUTPUT" in name):
+        elif ("SV" in name) or ("OUTPUT" in name):
             keys.append("output")
-        elif name in ("Q", "K", "V", "O", "FFN_W1", "FFN_W2", "FFN_W3"):
-            attrs = getattr(node, "attrs", {}) or {}
-            has_activation = any(act in str(attrs).upper() for act in ["GELU", "RELU", "SILU", "SWISH"])
-            if has_activation:
-                keys.append("weight_af")
-            else:
-                keys.append("weight")
-        if not keys:
-            keys = ["weight", "score", "output", "weight_af"]
+        elif "SOFTMAX" in name:
+            keys.append("softmax")
+        
+        # Other ops
+        elif "RMSNORM" in name or name == "LN":
+            keys.append("rmsnorm")
+        elif "ROPE" in name:
+            keys.append("rope")
+        elif "SILU" in name or "SWIGLU" in name:
+            keys.append("silu")
+        elif "GELU" in name:
+            keys.append("gelu")
+        elif name in ("ADD", "RESIDUAL"):
+            keys.append("residual")
+        
         return keys
 
-    def _infer_vnH_for_node(self, node, seq_len: int) -> Tuple[int, int, int]:
-        """
-        推断 (V, N, H) 参数：
-        V=vector_dim, N=matrix_col（线性层右侧维度），H=多头数（注意力相关）。
-        若 attrs 信息不足，尽量使用合理近似；不足则返回 0。
-        """
-        attrs = getattr(node, "attrs", {}) or {}
-        dim = int(attrs.get("dim", 0) or 0)
-        ffn_dim = int(attrs.get("ffn_dim", 0) or 0)
-        head_dim = int(attrs.get("head_dim", 0) or 0)
-        n_heads = int(attrs.get("n_heads", attrs.get("kv_heads", attrs.get("n_kv_heads", 0))) or 0)
-
-        # 常见线性层
-        nm = (node.name or "").upper()
-        if nm == "Q":
-            q_dim = max(0, n_heads * head_dim)
-            return dim, q_dim, n_heads
-        if nm in ("K", "V"):
-            kvh = int(attrs.get("n_kv_heads", attrs.get("kv_heads", n_heads)) or n_heads)
-            kv_dim = max(0, kvh * head_dim)
-            return dim, kv_dim, kvh
-        if nm == "O":
-            o_in = max(0, n_heads * head_dim)
-            return o_in, dim, n_heads
-        if nm in ("FFN_W1", "FFN_W3"):
-            return dim, ffn_dim, n_heads
-        if nm == "FFN_W2":
-            return ffn_dim, dim, n_heads
-
-        # Attention Matmuls / Softmax
-        if ("QK" in nm) or ("QK_MATMUL" in nm) or ("ATTN_QK" in nm):
-            return head_dim, head_dim, n_heads
-        if ("SV" in nm) or ("SV_MATMUL" in nm) or ("ATTN_SV" in nm):
-            return head_dim, head_dim, n_heads
-        if ("SOFTMAX" in nm):
-            # Softmax 的公式一般依赖 L 和 H，V/N 可置为 0 或 head_dim
-            return 0, 0, n_heads
-
-        # 其他（LN 等）
-        return 0, 0, n_heads
-
     # --------------------------
-    # Dynamic flop estimation
+    # Dynamic flop estimation (保持不变)
     # --------------------------
     def estimate_flops(self, node, batch: int, seq_len: int, phase: str) -> float:
         attrs = getattr(node, "attrs", {}) or {}
@@ -224,8 +742,7 @@ class CostModel:
         if b <= 0:
             return default
 
-        # 维度
-        D   = int(attrs.get("dim", 0) or 0)                       # model dim
+        D   = int(attrs.get("dim", 0) or 0)
         Hf  = int(attrs.get("ffn_dim", attrs.get("hidden_dim", 0)) or 0)
         qh  = int(attrs.get("q_heads", attrs.get("n_head", attrs.get("kv_heads", 0))) or 0)
         kvh = int(attrs.get("kv_heads", attrs.get("n_kv_heads", qh)) or 0)
@@ -236,15 +753,16 @@ class CostModel:
         o_dim  = int(attrs.get("o_dim", qh * hd) or 0)
         q_len  = seq_len if phase == "prefill" else 1
         kv_len = int(attrs.get("kv_len", attrs.get("past_kv_len", seq_len)) or seq_len)
-        causal = bool(attrs.get("causal", True))  # 因果注意力
+        causal = bool(attrs.get("causal", True))
+        
         def tri(n: int) -> int:
             return n * (n + 1) // 2
 
-        C_MATMUL  = 2.0   # matmul: MAC -> 2 FLOPs
-        C_LN      = 5.0   # LN: 均值、方差、归一化、仿射
-        C_SOFTMAX = 5.0   # softmax: max/sub/exp/sum/div（不细算exp代价）
-        C_GELU    = 6.0   # GELU 近似
-        C_SILU    = 5.0   # SiLU(x)=x*sigmoid(x) 近似
+        C_MATMUL  = 2.0
+        C_LN      = 5.0
+        C_SOFTMAX = 5.0
+        C_GELU    = 6.0
+        C_SILU    = 5.0
 
         name = (getattr(node, "name", "") or "").upper()
 
@@ -261,7 +779,7 @@ class CostModel:
             if phase == "prefill":
                 pairs = tri(q_len) if causal else q_len * q_len
             else:
-                pairs = kv_len  # q_len==1
+                pairs = kv_len
             return float(C_MATMUL * b * qh * hd * pairs)
 
         if name in ("SOFTMAX") and qh > 0:
@@ -282,32 +800,29 @@ class CostModel:
             return float(C_MATMUL * o_dim * D * b * q_len)
 
         if name in ("FFN_W1", "FFN_W3", "FFN_UP", "FFN_GATE") and D > 0 and Hf > 0:
-            # SwiGLU 的 W1/W3（或门控/上投影）
             return float(C_MATMUL * D * Hf * b * q_len)
 
         if name in ("FFN_W2", "FFN_DOWN") and D > 0 and Hf > 0:
             return float(C_MATMUL * Hf * D * b * q_len)
 
         if name in ("SWIGLU", "SILU_GLU") and Hf > 0:
-            # SiLU(Hf) + 与另一条支路做逐元素乘（门控）
             return float(b * q_len * Hf * (C_SILU + 1.0))
 
         if name in ("GELU",) and Hf > 0:
             return float(b * q_len * Hf * C_GELU)
 
         if name == "ADD" and D > 0:
-            return float(b * q_len * D)  # 残差加
+            return float(b * q_len * D)
 
         if name in ("IDENTITY", "RESIDUAL", "DROPOUT") and D > 0:
             return float(b * q_len * D)
 
         if name in ("KV_READ", "KV_WRITE", "ROPE", "ALIBI"):
-            return 0.0  # 仅内存/索引或轻量计算，这里不计入 FLOPs
+            return 0.0
 
         return default
 
     def estimate_activation_bytes(self, node, batch: int, seq_len: int, phase: str):
-
         attrs = getattr(node, "attrs", {}) or {}
         dtype_bytes = int(DTYPE_BYTES.get(self.dtype, 2))
 
@@ -315,23 +830,22 @@ class CostModel:
             return int(max(0.0, float(elems))) * dtype_bytes
 
         b = int(batch or attrs.get("batch", 0) or 1)
-
         T = int(seq_len or 0)
         if T <= 0:
             return 0, 0
 
         kv_len = int(attrs.get("kv_len", attrs.get("past_kv_len", T)) or T)
-        active_tokens  = T if phase == "prefill" else 1
-
+        active_tokens = T if phase == "prefill" else 1
         causal = bool(attrs.get("causal", True))
+        
         def tri(n: int) -> int:
             return n * (n + 1) // 2
 
-        D       = int(attrs.get("dim", attrs.get("hidden_size", 0)) or 0)
-        Hf      = int(attrs.get("ffn_dim", attrs.get("mlp_dim", 0)) or 0)
-        hd      = int(attrs.get("head_dim", 0) or 0)
-        qh      = int(attrs.get("q_heads", attrs.get("n_heads", 0)) or 0)
-        kvh     = int(attrs.get("n_kv_heads", attrs.get("kv_heads", qh)) or 0)
+        D   = int(attrs.get("dim", attrs.get("hidden_size", 0)) or 0)
+        Hf  = int(attrs.get("ffn_dim", attrs.get("mlp_dim", 0)) or 0)
+        hd  = int(attrs.get("head_dim", 0) or 0)
+        qh  = int(attrs.get("q_heads", attrs.get("n_heads", 0)) or 0)
+        kvh = int(attrs.get("n_kv_heads", attrs.get("kv_heads", qh)) or 0)
         q_dim   = int(attrs.get("q_dim", qh * hd) or 0)
         kv_dim  = int(attrs.get("kv_dim", kvh * hd) or 0)
         o_dim   = int(attrs.get("o_dim", qh * hd) or 0)
@@ -339,7 +853,7 @@ class CostModel:
         name = (getattr(node, "name", attrs.get("op", "")) or "").upper()
 
         if phase == "prefill":
-            attn_pairs = tri(T) if causal else T * T #是否有mask
+            attn_pairs = tri(T) if causal else T * T
         else:
             attn_pairs = kv_len
 
@@ -353,7 +867,7 @@ class CostModel:
 
         if name in ("K", "V") and D > 0:
             out_dim = kv_dim if kv_dim > 0 else D
-            write_tokens = active_tokens  # prefill=T, decode=1
+            write_tokens = active_tokens
             return to_bytes(b * active_tokens * D), to_bytes(b * write_tokens * out_dim)
 
         if name in ("O") and D > 0:
@@ -367,7 +881,6 @@ class CostModel:
             return to_bytes(b * active_tokens * Hf), to_bytes(b * active_tokens * D)
 
         if name in ("SWIGLU", "SILU_GLU") and Hf > 0:
-            # 读 gate(Hf) 与 up(Hf)，写 Hf
             return to_bytes(b * active_tokens * (2 * Hf)), to_bytes(b * active_tokens * Hf)
 
         if name in ("GELU", "RELU"):
@@ -375,7 +888,6 @@ class CostModel:
             return to_bytes(b * active_tokens * width), to_bytes(b * active_tokens * width)
 
         if name == "ADD" and D > 0:
-            # 读两路，写一路
             read_elems = b * active_tokens * D * 2
             write_elems = b * active_tokens * D
             return to_bytes(read_elems), to_bytes(write_elems)
@@ -387,21 +899,17 @@ class CostModel:
         if name in ("QK") and qh > 0 and hd > 0:
             q_read = b * active_tokens * q_dim
             k_read = b * (T if phase == "prefill" else kv_len) * kv_dim
-            # 写出：每个 head 上的有效元素（考虑三角）
             write_elems = b * qh * attn_pairs
             return to_bytes(q_read + k_read), to_bytes(write_elems)
 
         if name in ("SOFTMAX", "ATTN_SOFTMAX") and qh > 0:
-            # 读/写形状相同（常见实现原地）
             elems = b * qh * attn_pairs
             return to_bytes(elems), to_bytes(elems)
 
         if name in ("SV") and qh > 0 and hd > 0:
-            # 读：注意力权重 + V；写：b * qh * q_len * hd
             attn_read = b * qh * attn_pairs
             v_read    = b * (T if phase == "prefill" else kv_len) * kv_dim
-            out_elems = b * qh * q_dim * hd
-            # 注：这里按每个 group 共享 V，不乘 qh/kvh，作为一次性读取的上界
+            out_elems = b * qh * active_tokens * hd
             return to_bytes(attn_read + v_read), to_bytes(out_elems)
 
         if name in ("KV_READ", "KV_WRITE"):
@@ -415,35 +923,77 @@ class CostModel:
 
         return 0, 0
 
-
     # --------------------------
     # Node device cost
     # --------------------------
-    def node_device_cost(self, node:TaskNode, dev: DeviceSpec, label:PlanLabel,batch: int, seq_len: int, phase: str) -> float:
-        # NPU:
+    def node_device_cost(
+        self,
+        node: TaskNode,
+        dev: DeviceSpec,
+        label: PlanLabel,
+        batch: int,
+        seq_len: int,
+        phase: str
+    ) -> float:
+        # NPU
         if dev.type == "npu":
             flops = self.estimate_flops(node, batch, seq_len, phase)
-            rd, wr = self.estimate_activation_bytes(node,batch,seq_len,phase)
+            rd, wr = self.estimate_activation_bytes(node, batch, seq_len, phase)
             return max(self.flop_time(flops, dev), self.mem_time(rd + wr, dev))
 
-        # PIM:
-        if dev.type == "pim" and self._pim_formula is not None:
+        # PIM - use aim simulator
+        if dev.type == "pim":
+            if not self.pim_config_path or not self.ramulator_config_path:
+                print(f"[PIM] Warning: PIM configs not set, returning 0 for {node.name}")
+                return 0.0
+            
+            attrs = getattr(node, "attrs", {}) or {}
+            dim = int(attrs.get("dim", 0) or 0)
+            n_heads = int(attrs.get("n_heads", attrs.get("q_heads", attrs.get("n_head", 0))) or 0)
+            n_kv_heads = int(attrs.get("n_kv_heads", attrs.get("kv_heads", n_heads)) or n_heads)
+            ffn_dim = int(attrs.get("ffn_dim", 0) or 0)
+            ffn_dim_mul = float(attrs.get("ffn_dim_mul", 4.0))
+   
+            if ffn_dim == 0 and dim > 0:
+                ffn_dim = int(ffn_dim_mul * dim)
+            
+            compute_time = 0.0
+
             keys = self._resolve_pim_key(node)
-            opf: Optional[OpFormula] = None
-            for k in keys:
-                opf = self._pim_formula.get(k)
-                if opf is not None:
-                    V, N, H = self._infer_vnH_for_node(node, seq_len)
-                    cycles = opf.eval_cycles(seqlen=seq_len, vector_dim=V, matrix_col=N, n_heads=H)
-                    if cycles > 0.0 and PIM_FREQ_GHZ > 0.0:
-                        compute_time = cycles / (PIM_FREQ_GHZ * 1e9)
-        
-            kv_in_pim = getattr(label, "kv_in_lable", False)
+            op_key = keys[0] if keys else None
+
+            if node.name.upper() in ("KV_READ", "KV_WRITE"):
+                compute_time = 0.0
+            elif op_key and dim > 0 and n_heads > 0:
+                try:
+                    # aim simulator 
+                    compute_time = _get_pim_latency_via_trace(
+                        op=op_key,
+                        pim_config=self.pim_config_path,
+                        ramulator_config=self.ramulator_config_path,
+                        dim=dim,
+                        n_heads=n_heads,
+                        n_kv_heads=n_kv_heads,
+                        ffn_dim=ffn_dim,
+                        seqlen=seq_len if seq_len > 0 else None,
+                        use_cache=self.pim_cache_enabled
+                    )
+                except Exception as e:
+                    print(f"[PIM] ERROR: Failed to compute latency for {node.name}: {e}")
+                    # 不使用 fallback，直接返回 0 或抛出异常
+                    raise RuntimeError(f"PIM latency computation failed for {node.name}: {e}")
+            else:
+                print(f"[PIM] Warning: Insufficient parameters for {node.name} "
+                      f"(op={op_key}, dim={dim}, heads={n_heads})")
+            
+            # 考虑 KV cache 在 PIM 中的情况
+            kv_in_pim = getattr(label, "kv_in_pim", False)
             if kv_in_pim:
                 mem_time = 0.0
             else:
-                rd, wr = self.estimate_activation_bytes(node,batch,seq_len,phase)
-                mem_time = self.mem_time((rd + wr),dev)
+                rd, wr = self.estimate_activation_bytes(node, batch, seq_len, phase)
+                mem_time = self.mem_time((rd + wr), dev)
+            
             return compute_time + mem_time
-
-    
+        
+        return 0.0

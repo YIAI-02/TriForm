@@ -29,7 +29,7 @@ ENABLE_TWO_PASS_FORMAT_TUNING: bool = True
 WEIGHT_FORMAT_JSON_PATH: str = "./format_tuning/weight_storage_suggestion.json"
 
 # Progressive multi-pass tuning (iterate until converged or reach max passes)
-FORMAT_TUNING_MAX_PASSES: int = 10
+FORMAT_TUNING_MAX_PASSES: int = 1
 # stop when |Δtime| <= TIME_EPS AND mapping_change_ratio <= MAP_EPS
 FORMAT_TUNING_TIME_EPS: float = 1e-4      # 0.1 ms
 FORMAT_TUNING_MAP_EPS: float  = 0.01      # <=1% of weights changed
