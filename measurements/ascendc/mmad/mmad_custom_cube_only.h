@@ -17,11 +17,27 @@ constexpr uint32_t CUBE_BLOCK_SIZE = 16 * 16;
 
 class KernelMmad {
 public:
-    __aicore__ inline KernelMmad()
+    // __aicore__ inline KernelMmad()
+    // {
+    //     aSize = m * k;
+    //     bSize = k * n;
+    //     cSize = m * n;
+    // }
+    __aicore__ inline KernelMmad() {}
+
+    __aicore__ inline void SetShape(uint16_t M, uint16_t N, uint16_t K)
     {
-        aSize = m * k;
-        bSize = k * n;
-        cSize = m * n;
+        m = M; n = N; k = K;
+        MB = CeilCubeBlock(m);
+        NB = CeilCubeBlock(n);
+        KB = CeilCubeBlock(k);
+        mPad = MB * CUBE_BLOCK;
+        nPad = NB * CUBE_BLOCK;
+        kPad = KB * CUBE_BLOCK;
+
+        aNzSize = MB * KB;   
+        bNzOrZnSize = KB * NB; 
+        cSize = (uint32_t)m * (uint32_t)n;
     }
     __aicore__ inline void Init(GM_ADDR a, GM_ADDR b, GM_ADDR bias, GM_ADDR c)
     {
@@ -32,13 +48,21 @@ public:
         bGM.SetGlobalBuffer((__gm__ half *)b);
         cGM.SetGlobalBuffer((__gm__ float *)c);
         biasGM.SetGlobalBuffer((__gm__ half *)bias);
-        pipe.InitBuffer(inQueueA1, 1, aSize * sizeof(half));
-        pipe.InitBuffer(inQueueA2, 1, aSize * sizeof(half));
-        pipe.InitBuffer(inQueueB1, 1, bSize * sizeof(half));
-        pipe.InitBuffer(inQueueB2, 1, bSize * sizeof(half));
+        // pipe.InitBuffer(inQueueA1, 1, aSize * sizeof(half));
+        // pipe.InitBuffer(inQueueA2, 1, aSize * sizeof(half));
+        // pipe.InitBuffer(inQueueB1, 1, bSize * sizeof(half));
+        // pipe.InitBuffer(inQueueB2, 1, bSize * sizeof(half));
+        // pipe.InitBuffer(outQueueCO1, 1, cSize * sizeof(float));
+        // pipe.InitBuffer(inQueueC1, 1, n * sizeof(half));
+        // pipe.InitBuffer(outQueueC2, 1, n * sizeof(float));
+
+        pipe.InitBuffer(inQueueA1, 1, aNzSize * sizeof(half));
+        pipe.InitBuffer(inQueueA2, 1, aNzSize * sizeof(half));
+        pipe.InitBuffer(inQueueB1, 1, bNzOrZnSize * sizeof(half));
+        pipe.InitBuffer(inQueueB2, 1, bNzOrZnSize * sizeof(half));
         pipe.InitBuffer(outQueueCO1, 1, cSize * sizeof(float));
-        pipe.InitBuffer(inQueueC1, 1, n * sizeof(half));
-        pipe.InitBuffer(outQueueC2, 1, n * sizeof(float));
+        pipe.InitBuffer(inQueueC1, 1, nPad * sizeof(half));   // bias 按 nPad
+        pipe.InitBuffer(outQueueC2, 1, nPad * sizeof(float)); // cast 后按 nPad
     }
     __aicore__ inline void Process()
     {
@@ -60,14 +84,16 @@ private:
         AscendC::LocalTensor<half> a1Local = inQueueA1.AllocTensor<half>();
         AscendC::LocalTensor<half> b1Local = inQueueB1.AllocTensor<half>();
         AscendC::LocalTensor<half> bias1Local = inQueueC1.AllocTensor<half>();
-
+        
+        //拷贝时完成 nd 转 nz
         AscendC::Nd2NzParams nd2nzA1Params;
         nd2nzA1Params.ndNum = 1;
         nd2nzA1Params.nValue = m;
         nd2nzA1Params.dValue = k;
         nd2nzA1Params.srcNdMatrixStride = 0;
         nd2nzA1Params.srcDValue = k;
-        nd2nzA1Params.dstNzC0Stride = CeilCubeBlock(m) * CUBE_BLOCK;
+        // nd2nzA1Params.dstNzC0Stride = CeilCubeBlock(m) * CUBE_BLOCK;
+        nd2nzA1Params.dstNzC0Stride = MB * CUBE_BLOCK;
         nd2nzA1Params.dstNzNStride = 1;
         nd2nzA1Params.dstNzMatrixStride = 0;
         AscendC::DataCopy(a1Local, aGM, nd2nzA1Params);
@@ -78,7 +104,8 @@ private:
         nd2nzB1Params.dValue = n;
         nd2nzB1Params.srcNdMatrixStride = 0;
         nd2nzB1Params.srcDValue = n;
-        nd2nzB1Params.dstNzC0Stride = CeilCubeBlock(k) * CUBE_BLOCK;
+        // nd2nzB1Params.dstNzC0Stride = CeilCubeBlock(k) * CUBE_BLOCK;
+        nd2nzB1Params.dstNzC0Stride = KB * CUBE_BLOCK;
         nd2nzB1Params.dstNzNStride = 1;
         nd2nzB1Params.dstNzMatrixStride = 0;
         AscendC::DataCopy(b1Local, bGM, nd2nzB1Params);
@@ -94,12 +121,15 @@ private:
         AscendC::LocalTensor<half> a1Local = inQueueA1.DeQue<half>();
         AscendC::LocalTensor<half> a2Local = inQueueA2.AllocTensor<half>();
 
-        uint32_t dstOffset = CeilCubeBlock(k) * CUBE_BLOCK_SIZE;
+        // uint32_t dstOffset = CeilCubeBlock(k) * CUBE_BLOCK_SIZE;
+        uint32_t dstOffset = KB * CUBE_BLOCK;
         uint32_t srcOffset = CUBE_BLOCK_SIZE;
  
         AscendC::LoadData2DParams loadDataParams;
-        loadDataParams.repeatTimes = CeilCubeBlock(k);
-        loadDataParams.srcStride = CeilCubeBlock(m);
+        // loadDataParams.repeatTimes = CeilCubeBlock(k);
+        // loadDataParams.srcStride = CeilCubeBlock(m);
+        loadDataParams.repeatTimes = KB;
+        loadDataParams.srcStride = MB;
         loadDataParams.dstGap = 0;
         loadDataParams.ifTranspose = false;
         for (int i = 0; i < CeilCubeBlock(m); ++i) {
@@ -114,26 +144,42 @@ private:
         AscendC::LocalTensor<half> b1Local = inQueueB1.DeQue<half>();
         AscendC::LocalTensor<half> b2Local = inQueueB2.AllocTensor<half>();
 
-        uint32_t dstOffset = CeilCubeBlock(n) * CUBE_BLOCK_SIZE;
+        // uint32_t dstOffset = CeilCubeBlock(n) * CUBE_BLOCK_SIZE;
+        uint32_t dstOffset = NB * CUBE_BLOCK;
         uint32_t srcOffset = CUBE_BLOCK_SIZE;
         // Nz -> Zn
         AscendC::LoadData2DParams loadDataParams;
-        loadDataParams.repeatTimes = CeilCubeBlock(n);
-        loadDataParams.srcStride = CeilCubeBlock(k);
+        // loadDataParams.repeatTimes = CeilCubeBlock(n);
+        // loadDataParams.srcStride = CeilCubeBlock(k);
+        loadDataParams.repeatTimes = NB;
+        loadDataParams.srcStride = KB;
         loadDataParams.dstGap = 0;
         loadDataParams.ifTranspose = true;
-        for (int i = 0; i < CeilCubeBlock(k); ++i) {
+        // for (int i = 0; i < CeilCubeBlock(k); ++i) {
+        for (int i = 0; i < KB; ++i) {
             AscendC::LoadData(b2Local[i * dstOffset], b1Local[i * srcOffset], loadDataParams);
         }
 
         inQueueB1.FreeTensor(b1Local);
         inQueueB2.EnQue<half>(b2Local);
     }
-    __aicore__ inline void SplitBias()
+    // __aicore__ inline void SplitBias()
+    // {
+    //     AscendC::LocalTensor<half> bias1Local = inQueueC1.DeQue<half>();
+    //     AscendC::LocalTensor<float> bias2Local = outQueueC2.AllocTensor<float>();
+    //     AscendC::DataCopy(bias2Local, bias1Local, { 1, (uint16_t)(n * sizeof(half) / 64), 0, 0 });
+    //     outQueueC2.EnQue<float>(bias2Local);
+    //     inQueueC1.FreeTensor(bias1Local);
+    // }
+    __aicore__ inline void SplitBias() //？
     {
-        AscendC::LocalTensor<half> bias1Local = inQueueC1.DeQue<half>();
+        AscendC::LocalTensor<half>  bias1Local = inQueueC1.DeQue<half>();
         AscendC::LocalTensor<float> bias2Local = outQueueC2.AllocTensor<float>();
-        AscendC::DataCopy(bias2Local, bias1Local, { 1, (uint16_t)(n * sizeof(half) / 64), 0, 0 });
+        Cast(bias2Local, bias1Local, AscendC::RoundMode::CAST_NONE, n); //half 到 float的转换
+        if (nPad > n) {
+            AscendC::LocalTensor<float> tail = bias2Local[n];
+            AscendC::SetVector(tail, 0.0f, nPad - n);
+        }
         outQueueC2.EnQue<float>(bias2Local);
         inQueueC1.FreeTensor(bias1Local);
     }
@@ -184,8 +230,13 @@ private:
     AscendC::GlobalTensor<half> bGM;
     AscendC::GlobalTensor<float> cGM;
     AscendC::GlobalTensor<half> biasGM;
+    // uint16_t m = 32, k = 32, n = 32;
+    // uint16_t aSize, bSize, cSize;
+
     uint16_t m = 32, k = 32, n = 32;
-    uint16_t aSize, bSize, cSize;
+    uint16_t MB = 2, NB = 2, KB = 2; 
+    uint16_t mPad = 32, nPad = 32, kPad = 32;
+    uint32_t aNzSize = 0, bNzOrZnSize = 0, cSize = 0;
 };
 
 #endif // MMAD_CUSTOM_CUBE_ONLY_H

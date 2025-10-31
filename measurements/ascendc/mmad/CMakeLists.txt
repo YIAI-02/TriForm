@@ -35,8 +35,14 @@ target_compile_options(ascendc_kernels_bbit PRIVATE
     -O2 -std=c++17 -D_GLIBCXX_USE_CXX11_ABI=0 -Wall -Werror
 )
 
+# target_compile_definitions(ascendc_kernels_bbit PRIVATE
+#     $<$<BOOL:$<IN_LIST:${SOC_VERSION},${CUSTOM_ASCEND310P_LIST}>>:CUSTOM_ASCEND310P>
+# )
+
+option(USE_CUBE_ONLY "Use cube-only kernel that supports arbitrary shapes (16-padded)" ON)
+
 target_compile_definitions(ascendc_kernels_bbit PRIVATE
-    $<$<BOOL:$<IN_LIST:${SOC_VERSION},${CUSTOM_ASCEND310P_LIST}>>:CUSTOM_ASCEND310P>
+    $<$<AND:$<BOOL:$<IN_LIST:${SOC_VERSION},${CUSTOM_ASCEND310P_LIST}>>,$<NOT:$<BOOL:${USE_CUBE_ONLY}>>>:CUSTOM_ASCEND310P>
 )
 
 target_link_libraries(ascendc_kernels_bbit PRIVATE

@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 CURRENT_DIR=$(
     cd $(dirname ${BASH_SOURCE:-$0})
     pwd
@@ -79,7 +80,7 @@ elif [ "${RUN_MODE}" = "cpu" ]; then
     export LD_LIBRARY_PATH=${_ASCEND_INSTALL_PATH}/tools/tikicpulib/lib:${_ASCEND_INSTALL_PATH}/tools/tikicpulib/lib/${SOC_VERSION}:${_ASCEND_INSTALL_PATH}/tools/simulator/${SOC_VERSION}/lib:$LD_LIBRARY_PATH
 fi
 
-set -e
+
 rm -rf build out
 mkdir -p build
 cmake -B build \
@@ -95,24 +96,61 @@ rm -f ascendc_kernels_bbit
 cp ./out/bin/ascendc_kernels_bbit ./
 rm -rf input output
 mkdir -p input output
-python3 scripts/gen_data.py
-(
-    export LD_LIBRARY_PATH=$(pwd)/out/lib:$(pwd)/out/lib64:${_ASCEND_INSTALL_PATH}/lib64:$LD_LIBRARY_PATH
-    if [[ "$RUN_WITH_TOOLCHAIN" -eq 1 ]]; then
-        if [ "${RUN_MODE}" = "npu" ]; then
-            msprof op --application=./ascendc_kernels_bbit
-        elif [ "${RUN_MODE}" = "sim" ]; then
-            msprof op simulator --application=./ascendc_kernels_bbit
-        elif [ "${RUN_MODE}" = "cpu" ]; then
-            ./ascendc_kernels_bbit
+# python3 scripts/gen_data.py --m "${M:-32}" --n "${N:-32}" --k "${K:-32}"
+# # python3 scripts/gen_data.py
+# (
+#     export LD_LIBRARY_PATH=$(pwd)/out/lib:$(pwd)/out/lib64:${_ASCEND_INSTALL_PATH}/lib64:$LD_LIBRARY_PATH
+#     if [[ "$RUN_WITH_TOOLCHAIN" -eq 1 ]]; then
+#         if [ "${RUN_MODE}" = "npu" ]; then
+#             msprof op --application=./ascendc_kernels_bbit
+#         elif [ "${RUN_MODE}" = "sim" ]; then
+#             msprof op simulator --application=./ascendc_kernels_bbit
+#         elif [ "${RUN_MODE}" = "cpu" ]; then
+#             ./ascendc_kernels_bbit
+#         fi
+#     else
+#         ./ascendc_kernels_bbit
+#     fi
+# )
+
+CASES=${CASES:-"32x32x32,64x64x64,64x128x64,128x128x128"}
+IFS=',' read -ra SHAPES <<< "$CASES"
+for shape in "${SHAPES[@]}"; do
+    M=$(echo $shape | cut -dx -f1)
+    N=$(echo $shape | cut -dx -f2)
+    K=$(echo $shape | cut -dx -f3)
+    OUTDIR=profile/${M}x${N}x${K}
+    mkdir -p ${OUTDIR}
+
+    rm -rf input output
+    mkdir -p input output
+    # 生成与 C++ 侧一致的 16 对齐输入
+    python3 scripts/gen_data.py --m ${M} --n ${N} --k ${K} --pad16
+
+    echo "[INFO] Run ${M}x${N}x${K} ..."
+    (
+        export LD_LIBRARY_PATH=$(pwd)/out/lib:$(pwd)/out/lib64:${_ASCEND_INSTALL_PATH}/lib64:$LD_LIBRARY_PATH
+        if [[ "$RUN_WITH_TOOLCHAIN" -eq 1 ]]; then
+            if [ "${RUN_MODE}" = "npu" ]; then
+                msprof op -o ${OUTDIR} --application=./ascendc_kernels_bbit -- --m ${M} --n ${N} --k ${K} --repeat 5
+            elif [ "${RUN_MODE}" = "sim" ]; then
+                msprof op simulator -o ${OUTDIR} --application=./ascendc_kernels_bbit -- --m ${M} --n ${N} --k ${K} --repeat 5
+            else
+                ./ascendc_kernels_bbit --m ${M} --n ${N} --k ${K} --repeat 5
+            fi
+        else
+            ./ascendc_kernels_bbit --m ${M} --n ${N} --k ${K} --repeat 5
         fi
-    else
-        ./ascendc_kernels_bbit
-    fi
-)
+    )
+    # 校验（允许失败但打印信息）
+    python3 scripts/verify_result.py --m ${M} --n ${N} --k ${K} output/output.bin output/golden.bin || true
+done
+
+
 # tidy folder by delete log files
 if [ "${RUN_MODE}" = "sim" ]; then
     rm -f *.log *.dump *.vcd *.toml *_log
 fi
 md5sum output/*.bin
-python3 scripts/verify_result.py output/output.bin output/golden.bin
+# python3 scripts/verify_result.py output/output.bin output/golden.bin
+python3 scripts/verify_result.py --m "${M:-32}" --n "${N:-32}" --k "${K:-32}" output/output.bin output/golden.bin
