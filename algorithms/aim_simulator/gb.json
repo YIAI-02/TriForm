@@ -1,0 +1,7 @@
+{
+  "DRAM_column": 2048,
+  "DRAM_row": 65536,
+  "burst_length": 16,
+  "num_banks": 16,
+  "num_channels": 2
+}

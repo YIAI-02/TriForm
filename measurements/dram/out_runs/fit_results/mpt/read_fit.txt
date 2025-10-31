@@ -1,1 +1,0 @@
-Linear fit (mpt): read_latency_sum ≈ 2.287909e+00 * bytes_read + -7.228667e+03

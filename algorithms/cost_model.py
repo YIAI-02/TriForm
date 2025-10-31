@@ -22,8 +22,9 @@ from hardware import Cluster, DeviceSpec
 from plan_label import PlanLabel
 from config import (
     HOST_NAME, DEVICE_PREFERRED_FORMAT,
-    FORMAT_SIZE_MULTIPLIER, FORMAT_CONV_BW_GBs,PIM_FREQ_GHZ,
+    FORMAT_SIZE_MULTIPLIER, FORMAT_CONV_BW_GBs,PIM_FREQ_GHZ,GB_FREQ_GHZ,
 )
+
 
 DTYPE_BYTES: Dict[str, int] = {
     "fp32": 4,
@@ -47,7 +48,28 @@ def _ensure_cent_on_path(start: Optional[Path] = None) -> Tuple[Path, Path]:
             return cand, p
     raise RuntimeError(f"Cannot find 'submodules/CENT/cent_simulation' above {here}")
 
-def _load_pim_config(path: Path) -> Dict[str, any]:
+def _initialize_cent_module():
+    try:
+        cent_path, _ = _ensure_cent_on_path()
+        from Llama import TransformerBlockLlama as TransformerBlock
+        return TransformerBlock
+    except Exception:
+        try:
+            from TransformerBlock import TransformerBlock
+            return TransformerBlock
+        except ImportError:
+            raise RuntimeError("Cannot import TransformerBlock from CENT")
+
+# 模块级别的 TransformerBlock 类引用
+_TransformerBlock = None
+
+def _get_transformer_block():
+    global _TransformerBlock
+    if _TransformerBlock is None:
+        _TransformerBlock = _initialize_cent_module()
+    return _TransformerBlock
+
+def _load_memory_config(path: Path) -> Dict[str, any]:
     cfg = json.loads(path.read_text(encoding="utf-8"))
     std: Dict[str, any] = {}
     
@@ -272,58 +294,25 @@ def _generate_pim_trace(
     n_kv_heads: int,
     ffn_dim: int,
     seqlen: Optional[int],
-    trace_file: Path
+    trace_file: Path,
+    model_dict: Optional[Dict] = None  # 新增：接受外部模型字典
 ) -> None:
-    try:
-        _ensure_cent_on_path()
-        from Llama import TransformerBlockLlama as TransformerBlock
-    except Exception:
-        try:
-            from TransformerBlock import TransformerBlock
-        except ImportError:
-            raise RuntimeError("Cannot import TransformerBlock from CENT")
+    """
+    生成 PIM 操作的 trace
+    使用统一的模型字典
+    """
+    if model_dict is None:
+        raise ValueError("Model dictionary must be provided for PIM trace generation")
+    
+    TransformerBlock = _get_transformer_block()
 
-    pim_cfg = _load_pim_config(pim_config)
+    pim_cfg = _load_memory_config(pim_config)
     args = _make_tb_args_from_pim(pim_cfg, str(trace_file))
     args.op_trace = True
     args.seqlen = int(seqlen or args.seqlen or 16)
 
-
-    def _make_dic_model(dim_: int, n_heads_: int, n_kv_heads_: int, seqlen_: int, ffn_dim_: int):
-        import torch
-        head_dim_ = dim_ // max(1, n_heads_)
-        TP_param = 1
-        return {
-            "TP_param": torch.tensor(TP_param),
-            "dim": torch.tensor(dim_),
-            "n_heads": torch.tensor(n_heads_),
-            "n_kv_heads": torch.tensor(n_kv_heads_),
-            "x": torch.zeros((1, 1, dim_)),
-            "SANorm": torch.zeros(dim_),
-            "FFNNorm": torch.zeros(dim_),
-            "sa": torch.zeros((1, 1, dim_)),
-            "h": torch.zeros((1, 1, dim_)),
-            "out": torch.zeros((1, 1, dim_)),
-            "wq": torch.zeros((dim_ // TP_param, dim_)),
-            "wk": torch.zeros((head_dim_ * n_kv_heads_), dim_),
-            "wv": torch.zeros((head_dim_ * n_kv_heads_), dim_),
-            "xq": torch.zeros((1, 1, dim_)),
-            "xk": torch.zeros((1, 1, head_dim_ * n_heads_)),
-            "xv": torch.zeros((1, 1, head_dim_ * n_heads_)),
-            "start_pos": torch.tensor(max(1, seqlen_) - 1),
-            "cache_k": torch.zeros((1, seqlen_, n_kv_heads_, head_dim_)),
-            "cache_v": torch.zeros((1, seqlen_, n_kv_heads_, head_dim_)),
-            "scores": torch.zeros((1, n_heads_, 1, seqlen_)),
-            "output": torch.zeros((1, 1, dim_)),
-            "wo": torch.zeros((dim_ // TP_param, dim_)),
-            "w1": torch.zeros((ffn_dim_ // TP_param, dim_)),
-            "w3": torch.zeros((ffn_dim_ // TP_param, dim_)),
-            "w2": torch.zeros((dim_ // TP_param, ffn_dim_)),
-            "ffn": torch.zeros((1, 1, dim_)),
-        }
-
-    dic_model = _make_dic_model(dim, n_heads, n_kv_heads, args.seqlen, ffn_dim)
-    block = TransformerBlock(dic_model, args)
+    # 使用外部传入的模型字典
+    block = TransformerBlock(model_dict, args)
     if hasattr(block, "memory_mapping"):
         block.memory_mapping()
 
@@ -340,50 +329,400 @@ def _generate_pim_trace(
         raise RuntimeError(f"Trace file is empty: {trace_file}")
 
 # =========================
+# Weight loading trace generation (inspired by 01_generate_traces.py)
+# =========================
+
+def _make_shared_model_dict(
+    dim: int,
+    n_heads: int,
+    n_kv_heads: int,
+    ffn_dim: int,
+    seqlen: int
+) -> Dict:
+    """
+    创建统一的模型字典，供所有 trace 生成函数共享
+    确保与运行时模型配置一致
+    """
+    import torch
+    
+    head_dim = dim // max(1, n_heads)
+    TP_param = 1
+    
+    return {
+        "TP_param": torch.tensor(TP_param),
+        "dim": torch.tensor(dim),
+        "n_heads": torch.tensor(n_heads),
+        "n_kv_heads": torch.tensor(n_kv_heads),
+        "x": torch.zeros((1, 1, dim)),
+        "SANorm": torch.zeros(dim),
+        "FFNNorm": torch.zeros(dim),
+        "sa": torch.zeros((1, 1, dim)),
+        "h": torch.zeros((1, 1, dim)),
+        "out": torch.zeros((1, 1, dim)),
+        "wq": torch.zeros((dim // TP_param, dim)),
+        "wk": torch.zeros((head_dim * n_kv_heads), dim),
+        "wv": torch.zeros((head_dim * n_kv_heads), dim),
+        "xq": torch.zeros((1, 1, dim)),
+        "xk": torch.zeros((1, 1, head_dim * n_heads)),
+        "xv": torch.zeros((1, 1, head_dim * n_heads)),
+        "start_pos": torch.tensor(max(1, seqlen) - 1),
+        "cache_k": torch.zeros((1, seqlen, n_kv_heads, head_dim)),
+        "cache_v": torch.zeros((1, seqlen, n_kv_heads, head_dim)),
+        "scores": torch.zeros((1, n_heads, 1, seqlen)),
+        "output": torch.zeros((1, 1, dim)),
+        "wo": torch.zeros((dim // TP_param, dim)),
+        "w1": torch.zeros((ffn_dim // TP_param, dim)),
+        "w3": torch.zeros((ffn_dim // TP_param, dim)),
+        "w2": torch.zeros((dim // TP_param, ffn_dim)),
+        "ffn": torch.zeros((1, 1, dim)),
+    }
+
+
+def _generate_weight_read_trace(
+    trace_path: Path,
+    weight_bytes: int,
+    dtype_bytes: int = 2,
+    gb_config: Optional[Dict[str, any]] = None,  # 修改：Global Buffer配置，不再使用PIM配置
+    model_dict: Optional[Dict] = None 
+) -> None:
+    """
+    生成从 Global Buffer 读取权重的 trace
+    使用独立的 Global Buffer DRAM 配置（不是 PIM 配置）
+    """
+    # 参数检查：必须提供 GB 配置和模型字典
+    if gb_config is None:
+        raise ValueError("Global Buffer config (gb_config) must be provided for weight read trace generation")
+    
+    if model_dict is None:
+        raise ValueError("Model dictionary (model_dict) must be provided for weight read trace generation")
+    
+    num_elements = max(0, weight_bytes // max(1, dtype_bytes))
+    if num_elements == 0:
+        with trace_path.open("w", encoding="utf-8") as f:
+            f.write("AiM EOC\n")
+        return
+
+    TransformerBlock = _get_transformer_block()
+
+    # 使用 Global Buffer 配置（与 PIM 配置分离）
+    cfg: Dict[str, any] = dict(gb_config)
+
+    # 创建临时 trace 用于初始化
+    temp_trace = trace_path.parent / f"temp_{trace_path.name}"
+    args = _make_tb_args_from_pim(cfg, str(temp_trace))
+    args.only_trace = True
+    
+    block = TransformerBlock(model_dict, args)
+    if hasattr(block, "memory_mapping"):
+        block.memory_mapping()
+
+    # 打开真正的 trace 文件
+    block.file = trace_path.open("w", encoding="utf-8")
+    block.trace_file = str(trace_path)
+
+    DRAM_column  = int(getattr(block, "DRAM_column",  cfg["DRAM_column"]))
+    burst_length = int(getattr(block, "burst_length", cfg["burst_length"]))
+    num_banks    = int(getattr(block, "num_banks",    cfg["num_banks"]))
+    num_channels = int(getattr(block, "num_channels", cfg["num_channels"]))
+
+    total_banks = num_channels * num_banks
+    elements_per_bank = (num_elements + total_banks - 1) // total_banks
+    rows_per_bank = (elements_per_bank + DRAM_column - 1) // DRAM_column
+    bursts_per_full_row = max(1, DRAM_column // max(1, burst_length)) #每行中有几个burst
+
+    for channel in range(num_channels):
+        for bank in range(num_banks):
+            for row in range(rows_per_bank):
+                if row < rows_per_bank - 1:#非最后一行
+                    bursts_in_row = bursts_per_full_row
+                else:
+                    remaining_elems = elements_per_bank - (rows_per_bank - 1) * DRAM_column
+                    bursts_in_row = (remaining_elems + burst_length - 1) // burst_length #最后剩的元素能存几个burst
+                    if bursts_in_row <= 0:
+                        continue
+                size_elems = int(bursts_in_row * burst_length)
+                if hasattr(block, "R_MEM_only_trace"):
+                    block.R_MEM_only_trace(channel, bank, row, size_elems)
+                else:
+                    raise RuntimeError("R_MEM_only_trace not available on TransformerBlock/PIM")
+    
+    if hasattr(block, "file") and block.file:
+         block.file.write("AiM EOC\n")
+         block.file.flush()
+         block.file.close()
+
+
+def _generate_weight_write_trace_to_pim(
+    trace_path: Path,
+    weight_bytes: int,
+    pim_config: Dict[str, any],
+    dtype_bytes: int = 2,
+    model_dict: Optional[Dict] = None
+) -> None:
+
+    if pim_config is None:
+        raise ValueError("PIM config must be provided for weight write trace generation")
+    
+    if model_dict is None:
+        raise ValueError("Model dictionary (model_dict) must be provided for weight write trace generation")
+    
+    TransformerBlock = _get_transformer_block()
+
+    temp_trace = trace_path.parent / f"temp_{trace_path.name}"
+    args = _make_tb_args_from_pim(pim_config, str(temp_trace))
+    args.only_trace = True
+    
+    block = TransformerBlock(model_dict, args)
+    if hasattr(block, "memory_mapping"):
+        block.memory_mapping()
+    
+    # 计算需要写入的数据量
+    num_elements = weight_bytes // dtype_bytes
+    DRAM_column = int(pim_config.get("DRAM_column", 256))
+    burst_length = int(pim_config.get("burst_length", 16))
+    num_banks = int(pim_config.get("num_banks", 8))
+    num_channels = int(pim_config.get("num_channels", 4))
+    
+    # 计算分布到每个bank的行数
+    total_banks = num_banks * num_channels
+    elements_per_bank = (num_elements + total_banks - 1) // total_banks
+    rows_per_bank = (elements_per_bank + DRAM_column - 1) // DRAM_column
+    
+    # 打开实际的trace文件
+    block.file = trace_path.open("w", encoding="utf-8")
+    block.trace_file = str(trace_path)
+    
+    # 为每个channel的每个bank生成写入trace
+    channel_lst = list(range(num_channels))
+    
+    for channel in channel_lst:
+        for bank in range(num_banks):
+            row_start = 0
+            
+            for row in range(rows_per_bank):
+                if row < rows_per_bank - 1:
+                    bursts_in_row = DRAM_column // burst_length
+                else:
+                    remaining_elems = elements_per_bank - (rows_per_bank - 1) * DRAM_column
+                    bursts_in_row = (remaining_elems + burst_length - 1) // burst_length
+                    if bursts_in_row <= 0:
+                        continue
+                size_elems = int(bursts_in_row * burst_length)
+                if hasattr(block, 'W_MEM_only_trace'):
+                    block.W_MEM_only_trace(channel, bank, row, size_elems)
+                else:
+                    raise RuntimeError("W_MEM_only_trace not available on TransformerBlock/PIM")
+    
+    if hasattr(block, "file") and block.file:
+        block.file.write("AiM EOC\n")
+        block.file.flush()
+        block.file.close()
+    
+    # 清理临时文件
+    if temp_trace.exists():
+        temp_trace.unlink()
+
+
+def _simulate_weight_loading_latency(
+    weight_bytes: int,
+    pim_config_path: Path,
+    gb_config_path: Path,  # 修改：添加 GB 配置路径
+    ramulator_config_path: Path,
+    dtype_bytes: int = 2,
+    use_cache: bool = True,
+    keep_traces: bool = False,
+    model_dict: Optional[Dict] = None
+) -> Tuple[float, float]:
+    """
+    仿真 weight 加载延迟：
+    1. 从 Global Buffer 读取 (READ trace) - 使用 GB 配置
+    2. 写入 PIM banks (WRITE trace) - 使用 PIM 配置
+    
+    返回: (read_latency, write_latency) in seconds
+    """
+    # 参数检查
+    if model_dict is None:
+        raise ValueError("Model dictionary must be provided for weight loading simulation")
+    
+    cache_key = f"weight_load_{weight_bytes}_{pim_config_path.name}_{gb_config_path.name}_{ramulator_config_path.name}"
+    
+    if use_cache:
+        cached = _pim_cache.cache.get(hashlib.md5(cache_key.encode()).hexdigest())
+        if cached is not None:
+            print(f"[Weight Load Cache] Hit for {weight_bytes} bytes")
+            return cached
+    
+    print(f"[Weight Load] Simulating loading {weight_bytes} bytes to PIM")
+    
+    if keep_traces:
+        temp_dir = Path("./debug_weight_traces")
+        temp_dir.mkdir(exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        trace_dir = temp_dir / f"weight_{weight_bytes}_{timestamp}"
+        trace_dir.mkdir(exist_ok=True)
+    else:
+        temp_dir = Path(tempfile.mkdtemp(prefix="weight_trace_"))
+        trace_dir = temp_dir
+    
+    try:
+        # 加载两个独立的配置
+        pim_cfg = _load_memory_config(pim_config_path)
+        gb_cfg = _load_memory_config(gb_config_path)  # Global Buffer 使用相同的加载函数但配置独立
+        
+        # 1. 生成并仿真 READ trace - 使用 GB 配置
+        read_trace = trace_dir / "weight_read.trace"
+        print(f"[Weight Load] Generating READ trace from Global Buffer: {read_trace}")
+        _generate_weight_read_trace(
+            read_trace, 
+            weight_bytes, 
+            dtype_bytes, 
+            gb_cfg,  # 使用 Global Buffer 配置
+            model_dict
+        )
+        
+        if not read_trace.exists():
+            raise RuntimeError(f"Failed to generate READ trace: {read_trace}")
+        
+        trace_size = read_trace.stat().st_size
+        print(f"[Weight Load] READ trace size: {trace_size} bytes")
+        
+        if trace_size < 1000:
+            with read_trace.open("r") as f:
+                lines = f.readlines()[:10]
+                print(f"[Weight Load] First lines of READ trace:\n{''.join(lines)}")
+       
+        print(f"[Weight Load] Running READ simulation...")
+        read_cycles = _run_ramulator(read_trace, ramulator_config_path)
+        f_gb = GB_FREQ_GHZ if GB_FREQ_GHZ and GB_FREQ_GHZ > 0 else PIM_FREQ_GHZ
+        read_latency = float(read_cycles) / (f_gb * 1e9) if f_gb > 0 else 0.0
+        # 2. 生成并仿真 WRITE trace - 使用 PIM 配置
+        write_trace = trace_dir / "weight_write.trace"
+        print(f"[Weight Load] Generating WRITE trace to PIM: {write_trace}")
+        _generate_weight_write_trace_to_pim(
+            write_trace, 
+            weight_bytes, 
+            pim_cfg,  # 使用 PIM 配置
+            dtype_bytes,
+            model_dict
+        )
+        
+        if not write_trace.exists():
+            raise RuntimeError(f"Failed to generate WRITE trace: {write_trace}")
+        
+        trace_size = write_trace.stat().st_size
+        print(f"[Weight Load] WRITE trace size: {trace_size} bytes")
+        
+        if trace_size < 1000:
+            with write_trace.open("r") as f:
+                lines = f.readlines()[:10]
+                print(f"[Weight Load] First lines of WRITE trace:\n{''.join(lines)}")
+        
+        print(f"[Weight Load] Running WRITE simulation...")
+        write_cycles = _run_ramulator(write_trace, ramulator_config_path)
+        f_pim = PIM_FREQ_GHZ
+        write_latency = float(write_cycles) / (f_pim * 1e9) if f_pim > 0 else 0.0
+        
+        total_latency = (read_latency, write_latency)
+        
+        print(f"[Weight Load] Read: {read_latency:.6e}s ({read_cycles} cycles)")
+        print(f"[Weight Load] Write: {write_latency:.6e}s ({write_cycles} cycles)")
+        
+        if keep_traces:
+            print(f"[Weight Load] Traces saved to: {trace_dir}")
+        
+        if use_cache:
+            key_hash = hashlib.md5(cache_key.encode()).hexdigest()
+            _pim_cache.cache[key_hash] = total_latency
+            _pim_cache._save_cache()
+        
+        return total_latency
+    
+    except Exception as e:
+        print(f"[Weight Load] Error: {e}")
+        if keep_traces:
+            print(f"[Weight Load] Debug traces preserved at: {trace_dir}")
+        raise
+    
+    finally:
+        if not keep_traces:
+            try:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+            except Exception as e:
+                print(f"[Weight Load] Warning: Failed to cleanup {temp_dir}: {e}")
+
+# =========================
 # Ramulator runner
 # =========================
 
 def _run_ramulator(trace_path: Path, ramulator_config: Path, timeout: int = 300) -> int:
-    cmd = f"./ramulator2 -f {ramulator_config} -t {trace_path}"
+    """Run Ramulator2 on a trace file and return cycle count."""
+    if not trace_path.exists():
+        raise FileNotFoundError(f"Trace file not found: {trace_path}")
+    if not ramulator_config.exists():
+        raise FileNotFoundError(f"Ramulator config not found: {ramulator_config}")
     
-    print(f"[PIM] Running ramulator: {cmd}")
+    # 查找 ramulator2 可执行文件
+    ramulator_exe = Path.cwd() / "ramulator2"
+    
+    cmd = [
+        str(ramulator_exe),
+        "-f", str(ramulator_config),
+        "-t", str(trace_path)
+    ]
+    
+    print(f"[PIM] Running ramulator: {' '.join(cmd)}")
+    print(f"[PIM] Working directory: {trace_path.parent}")
     
     try:
         result = subprocess.run(
-            cmd,
-            shell=True,
+            cmd,  # 使用列表而不是字符串
             capture_output=True,
             text=True,
-            timeout=timeout 
+            timeout=timeout
         )
+        
+        # 检查返回码
+        if result.returncode != 0:
+            error_msg = f"Ramulator failed with return code {result.returncode}:\n"
+            error_msg += f"Command: {' '.join(cmd)}\n"
+            error_msg += f"STDOUT:\n{result.stdout}\n"
+            error_msg += f"STDERR:\n{result.stderr}\n"
+            error_msg += f"Trace file: {trace_path}\n"
+            error_msg += f"Config file: {ramulator_config}\n"
+            raise RuntimeError(error_msg)
+        
+        # 解析输出获取cycle数
+        cycles = 0
+        for line in result.stdout.splitlines():
+            if "cpu.total_cycles" in line.lower() or "total cycles" in line.lower():
+                match = re.search(r'(\d+)', line)
+                if match:
+                    cycles = int(match.group(1))
+                    break
+        
+        if cycles == 0:
+            # 尝试其他模式
+            for line in result.stdout.splitlines():
+                if re.search(r'\d+', line):
+                    match = re.search(r'(\d+)', line)
+                    if match and int(match.group(1)) > 0:
+                        cycles = int(match.group(1))
+                        break
+        
+        return cycles
+        
     except subprocess.TimeoutExpired:
-        raise RuntimeError(f"Ramulator execution timeout after {timeout}s for {trace_path}")
-    
-    if result.returncode != 0:
-        raise RuntimeError(f"Ramulator failed with return code {result.returncode}:\n{result.stderr}")
-
-    pattern = r"memory_system_cycles:\s*([0-9]+)"
-    match = re.search(pattern, result.stdout)
-    
-    if not match:
-        print(f"[PIM] Ramulator stdout:\n{result.stdout}")
-        print(f"[PIM] Ramulator stderr:\n{result.stderr}")
-        raise RuntimeError(f"Could not parse cycles from ramulator output")
-    
-    cycles = int(match.group(1))
-    print(f"[PIM] Ramulator completed: {cycles} cycles")
-    
-    return cycles
+        raise RuntimeError(f"Ramulator timed out after {timeout}s")
+    except Exception as e:
+        raise RuntimeError(f"Ramulator execution failed: {e}")
 
 # =========================
 # PIM latency cache
 # =========================
 
-class PIMLatencyCache:
-    """缓存 PIM 延迟结果，避免重复仿真"""
-    
+class PIMLatencyCache:    
     def __init__(self, cache_file: Optional[Path] = None):
-        self.cache_file = cache_file or Path(".pim_latency_cache.pkl")
+        self.cache_file = cache_file or Path("./output/pim_latency_cache.pkl")
         self.cache: Dict[str, float] = {}
         self.lock = Lock()
         self._load_cache()
@@ -538,12 +877,16 @@ def _get_pim_latency_via_trace(
     n_kv_heads: int,
     ffn_dim: int,
     seqlen: Optional[int],
+    model_dict: Optional[Dict] = None,  # 新增：接受模型字典
     use_cache: bool = True
 ) -> float:
     """
     Generate trace and run Ramulator, returning the latency (in seconds).
     This function blocks until Ramulator finishes the simulation and returns the result.
     """
+    if model_dict is None:
+        raise ValueError("Model dictionary must be provided for PIM latency computation")
+    
     logger = get_simulation_logger()
     logger.record_simulation(op, dim, n_heads, n_kv_heads, ffn_dim, seqlen)
     
@@ -573,7 +916,8 @@ def _get_pim_latency_via_trace(
             n_kv_heads=n_kv_heads,
             ffn_dim=ffn_dim,
             seqlen=seqlen,
-            trace_file=trace_path
+            trace_file=trace_path,
+            model_dict=model_dict  # 传递模型字典
         )
         print(f"[PIM] Trace generation completed")
         print(f"[PIM] Starting ramulator simulation...")
@@ -613,25 +957,67 @@ class CostModel:
         cluster: Cluster,
         dtype: str = "fp16",
         pim_config_path: Optional[Path] = None,
+        gb_config_path: Optional[Path] = None,
         ramulator_config_path: Optional[Path] = None,
-        pim_cache_enabled: bool = True,
-        simulation_log_file: Optional[Path] = None
+        simulation_log_file: Optional[Path] = None,
+        debug_traces: bool = False,
+        model_dict: Optional[Dict] = None,  # 新增：在初始化时接受模型字典
     ):
         self.cluster = cluster
         self.dtype = dtype
         self.pim_config_path = pim_config_path
+        self.gb_config_path = gb_config_path
         self.ramulator_config_path = ramulator_config_path
-        self.pim_cache_enabled = pim_cache_enabled
-        self.logger = get_simulation_logger(simulation_log_file)
+        self.debug_traces = debug_traces
+        
+        # 确保全局logger已初始化
+        global _sim_logger
+        if (_sim_logger is None):
+            _sim_logger = get_simulation_logger(simulation_log_file)
+        self.logger = _sim_logger
+        
+        self.pim_cache_enabled = True
+        
+        # 统一的模型字典
+        self._shared_model_dict: Optional[Dict] = model_dict
         
         # PIM 模式需要的配置检查
         if pim_config_path:
             if not pim_config_path.exists():
                 raise ValueError(f"PIM config not found: {pim_config_path}")
+            # 如果使用 PIM 但没有提供模型字典，发出警告
+            if model_dict is None:
+                print("[WARNING] PIM config provided but model_dict is None. "
+                      "Call set_model_dict() before using PIM operations.")
+        
+        if gb_config_path:
+            if not gb_config_path.exists():
+                raise ValueError(f"Global Buffer config not found: {gb_config_path}")
         
         if ramulator_config_path:
             if not ramulator_config_path.exists():
                 raise ValueError(f"Ramulator config not found: {ramulator_config_path}")
+    
+    def set_model_dict(self, model_dict: Dict):
+        """设置统一的模型字典"""
+        if model_dict is None:
+            raise ValueError("model_dict cannot be None")
+        self._shared_model_dict = model_dict
+        print(f"[CostModel] Model dictionary set with keys: {list(model_dict.keys())[:5]}...")
+    
+    def get_model_dict(self) -> Dict:
+        """获取统一的模型字典"""
+        if self._shared_model_dict is None:
+            raise RuntimeError(
+                "Model dictionary not set. "
+                "You must call set_model_dict() or provide model_dict during initialization "
+                "before using PIM operations."
+            )
+        return self._shared_model_dict
+    
+    def has_model_dict(self) -> bool:
+        """检查是否已设置模型字典"""
+        return self._shared_model_dict is not None
 
     # --------------------------
     # Basic times
@@ -658,7 +1044,7 @@ class CostModel:
     # Format helpers
     # --------------------------
     def get_host_device(self) -> DeviceSpec:
-        if HOST_NAME in self.cluster.devices:
+        if (HOST_NAME in self.cluster.devices):
             return self.cluster.devices[HOST_NAME]
         cpus = self.cluster.devices_by_type("cpu")
         return cpus[0] if cpus else next(iter(self.cluster.devices.values()))
@@ -966,7 +1352,8 @@ class CostModel:
                 compute_time = 0.0
             elif op_key and dim > 0 and n_heads > 0:
                 try:
-                    # aim simulator 
+                    # 获取统一的模型字典
+                    model_dict = self.get_model_dict()
                     compute_time = _get_pim_latency_via_trace(
                         op=op_key,
                         pim_config=self.pim_config_path,
@@ -976,11 +1363,11 @@ class CostModel:
                         n_kv_heads=n_kv_heads,
                         ffn_dim=ffn_dim,
                         seqlen=seq_len if seq_len > 0 else None,
+                        model_dict=model_dict,  # 传递模型字典
                         use_cache=self.pim_cache_enabled
                     )
                 except Exception as e:
                     print(f"[PIM] ERROR: Failed to compute latency for {node.name}: {e}")
-                    # 不使用 fallback，直接返回 0 或抛出异常
                     raise RuntimeError(f"PIM latency computation failed for {node.name}: {e}")
             else:
                 print(f"[PIM] Warning: Insufficient parameters for {node.name} "
@@ -997,3 +1384,36 @@ class CostModel:
             return compute_time + mem_time
         
         return 0.0
+
+    def weight_load_time_pim(self, weight_bytes: int) -> float:
+        """
+        使用trace仿真计算PIM的weight加载时间
+        返回总延迟（读取+写入）
+        """
+        if not self.pim_config_path or not self.gb_config_path or not self.ramulator_config_path:
+            raise ValueError("PIM config, GB config, and Ramulator config must be set for weight loading simulation")
+        
+        dtype_bytes = DTYPE_BYTES.get(self.dtype, 2)
+        
+        try:
+            # 获取统一的模型字典
+            model_dict = self.get_model_dict()
+            
+            read_lat, write_lat = _simulate_weight_loading_latency(
+                weight_bytes,
+                self.pim_config_path,
+                self.gb_config_path,  # 传递 GB 配置路径
+                self.ramulator_config_path,
+                dtype_bytes,
+                use_cache=self.pim_cache_enabled,
+                keep_traces=self.debug_traces,
+                model_dict=model_dict  # 传递统一的模型字典
+            )
+            # 返回总时间（读和写是顺序执行的）
+            return read_lat + write_lat
+        except Exception as e:
+            print(f"[Weight Load] Falling back to bandwidth estimation due to: {e}")
+            pim_devs = self.cluster.devices_by_type("pim")
+            if pim_devs:
+                return self.mem_time(weight_bytes, pim_devs[0])
+            return 0.0

@@ -226,6 +226,23 @@ class HEFTScheduler:
                 self.buffer.device_cache[dev.name].touch(wid)
             return 0.0
 
+        # PIM设备使用trace仿真
+        if dev.type == "pim":
+            # 使用新的trace仿真方法
+            load_time = self.cost.weight_load_time_pim(node.weight_size)
+            
+            if commit:
+                self._weight_load_count[(wid, dev.type)] += 1
+                self._weight_sizes[wid] = node.weight_size
+                self.weight_cached[(dev.name, wid)] = True
+                self.buffer.mark_cached(dev.name, wid, node.weight_size, pinned=False)
+                
+                if wid not in self.buffer.host_format and wid in self.storage_fmt_map:
+                    self.buffer.set_host_fmt(wid, self.storage_fmt_map[wid])
+            
+            return load_time
+        
+        # NPU设备使用原有的带宽+格式转换方法
         host = self.cost.get_host_device().name
         stored_fmt = self.storage_fmt_map.get(wid, self.buffer.get_host_fmt(wid) or "ND")
         size_src = self.cost.format_size(node.weight_size, stored_fmt)
@@ -236,10 +253,6 @@ class HEFTScheduler:
         if commit:
             self._weight_load_count[(wid, dev.type)] += 1
             self._weight_sizes[wid] = node.weight_size
-            if dev.type == "pim":
-                # 加载后缓存并更新顺序
-                self.weight_cached[(dev.name, wid)] = True
-                self.buffer.mark_cached(dev.name, wid, node.weight_size, pinned=False)
             if wid not in self.buffer.host_format and wid in self.storage_fmt_map:
                 self.buffer.set_host_fmt(wid, self.storage_fmt_map[wid])
 
@@ -450,6 +463,27 @@ class HEFTScheduler:
 
     def makespan(self, schedule: List[ScheduledTask]) -> float:
         return max((t.finish for t in schedule), default=0.0)
+
+
+    def export_weight_stats(self):
+        """
+        Export weight statistics collected during scheduling passes.
+        Returns a JSON-serializable dict with:
+          - weight_sizes: {wid: bytes}
+          - weight_load_counts: {wid: {dev_type: cnt}}
+          - storage_fmt_map: the host-side storage format map used in this pass
+          - host_format: buffer manager's current host_format (after syncing)
+        """
+        from collections import defaultdict
+        by_wid = defaultdict(lambda: defaultdict(int))
+        for (wid, dev_type), cnt in self._weight_load_count.items():
+            by_wid[wid][dev_type] += cnt
+        return {
+            "weight_sizes": dict(self._weight_sizes),
+            "weight_load_counts": {wid: dict(cnts) for wid, cnts in by_wid.items()},
+            "storage_fmt_map": dict(self.storage_fmt_map or {}),
+            "host_format": dict(self.buffer.host_format or {}),
+        }
 
 
     def set_storage_format_map(self, fmt_map: Dict[str, str]):
