@@ -75,7 +75,8 @@ BIN=./out/bin/ascendc_kernels_bbit
 rm -f ascendc_kernels_bbit && cp "$BIN" ./
 
 # Default test set (can be overridden via env CASES)
-CASES=${CASES:-"32x32x32,64x64x64,64x128x64,127x113x91,128x128x128"}
+# CASES=${CASES:-"32x32x32,64x64x64,64x128x64,127x113x91,128x128x128"}
+CASES=${CASES:-"1x2048x2048,1x1024x1024"}
 REPEAT=${REPEAT:-5}
 
 # Run and profile. IMPORTANT: we do NOT pass any executable args to satisfy `msprof op` limitation.
@@ -92,9 +93,10 @@ for shape in "${SHAPES[@]}"; do
 
     # Use env to pass shapes to the app; NO args are used.
     if [ "${RUN_MODE}" = "npu" ]; then
-        M=${M} N=${N} K=${K} REPEAT=${REPEAT} NO_IO=1 msprof op -o ${OUTDIR} --application=./ascendc_kernels_bbit
+        M=${M} N=${N} K=${K} REPEAT=${REPEAT} NO_IO=1 msprof op --application=./ascendc_kernels_bbit --output ${OUTDIR} 
     elif [ "${RUN_MODE}" = "sim" ]; then
-        M=${M} N=${N} K=${K} REPEAT=${REPEAT} NO_IO=1 msprof op simulator -o ${OUTDIR} --application=./ascendc_kernels_bbit
+        # M=${M} N=${N} K=${K} REPEAT=${REPEAT} NO_IO=1 msprof op simulator --application=./ascendc_kernels_bbit --output ${OUTDIR} 
+        M=${M} N=${N} K=${K} REPEAT=${REPEAT} NO_IO=1 msprof op simulator --application=./ascendc_kernels_bbit
     else
         # cpu debug path does not use msprof
         M=${M} N=${N} K=${K} REPEAT=${REPEAT} NO_IO=1 ./ascendc_kernels_bbit

@@ -1,0 +1,12 @@
+== Training metrics ==
+R^2   : 0.999531
+MAE   : 0.107210 us
+MAPE  : 29.985701 %
+
+== Leave-One-Out CV ==
+LOOCV MAE  : 1.233500 us
+LOOCV MAPE : 62.400487 %
+Samples    : 7
+
+== Dropped samples (missing lines 70–73) ==
+core0.cubecore0_code_exe_1x4096x4096.csv  n_lines_found=2  MxNxK=1x4096x4096

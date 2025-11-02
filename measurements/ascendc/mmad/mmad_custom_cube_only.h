@@ -163,26 +163,15 @@ private:
         inQueueB1.FreeTensor(b1Local);
         inQueueB2.EnQue<half>(b2Local);
     }
-    // __aicore__ inline void SplitBias()
-    // {
-    //     AscendC::LocalTensor<half> bias1Local = inQueueC1.DeQue<half>();
-    //     AscendC::LocalTensor<float> bias2Local = outQueueC2.AllocTensor<float>();
-    //     AscendC::DataCopy(bias2Local, bias1Local, { 1, (uint16_t)(n * sizeof(half) / 64), 0, 0 });
-    //     outQueueC2.EnQue<float>(bias2Local);
-    //     inQueueC1.FreeTensor(bias1Local);
-    // }
-    __aicore__ inline void SplitBias() //？
+    __aicore__ inline void SplitBias()
     {
-        AscendC::LocalTensor<half>  bias1Local = inQueueC1.DeQue<half>();
+        AscendC::LocalTensor<half> bias1Local = inQueueC1.DeQue<half>();
         AscendC::LocalTensor<float> bias2Local = outQueueC2.AllocTensor<float>();
-        Cast(bias2Local, bias1Local, AscendC::RoundMode::CAST_NONE, n); //half 到 float的转换
-        if (nPad > n) {
-            AscendC::LocalTensor<float> tail = bias2Local[n];
-            AscendC::SetVector(tail, 0.0f, nPad - n);
-        }
+        AscendC::DataCopy(bias2Local, bias1Local, { 1, (uint16_t)(n * sizeof(half) / 64), 0, 0 });
         outQueueC2.EnQue<float>(bias2Local);
         inQueueC1.FreeTensor(bias1Local);
     }
+
     __aicore__ inline void Compute()
     {
         AscendC::LocalTensor<half> a2Local = inQueueA2.DeQue<half>();

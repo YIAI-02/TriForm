@@ -1,0 +1,2978 @@
+[info] [00000237]: normal_req, address is 0x10d11000
+[info] 237: lookup_tag is fetch req addr:0x10d11000
+[info] 237: icache read address is 0x10d11000, size is 0x00000010, status is MISS
+[info] 237: icache fetch request, id is 0x00000a98, address is 0x10d11000
+[debug] 237: icache prefetch addr is 0x10d11080
+[debug] 237: icache prefetch addr is 0x10d11100
+[debug] 237: icache prefetch addr is 0x10d11180
+[info] 238: lookup_tag is prefetch_req addr:0x10d11080
+[info] 238: icache read address is 0x10d11080, size is 0x00000080, status is MISS
+[info] 238: icache fetch request, id is 0x00000a9d, address is 0x10d11080
+[info] 238:ll_send_req_success,the req addr is:0x10d11000.
+[info] 239: lookup_tag is prefetch_req addr:0x10d11100
+[info] 239: icache read address is 0x10d11100, size is 0x00000080, status is MISS
+[info] 239: icache fetch request, id is 0x00000a9f, address is 0x10d11100
+[info] 239:ll_send_req_success,the req addr is:0x10d11080.
+[info] 240: lookup_tag is prefetch_req addr:0x10d11180
+[info] 240: icache read address is 0x10d11180, size is 0x00000080, status is MISS
+[info] 240: icache fetch request, id is 0x00000aa1, address is 0x10d11180
+[info] 240:ll_send_req_success,the req addr is:0x10d11100.
+[info] 241:ll_send_req_success,the req addr is:0x10d11180.
+[info] 595:recv_ll_rep_succcess,the rsp addr is:0x10d11080.
+[info] [00000595]: icache refill acknowledge, id is 0x00000a9d, address is 0x10d11080,setIdx:33, wayId:0
+[info] [00000595]: add to  refill_map, rsp_addr:10d11080,tag_addr: 0x00008688
+[info] 596:recv_ll_rep_succcess,the rsp addr is:0x10d11000.
+[info] [00000596]: icache refill acknowledge, id is 0x00000a98, address is 0x10d11000,setIdx:32, wayId:0
+[info] [00000596]: add to  refill_map, rsp_addr:10d11000,tag_addr: 0x00008688
+[info] 596:refill pc send to ibuffer,pc:0x10d11000,gid:a96.
+[info] 597:recv_ll_rep_succcess,the rsp addr is:0x10d11100.
+[info] [00000597]: icache refill acknowledge, id is 0x00000a9f, address is 0x10d11100,setIdx:34, wayId:0
+[info] [00000597]: add to  refill_map, rsp_addr:10d11100,tag_addr: 0x00008688
+[info] 598:recv_ll_rep_succcess,the rsp addr is:0x10d11180.
+[info] [00000598]: icache refill acknowledge, id is 0x00000aa1, address is 0x10d11180,setIdx:35, wayId:0
+[info] [00000598]: add to  refill_map, rsp_addr:10d11180,tag_addr: 0x00008688
+[info] [00000599]: normal_req, address is 0x10d11010
+[info] 599: lookup_tag is fetch req addr:0x10d11010
+[info] 599: icache read address is 0x10d11010, size is 0x00000010, status is HIT
+[info] 599: hit pc send to ibuffer,pc:0x10d11010,gid:a97.
+[info] [00000600]: normal_req, address is 0x10d11020
+[info] 600: lookup_tag is fetch req addr:0x10d11020
+[info] 600: icache read address is 0x10d11020, size is 0x00000010, status is HIT
+[info] 600: hit pc send to ibuffer,pc:0x10d11020,gid:a9c.
+[info] [00000601]: normal_req, address is 0x10d11030
+[info] 601: lookup_tag is fetch req addr:0x10d11030
+[info] 601: icache read address is 0x10d11030, size is 0x00000010, status is HIT
+[info] 601: hit pc send to ibuffer,pc:0x10d11030,gid:c09.
+[info] [00000602]: normal_req, address is 0x10d11040
+[info] 602: lookup_tag is fetch req addr:0x10d11040
+[info] 602: icache read address is 0x10d11040, size is 0x00000010, status is HIT
+[info] 602: hit pc send to ibuffer,pc:0x10d11040,gid:c0a.
+[info] [00000603]: normal_req, address is 0x10d11050
+[info] 603: lookup_tag is fetch req addr:0x10d11050
+[info] 603: icache read address is 0x10d11050, size is 0x00000010, status is HIT
+[info] 603: hit pc send to ibuffer,pc:0x10d11050,gid:c0b.
+[info] [00000604]: normal_req, address is 0x10d11060
+[info] 604: lookup_tag is fetch req addr:0x10d11060
+[info] 604: icache read address is 0x10d11060, size is 0x00000010, status is HIT
+[info] 604: hit pc send to ibuffer,pc:0x10d11060,gid:c0c.
+[info] [00000605]: normal_req, address is 0x10d11070
+[info] 605: lookup_tag is fetch req addr:0x10d11070
+[info] 605: icache read address is 0x10d11070, size is 0x00000010, status is HIT
+[info] 605: hit pc send to ibuffer,pc:0x10d11070,gid:c0d.
+[info] [00000606]: normal_req, address is 0x10d11080
+[info] 606: lookup_tag is fetch req addr:0x10d11080
+[info] 606: icache read address is 0x10d11080, size is 0x00000010, status is HIT
+[info] 606: hit pc send to ibuffer,pc:0x10d11080,gid:c0e.
+[info] [00000607]: normal_req, address is 0x10d11090
+[info] 607: lookup_tag is fetch req addr:0x10d11090
+[info] 607: icache read address is 0x10d11090, size is 0x00000010, status is HIT
+[info] 607: hit pc send to ibuffer,pc:0x10d11090,gid:c0f.
+[info] [00000608]: normal_req, address is 0x10d110a0
+[info] 608: lookup_tag is fetch req addr:0x10d110a0
+[info] 608: icache read address is 0x10d110a0, size is 0x00000010, status is HIT
+[info] 608: hit pc send to ibuffer,pc:0x10d110a0,gid:c10.
+[info] [00000609]: normal_req, address is 0x10d110b0
+[info] 609: lookup_tag is fetch req addr:0x10d110b0
+[info] 609: icache read address is 0x10d110b0, size is 0x00000010, status is HIT
+[info] 609: hit pc send to ibuffer,pc:0x10d110b0,gid:c11.
+[info] [00000610]: normal_req, address is 0x10d110c0
+[info] 610: lookup_tag is fetch req addr:0x10d110c0
+[info] 610: icache read address is 0x10d110c0, size is 0x00000010, status is HIT
+[info] 610: hit pc send to ibuffer,pc:0x10d110c0,gid:c12.
+[info] [00000611]: normal_req, address is 0x10d110d0
+[info] 611: lookup_tag is fetch req addr:0x10d110d0
+[info] 611: icache read address is 0x10d110d0, size is 0x00000010, status is HIT
+[info] 611: hit pc send to ibuffer,pc:0x10d110d0,gid:c13.
+[info] [00000612]: normal_req, address is 0x10d110e0
+[info] 612: lookup_tag is fetch req addr:0x10d110e0
+[info] 612: icache read address is 0x10d110e0, size is 0x00000010, status is HIT
+[info] 612: hit pc send to ibuffer,pc:0x10d110e0,gid:c14.
+[info] [00000613]: normal_req, address is 0x10d110f0
+[info] 613: lookup_tag is fetch req addr:0x10d110f0
+[info] 613: icache read address is 0x10d110f0, size is 0x00000010, status is HIT
+[info] 613: hit pc send to ibuffer,pc:0x10d110f0,gid:c15.
+[info] [00000622]: normal_req, address is 0x10d11100
+[info] 622: lookup_tag is fetch req addr:0x10d11100
+[info] 622: icache read address is 0x10d11100, size is 0x00000010, status is HIT
+[info] 622: hit pc send to ibuffer,pc:0x10d11100,gid:c17.
+[info] [00000623]: normal_req, address is 0x10d11110
+[info] 623: lookup_tag is fetch req addr:0x10d11110
+[info] 623: icache read address is 0x10d11110, size is 0x00000010, status is HIT
+[info] 623: hit pc send to ibuffer,pc:0x10d11110,gid:c18.
+[info] [00000624]: normal_req, address is 0x10d11120
+[info] 624: lookup_tag is fetch req addr:0x10d11120
+[info] 624: icache read address is 0x10d11120, size is 0x00000010, status is HIT
+[info] 624: hit pc send to ibuffer,pc:0x10d11120,gid:c19.
+[info] [00000625]: normal_req, address is 0x10d11130
+[info] 625: lookup_tag is fetch req addr:0x10d11130
+[info] 625: icache read address is 0x10d11130, size is 0x00000010, status is HIT
+[info] 625: hit pc send to ibuffer,pc:0x10d11130,gid:c1a.
+[info] [00000635]: normal_req, address is 0x10d11140
+[info] 635: lookup_tag is fetch req addr:0x10d11140
+[info] 635: icache read address is 0x10d11140, size is 0x00000010, status is HIT
+[info] 635: hit pc send to ibuffer,pc:0x10d11140,gid:c1b.
+[info] [00000636]: normal_req, address is 0x10d11150
+[info] 636: lookup_tag is fetch req addr:0x10d11150
+[info] 636: icache read address is 0x10d11150, size is 0x00000010, status is HIT
+[info] 636: hit pc send to ibuffer,pc:0x10d11150,gid:c1c.
+[info] [00000637]: normal_req, address is 0x10d11160
+[info] 637: lookup_tag is fetch req addr:0x10d11160
+[info] 637: icache read address is 0x10d11160, size is 0x00000010, status is HIT
+[info] 637: hit pc send to ibuffer,pc:0x10d11160,gid:c1d.
+[info] [00000648]: normal_req, address is 0x10d11170
+[info] 648: lookup_tag is fetch req addr:0x10d11170
+[info] 648: icache read address is 0x10d11170, size is 0x00000010, status is HIT
+[info] 648: hit pc send to ibuffer,pc:0x10d11170,gid:c1f.
+[info] [00000649]: normal_req, address is 0x10d11180
+[info] 649: lookup_tag is fetch req addr:0x10d11180
+[info] 649: icache read address is 0x10d11180, size is 0x00000010, status is HIT
+[info] 649: hit pc send to ibuffer,pc:0x10d11180,gid:c20.
+[info] [00000650]: normal_req, address is 0x10d11190
+[info] 650: lookup_tag is fetch req addr:0x10d11190
+[info] 650: icache read address is 0x10d11190, size is 0x00000010, status is HIT
+[info] 650: hit pc send to ibuffer,pc:0x10d11190,gid:c22.
+[info] [00000659]: normal_req, address is 0x10d111a0
+[info] 659: lookup_tag is fetch req addr:0x10d111a0
+[info] 659: icache read address is 0x10d111a0, size is 0x00000010, status is HIT
+[info] 659: hit pc send to ibuffer,pc:0x10d111a0,gid:c25.
+[info] [00000660]: normal_req, address is 0x10d111b0
+[info] 660: lookup_tag is fetch req addr:0x10d111b0
+[info] 660: icache read address is 0x10d111b0, size is 0x00000010, status is HIT
+[info] 660: hit pc send to ibuffer,pc:0x10d111b0,gid:c26.
+[info] [00000661]: normal_req, address is 0x10d111c0
+[info] 661: lookup_tag is fetch req addr:0x10d111c0
+[info] 661: icache read address is 0x10d111c0, size is 0x00000010, status is HIT
+[info] 661: hit pc send to ibuffer,pc:0x10d111c0,gid:c27.
+[info] [00000984]: normal_req, address is 0x10d111d0
+[info] 984: lookup_tag is fetch req addr:0x10d111d0
+[info] 984: icache read address is 0x10d111d0, size is 0x00000010, status is HIT
+[info] 984: hit pc send to ibuffer,pc:0x10d111d0,gid:c2d.
+[info] [00000985]: normal_req, address is 0x10d111e0
+[info] 985: lookup_tag is fetch req addr:0x10d111e0
+[info] 985: icache read address is 0x10d111e0, size is 0x00000010, status is HIT
+[info] 985: hit pc send to ibuffer,pc:0x10d111e0,gid:c2e.
+[info] [00000986]: normal_req, address is 0x10d111f0
+[info] 986: lookup_tag is fetch req addr:0x10d111f0
+[info] 986: icache read address is 0x10d111f0, size is 0x00000010, status is HIT
+[info] 986: hit pc send to ibuffer,pc:0x10d111f0,gid:c2f.
+[info] [00000987]: normal_req, address is 0x10d11200
+[info] 987: lookup_tag is fetch req addr:0x10d11200
+[info] 987: icache read address is 0x10d11200, size is 0x00000010, status is MISS
+[info] 987: icache fetch request, id is 0x00000c32, address is 0x10d11200
+[debug] 987: icache prefetch addr is 0x10d11280
+[debug] 987: icache prefetch addr is 0x10d11300
+[debug] 987: icache prefetch addr is 0x10d11380
+[info] 988: lookup_tag is prefetch_req addr:0x10d11280
+[info] 988: icache read address is 0x10d11280, size is 0x00000080, status is MISS
+[info] 988: icache fetch request, id is 0x00000c36, address is 0x10d11280
+[info] 988:ll_send_req_success,the req addr is:0x10d11200.
+[info] 989: lookup_tag is prefetch_req addr:0x10d11300
+[info] 989: icache read address is 0x10d11300, size is 0x00000080, status is MISS
+[info] 989: icache fetch request, id is 0x00000c38, address is 0x10d11300
+[info] 989:ll_send_req_success,the req addr is:0x10d11280.
+[info] 990: lookup_tag is prefetch_req addr:0x10d11380
+[info] 990: icache read address is 0x10d11380, size is 0x00000080, status is MISS
+[info] 990: icache fetch request, id is 0x00000c3a, address is 0x10d11380
+[info] 990:ll_send_req_success,the req addr is:0x10d11300.
+[info] 991:ll_send_req_success,the req addr is:0x10d11380.
+[info] 1345:recv_ll_rep_succcess,the rsp addr is:0x10d11280.
+[info] [00001345]: icache refill acknowledge, id is 0x00000c36, address is 0x10d11280,setIdx:37, wayId:0
+[info] [00001345]: add to  refill_map, rsp_addr:10d11280,tag_addr: 0x00008688
+[info] 1346:recv_ll_rep_succcess,the rsp addr is:0x10d11300.
+[info] [00001346]: icache refill acknowledge, id is 0x00000c38, address is 0x10d11300,setIdx:38, wayId:0
+[info] [00001346]: add to  refill_map, rsp_addr:10d11300,tag_addr: 0x00008688
+[info] 1347:recv_ll_rep_succcess,the rsp addr is:0x10d11200.
+[info] [00001347]: icache refill acknowledge, id is 0x00000c32, address is 0x10d11200,setIdx:36, wayId:0
+[info] [00001347]: add to  refill_map, rsp_addr:10d11200,tag_addr: 0x00008688
+[info] 1347:refill pc send to ibuffer,pc:0x10d11200,gid:c30.
+[info] 1348:recv_ll_rep_succcess,the rsp addr is:0x10d11380.
+[info] [00001348]: icache refill acknowledge, id is 0x00000c3a, address is 0x10d11380,setIdx:39, wayId:0
+[info] [00001348]: add to  refill_map, rsp_addr:10d11380,tag_addr: 0x00008688
+[info] [00001349]: normal_req, address is 0x10d11210
+[info] 1349: lookup_tag is fetch req addr:0x10d11210
+[info] 1349: icache read address is 0x10d11210, size is 0x00000010, status is HIT
+[info] 1349: hit pc send to ibuffer,pc:0x10d11210,gid:c31.
+[info] [00001350]: normal_req, address is 0x10d11220
+[info] 1350: lookup_tag is fetch req addr:0x10d11220
+[info] 1350: icache read address is 0x10d11220, size is 0x00000010, status is HIT
+[info] 1350: hit pc send to ibuffer,pc:0x10d11220,gid:c37.
+[info] [00001351]: normal_req, address is 0x10d11230
+[info] 1351: lookup_tag is fetch req addr:0x10d11230
+[info] 1351: icache read address is 0x10d11230, size is 0x00000010, status is HIT
+[info] 1351: hit pc send to ibuffer,pc:0x10d11230,gid:da3.
+[info] [00001352]: normal_req, address is 0x10d11240
+[info] 1352: lookup_tag is fetch req addr:0x10d11240
+[info] 1352: icache read address is 0x10d11240, size is 0x00000010, status is HIT
+[info] 1352: hit pc send to ibuffer,pc:0x10d11240,gid:da4.
+[info] [00001353]: normal_req, address is 0x10d11250
+[info] 1353: lookup_tag is fetch req addr:0x10d11250
+[info] 1353: icache read address is 0x10d11250, size is 0x00000010, status is HIT
+[info] 1353: hit pc send to ibuffer,pc:0x10d11250,gid:da5.
+[info] [00001354]: normal_req, address is 0x10d11260
+[info] 1354: lookup_tag is fetch req addr:0x10d11260
+[info] 1354: icache read address is 0x10d11260, size is 0x00000010, status is HIT
+[info] 1354: hit pc send to ibuffer,pc:0x10d11260,gid:da6.
+[info] [00001355]: normal_req, address is 0x10d11270
+[info] 1355: lookup_tag is fetch req addr:0x10d11270
+[info] 1355: icache read address is 0x10d11270, size is 0x00000010, status is HIT
+[info] 1355: hit pc send to ibuffer,pc:0x10d11270,gid:da7.
+[info] [00001356]: normal_req, address is 0x10d11280
+[info] 1356: lookup_tag is fetch req addr:0x10d11280
+[info] 1356: icache read address is 0x10d11280, size is 0x00000010, status is HIT
+[info] 1356: hit pc send to ibuffer,pc:0x10d11280,gid:da8.
+[info] [00001357]: normal_req, address is 0x10d11290
+[info] 1357: lookup_tag is fetch req addr:0x10d11290
+[info] 1357: icache read address is 0x10d11290, size is 0x00000010, status is HIT
+[info] 1357: hit pc send to ibuffer,pc:0x10d11290,gid:da9.
+[info] [00001358]: normal_req, address is 0x10d112a0
+[info] 1358: lookup_tag is fetch req addr:0x10d112a0
+[info] 1358: icache read address is 0x10d112a0, size is 0x00000010, status is HIT
+[info] 1358: hit pc send to ibuffer,pc:0x10d112a0,gid:daa.
+[info] [00001359]: normal_req, address is 0x10d112b0
+[info] 1359: lookup_tag is fetch req addr:0x10d112b0
+[info] 1359: icache read address is 0x10d112b0, size is 0x00000010, status is HIT
+[info] 1359: hit pc send to ibuffer,pc:0x10d112b0,gid:dab.
+[info] [00001360]: normal_req, address is 0x10d112c0
+[info] 1360: lookup_tag is fetch req addr:0x10d112c0
+[info] 1360: icache read address is 0x10d112c0, size is 0x00000010, status is HIT
+[info] 1360: hit pc send to ibuffer,pc:0x10d112c0,gid:dac.
+[info] [00001361]: normal_req, address is 0x10d112d0
+[info] 1361: lookup_tag is fetch req addr:0x10d112d0
+[info] 1361: icache read address is 0x10d112d0, size is 0x00000010, status is HIT
+[info] 1361: hit pc send to ibuffer,pc:0x10d112d0,gid:dad.
+[info] [00001362]: normal_req, address is 0x10d112e0
+[info] 1362: lookup_tag is fetch req addr:0x10d112e0
+[info] 1362: icache read address is 0x10d112e0, size is 0x00000010, status is HIT
+[info] 1362: hit pc send to ibuffer,pc:0x10d112e0,gid:dae.
+[info] [00001369]: normal_req, address is 0x10d112f0
+[info] 1369: lookup_tag is fetch req addr:0x10d112f0
+[info] 1369: icache read address is 0x10d112f0, size is 0x00000010, status is HIT
+[info] 1369: hit pc send to ibuffer,pc:0x10d112f0,gid:daf.
+[info] [00001370]: normal_req, address is 0x10d11300
+[info] 1370: lookup_tag is fetch req addr:0x10d11300
+[info] 1370: icache read address is 0x10d11300, size is 0x00000010, status is HIT
+[info] 1370: hit pc send to ibuffer,pc:0x10d11300,gid:db0.
+[info] [00001371]: normal_req, address is 0x10d11310
+[info] 1371: lookup_tag is fetch req addr:0x10d11310
+[info] 1371: icache read address is 0x10d11310, size is 0x00000010, status is HIT
+[info] 1371: hit pc send to ibuffer,pc:0x10d11310,gid:db1.
+[info] [00001378]: normal_req, address is 0x10d11320
+[info] 1378: lookup_tag is fetch req addr:0x10d11320
+[info] 1378: icache read address is 0x10d11320, size is 0x00000010, status is HIT
+[info] 1378: hit pc send to ibuffer,pc:0x10d11320,gid:db2.
+[info] [00001379]: normal_req, address is 0x10d11330
+[info] 1379: lookup_tag is fetch req addr:0x10d11330
+[info] 1379: icache read address is 0x10d11330, size is 0x00000010, status is HIT
+[info] 1379: hit pc send to ibuffer,pc:0x10d11330,gid:db3.
+[info] [00001380]: normal_req, address is 0x10d11340
+[info] 1380: lookup_tag is fetch req addr:0x10d11340
+[info] 1380: icache read address is 0x10d11340, size is 0x00000010, status is HIT
+[info] 1380: hit pc send to ibuffer,pc:0x10d11340,gid:db4.
+[info] [00001381]: normal_req, address is 0x10d11350
+[info] 1381: lookup_tag is fetch req addr:0x10d11350
+[info] 1381: icache read address is 0x10d11350, size is 0x00000010, status is HIT
+[info] 1381: hit pc send to ibuffer,pc:0x10d11350,gid:db5.
+[info] [00001390]: normal_req, address is 0x10d11360
+[info] 1390: lookup_tag is fetch req addr:0x10d11360
+[info] 1390: icache read address is 0x10d11360, size is 0x00000010, status is HIT
+[info] 1390: hit pc send to ibuffer,pc:0x10d11360,gid:db6.
+[info] [00001391]: normal_req, address is 0x10d11370
+[info] 1391: lookup_tag is fetch req addr:0x10d11370
+[info] 1391: icache read address is 0x10d11370, size is 0x00000010, status is HIT
+[info] 1391: hit pc send to ibuffer,pc:0x10d11370,gid:db8.
+[info] [00001392]: normal_req, address is 0x10d11380
+[info] 1392: lookup_tag is fetch req addr:0x10d11380
+[info] 1392: icache read address is 0x10d11380, size is 0x00000010, status is HIT
+[info] 1392: hit pc send to ibuffer,pc:0x10d11380,gid:db9.
+[info] [00001393]: normal_req, address is 0x10d11390
+[info] 1393: lookup_tag is fetch req addr:0x10d11390
+[info] 1393: icache read address is 0x10d11390, size is 0x00000010, status is HIT
+[info] 1393: hit pc send to ibuffer,pc:0x10d11390,gid:dba.
+[info] [00001402]: normal_req, address is 0x10d113a0
+[info] 1402: lookup_tag is fetch req addr:0x10d113a0
+[info] 1402: icache read address is 0x10d113a0, size is 0x00000010, status is HIT
+[info] 1402: hit pc send to ibuffer,pc:0x10d113a0,gid:dbb.
+[info] [00001403]: normal_req, address is 0x10d113b0
+[info] 1403: lookup_tag is fetch req addr:0x10d113b0
+[info] 1403: icache read address is 0x10d113b0, size is 0x00000010, status is HIT
+[info] 1403: hit pc send to ibuffer,pc:0x10d113b0,gid:dbc.
+[info] [00001404]: normal_req, address is 0x10d113c0
+[info] 1404: lookup_tag is fetch req addr:0x10d113c0
+[info] 1404: icache read address is 0x10d113c0, size is 0x00000010, status is HIT
+[info] 1404: hit pc send to ibuffer,pc:0x10d113c0,gid:dbd.
+[info] [00001405]: normal_req, address is 0x10d113d0
+[info] 1405: lookup_tag is fetch req addr:0x10d113d0
+[info] 1405: icache read address is 0x10d113d0, size is 0x00000010, status is HIT
+[info] 1405: hit pc send to ibuffer,pc:0x10d113d0,gid:dbe.
+[info] [00001406]: normal_req, address is 0x10d113e0
+[info] 1406: lookup_tag is fetch req addr:0x10d113e0
+[info] 1406: icache read address is 0x10d113e0, size is 0x00000010, status is HIT
+[info] 1406: hit pc send to ibuffer,pc:0x10d113e0,gid:dbf.
+[info] [00001416]: normal_req, address is 0x10d113f0
+[info] 1416: lookup_tag is fetch req addr:0x10d113f0
+[info] 1416: icache read address is 0x10d113f0, size is 0x00000010, status is HIT
+[info] 1416: hit pc send to ibuffer,pc:0x10d113f0,gid:dc0.
+[info] [00001417]: normal_req, address is 0x10d11400
+[info] 1417: lookup_tag is fetch req addr:0x10d11400
+[info] 1417: icache read address is 0x10d11400, size is 0x00000010, status is MISS
+[info] 1417: icache fetch request, id is 0x00000dc3, address is 0x10d11400
+[debug] 1417: icache prefetch addr is 0x10d11480
+[debug] 1417: icache prefetch addr is 0x10d11500
+[debug] 1417: icache prefetch addr is 0x10d11580
+[info] 1418: lookup_tag is prefetch_req addr:0x10d11480
+[info] 1418: icache read address is 0x10d11480, size is 0x00000080, status is MISS
+[info] 1418: icache fetch request, id is 0x00000dc8, address is 0x10d11480
+[info] 1418:ll_send_req_success,the req addr is:0x10d11400.
+[info] 1419: lookup_tag is prefetch_req addr:0x10d11500
+[info] 1419: icache read address is 0x10d11500, size is 0x00000080, status is MISS
+[info] 1419: icache fetch request, id is 0x00000dca, address is 0x10d11500
+[info] 1419:ll_send_req_success,the req addr is:0x10d11480.
+[info] 1420: lookup_tag is prefetch_req addr:0x10d11580
+[info] 1420: icache read address is 0x10d11580, size is 0x00000080, status is MISS
+[info] 1420: icache fetch request, id is 0x00000dcc, address is 0x10d11580
+[info] 1420:ll_send_req_success,the req addr is:0x10d11500.
+[info] 1421:ll_send_req_success,the req addr is:0x10d11580.
+[info] 1773:recv_ll_rep_succcess,the rsp addr is:0x10d11480.
+[info] [00001773]: icache refill acknowledge, id is 0x00000dc8, address is 0x10d11480,setIdx:41, wayId:0
+[info] [00001773]: add to  refill_map, rsp_addr:10d11480,tag_addr: 0x00008688
+[info] 1776:recv_ll_rep_succcess,the rsp addr is:0x10d11400.
+[info] [00001776]: icache refill acknowledge, id is 0x00000dc3, address is 0x10d11400,setIdx:40, wayId:0
+[info] [00001776]: add to  refill_map, rsp_addr:10d11400,tag_addr: 0x00008688
+[info] 1776:refill pc send to ibuffer,pc:0x10d11400,gid:dc1.
+[info] 1777:recv_ll_rep_succcess,the rsp addr is:0x10d11580.
+[info] [00001777]: icache refill acknowledge, id is 0x00000dcc, address is 0x10d11580,setIdx:43, wayId:0
+[info] [00001777]: add to  refill_map, rsp_addr:10d11580,tag_addr: 0x00008688
+[info] 1778:recv_ll_rep_succcess,the rsp addr is:0x10d11500.
+[info] [00001778]: icache refill acknowledge, id is 0x00000dca, address is 0x10d11500,setIdx:42, wayId:0
+[info] [00001778]: add to  refill_map, rsp_addr:10d11500,tag_addr: 0x00008688
+[info] [00001779]: normal_req, address is 0x10d11410
+[info] 1779: lookup_tag is fetch req addr:0x10d11410
+[info] 1779: icache read address is 0x10d11410, size is 0x00000010, status is HIT
+[info] 1779: hit pc send to ibuffer,pc:0x10d11410,gid:dc2.
+[info] [00001780]: normal_req, address is 0x10d11420
+[info] 1780: lookup_tag is fetch req addr:0x10d11420
+[info] 1780: icache read address is 0x10d11420, size is 0x00000010, status is HIT
+[info] 1780: hit pc send to ibuffer,pc:0x10d11420,gid:dc7.
+[info] [00001781]: normal_req, address is 0x10d11430
+[info] 1781: lookup_tag is fetch req addr:0x10d11430
+[info] 1781: icache read address is 0x10d11430, size is 0x00000010, status is HIT
+[info] 1781: hit pc send to ibuffer,pc:0x10d11430,gid:f36.
+[info] [00001782]: normal_req, address is 0x10d11440
+[info] 1782: lookup_tag is fetch req addr:0x10d11440
+[info] 1782: icache read address is 0x10d11440, size is 0x00000010, status is HIT
+[info] 1782: hit pc send to ibuffer,pc:0x10d11440,gid:f37.
+[info] [00001783]: normal_req, address is 0x10d11450
+[info] 1783: lookup_tag is fetch req addr:0x10d11450
+[info] 1783: icache read address is 0x10d11450, size is 0x00000010, status is HIT
+[info] 1783: hit pc send to ibuffer,pc:0x10d11450,gid:f38.
+[info] [00001784]: normal_req, address is 0x10d11460
+[info] 1784: lookup_tag is fetch req addr:0x10d11460
+[info] 1784: icache read address is 0x10d11460, size is 0x00000010, status is HIT
+[info] 1784: hit pc send to ibuffer,pc:0x10d11460,gid:f39.
+[info] [00001785]: normal_req, address is 0x10d11470
+[info] 1785: lookup_tag is fetch req addr:0x10d11470
+[info] 1785: icache read address is 0x10d11470, size is 0x00000010, status is HIT
+[info] 1785: hit pc send to ibuffer,pc:0x10d11470,gid:f3a.
+[info] [00001786]: normal_req, address is 0x10d11480
+[info] 1786: lookup_tag is fetch req addr:0x10d11480
+[info] 1786: icache read address is 0x10d11480, size is 0x00000010, status is HIT
+[info] 1786: hit pc send to ibuffer,pc:0x10d11480,gid:f3b.
+[info] [00001787]: normal_req, address is 0x10d11490
+[info] 1787: lookup_tag is fetch req addr:0x10d11490
+[info] 1787: icache read address is 0x10d11490, size is 0x00000010, status is HIT
+[info] 1787: hit pc send to ibuffer,pc:0x10d11490,gid:f3c.
+[info] [00001789]: normal_req, address is 0x10d11448
+[info] 1789: lookup_tag is fetch req addr:0x10d11448
+[info] 1789: icache read address is 0x10d11448, size is 0x00000008, status is HIT
+[info] 1789: hit pc send to ibuffer,pc:0x10d11448,gid:f3e.
+[info] [00001790]: normal_req, address is 0x10d11450
+[info] 1790: lookup_tag is fetch req addr:0x10d11450
+[info] 1790: icache read address is 0x10d11450, size is 0x00000010, status is HIT
+[info] 1790: hit pc send to ibuffer,pc:0x10d11450,gid:f3f.
+[info] [00001791]: normal_req, address is 0x10d11460
+[info] 1791: lookup_tag is fetch req addr:0x10d11460
+[info] 1791: icache read address is 0x10d11460, size is 0x00000010, status is HIT
+[info] 1791: hit pc send to ibuffer,pc:0x10d11460,gid:f40.
+[info] [00001792]: normal_req, address is 0x10d11470
+[info] 1792: lookup_tag is fetch req addr:0x10d11470
+[info] 1792: icache read address is 0x10d11470, size is 0x00000010, status is HIT
+[info] 1792: hit pc send to ibuffer,pc:0x10d11470,gid:f41.
+[info] [00001793]: normal_req, address is 0x10d11480
+[info] 1793: lookup_tag is fetch req addr:0x10d11480
+[info] 1793: icache read address is 0x10d11480, size is 0x00000010, status is HIT
+[info] 1793: hit pc send to ibuffer,pc:0x10d11480,gid:f42.
+[info] [00001794]: normal_req, address is 0x10d11490
+[info] 1794: lookup_tag is fetch req addr:0x10d11490
+[info] 1794: icache read address is 0x10d11490, size is 0x00000010, status is HIT
+[info] 1794: hit pc send to ibuffer,pc:0x10d11490,gid:f43.
+[info] [00001795]: normal_req, address is 0x10d114a0
+[info] 1795: lookup_tag is fetch req addr:0x10d114a0
+[info] 1795: icache read address is 0x10d114a0, size is 0x00000010, status is HIT
+[info] 1795: hit pc send to ibuffer,pc:0x10d114a0,gid:f44.
+[info] [00001796]: normal_req, address is 0x10d114b0
+[info] 1796: lookup_tag is fetch req addr:0x10d114b0
+[info] 1796: icache read address is 0x10d114b0, size is 0x00000010, status is HIT
+[info] 1796: hit pc send to ibuffer,pc:0x10d114b0,gid:f45.
+[info] [00001797]: normal_req, address is 0x10d114c0
+[info] 1797: lookup_tag is fetch req addr:0x10d114c0
+[info] 1797: icache read address is 0x10d114c0, size is 0x00000010, status is HIT
+[info] 1797: hit pc send to ibuffer,pc:0x10d114c0,gid:f46.
+[info] [00001798]: normal_req, address is 0x10d114d0
+[info] 1798: lookup_tag is fetch req addr:0x10d114d0
+[info] 1798: icache read address is 0x10d114d0, size is 0x00000010, status is HIT
+[info] 1798: hit pc send to ibuffer,pc:0x10d114d0,gid:f47.
+[info] [00001799]: normal_req, address is 0x10d114e0
+[info] 1799: lookup_tag is fetch req addr:0x10d114e0
+[info] 1799: icache read address is 0x10d114e0, size is 0x00000010, status is HIT
+[info] 1799: hit pc send to ibuffer,pc:0x10d114e0,gid:f48.
+[info] [00001800]: normal_req, address is 0x10d114f0
+[info] 1800: lookup_tag is fetch req addr:0x10d114f0
+[info] 1800: icache read address is 0x10d114f0, size is 0x00000010, status is HIT
+[info] 1800: hit pc send to ibuffer,pc:0x10d114f0,gid:f49.
+[info] [00001801]: normal_req, address is 0x10d11500
+[info] 1801: lookup_tag is fetch req addr:0x10d11500
+[info] 1801: icache read address is 0x10d11500, size is 0x00000010, status is HIT
+[info] 1801: hit pc send to ibuffer,pc:0x10d11500,gid:f4a.
+[info] [00001802]: normal_req, address is 0x10d11510
+[info] 1802: lookup_tag is fetch req addr:0x10d11510
+[info] 1802: icache read address is 0x10d11510, size is 0x00000010, status is HIT
+[info] 1802: hit pc send to ibuffer,pc:0x10d11510,gid:f4b.
+[info] [00001812]: normal_req, address is 0x10d11520
+[info] 1812: lookup_tag is fetch req addr:0x10d11520
+[info] 1812: icache read address is 0x10d11520, size is 0x00000010, status is HIT
+[info] 1812: hit pc send to ibuffer,pc:0x10d11520,gid:f4c.
+[info] [00001813]: normal_req, address is 0x10d11530
+[info] 1813: lookup_tag is fetch req addr:0x10d11530
+[info] 1813: icache read address is 0x10d11530, size is 0x00000010, status is HIT
+[info] 1813: hit pc send to ibuffer,pc:0x10d11530,gid:f4d.
+[info] [00001814]: normal_req, address is 0x10d11540
+[info] 1814: lookup_tag is fetch req addr:0x10d11540
+[info] 1814: icache read address is 0x10d11540, size is 0x00000010, status is HIT
+[info] 1814: hit pc send to ibuffer,pc:0x10d11540,gid:f4e.
+[info] [00001825]: normal_req, address is 0x10d114d8
+[info] 1825: lookup_tag is fetch req addr:0x10d114d8
+[info] 1825: icache read address is 0x10d114d8, size is 0x00000008, status is HIT
+[info] 1825: hit pc send to ibuffer,pc:0x10d114d8,gid:f4f.
+[info] [00001826]: normal_req, address is 0x10d114e0
+[info] 1826: lookup_tag is fetch req addr:0x10d114e0
+[info] 1826: icache read address is 0x10d114e0, size is 0x00000010, status is HIT
+[info] 1826: hit pc send to ibuffer,pc:0x10d114e0,gid:f50.
+[info] [00001827]: normal_req, address is 0x10d114f0
+[info] 1827: lookup_tag is fetch req addr:0x10d114f0
+[info] 1827: icache read address is 0x10d114f0, size is 0x00000010, status is HIT
+[info] 1827: hit pc send to ibuffer,pc:0x10d114f0,gid:f51.
+[info] [00001828]: normal_req, address is 0x10d11500
+[info] 1828: lookup_tag is fetch req addr:0x10d11500
+[info] 1828: icache read address is 0x10d11500, size is 0x00000010, status is HIT
+[info] 1828: hit pc send to ibuffer,pc:0x10d11500,gid:f52.
+[info] [00001829]: normal_req, address is 0x10d11510
+[info] 1829: lookup_tag is fetch req addr:0x10d11510
+[info] 1829: icache read address is 0x10d11510, size is 0x00000010, status is HIT
+[info] 1829: hit pc send to ibuffer,pc:0x10d11510,gid:f53.
+[info] [00001830]: normal_req, address is 0x10d11520
+[info] 1830: lookup_tag is fetch req addr:0x10d11520
+[info] 1830: icache read address is 0x10d11520, size is 0x00000010, status is HIT
+[info] 1830: hit pc send to ibuffer,pc:0x10d11520,gid:f54.
+[info] [00001831]: normal_req, address is 0x10d11530
+[info] 1831: lookup_tag is fetch req addr:0x10d11530
+[info] 1831: icache read address is 0x10d11530, size is 0x00000010, status is HIT
+[info] 1831: hit pc send to ibuffer,pc:0x10d11530,gid:f55.
+[info] [00001832]: normal_req, address is 0x10d11540
+[info] 1832: lookup_tag is fetch req addr:0x10d11540
+[info] 1832: icache read address is 0x10d11540, size is 0x00000010, status is HIT
+[info] 1832: hit pc send to ibuffer,pc:0x10d11540,gid:f56.
+[info] [00001833]: normal_req, address is 0x10d11550
+[info] 1833: lookup_tag is fetch req addr:0x10d11550
+[info] 1833: icache read address is 0x10d11550, size is 0x00000010, status is HIT
+[info] 1833: hit pc send to ibuffer,pc:0x10d11550,gid:f57.
+[info] [00001834]: normal_req, address is 0x10d11560
+[info] 1834: lookup_tag is fetch req addr:0x10d11560
+[info] 1834: icache read address is 0x10d11560, size is 0x00000010, status is HIT
+[info] 1834: hit pc send to ibuffer,pc:0x10d11560,gid:f58.
+[info] [00001835]: normal_req, address is 0x10d11570
+[info] 1835: lookup_tag is fetch req addr:0x10d11570
+[info] 1835: icache read address is 0x10d11570, size is 0x00000010, status is HIT
+[info] 1835: hit pc send to ibuffer,pc:0x10d11570,gid:f59.
+[info] [00001836]: normal_req, address is 0x10d11580
+[info] 1836: lookup_tag is fetch req addr:0x10d11580
+[info] 1836: icache read address is 0x10d11580, size is 0x00000010, status is HIT
+[info] 1836: hit pc send to ibuffer,pc:0x10d11580,gid:f5a.
+[info] [00001837]: normal_req, address is 0x10d11584
+[info] 1837: lookup_tag is fetch req addr:0x10d11584
+[info] 1837: icache read address is 0x10d11584, size is 0x0000000c, status is HIT
+[info] 1837: hit pc send to ibuffer,pc:0x10d11584,gid:f5b.
+[info] [00001838]: normal_req, address is 0x10d11590
+[info] 1838: lookup_tag is fetch req addr:0x10d11590
+[info] 1838: icache read address is 0x10d11590, size is 0x00000010, status is HIT
+[info] 1838: hit pc send to ibuffer,pc:0x10d11590,gid:f5c.
+[info] [00001839]: normal_req, address is 0x10d115a0
+[info] 1839: lookup_tag is fetch req addr:0x10d115a0
+[info] 1839: icache read address is 0x10d115a0, size is 0x00000010, status is HIT
+[info] 1839: hit pc send to ibuffer,pc:0x10d115a0,gid:f5d.
+[info] [00001840]: normal_req, address is 0x10d115b0
+[info] 1840: lookup_tag is fetch req addr:0x10d115b0
+[info] 1840: icache read address is 0x10d115b0, size is 0x00000010, status is HIT
+[info] 1840: hit pc send to ibuffer,pc:0x10d115b0,gid:f5e.
+[info] [00001841]: normal_req, address is 0x10d115c0
+[info] 1841: lookup_tag is fetch req addr:0x10d115c0
+[info] 1841: icache read address is 0x10d115c0, size is 0x00000010, status is HIT
+[info] 1841: hit pc send to ibuffer,pc:0x10d115c0,gid:f5f.
+[info] [00001856]: normal_req, address is 0x10d115d0
+[info] 1856: lookup_tag is fetch req addr:0x10d115d0
+[info] 1856: icache read address is 0x10d115d0, size is 0x00000010, status is HIT
+[info] 1856: hit pc send to ibuffer,pc:0x10d115d0,gid:f60.
+[info] [00001857]: normal_req, address is 0x10d115e0
+[info] 1857: lookup_tag is fetch req addr:0x10d115e0
+[info] 1857: icache read address is 0x10d115e0, size is 0x00000010, status is HIT
+[info] 1857: hit pc send to ibuffer,pc:0x10d115e0,gid:f61.
+[info] [00001858]: normal_req, address is 0x10d115f0
+[info] 1858: lookup_tag is fetch req addr:0x10d115f0
+[info] 1858: icache read address is 0x10d115f0, size is 0x00000010, status is HIT
+[info] 1858: hit pc send to ibuffer,pc:0x10d115f0,gid:f62.
+[info] [00001863]: normal_req, address is 0x10d11570
+[info] 1863: lookup_tag is fetch req addr:0x10d11570
+[info] 1863: icache read address is 0x10d11570, size is 0x00000010, status is HIT
+[info] 1863: hit pc send to ibuffer,pc:0x10d11570,gid:f63.
+[info] [00001864]: normal_req, address is 0x10d11580
+[info] 1864: lookup_tag is fetch req addr:0x10d11580
+[info] 1864: icache read address is 0x10d11580, size is 0x00000010, status is HIT
+[info] 1864: hit pc send to ibuffer,pc:0x10d11580,gid:f64.
+[info] [00001865]: normal_req, address is 0x10d11590
+[info] 1865: lookup_tag is fetch req addr:0x10d11590
+[info] 1865: icache read address is 0x10d11590, size is 0x00000010, status is HIT
+[info] 1865: hit pc send to ibuffer,pc:0x10d11590,gid:f65.
+[info] [00001866]: normal_req, address is 0x10d115a0
+[info] 1866: lookup_tag is fetch req addr:0x10d115a0
+[info] 1866: icache read address is 0x10d115a0, size is 0x00000010, status is HIT
+[info] 1866: hit pc send to ibuffer,pc:0x10d115a0,gid:f66.
+[info] [00001867]: normal_req, address is 0x10d115b0
+[info] 1867: lookup_tag is fetch req addr:0x10d115b0
+[info] 1867: icache read address is 0x10d115b0, size is 0x00000010, status is HIT
+[info] 1867: hit pc send to ibuffer,pc:0x10d115b0,gid:f67.
+[info] [00001868]: normal_req, address is 0x10d115c0
+[info] 1868: lookup_tag is fetch req addr:0x10d115c0
+[info] 1868: icache read address is 0x10d115c0, size is 0x00000010, status is HIT
+[info] 1868: hit pc send to ibuffer,pc:0x10d115c0,gid:f68.
+[info] [00001869]: normal_req, address is 0x10d115d0
+[info] 1869: lookup_tag is fetch req addr:0x10d115d0
+[info] 1869: icache read address is 0x10d115d0, size is 0x00000010, status is HIT
+[info] 1869: hit pc send to ibuffer,pc:0x10d115d0,gid:f69.
+[info] [00001870]: normal_req, address is 0x10d115e0
+[info] 1870: lookup_tag is fetch req addr:0x10d115e0
+[info] 1870: icache read address is 0x10d115e0, size is 0x00000010, status is HIT
+[info] 1870: hit pc send to ibuffer,pc:0x10d115e0,gid:f6a.
+[info] [00001871]: normal_req, address is 0x10d115f0
+[info] 1871: lookup_tag is fetch req addr:0x10d115f0
+[info] 1871: icache read address is 0x10d115f0, size is 0x00000010, status is HIT
+[info] 1871: hit pc send to ibuffer,pc:0x10d115f0,gid:f6b.
+[info] [00001872]: normal_req, address is 0x10d11600
+[info] 1872: lookup_tag is fetch req addr:0x10d11600
+[info] 1872: icache read address is 0x10d11600, size is 0x00000010, status is MISS
+[info] 1872: icache fetch request, id is 0x00000f6e, address is 0x10d11600
+[debug] 1872: icache prefetch addr is 0x10d11680
+[debug] 1872: icache prefetch addr is 0x10d11700
+[debug] 1872: icache prefetch addr is 0x10d11780
+[info] 1873: lookup_tag is prefetch_req addr:0x10d11680
+[info] 1873: icache read address is 0x10d11680, size is 0x00000080, status is MISS
+[info] 1873: icache fetch request, id is 0x00000f73, address is 0x10d11680
+[info] 1873:ll_send_req_success,the req addr is:0x10d11600.
+[info] 1874: lookup_tag is prefetch_req addr:0x10d11700
+[info] 1874: icache read address is 0x10d11700, size is 0x00000080, status is MISS
+[info] 1874: icache fetch request, id is 0x00000f75, address is 0x10d11700
+[info] 1874:ll_send_req_success,the req addr is:0x10d11680.
+[info] 1875: lookup_tag is prefetch_req addr:0x10d11780
+[info] 1875: icache read address is 0x10d11780, size is 0x00000080, status is MISS
+[info] 1875: icache fetch request, id is 0x00000f77, address is 0x10d11780
+[info] 1875:ll_send_req_success,the req addr is:0x10d11700.
+[info] 1876:ll_send_req_success,the req addr is:0x10d11780.
+[info] 2230:recv_ll_rep_succcess,the rsp addr is:0x10d11600.
+[info] [00002230]: icache refill acknowledge, id is 0x00000f6e, address is 0x10d11600,setIdx:44, wayId:0
+[info] [00002230]: add to  refill_map, rsp_addr:10d11600,tag_addr: 0x00008688
+[info] 2230:refill pc send to ibuffer,pc:0x10d11600,gid:f6c.
+[info] 2231:recv_ll_rep_succcess,the rsp addr is:0x10d11680.
+[info] [00002231]: icache refill acknowledge, id is 0x00000f73, address is 0x10d11680,setIdx:45, wayId:0
+[info] [00002231]: add to  refill_map, rsp_addr:10d11680,tag_addr: 0x00008688
+[info] 2233:recv_ll_rep_succcess,the rsp addr is:0x10d11700.
+[info] [00002233]: icache refill acknowledge, id is 0x00000f75, address is 0x10d11700,setIdx:46, wayId:0
+[info] [00002233]: add to  refill_map, rsp_addr:10d11700,tag_addr: 0x00008688
+[info] 2234:recv_ll_rep_succcess,the rsp addr is:0x10d11780.
+[info] [00002234]: icache refill acknowledge, id is 0x00000f77, address is 0x10d11780,setIdx:47, wayId:0
+[info] [00002234]: add to  refill_map, rsp_addr:10d11780,tag_addr: 0x00008688
+[info] [00002235]: normal_req, address is 0x10d11610
+[info] 2235: lookup_tag is fetch req addr:0x10d11610
+[info] 2235: icache read address is 0x10d11610, size is 0x00000010, status is HIT
+[info] 2235: hit pc send to ibuffer,pc:0x10d11610,gid:f6d.
+[info] [00002236]: normal_req, address is 0x10d11620
+[info] 2236: lookup_tag is fetch req addr:0x10d11620
+[info] 2236: icache read address is 0x10d11620, size is 0x00000010, status is HIT
+[info] 2236: hit pc send to ibuffer,pc:0x10d11620,gid:f72.
+[info] [00002237]: normal_req, address is 0x10d11630
+[info] 2237: lookup_tag is fetch req addr:0x10d11630
+[info] 2237: icache read address is 0x10d11630, size is 0x00000010, status is HIT
+[info] 2237: hit pc send to ibuffer,pc:0x10d11630,gid:10f0.
+[info] [00002238]: normal_req, address is 0x10d11640
+[info] 2238: lookup_tag is fetch req addr:0x10d11640
+[info] 2238: icache read address is 0x10d11640, size is 0x00000010, status is HIT
+[info] 2238: hit pc send to ibuffer,pc:0x10d11640,gid:10f1.
+[info] [00002239]: normal_req, address is 0x10d11650
+[info] 2239: lookup_tag is fetch req addr:0x10d11650
+[info] 2239: icache read address is 0x10d11650, size is 0x00000010, status is HIT
+[info] 2239: hit pc send to ibuffer,pc:0x10d11650,gid:10f2.
+[info] [00002240]: normal_req, address is 0x10d11660
+[info] 2240: lookup_tag is fetch req addr:0x10d11660
+[info] 2240: icache read address is 0x10d11660, size is 0x00000010, status is HIT
+[info] 2240: hit pc send to ibuffer,pc:0x10d11660,gid:10f3.
+[info] [00002241]: normal_req, address is 0x10d11670
+[info] 2241: lookup_tag is fetch req addr:0x10d11670
+[info] 2241: icache read address is 0x10d11670, size is 0x00000010, status is HIT
+[info] 2241: hit pc send to ibuffer,pc:0x10d11670,gid:10f4.
+[info] [00002242]: normal_req, address is 0x10d11680
+[info] 2242: lookup_tag is fetch req addr:0x10d11680
+[info] 2242: icache read address is 0x10d11680, size is 0x00000010, status is HIT
+[info] 2242: hit pc send to ibuffer,pc:0x10d11680,gid:10f5.
+[info] [00002243]: normal_req, address is 0x10d11690
+[info] 2243: lookup_tag is fetch req addr:0x10d11690
+[info] 2243: icache read address is 0x10d11690, size is 0x00000010, status is HIT
+[info] 2243: hit pc send to ibuffer,pc:0x10d11690,gid:10f6.
+[info] [00002244]: normal_req, address is 0x10d116a0
+[info] 2244: lookup_tag is fetch req addr:0x10d116a0
+[info] 2244: icache read address is 0x10d116a0, size is 0x00000010, status is HIT
+[info] 2244: hit pc send to ibuffer,pc:0x10d116a0,gid:10f7.
+[info] [00002245]: normal_req, address is 0x10d116b0
+[info] 2245: lookup_tag is fetch req addr:0x10d116b0
+[info] 2245: icache read address is 0x10d116b0, size is 0x00000010, status is HIT
+[info] 2245: hit pc send to ibuffer,pc:0x10d116b0,gid:10f8.
+[info] [00002246]: normal_req, address is 0x10d116c0
+[info] 2246: lookup_tag is fetch req addr:0x10d116c0
+[info] 2246: icache read address is 0x10d116c0, size is 0x00000010, status is HIT
+[info] 2246: hit pc send to ibuffer,pc:0x10d116c0,gid:10f9.
+[info] [00002247]: normal_req, address is 0x10d116d0
+[info] 2247: lookup_tag is fetch req addr:0x10d116d0
+[info] 2247: icache read address is 0x10d116d0, size is 0x00000010, status is HIT
+[info] 2247: hit pc send to ibuffer,pc:0x10d116d0,gid:10fa.
+[info] [00002248]: normal_req, address is 0x10d116e0
+[info] 2248: lookup_tag is fetch req addr:0x10d116e0
+[info] 2248: icache read address is 0x10d116e0, size is 0x00000010, status is HIT
+[info] 2248: hit pc send to ibuffer,pc:0x10d116e0,gid:10fb.
+[info] [00002265]: normal_req, address is 0x10d116f0
+[info] 2265: lookup_tag is fetch req addr:0x10d116f0
+[info] 2265: icache read address is 0x10d116f0, size is 0x00000010, status is HIT
+[info] 2265: hit pc send to ibuffer,pc:0x10d116f0,gid:1106.
+[info] [00002266]: normal_req, address is 0x10d11700
+[info] 2266: lookup_tag is fetch req addr:0x10d11700
+[info] 2266: icache read address is 0x10d11700, size is 0x00000010, status is HIT
+[info] 2266: hit pc send to ibuffer,pc:0x10d11700,gid:1108.
+[info] [00002267]: normal_req, address is 0x10d11710
+[info] 2267: lookup_tag is fetch req addr:0x10d11710
+[info] 2267: icache read address is 0x10d11710, size is 0x00000010, status is HIT
+[info] 2267: hit pc send to ibuffer,pc:0x10d11710,gid:110a.
+[info] [00002279]: normal_req, address is 0x10d11720
+[info] 2279: lookup_tag is fetch req addr:0x10d11720
+[info] 2279: icache read address is 0x10d11720, size is 0x00000010, status is HIT
+[info] 2279: hit pc send to ibuffer,pc:0x10d11720,gid:1110.
+[info] [00002280]: normal_req, address is 0x10d11730
+[info] 2280: lookup_tag is fetch req addr:0x10d11730
+[info] 2280: icache read address is 0x10d11730, size is 0x00000010, status is HIT
+[info] 2280: hit pc send to ibuffer,pc:0x10d11730,gid:1111.
+[info] [00002281]: normal_req, address is 0x10d11740
+[info] 2281: lookup_tag is fetch req addr:0x10d11740
+[info] 2281: icache read address is 0x10d11740, size is 0x00000010, status is HIT
+[info] 2281: hit pc send to ibuffer,pc:0x10d11740,gid:1112.
+[info] [00002307]: normal_req, address is 0x10d11750
+[info] 2307: lookup_tag is fetch req addr:0x10d11750
+[info] 2307: icache read address is 0x10d11750, size is 0x00000010, status is HIT
+[info] 2307: hit pc send to ibuffer,pc:0x10d11750,gid:111b.
+[info] [00002308]: normal_req, address is 0x10d11760
+[info] 2308: lookup_tag is fetch req addr:0x10d11760
+[info] 2308: icache read address is 0x10d11760, size is 0x00000010, status is HIT
+[info] 2308: hit pc send to ibuffer,pc:0x10d11760,gid:111d.
+[info] [00002309]: normal_req, address is 0x10d11770
+[info] 2309: lookup_tag is fetch req addr:0x10d11770
+[info] 2309: icache read address is 0x10d11770, size is 0x00000010, status is HIT
+[info] 2309: hit pc send to ibuffer,pc:0x10d11770,gid:111f.
+[info] [00002324]: normal_req, address is 0x10d11780
+[info] 2324: lookup_tag is fetch req addr:0x10d11780
+[info] 2324: icache read address is 0x10d11780, size is 0x00000010, status is HIT
+[info] 2324: hit pc send to ibuffer,pc:0x10d11780,gid:112a.
+[info] [00002325]: normal_req, address is 0x10d11790
+[info] 2325: lookup_tag is fetch req addr:0x10d11790
+[info] 2325: icache read address is 0x10d11790, size is 0x00000010, status is HIT
+[info] 2325: hit pc send to ibuffer,pc:0x10d11790,gid:112b.
+[info] [00002326]: normal_req, address is 0x10d117a0
+[info] 2326: lookup_tag is fetch req addr:0x10d117a0
+[info] 2326: icache read address is 0x10d117a0, size is 0x00000010, status is HIT
+[info] 2326: hit pc send to ibuffer,pc:0x10d117a0,gid:112d.
+[info] [00002327]: normal_req, address is 0x10d117b0
+[info] 2327: lookup_tag is fetch req addr:0x10d117b0
+[info] 2327: icache read address is 0x10d117b0, size is 0x00000010, status is HIT
+[info] 2327: hit pc send to ibuffer,pc:0x10d117b0,gid:112f.
+[info] [00002345]: normal_req, address is 0x10d117c0
+[info] 2345: lookup_tag is fetch req addr:0x10d117c0
+[info] 2345: icache read address is 0x10d117c0, size is 0x00000010, status is HIT
+[info] 2345: hit pc send to ibuffer,pc:0x10d117c0,gid:113a.
+[info] [00002346]: normal_req, address is 0x10d117d0
+[info] 2346: lookup_tag is fetch req addr:0x10d117d0
+[info] 2346: icache read address is 0x10d117d0, size is 0x00000010, status is HIT
+[info] 2346: hit pc send to ibuffer,pc:0x10d117d0,gid:113b.
+[info] [00002347]: normal_req, address is 0x10d117e0
+[info] 2347: lookup_tag is fetch req addr:0x10d117e0
+[info] 2347: icache read address is 0x10d117e0, size is 0x00000010, status is HIT
+[info] 2347: hit pc send to ibuffer,pc:0x10d117e0,gid:113c.
+[info] [00002364]: normal_req, address is 0x10d117f0
+[info] 2364: lookup_tag is fetch req addr:0x10d117f0
+[info] 2364: icache read address is 0x10d117f0, size is 0x00000010, status is HIT
+[info] 2364: hit pc send to ibuffer,pc:0x10d117f0,gid:113d.
+[info] [00002365]: normal_req, address is 0x10d11800
+[info] 2365: lookup_tag is fetch req addr:0x10d11800
+[info] 2365: icache read address is 0x10d11800, size is 0x00000010, status is MISS
+[info] 2365: icache fetch request, id is 0x00001140, address is 0x10d11800
+[debug] 2365: icache prefetch addr is 0x10d11880
+[debug] 2365: icache prefetch addr is 0x10d11900
+[debug] 2365: icache prefetch addr is 0x10d11980
+[info] 2366: lookup_tag is prefetch_req addr:0x10d11880
+[info] 2366: icache read address is 0x10d11880, size is 0x00000080, status is MISS
+[info] 2366: icache fetch request, id is 0x00001144, address is 0x10d11880
+[info] 2366:ll_send_req_success,the req addr is:0x10d11800.
+[info] 2367:ll_send_req_success,the req addr is:0x10d11880.
+[info] [00002368]: normal_req, address is 0x10d11790
+[info] 2368: lookup_tag is fetch req addr:0x10d11790
+[info] 2368: icache read address is 0x10d11790, size is 0x00000010, status is HIT
+[info] 2368: hit pc send to ibuffer,pc:0x10d11790,gid:1145.
+[info] [00002369]: normal_req, address is 0x10d117a0
+[info] 2369: lookup_tag is prefetch_req addr:0x10d11900
+[info] 2369: icache read address is 0x10d11900, size is 0x00000080, status is MISS
+[info] 2369: icache fetch request, id is 0x00001148, address is 0x10d11900
+[info] [00002370]: normal_req, address is 0x10d117a0
+[info] 2370: lookup_tag is fetch req addr:0x10d117a0
+[info] 2370: icache read address is 0x10d117a0, size is 0x00000010, status is HIT
+[info] 2370: hit pc send to ibuffer,pc:0x10d117a0,gid:1146.
+[info] 2370:ll_send_req_success,the req addr is:0x10d11900.
+[info] [00002371]: normal_req, address is 0x10d117b0
+[info] 2371: lookup_tag is prefetch_req addr:0x10d11980
+[info] 2371: icache read address is 0x10d11980, size is 0x00000080, status is MISS
+[info] 2371: icache fetch request, id is 0x0000114b, address is 0x10d11980
+[info] [00002372]: normal_req, address is 0x10d117b0
+[info] 2372: lookup_tag is fetch req addr:0x10d117b0
+[info] 2372: icache read address is 0x10d117b0, size is 0x00000010, status is HIT
+[info] 2372: hit pc send to ibuffer,pc:0x10d117b0,gid:1147.
+[info] 2372:ll_send_req_success,the req addr is:0x10d11980.
+[info] [00002373]: normal_req, address is 0x10d117c0
+[info] 2373: lookup_tag is fetch req addr:0x10d117c0
+[info] 2373: icache read address is 0x10d117c0, size is 0x00000010, status is HIT
+[info] 2373: hit pc send to ibuffer,pc:0x10d117c0,gid:114a.
+[info] [00002374]: normal_req, address is 0x10d117d0
+[info] 2374: lookup_tag is fetch req addr:0x10d117d0
+[info] 2374: icache read address is 0x10d117d0, size is 0x00000010, status is HIT
+[info] 2374: hit pc send to ibuffer,pc:0x10d117d0,gid:114d.
+[info] [00002375]: normal_req, address is 0x10d117e0
+[info] 2375: lookup_tag is fetch req addr:0x10d117e0
+[info] 2375: icache read address is 0x10d117e0, size is 0x00000010, status is HIT
+[info] 2375: hit pc send to ibuffer,pc:0x10d117e0,gid:114e.
+[info] [00002376]: normal_req, address is 0x10d117f0
+[info] 2376: lookup_tag is fetch req addr:0x10d117f0
+[info] 2376: icache read address is 0x10d117f0, size is 0x00000010, status is HIT
+[info] 2376: hit pc send to ibuffer,pc:0x10d117f0,gid:114f.
+[info] [00002377]: normal_req, address is 0x10d11800
+[info] 2377: lookup_tag is fetch req addr:0x10d11800
+[info] 2377: icache read address is 0x10d11800, size is 0x00000010, status is MISS
+[info] 2377: icache fetch request, id is 0x00001152, address is 0x10d11800
+[debug] 2377: icache prefetch addr is 0x10d11880
+[debug] 2377: icache prefetch addr is 0x10d11900
+[debug] 2377: icache prefetch addr is 0x10d11980
+[info] 2378: lookup_tag is prefetch_req addr:0x10d11880
+[info] 2378: icache read address is 0x10d11880, size is 0x00000080, status is MISS
+[info] 2378: icache fetch request, id is 0x00001157, address is 0x10d11880
+[debug] 2378:erase_ongoing_req,the req addr is:0x10d11800.
+[info] 2379: lookup_tag is prefetch_req addr:0x10d11900
+[info] 2379: icache read address is 0x10d11900, size is 0x00000080, status is MISS
+[info] 2379: icache fetch request, id is 0x00001159, address is 0x10d11900
+[debug] 2379:erase_ongoing_req,the req addr is:0x10d11880.
+[info] 2380: lookup_tag is prefetch_req addr:0x10d11980
+[info] 2380: icache read address is 0x10d11980, size is 0x00000080, status is MISS
+[info] 2380: icache fetch request, id is 0x0000115b, address is 0x10d11980
+[debug] 2380:erase_ongoing_req,the req addr is:0x10d11900.
+[debug] 2381:erase_ongoing_req,the req addr is:0x10d11980.
+[info] 2721:recv_ll_rep_succcess,the rsp addr is:0x10d11880.
+[info] [00002721]: icache refill acknowledge, id is 0x00001144, address is 0x10d11880,setIdx:49, wayId:0
+[info] [00002721]: add to  refill_map, rsp_addr:10d11880,tag_addr: 0x00008688
+[info] 2722:recv_ll_rep_succcess,the rsp addr is:0x10d11800.
+[info] [00002722]: icache refill acknowledge, id is 0x00001140, address is 0x10d11800,setIdx:48, wayId:0
+[info] [00002722]: add to  refill_map, rsp_addr:10d11800,tag_addr: 0x00008688
+[info] 2722:refill pc send to ibuffer,pc:0x10d11800,gid:1150.
+[info] [00002723]: normal_req, address is 0x10d11810
+[info] 2723: lookup_tag is fetch req addr:0x10d11810
+[info] 2723: icache read address is 0x10d11810, size is 0x00000010, status is HIT
+[info] 2723: hit pc send to ibuffer,pc:0x10d11810,gid:1151.
+[info] [00002724]: normal_req, address is 0x10d11820
+[info] 2724: lookup_tag is fetch req addr:0x10d11820
+[info] 2724: icache read address is 0x10d11820, size is 0x00000010, status is HIT
+[info] 2724: hit pc send to ibuffer,pc:0x10d11820,gid:1156.
+[info] [00002725]: normal_req, address is 0x10d11830
+[info] 2725: lookup_tag is fetch req addr:0x10d11830
+[info] 2725: icache read address is 0x10d11830, size is 0x00000010, status is HIT
+[info] 2725: hit pc send to ibuffer,pc:0x10d11830,gid:12d4.
+[info] 2727:recv_ll_rep_succcess,the rsp addr is:0x10d11900.
+[info] [00002727]: icache refill acknowledge, id is 0x00001148, address is 0x10d11900,setIdx:50, wayId:0
+[info] [00002727]: add to  refill_map, rsp_addr:10d11900,tag_addr: 0x00008688
+[info] 2728:recv_ll_rep_succcess,the rsp addr is:0x10d11980.
+[info] [00002728]: icache refill acknowledge, id is 0x0000114b, address is 0x10d11980,setIdx:51, wayId:0
+[info] [00002728]: add to  refill_map, rsp_addr:10d11980,tag_addr: 0x00008688
+[info] [00002729]: normal_req, address is 0x10d117e0
+[info] 2729: lookup_tag is fetch req addr:0x10d117e0
+[info] 2729: icache read address is 0x10d117e0, size is 0x00000010, status is HIT
+[info] 2729: hit pc send to ibuffer,pc:0x10d117e0,gid:12d8.
+[info] [00002730]: normal_req, address is 0x10d117f0
+[info] 2730: lookup_tag is fetch req addr:0x10d117f0
+[info] 2730: icache read address is 0x10d117f0, size is 0x00000010, status is HIT
+[info] 2730: hit pc send to ibuffer,pc:0x10d117f0,gid:12d9.
+[info] [00002731]: normal_req, address is 0x10d11800
+[info] 2731: lookup_tag is fetch req addr:0x10d11800
+[info] 2731: icache read address is 0x10d11800, size is 0x00000010, status is HIT
+[info] 2731: hit pc send to ibuffer,pc:0x10d11800,gid:12da.
+[info] [00002732]: normal_req, address is 0x10d11810
+[info] 2732: lookup_tag is fetch req addr:0x10d11810
+[info] 2732: icache read address is 0x10d11810, size is 0x00000010, status is HIT
+[info] 2732: hit pc send to ibuffer,pc:0x10d11810,gid:12db.
+[info] [00002733]: normal_req, address is 0x10d11820
+[info] 2733: lookup_tag is fetch req addr:0x10d11820
+[info] 2733: icache read address is 0x10d11820, size is 0x00000010, status is HIT
+[info] 2733: hit pc send to ibuffer,pc:0x10d11820,gid:12dc.
+[info] [00002734]: normal_req, address is 0x10d11830
+[info] 2734: lookup_tag is fetch req addr:0x10d11830
+[info] 2734: icache read address is 0x10d11830, size is 0x00000010, status is HIT
+[info] 2734: hit pc send to ibuffer,pc:0x10d11830,gid:12dd.
+[info] [00002735]: normal_req, address is 0x10d11840
+[info] 2735: lookup_tag is fetch req addr:0x10d11840
+[info] 2735: icache read address is 0x10d11840, size is 0x00000010, status is HIT
+[info] 2735: hit pc send to ibuffer,pc:0x10d11840,gid:12de.
+[info] [00002736]: normal_req, address is 0x10d11850
+[info] 2736: lookup_tag is fetch req addr:0x10d11850
+[info] 2736: icache read address is 0x10d11850, size is 0x00000010, status is HIT
+[info] 2736: hit pc send to ibuffer,pc:0x10d11850,gid:12df.
+[info] [00002737]: normal_req, address is 0x10d11860
+[info] 2737: lookup_tag is fetch req addr:0x10d11860
+[info] 2737: icache read address is 0x10d11860, size is 0x00000010, status is HIT
+[info] 2737: hit pc send to ibuffer,pc:0x10d11860,gid:12e0.
+[info] [00002738]: normal_req, address is 0x10d11870
+[info] 2738: lookup_tag is fetch req addr:0x10d11870
+[info] 2738: icache read address is 0x10d11870, size is 0x00000010, status is HIT
+[info] 2738: hit pc send to ibuffer,pc:0x10d11870,gid:12e1.
+[info] [00002739]: normal_req, address is 0x10d11880
+[info] 2739: lookup_tag is fetch req addr:0x10d11880
+[info] 2739: icache read address is 0x10d11880, size is 0x00000010, status is HIT
+[info] 2739: hit pc send to ibuffer,pc:0x10d11880,gid:12e2.
+[info] [00002741]: normal_req, address is 0x10d117e0
+[info] 2741: lookup_tag is fetch req addr:0x10d117e0
+[info] 2741: icache read address is 0x10d117e0, size is 0x00000010, status is HIT
+[info] 2741: hit pc send to ibuffer,pc:0x10d117e0,gid:12e6.
+[info] [00002742]: normal_req, address is 0x10d117f0
+[info] 2742: lookup_tag is fetch req addr:0x10d117f0
+[info] 2742: icache read address is 0x10d117f0, size is 0x00000010, status is HIT
+[info] 2742: hit pc send to ibuffer,pc:0x10d117f0,gid:12e8.
+[info] [00002743]: normal_req, address is 0x10d11800
+[info] 2743: lookup_tag is fetch req addr:0x10d11800
+[info] 2743: icache read address is 0x10d11800, size is 0x00000010, status is HIT
+[info] 2743: hit pc send to ibuffer,pc:0x10d11800,gid:12ea.
+[info] [00002744]: normal_req, address is 0x10d11810
+[info] 2744: lookup_tag is fetch req addr:0x10d11810
+[info] 2744: icache read address is 0x10d11810, size is 0x00000010, status is HIT
+[info] 2744: hit pc send to ibuffer,pc:0x10d11810,gid:12ec.
+[info] [00002745]: normal_req, address is 0x10d11820
+[info] 2745: lookup_tag is fetch req addr:0x10d11820
+[info] 2745: icache read address is 0x10d11820, size is 0x00000010, status is HIT
+[info] 2745: hit pc send to ibuffer,pc:0x10d11820,gid:12ee.
+[info] [00002746]: normal_req, address is 0x10d11830
+[info] 2746: lookup_tag is fetch req addr:0x10d11830
+[info] 2746: icache read address is 0x10d11830, size is 0x00000010, status is HIT
+[info] 2746: hit pc send to ibuffer,pc:0x10d11830,gid:12f0.
+[info] [00002747]: normal_req, address is 0x10d11840
+[info] 2747: lookup_tag is fetch req addr:0x10d11840
+[info] 2747: icache read address is 0x10d11840, size is 0x00000010, status is HIT
+[info] 2747: hit pc send to ibuffer,pc:0x10d11840,gid:12f2.
+[info] [00002748]: normal_req, address is 0x10d11850
+[info] 2748: lookup_tag is fetch req addr:0x10d11850
+[info] 2748: icache read address is 0x10d11850, size is 0x00000010, status is HIT
+[info] 2748: hit pc send to ibuffer,pc:0x10d11850,gid:12f3.
+[info] [00002749]: normal_req, address is 0x10d11860
+[info] 2749: lookup_tag is fetch req addr:0x10d11860
+[info] 2749: icache read address is 0x10d11860, size is 0x00000010, status is HIT
+[info] 2749: hit pc send to ibuffer,pc:0x10d11860,gid:12f4.
+[info] [00002750]: normal_req, address is 0x10d11870
+[info] 2750: lookup_tag is fetch req addr:0x10d11870
+[info] 2750: icache read address is 0x10d11870, size is 0x00000010, status is HIT
+[info] 2750: hit pc send to ibuffer,pc:0x10d11870,gid:12f5.
+[info] [00002751]: normal_req, address is 0x10d11880
+[info] 2751: lookup_tag is fetch req addr:0x10d11880
+[info] 2751: icache read address is 0x10d11880, size is 0x00000010, status is HIT
+[info] 2751: hit pc send to ibuffer,pc:0x10d11880,gid:12f6.
+[info] [00002753]: normal_req, address is 0x10d117e0
+[info] 2753: lookup_tag is fetch req addr:0x10d117e0
+[info] 2753: icache read address is 0x10d117e0, size is 0x00000010, status is HIT
+[info] 2753: hit pc send to ibuffer,pc:0x10d117e0,gid:12f9.
+[info] [00002754]: normal_req, address is 0x10d117f0
+[info] 2754: lookup_tag is fetch req addr:0x10d117f0
+[info] 2754: icache read address is 0x10d117f0, size is 0x00000010, status is HIT
+[info] 2754: hit pc send to ibuffer,pc:0x10d117f0,gid:12fb.
+[info] [00002755]: normal_req, address is 0x10d11800
+[info] 2755: lookup_tag is fetch req addr:0x10d11800
+[info] 2755: icache read address is 0x10d11800, size is 0x00000010, status is HIT
+[info] 2755: hit pc send to ibuffer,pc:0x10d11800,gid:12fd.
+[info] [00002756]: normal_req, address is 0x10d11810
+[info] 2756: lookup_tag is fetch req addr:0x10d11810
+[info] 2756: icache read address is 0x10d11810, size is 0x00000010, status is HIT
+[info] 2756: hit pc send to ibuffer,pc:0x10d11810,gid:12ff.
+[info] [00002757]: normal_req, address is 0x10d11820
+[info] 2757: lookup_tag is fetch req addr:0x10d11820
+[info] 2757: icache read address is 0x10d11820, size is 0x00000010, status is HIT
+[info] 2757: hit pc send to ibuffer,pc:0x10d11820,gid:1301.
+[info] [00002758]: normal_req, address is 0x10d11830
+[info] 2758: lookup_tag is fetch req addr:0x10d11830
+[info] 2758: icache read address is 0x10d11830, size is 0x00000010, status is HIT
+[info] 2758: hit pc send to ibuffer,pc:0x10d11830,gid:1303.
+[info] [00002759]: normal_req, address is 0x10d11840
+[info] 2759: lookup_tag is fetch req addr:0x10d11840
+[info] 2759: icache read address is 0x10d11840, size is 0x00000010, status is HIT
+[info] 2759: hit pc send to ibuffer,pc:0x10d11840,gid:1305.
+[info] [00002760]: normal_req, address is 0x10d11850
+[info] 2760: lookup_tag is fetch req addr:0x10d11850
+[info] 2760: icache read address is 0x10d11850, size is 0x00000010, status is HIT
+[info] 2760: hit pc send to ibuffer,pc:0x10d11850,gid:1307.
+[info] [00002761]: normal_req, address is 0x10d11860
+[info] 2761: lookup_tag is fetch req addr:0x10d11860
+[info] 2761: icache read address is 0x10d11860, size is 0x00000010, status is HIT
+[info] 2761: hit pc send to ibuffer,pc:0x10d11860,gid:1308.
+[info] [00002762]: normal_req, address is 0x10d11870
+[info] 2762: lookup_tag is fetch req addr:0x10d11870
+[info] 2762: icache read address is 0x10d11870, size is 0x00000010, status is HIT
+[info] 2762: hit pc send to ibuffer,pc:0x10d11870,gid:1309.
+[info] [00002763]: normal_req, address is 0x10d11880
+[info] 2763: lookup_tag is fetch req addr:0x10d11880
+[info] 2763: icache read address is 0x10d11880, size is 0x00000010, status is HIT
+[info] 2763: hit pc send to ibuffer,pc:0x10d11880,gid:130a.
+[info] [00002764]: normal_req, address is 0x10d11890
+[info] 2764: lookup_tag is fetch req addr:0x10d11890
+[info] 2764: icache read address is 0x10d11890, size is 0x00000010, status is HIT
+[info] 2764: hit pc send to ibuffer,pc:0x10d11890,gid:130b.
+[info] [00002765]: normal_req, address is 0x10d118a0
+[info] 2765: lookup_tag is fetch req addr:0x10d118a0
+[info] 2765: icache read address is 0x10d118a0, size is 0x00000010, status is HIT
+[info] 2765: hit pc send to ibuffer,pc:0x10d118a0,gid:130d.
+[info] [00002766]: normal_req, address is 0x10d118b0
+[info] 2766: lookup_tag is fetch req addr:0x10d118b0
+[info] 2766: icache read address is 0x10d118b0, size is 0x00000010, status is HIT
+[info] 2766: hit pc send to ibuffer,pc:0x10d118b0,gid:130f.
+[info] [00002767]: normal_req, address is 0x10d118c0
+[info] 2767: lookup_tag is fetch req addr:0x10d118c0
+[info] 2767: icache read address is 0x10d118c0, size is 0x00000010, status is HIT
+[info] 2767: hit pc send to ibuffer,pc:0x10d118c0,gid:1311.
+[info] [00002778]: normal_req, address is 0x10d118d0
+[info] 2778: lookup_tag is fetch req addr:0x10d118d0
+[info] 2778: icache read address is 0x10d118d0, size is 0x00000010, status is HIT
+[info] 2778: hit pc send to ibuffer,pc:0x10d118d0,gid:1319.
+[info] [00002779]: normal_req, address is 0x10d118e0
+[info] 2779: lookup_tag is fetch req addr:0x10d118e0
+[info] 2779: icache read address is 0x10d118e0, size is 0x00000010, status is HIT
+[info] 2779: hit pc send to ibuffer,pc:0x10d118e0,gid:131b.
+[info] [00002780]: normal_req, address is 0x10d118f0
+[info] 2780: lookup_tag is fetch req addr:0x10d118f0
+[info] 2780: icache read address is 0x10d118f0, size is 0x00000010, status is HIT
+[info] 2780: hit pc send to ibuffer,pc:0x10d118f0,gid:131d.
+[info] [00002805]: normal_req, address is 0x10d11900
+[info] 2805: lookup_tag is fetch req addr:0x10d11900
+[info] 2805: icache read address is 0x10d11900, size is 0x00000010, status is HIT
+[info] 2805: hit pc send to ibuffer,pc:0x10d11900,gid:1322.
+[info] [00002806]: normal_req, address is 0x10d11910
+[info] 2806: lookup_tag is fetch req addr:0x10d11910
+[info] 2806: icache read address is 0x10d11910, size is 0x00000010, status is HIT
+[info] 2806: hit pc send to ibuffer,pc:0x10d11910,gid:1323.
+[info] [00002807]: normal_req, address is 0x10d11920
+[info] 2807: lookup_tag is fetch req addr:0x10d11920
+[info] 2807: icache read address is 0x10d11920, size is 0x00000010, status is HIT
+[info] 2807: hit pc send to ibuffer,pc:0x10d11920,gid:1324.
+[info] [00002823]: normal_req, address is 0x10d11930
+[info] 2823: lookup_tag is fetch req addr:0x10d11930
+[info] 2823: icache read address is 0x10d11930, size is 0x00000010, status is HIT
+[info] 2823: hit pc send to ibuffer,pc:0x10d11930,gid:1325.
+[info] [00002824]: normal_req, address is 0x10d11940
+[info] 2824: lookup_tag is fetch req addr:0x10d11940
+[info] 2824: icache read address is 0x10d11940, size is 0x00000010, status is HIT
+[info] 2824: hit pc send to ibuffer,pc:0x10d11940,gid:1326.
+[info] [00002825]: normal_req, address is 0x10d11950
+[info] 2825: lookup_tag is fetch req addr:0x10d11950
+[info] 2825: icache read address is 0x10d11950, size is 0x00000010, status is HIT
+[info] 2825: hit pc send to ibuffer,pc:0x10d11950,gid:1327.
+[info] [00002841]: normal_req, address is 0x10d11960
+[info] 2841: lookup_tag is fetch req addr:0x10d11960
+[info] 2841: icache read address is 0x10d11960, size is 0x00000010, status is HIT
+[info] 2841: hit pc send to ibuffer,pc:0x10d11960,gid:1328.
+[info] [00002842]: normal_req, address is 0x10d11970
+[info] 2842: lookup_tag is fetch req addr:0x10d11970
+[info] 2842: icache read address is 0x10d11970, size is 0x00000010, status is HIT
+[info] 2842: hit pc send to ibuffer,pc:0x10d11970,gid:1329.
+[info] [00002843]: normal_req, address is 0x10d11980
+[info] 2843: lookup_tag is fetch req addr:0x10d11980
+[info] 2843: icache read address is 0x10d11980, size is 0x00000010, status is HIT
+[info] 2843: hit pc send to ibuffer,pc:0x10d11980,gid:132a.
+[info] [00002859]: normal_req, address is 0x10d11990
+[info] 2859: lookup_tag is fetch req addr:0x10d11990
+[info] 2859: icache read address is 0x10d11990, size is 0x00000010, status is HIT
+[info] 2859: hit pc send to ibuffer,pc:0x10d11990,gid:132b.
+[info] [00002860]: normal_req, address is 0x10d119a0
+[info] 2860: lookup_tag is fetch req addr:0x10d119a0
+[info] 2860: icache read address is 0x10d119a0, size is 0x00000010, status is HIT
+[info] 2860: hit pc send to ibuffer,pc:0x10d119a0,gid:132c.
+[info] [00002861]: normal_req, address is 0x10d119b0
+[info] 2861: lookup_tag is fetch req addr:0x10d119b0
+[info] 2861: icache read address is 0x10d119b0, size is 0x00000010, status is HIT
+[info] 2861: hit pc send to ibuffer,pc:0x10d119b0,gid:132d.
+[info] [00002865]: normal_req, address is 0x10d1193c
+[info] 2865: lookup_tag is fetch req addr:0x10d1193c
+[info] 2865: icache read address is 0x10d1193c, size is 0x00000004, status is HIT
+[info] 2865: hit pc send to ibuffer,pc:0x10d1193c,gid:132e.
+[info] [00002866]: normal_req, address is 0x10d11940
+[info] 2866: lookup_tag is fetch req addr:0x10d11940
+[info] 2866: icache read address is 0x10d11940, size is 0x00000010, status is HIT
+[info] 2866: hit pc send to ibuffer,pc:0x10d11940,gid:132f.
+[info] [00002867]: normal_req, address is 0x10d11950
+[info] 2867: lookup_tag is fetch req addr:0x10d11950
+[info] 2867: icache read address is 0x10d11950, size is 0x00000010, status is HIT
+[info] 2867: hit pc send to ibuffer,pc:0x10d11950,gid:1330.
+[info] [00002868]: normal_req, address is 0x10d11960
+[info] 2868: lookup_tag is fetch req addr:0x10d11960
+[info] 2868: icache read address is 0x10d11960, size is 0x00000010, status is HIT
+[info] 2868: hit pc send to ibuffer,pc:0x10d11960,gid:1331.
+[info] [00002869]: normal_req, address is 0x10d11970
+[info] 2869: lookup_tag is fetch req addr:0x10d11970
+[info] 2869: icache read address is 0x10d11970, size is 0x00000010, status is HIT
+[info] 2869: hit pc send to ibuffer,pc:0x10d11970,gid:1332.
+[info] [00002870]: normal_req, address is 0x10d11980
+[info] 2870: lookup_tag is fetch req addr:0x10d11980
+[info] 2870: icache read address is 0x10d11980, size is 0x00000010, status is HIT
+[info] 2870: hit pc send to ibuffer,pc:0x10d11980,gid:1333.
+[info] [00002871]: normal_req, address is 0x10d11990
+[info] 2871: lookup_tag is fetch req addr:0x10d11990
+[info] 2871: icache read address is 0x10d11990, size is 0x00000010, status is HIT
+[info] 2871: hit pc send to ibuffer,pc:0x10d11990,gid:1334.
+[info] [00002872]: normal_req, address is 0x10d119a0
+[info] 2872: lookup_tag is fetch req addr:0x10d119a0
+[info] 2872: icache read address is 0x10d119a0, size is 0x00000010, status is HIT
+[info] 2872: hit pc send to ibuffer,pc:0x10d119a0,gid:1335.
+[info] [00002873]: normal_req, address is 0x10d119b0
+[info] 2873: lookup_tag is fetch req addr:0x10d119b0
+[info] 2873: icache read address is 0x10d119b0, size is 0x00000010, status is HIT
+[info] 2873: hit pc send to ibuffer,pc:0x10d119b0,gid:1336.
+[info] [00002874]: normal_req, address is 0x10d119c0
+[info] 2874: lookup_tag is fetch req addr:0x10d119c0
+[info] 2874: icache read address is 0x10d119c0, size is 0x00000010, status is HIT
+[info] 2874: hit pc send to ibuffer,pc:0x10d119c0,gid:1337.
+[info] [00002875]: normal_req, address is 0x10d119d0
+[info] 2875: lookup_tag is fetch req addr:0x10d119d0
+[info] 2875: icache read address is 0x10d119d0, size is 0x00000010, status is HIT
+[info] 2875: hit pc send to ibuffer,pc:0x10d119d0,gid:1338.
+[info] [00002876]: normal_req, address is 0x10d119e0
+[info] 2876: lookup_tag is fetch req addr:0x10d119e0
+[info] 2876: icache read address is 0x10d119e0, size is 0x00000010, status is HIT
+[info] 2876: hit pc send to ibuffer,pc:0x10d119e0,gid:1339.
+[info] [00002877]: normal_req, address is 0x10d119f0
+[info] 2877: lookup_tag is fetch req addr:0x10d119f0
+[info] 2877: icache read address is 0x10d119f0, size is 0x00000010, status is HIT
+[info] 2877: hit pc send to ibuffer,pc:0x10d119f0,gid:133a.
+[info] [00002878]: normal_req, address is 0x10d11a00
+[info] 2878: lookup_tag is fetch req addr:0x10d11a00
+[info] 2878: icache read address is 0x10d11a00, size is 0x00000010, status is MISS
+[info] 2878: icache fetch request, id is 0x0000133c, address is 0x10d11a00
+[debug] 2878: icache prefetch addr is 0x10d11a80
+[debug] 2878: icache prefetch addr is 0x10d11b00
+[debug] 2878: icache prefetch addr is 0x10d11b80
+[info] 2879:ll_send_req_success,the req addr is:0x10d11a00.
+[info] 2884: lookup_tag is prefetch_req addr:0x10d11a80
+[info] 2884: icache read address is 0x10d11a80, size is 0x00000080, status is MISS
+[info] 2884: icache fetch request, id is 0x00001342, address is 0x10d11a80
+[info] 2885: lookup_tag is prefetch_req addr:0x10d11b00
+[info] 2885: icache read address is 0x10d11b00, size is 0x00000080, status is MISS
+[info] 2885: icache fetch request, id is 0x00001344, address is 0x10d11b00
+[info] 2885:ll_send_req_success,the req addr is:0x10d11a80.
+[info] 2886: lookup_tag is prefetch_req addr:0x10d11b80
+[info] 2886: icache read address is 0x10d11b80, size is 0x00000080, status is MISS
+[info] 2886: icache fetch request, id is 0x00001346, address is 0x10d11b80
+[info] 2886:ll_send_req_success,the req addr is:0x10d11b00.
+[info] 2887:ll_send_req_success,the req addr is:0x10d11b80.
+[info] [00002895]: normal_req, address is 0x10d1197c
+[info] 2895: lookup_tag is fetch req addr:0x10d1197c
+[info] 2895: icache read address is 0x10d1197c, size is 0x00000004, status is HIT
+[info] 2895: hit pc send to ibuffer,pc:0x10d1197c,gid:134e.
+[info] [00002896]: normal_req, address is 0x10d11980
+[info] 2896: lookup_tag is fetch req addr:0x10d11980
+[info] 2896: icache read address is 0x10d11980, size is 0x00000010, status is HIT
+[info] 2896: hit pc send to ibuffer,pc:0x10d11980,gid:134f.
+[info] [00002897]: normal_req, address is 0x10d11990
+[info] 2897: lookup_tag is fetch req addr:0x10d11990
+[info] 2897: icache read address is 0x10d11990, size is 0x00000010, status is HIT
+[info] 2897: hit pc send to ibuffer,pc:0x10d11990,gid:1350.
+[info] [00002898]: normal_req, address is 0x10d119a0
+[info] 2898: lookup_tag is fetch req addr:0x10d119a0
+[info] 2898: icache read address is 0x10d119a0, size is 0x00000010, status is HIT
+[info] 2898: hit pc send to ibuffer,pc:0x10d119a0,gid:1351.
+[info] [00002899]: normal_req, address is 0x10d119b0
+[info] 2899: lookup_tag is fetch req addr:0x10d119b0
+[info] 2899: icache read address is 0x10d119b0, size is 0x00000010, status is HIT
+[info] 2899: hit pc send to ibuffer,pc:0x10d119b0,gid:1352.
+[info] [00002900]: normal_req, address is 0x10d119c0
+[info] 2900: lookup_tag is fetch req addr:0x10d119c0
+[info] 2900: icache read address is 0x10d119c0, size is 0x00000010, status is HIT
+[info] 2900: hit pc send to ibuffer,pc:0x10d119c0,gid:1353.
+[info] [00002901]: normal_req, address is 0x10d119d0
+[info] 2901: lookup_tag is fetch req addr:0x10d119d0
+[info] 2901: icache read address is 0x10d119d0, size is 0x00000010, status is HIT
+[info] 2901: hit pc send to ibuffer,pc:0x10d119d0,gid:1354.
+[info] [00002902]: normal_req, address is 0x10d119e0
+[info] 2902: lookup_tag is fetch req addr:0x10d119e0
+[info] 2902: icache read address is 0x10d119e0, size is 0x00000010, status is HIT
+[info] 2902: hit pc send to ibuffer,pc:0x10d119e0,gid:1355.
+[info] [00002903]: normal_req, address is 0x10d119f0
+[info] 2903: lookup_tag is fetch req addr:0x10d119f0
+[info] 2903: icache read address is 0x10d119f0, size is 0x00000010, status is HIT
+[info] 2903: hit pc send to ibuffer,pc:0x10d119f0,gid:1356.
+[info] [00002904]: normal_req, address is 0x10d11a00
+[info] 2904: lookup_tag is fetch req addr:0x10d11a00
+[info] 2904: icache read address is 0x10d11a00, size is 0x00000010, status is MISS
+[info] 2904: icache fetch request, id is 0x00001359, address is 0x10d11a00
+[debug] 2904: icache prefetch addr is 0x10d11a80
+[debug] 2904: icache prefetch addr is 0x10d11b00
+[debug] 2904: icache prefetch addr is 0x10d11b80
+[info] 2905: lookup_tag is prefetch_req addr:0x10d11a80
+[info] 2905: icache read address is 0x10d11a80, size is 0x00000080, status is MISS
+[info] 2905: icache fetch request, id is 0x0000135e, address is 0x10d11a80
+[debug] 2905:erase_ongoing_req,the req addr is:0x10d11a00.
+[debug] 2906:erase_ongoing_req,the req addr is:0x10d11a80.
+[info] [00002907]: normal_req, address is 0x10d1197c
+[info] 2907: lookup_tag is fetch req addr:0x10d1197c
+[info] 2907: icache read address is 0x10d1197c, size is 0x00000004, status is HIT
+[info] 2907: hit pc send to ibuffer,pc:0x10d1197c,gid:1360.
+[info] [00002908]: normal_req, address is 0x10d11980
+[info] 2908: lookup_tag is prefetch_req addr:0x10d11b00
+[info] 2908: icache read address is 0x10d11b00, size is 0x00000080, status is MISS
+[info] 2908: icache fetch request, id is 0x00001365, address is 0x10d11b00
+[info] [00002909]: normal_req, address is 0x10d11980
+[info] 2909: lookup_tag is fetch req addr:0x10d11980
+[info] 2909: icache read address is 0x10d11980, size is 0x00000010, status is HIT
+[info] 2909: hit pc send to ibuffer,pc:0x10d11980,gid:1362.
+[debug] 2909:erase_ongoing_req,the req addr is:0x10d11b00.
+[info] [00002910]: normal_req, address is 0x10d11990
+[info] 2910: lookup_tag is prefetch_req addr:0x10d11b80
+[info] 2910: icache read address is 0x10d11b80, size is 0x00000080, status is MISS
+[info] 2910: icache fetch request, id is 0x0000136a, address is 0x10d11b80
+[info] [00002911]: normal_req, address is 0x10d11990
+[info] 2911: lookup_tag is fetch req addr:0x10d11990
+[info] 2911: icache read address is 0x10d11990, size is 0x00000010, status is HIT
+[info] 2911: hit pc send to ibuffer,pc:0x10d11990,gid:1364.
+[debug] 2911:erase_ongoing_req,the req addr is:0x10d11b80.
+[info] [00002912]: normal_req, address is 0x10d119a0
+[info] 2912: lookup_tag is fetch req addr:0x10d119a0
+[info] 2912: icache read address is 0x10d119a0, size is 0x00000010, status is HIT
+[info] 2912: hit pc send to ibuffer,pc:0x10d119a0,gid:1369.
+[info] [00002913]: normal_req, address is 0x10d119b0
+[info] 2913: lookup_tag is fetch req addr:0x10d119b0
+[info] 2913: icache read address is 0x10d119b0, size is 0x00000010, status is HIT
+[info] 2913: hit pc send to ibuffer,pc:0x10d119b0,gid:136e.
+[info] [00002914]: normal_req, address is 0x10d119c0
+[info] 2914: lookup_tag is fetch req addr:0x10d119c0
+[info] 2914: icache read address is 0x10d119c0, size is 0x00000010, status is HIT
+[info] 2914: hit pc send to ibuffer,pc:0x10d119c0,gid:1370.
+[info] [00002915]: normal_req, address is 0x10d119d0
+[info] 2915: lookup_tag is fetch req addr:0x10d119d0
+[info] 2915: icache read address is 0x10d119d0, size is 0x00000010, status is HIT
+[info] 2915: hit pc send to ibuffer,pc:0x10d119d0,gid:1371.
+[info] [00002916]: normal_req, address is 0x10d119e0
+[info] 2916: lookup_tag is fetch req addr:0x10d119e0
+[info] 2916: icache read address is 0x10d119e0, size is 0x00000010, status is HIT
+[info] 2916: hit pc send to ibuffer,pc:0x10d119e0,gid:1372.
+[info] [00002917]: normal_req, address is 0x10d119f0
+[info] 2917: lookup_tag is fetch req addr:0x10d119f0
+[info] 2917: icache read address is 0x10d119f0, size is 0x00000010, status is HIT
+[info] 2917: hit pc send to ibuffer,pc:0x10d119f0,gid:1373.
+[info] [00002918]: normal_req, address is 0x10d11a00
+[info] 2918: lookup_tag is fetch req addr:0x10d11a00
+[info] 2918: icache read address is 0x10d11a00, size is 0x00000010, status is MISS
+[info] 2918: icache fetch request, id is 0x00001377, address is 0x10d11a00
+[debug] 2918: icache prefetch addr is 0x10d11a80
+[debug] 2918: icache prefetch addr is 0x10d11b00
+[debug] 2918: icache prefetch addr is 0x10d11b80
+[debug] 2919:erase_ongoing_req,the req addr is:0x10d11a00.
+[info] [00002920]: normal_req, address is 0x10d1197c
+[info] 2920: lookup_tag is prefetch_req addr:0x10d11a80
+[info] 2920: icache read address is 0x10d11a80, size is 0x00000080, status is MISS
+[info] 2920: icache fetch request, id is 0x0000137d, address is 0x10d11a80
+[info] [00002921]: normal_req, address is 0x10d1197c
+[info] 2921: lookup_tag is fetch req addr:0x10d1197c
+[info] 2921: icache read address is 0x10d1197c, size is 0x00000004, status is HIT
+[info] 2921: hit pc send to ibuffer,pc:0x10d1197c,gid:137b.
+[debug] 2921:erase_ongoing_req,the req addr is:0x10d11a80.
+[info] [00002922]: normal_req, address is 0x10d11980
+[info] 2922: lookup_tag is prefetch_req addr:0x10d11b00
+[info] 2922: icache read address is 0x10d11b00, size is 0x00000080, status is MISS
+[info] 2922: icache fetch request, id is 0x00001382, address is 0x10d11b00
+[info] [00002923]: normal_req, address is 0x10d11980
+[info] 2923: lookup_tag is fetch req addr:0x10d11980
+[info] 2923: icache read address is 0x10d11980, size is 0x00000010, status is HIT
+[info] 2923: hit pc send to ibuffer,pc:0x10d11980,gid:137c.
+[debug] 2923:erase_ongoing_req,the req addr is:0x10d11b00.
+[info] [00002924]: normal_req, address is 0x10d11990
+[info] 2924: lookup_tag is prefetch_req addr:0x10d11b80
+[info] 2924: icache read address is 0x10d11b80, size is 0x00000080, status is MISS
+[info] 2924: icache fetch request, id is 0x00001385, address is 0x10d11b80
+[info] [00002925]: normal_req, address is 0x10d11990
+[info] 2925: lookup_tag is fetch req addr:0x10d11990
+[info] 2925: icache read address is 0x10d11990, size is 0x00000010, status is HIT
+[info] 2925: hit pc send to ibuffer,pc:0x10d11990,gid:1381.
+[debug] 2925:erase_ongoing_req,the req addr is:0x10d11b80.
+[info] [00002926]: normal_req, address is 0x10d119a0
+[info] 2926: lookup_tag is fetch req addr:0x10d119a0
+[info] 2926: icache read address is 0x10d119a0, size is 0x00000010, status is HIT
+[info] 2926: hit pc send to ibuffer,pc:0x10d119a0,gid:1384.
+[info] [00002927]: normal_req, address is 0x10d119b0
+[info] 2927: lookup_tag is fetch req addr:0x10d119b0
+[info] 2927: icache read address is 0x10d119b0, size is 0x00000010, status is HIT
+[info] 2927: hit pc send to ibuffer,pc:0x10d119b0,gid:1389.
+[info] [00002928]: normal_req, address is 0x10d119c0
+[info] 2928: lookup_tag is fetch req addr:0x10d119c0
+[info] 2928: icache read address is 0x10d119c0, size is 0x00000010, status is HIT
+[info] 2928: hit pc send to ibuffer,pc:0x10d119c0,gid:138a.
+[info] [00002929]: normal_req, address is 0x10d119d0
+[info] 2929: lookup_tag is fetch req addr:0x10d119d0
+[info] 2929: icache read address is 0x10d119d0, size is 0x00000010, status is HIT
+[info] 2929: hit pc send to ibuffer,pc:0x10d119d0,gid:138b.
+[info] [00002930]: normal_req, address is 0x10d119e0
+[info] 2930: lookup_tag is fetch req addr:0x10d119e0
+[info] 2930: icache read address is 0x10d119e0, size is 0x00000010, status is HIT
+[info] 2930: hit pc send to ibuffer,pc:0x10d119e0,gid:138d.
+[info] [00002931]: normal_req, address is 0x10d119f0
+[info] 2931: lookup_tag is fetch req addr:0x10d119f0
+[info] 2931: icache read address is 0x10d119f0, size is 0x00000010, status is HIT
+[info] 2931: hit pc send to ibuffer,pc:0x10d119f0,gid:138f.
+[info] [00002932]: normal_req, address is 0x10d11a00
+[info] 2932: lookup_tag is fetch req addr:0x10d11a00
+[info] 2932: icache read address is 0x10d11a00, size is 0x00000010, status is MISS
+[info] 2932: icache fetch request, id is 0x00001392, address is 0x10d11a00
+[debug] 2932: icache prefetch addr is 0x10d11a80
+[debug] 2932: icache prefetch addr is 0x10d11b00
+[debug] 2932: icache prefetch addr is 0x10d11b80
+[info] 2933: lookup_tag is prefetch_req addr:0x10d11a80
+[info] 2933: icache read address is 0x10d11a80, size is 0x00000080, status is MISS
+[info] 2933: icache fetch request, id is 0x00001398, address is 0x10d11a80
+[debug] 2933:erase_ongoing_req,the req addr is:0x10d11a00.
+[info] 2934: lookup_tag is prefetch_req addr:0x10d11b00
+[info] 2934: icache read address is 0x10d11b00, size is 0x00000080, status is MISS
+[info] 2934: icache fetch request, id is 0x0000139b, address is 0x10d11b00
+[debug] 2934:erase_ongoing_req,the req addr is:0x10d11a80.
+[info] 2935: lookup_tag is prefetch_req addr:0x10d11b80
+[info] 2935: icache read address is 0x10d11b80, size is 0x00000080, status is MISS
+[info] 2935: icache fetch request, id is 0x0000139d, address is 0x10d11b80
+[debug] 2935:erase_ongoing_req,the req addr is:0x10d11b00.
+[debug] 2936:erase_ongoing_req,the req addr is:0x10d11b80.
+[info] 3235:recv_ll_rep_succcess,the rsp addr is:0x10d11a00.
+[info] [00003235]: icache refill acknowledge, id is 0x0000133c, address is 0x10d11a00,setIdx:52, wayId:0
+[info] [00003235]: add to  refill_map, rsp_addr:10d11a00,tag_addr: 0x00008688
+[info] 3235:refill pc send to ibuffer,pc:0x10d11a00,gid:1390.
+[info] [00003236]: normal_req, address is 0x10d11a10
+[info] 3236: lookup_tag is fetch req addr:0x10d11a10
+[info] 3236: icache read address is 0x10d11a10, size is 0x00000010, status is HIT
+[info] 3236: hit pc send to ibuffer,pc:0x10d11a10,gid:1391.
+[info] [00003237]: normal_req, address is 0x10d11a20
+[info] 3237: lookup_tag is fetch req addr:0x10d11a20
+[info] 3237: icache read address is 0x10d11a20, size is 0x00000010, status is HIT
+[info] 3237: hit pc send to ibuffer,pc:0x10d11a20,gid:1397.
+[info] [00003238]: normal_req, address is 0x10d11a30
+[info] 3238: lookup_tag is fetch req addr:0x10d11a30
+[info] 3238: icache read address is 0x10d11a30, size is 0x00000010, status is HIT
+[info] 3238: hit pc send to ibuffer,pc:0x10d11a30,gid:14da.
+[info] 3240:recv_ll_rep_succcess,the rsp addr is:0x10d11a80.
+[info] [00003240]: icache refill acknowledge, id is 0x00001342, address is 0x10d11a80,setIdx:53, wayId:0
+[info] [00003240]: add to  refill_map, rsp_addr:10d11a80,tag_addr: 0x00008688
+[info] 3242:recv_ll_rep_succcess,the rsp addr is:0x10d11b00.
+[info] [00003242]: icache refill acknowledge, id is 0x00001344, address is 0x10d11b00,setIdx:54, wayId:0
+[info] [00003242]: add to  refill_map, rsp_addr:10d11b00,tag_addr: 0x00008688
+[info] [00003243]: normal_req, address is 0x10d11a40
+[info] 3243: lookup_tag is fetch req addr:0x10d11a40
+[info] 3243: icache read address is 0x10d11a40, size is 0x00000010, status is HIT
+[info] 3243: hit pc send to ibuffer,pc:0x10d11a40,gid:14db.
+[info] 3245:recv_ll_rep_succcess,the rsp addr is:0x10d11b80.
+[info] [00003245]: icache refill acknowledge, id is 0x00001346, address is 0x10d11b80,setIdx:55, wayId:0
+[info] [00003245]: add to  refill_map, rsp_addr:10d11b80,tag_addr: 0x00008688
+[info] [00003246]: normal_req, address is 0x10d11a50
+[info] 3246: lookup_tag is fetch req addr:0x10d11a50
+[info] 3246: icache read address is 0x10d11a50, size is 0x00000010, status is HIT
+[info] 3246: hit pc send to ibuffer,pc:0x10d11a50,gid:14dc.
+[info] [00003247]: normal_req, address is 0x10d11a60
+[info] 3247: lookup_tag is fetch req addr:0x10d11a60
+[info] 3247: icache read address is 0x10d11a60, size is 0x00000010, status is HIT
+[info] 3247: hit pc send to ibuffer,pc:0x10d11a60,gid:14e1.
+[info] [00003248]: normal_req, address is 0x10d11a70
+[info] 3248: lookup_tag is fetch req addr:0x10d11a70
+[info] 3248: icache read address is 0x10d11a70, size is 0x00000010, status is HIT
+[info] 3248: hit pc send to ibuffer,pc:0x10d11a70,gid:14e4.
+[info] [00003249]: normal_req, address is 0x10d11a80
+[info] 3249: lookup_tag is fetch req addr:0x10d11a80
+[info] 3249: icache read address is 0x10d11a80, size is 0x00000010, status is HIT
+[info] 3249: hit pc send to ibuffer,pc:0x10d11a80,gid:14e5.
+[info] [00003250]: normal_req, address is 0x10d11a90
+[info] 3250: lookup_tag is fetch req addr:0x10d11a90
+[info] 3250: icache read address is 0x10d11a90, size is 0x00000010, status is HIT
+[info] 3250: hit pc send to ibuffer,pc:0x10d11a90,gid:14e6.
+[info] [00003251]: normal_req, address is 0x10d11aa0
+[info] 3251: lookup_tag is fetch req addr:0x10d11aa0
+[info] 3251: icache read address is 0x10d11aa0, size is 0x00000010, status is HIT
+[info] 3251: hit pc send to ibuffer,pc:0x10d11aa0,gid:14e7.
+[info] [00003252]: normal_req, address is 0x10d11ab0
+[info] 3252: lookup_tag is fetch req addr:0x10d11ab0
+[info] 3252: icache read address is 0x10d11ab0, size is 0x00000010, status is HIT
+[info] 3252: hit pc send to ibuffer,pc:0x10d11ab0,gid:14e8.
+[info] [00003253]: normal_req, address is 0x10d11ac0
+[info] 3253: lookup_tag is fetch req addr:0x10d11ac0
+[info] 3253: icache read address is 0x10d11ac0, size is 0x00000010, status is HIT
+[info] 3253: hit pc send to ibuffer,pc:0x10d11ac0,gid:14e9.
+[info] [00003254]: normal_req, address is 0x10d11ad0
+[info] 3254: lookup_tag is fetch req addr:0x10d11ad0
+[info] 3254: icache read address is 0x10d11ad0, size is 0x00000010, status is HIT
+[info] 3254: hit pc send to ibuffer,pc:0x10d11ad0,gid:14ea.
+[info] [00003255]: normal_req, address is 0x10d11ae0
+[info] 3255: lookup_tag is fetch req addr:0x10d11ae0
+[info] 3255: icache read address is 0x10d11ae0, size is 0x00000010, status is HIT
+[info] 3255: hit pc send to ibuffer,pc:0x10d11ae0,gid:14eb.
+[info] [00003267]: normal_req, address is 0x10d11af4
+[info] 3267: lookup_tag is fetch req addr:0x10d11af4
+[info] 3267: icache read address is 0x10d11af4, size is 0x0000000c, status is HIT
+[info] 3267: hit pc send to ibuffer,pc:0x10d11af4,gid:14ec.
+[info] [00003268]: normal_req, address is 0x10d11b00
+[info] 3268: lookup_tag is fetch req addr:0x10d11b00
+[info] 3268: icache read address is 0x10d11b00, size is 0x00000010, status is HIT
+[info] 3268: hit pc send to ibuffer,pc:0x10d11b00,gid:14ed.
+[info] [00003269]: normal_req, address is 0x10d11b10
+[info] 3269: lookup_tag is fetch req addr:0x10d11b10
+[info] 3269: icache read address is 0x10d11b10, size is 0x00000010, status is HIT
+[info] 3269: hit pc send to ibuffer,pc:0x10d11b10,gid:14ee.
+[info] [00003287]: normal_req, address is 0x10d11b20
+[info] 3287: lookup_tag is fetch req addr:0x10d11b20
+[info] 3287: icache read address is 0x10d11b20, size is 0x00000010, status is HIT
+[info] 3287: hit pc send to ibuffer,pc:0x10d11b20,gid:14ef.
+[info] [00003288]: normal_req, address is 0x10d11b30
+[info] 3288: lookup_tag is fetch req addr:0x10d11b30
+[info] 3288: icache read address is 0x10d11b30, size is 0x00000010, status is HIT
+[info] 3288: hit pc send to ibuffer,pc:0x10d11b30,gid:14f0.
+[info] [00003289]: normal_req, address is 0x10d11b40
+[info] 3289: lookup_tag is fetch req addr:0x10d11b40
+[info] 3289: icache read address is 0x10d11b40, size is 0x00000010, status is HIT
+[info] 3289: hit pc send to ibuffer,pc:0x10d11b40,gid:14f1.
+[info] [00003290]: normal_req, address is 0x10d11b50
+[info] 3290: lookup_tag is fetch req addr:0x10d11b50
+[info] 3290: icache read address is 0x10d11b50, size is 0x00000010, status is HIT
+[info] 3290: hit pc send to ibuffer,pc:0x10d11b50,gid:14f2.
+[info] [00003304]: normal_req, address is 0x10d11ae0
+[info] 3304: lookup_tag is fetch req addr:0x10d11ae0
+[info] 3304: icache read address is 0x10d11ae0, size is 0x00000010, status is HIT
+[info] 3304: hit pc send to ibuffer,pc:0x10d11ae0,gid:14f3.
+[info] [00003305]: normal_req, address is 0x10d11af0
+[info] 3305: lookup_tag is fetch req addr:0x10d11af0
+[info] 3305: icache read address is 0x10d11af0, size is 0x00000010, status is HIT
+[info] 3305: hit pc send to ibuffer,pc:0x10d11af0,gid:14f4.
+[info] [00003306]: normal_req, address is 0x10d11b00
+[info] 3306: lookup_tag is fetch req addr:0x10d11b00
+[info] 3306: icache read address is 0x10d11b00, size is 0x00000010, status is HIT
+[info] 3306: hit pc send to ibuffer,pc:0x10d11b00,gid:14f5.
+[info] [00003307]: normal_req, address is 0x10d11b10
+[info] 3307: lookup_tag is fetch req addr:0x10d11b10
+[info] 3307: icache read address is 0x10d11b10, size is 0x00000010, status is HIT
+[info] 3307: hit pc send to ibuffer,pc:0x10d11b10,gid:14f6.
+[info] [00003308]: normal_req, address is 0x10d11b20
+[info] 3308: lookup_tag is fetch req addr:0x10d11b20
+[info] 3308: icache read address is 0x10d11b20, size is 0x00000010, status is HIT
+[info] 3308: hit pc send to ibuffer,pc:0x10d11b20,gid:14f7.
+[info] [00003309]: normal_req, address is 0x10d11b30
+[info] 3309: lookup_tag is fetch req addr:0x10d11b30
+[info] 3309: icache read address is 0x10d11b30, size is 0x00000010, status is HIT
+[info] 3309: hit pc send to ibuffer,pc:0x10d11b30,gid:14f8.
+[info] [00003310]: normal_req, address is 0x10d11b40
+[info] 3310: lookup_tag is fetch req addr:0x10d11b40
+[info] 3310: icache read address is 0x10d11b40, size is 0x00000010, status is HIT
+[info] 3310: hit pc send to ibuffer,pc:0x10d11b40,gid:14f9.
+[info] [00003311]: normal_req, address is 0x10d11b50
+[info] 3311: lookup_tag is fetch req addr:0x10d11b50
+[info] 3311: icache read address is 0x10d11b50, size is 0x00000010, status is HIT
+[info] 3311: hit pc send to ibuffer,pc:0x10d11b50,gid:14fa.
+[info] [00003312]: normal_req, address is 0x10d11b60
+[info] 3312: lookup_tag is fetch req addr:0x10d11b60
+[info] 3312: icache read address is 0x10d11b60, size is 0x00000010, status is HIT
+[info] 3312: hit pc send to ibuffer,pc:0x10d11b60,gid:14fb.
+[info] [00003313]: normal_req, address is 0x10d11b70
+[info] 3313: lookup_tag is fetch req addr:0x10d11b70
+[info] 3313: icache read address is 0x10d11b70, size is 0x00000010, status is HIT
+[info] 3313: hit pc send to ibuffer,pc:0x10d11b70,gid:14fc.
+[info] [00003314]: normal_req, address is 0x10d11b80
+[info] 3314: lookup_tag is fetch req addr:0x10d11b80
+[info] 3314: icache read address is 0x10d11b80, size is 0x00000010, status is HIT
+[info] 3314: hit pc send to ibuffer,pc:0x10d11b80,gid:14fd.
+[info] [00003315]: normal_req, address is 0x10d11b90
+[info] 3315: lookup_tag is fetch req addr:0x10d11b90
+[info] 3315: icache read address is 0x10d11b90, size is 0x00000010, status is HIT
+[info] 3315: hit pc send to ibuffer,pc:0x10d11b90,gid:14fe.
+[info] [00003316]: normal_req, address is 0x10d11ba0
+[info] 3316: lookup_tag is fetch req addr:0x10d11ba0
+[info] 3316: icache read address is 0x10d11ba0, size is 0x00000010, status is HIT
+[info] 3316: hit pc send to ibuffer,pc:0x10d11ba0,gid:14ff.
+[info] [00003317]: normal_req, address is 0x10d11bb0
+[info] 3317: lookup_tag is fetch req addr:0x10d11bb0
+[info] 3317: icache read address is 0x10d11bb0, size is 0x00000010, status is HIT
+[info] 3317: hit pc send to ibuffer,pc:0x10d11bb0,gid:1500.
+[info] [00003327]: normal_req, address is 0x10d11bc0
+[info] 3327: lookup_tag is fetch req addr:0x10d11bc0
+[info] 3327: icache read address is 0x10d11bc0, size is 0x00000010, status is HIT
+[info] 3327: hit pc send to ibuffer,pc:0x10d11bc0,gid:1501.
+[info] [00003328]: normal_req, address is 0x10d11bd0
+[info] 3328: lookup_tag is fetch req addr:0x10d11bd0
+[info] 3328: icache read address is 0x10d11bd0, size is 0x00000010, status is HIT
+[info] 3328: hit pc send to ibuffer,pc:0x10d11bd0,gid:1502.
+[info] [00003329]: normal_req, address is 0x10d11be0
+[info] 3329: lookup_tag is fetch req addr:0x10d11be0
+[info] 3329: icache read address is 0x10d11be0, size is 0x00000010, status is HIT
+[info] 3329: hit pc send to ibuffer,pc:0x10d11be0,gid:1503.
+[info] [00003349]: normal_req, address is 0x10d11bf0
+[info] 3349: lookup_tag is fetch req addr:0x10d11bf0
+[info] 3349: icache read address is 0x10d11bf0, size is 0x00000010, status is HIT
+[info] 3349: hit pc send to ibuffer,pc:0x10d11bf0,gid:1506.
+[info] [00003350]: normal_req, address is 0x10d11c00
+[info] 3350: lookup_tag is fetch req addr:0x10d11c00
+[info] 3350: icache read address is 0x10d11c00, size is 0x00000010, status is MISS
+[info] 3350: icache fetch request, id is 0x00001509, address is 0x10d11c00
+[debug] 3350: icache prefetch addr is 0x10d11c80
+[debug] 3350: icache prefetch addr is 0x10d11d00
+[debug] 3350: icache prefetch addr is 0x10d11d80
+[info] 3351: lookup_tag is prefetch_req addr:0x10d11c80
+[info] 3351: icache read address is 0x10d11c80, size is 0x00000080, status is MISS
+[info] 3351: icache fetch request, id is 0x0000150e, address is 0x10d11c80
+[info] 3351:ll_send_req_success,the req addr is:0x10d11c00.
+[info] 3352: lookup_tag is prefetch_req addr:0x10d11d00
+[info] 3352: icache read address is 0x10d11d00, size is 0x00000080, status is MISS
+[info] 3352: icache fetch request, id is 0x00001510, address is 0x10d11d00
+[info] 3352:ll_send_req_success,the req addr is:0x10d11c80.
+[info] 3353: lookup_tag is prefetch_req addr:0x10d11d80
+[info] 3353: icache read address is 0x10d11d80, size is 0x00000080, status is MISS
+[info] 3353: icache fetch request, id is 0x00001512, address is 0x10d11d80
+[info] 3353:ll_send_req_success,the req addr is:0x10d11d00.
+[info] 3354:ll_send_req_success,the req addr is:0x10d11d80.
+[info] 3708:recv_ll_rep_succcess,the rsp addr is:0x10d11c00.
+[info] [00003708]: icache refill acknowledge, id is 0x00001509, address is 0x10d11c00,setIdx:56, wayId:0
+[info] [00003708]: add to  refill_map, rsp_addr:10d11c00,tag_addr: 0x00008688
+[info] 3708:refill pc send to ibuffer,pc:0x10d11c00,gid:1507.
+[info] 3709:recv_ll_rep_succcess,the rsp addr is:0x10d11c80.
+[info] [00003709]: icache refill acknowledge, id is 0x0000150e, address is 0x10d11c80,setIdx:57, wayId:0
+[info] [00003709]: add to  refill_map, rsp_addr:10d11c80,tag_addr: 0x00008688
+[info] 3710:recv_ll_rep_succcess,the rsp addr is:0x10d11d00.
+[info] [00003710]: icache refill acknowledge, id is 0x00001510, address is 0x10d11d00,setIdx:58, wayId:0
+[info] [00003710]: add to  refill_map, rsp_addr:10d11d00,tag_addr: 0x00008688
+[info] 3711:recv_ll_rep_succcess,the rsp addr is:0x10d11d80.
+[info] [00003711]: icache refill acknowledge, id is 0x00001512, address is 0x10d11d80,setIdx:59, wayId:0
+[info] [00003711]: add to  refill_map, rsp_addr:10d11d80,tag_addr: 0x00008688
+[info] [00003712]: normal_req, address is 0x10d11c10
+[info] 3712: lookup_tag is fetch req addr:0x10d11c10
+[info] 3712: icache read address is 0x10d11c10, size is 0x00000010, status is HIT
+[info] 3712: hit pc send to ibuffer,pc:0x10d11c10,gid:1508.
+[info] [00003713]: normal_req, address is 0x10d11c20
+[info] 3713: lookup_tag is fetch req addr:0x10d11c20
+[info] 3713: icache read address is 0x10d11c20, size is 0x00000010, status is HIT
+[info] 3713: hit pc send to ibuffer,pc:0x10d11c20,gid:150d.
+[info] [00003714]: normal_req, address is 0x10d11c30
+[info] 3714: lookup_tag is fetch req addr:0x10d11c30
+[info] 3714: icache read address is 0x10d11c30, size is 0x00000010, status is HIT
+[info] 3714: hit pc send to ibuffer,pc:0x10d11c30,gid:167a.
+[info] [00003715]: normal_req, address is 0x10d11c40
+[info] 3715: lookup_tag is fetch req addr:0x10d11c40
+[info] 3715: icache read address is 0x10d11c40, size is 0x00000010, status is HIT
+[info] 3715: hit pc send to ibuffer,pc:0x10d11c40,gid:167b.
+[info] [00003716]: normal_req, address is 0x10d11c50
+[info] 3716: lookup_tag is fetch req addr:0x10d11c50
+[info] 3716: icache read address is 0x10d11c50, size is 0x00000010, status is HIT
+[info] 3716: hit pc send to ibuffer,pc:0x10d11c50,gid:167c.
+[info] [00003717]: normal_req, address is 0x10d11c60
+[info] 3717: lookup_tag is fetch req addr:0x10d11c60
+[info] 3717: icache read address is 0x10d11c60, size is 0x00000010, status is HIT
+[info] 3717: hit pc send to ibuffer,pc:0x10d11c60,gid:167d.
+[info] [00003718]: normal_req, address is 0x10d11c70
+[info] 3718: lookup_tag is fetch req addr:0x10d11c70
+[info] 3718: icache read address is 0x10d11c70, size is 0x00000010, status is HIT
+[info] 3718: hit pc send to ibuffer,pc:0x10d11c70,gid:167e.
+[info] [00003719]: normal_req, address is 0x10d11c80
+[info] 3719: lookup_tag is fetch req addr:0x10d11c80
+[info] 3719: icache read address is 0x10d11c80, size is 0x00000010, status is HIT
+[info] 3719: hit pc send to ibuffer,pc:0x10d11c80,gid:167f.
+[info] [00003720]: normal_req, address is 0x10d11c90
+[info] 3720: lookup_tag is fetch req addr:0x10d11c90
+[info] 3720: icache read address is 0x10d11c90, size is 0x00000010, status is HIT
+[info] 3720: hit pc send to ibuffer,pc:0x10d11c90,gid:1680.
+[info] [00003721]: normal_req, address is 0x10d11ca0
+[info] 3721: lookup_tag is fetch req addr:0x10d11ca0
+[info] 3721: icache read address is 0x10d11ca0, size is 0x00000010, status is HIT
+[info] 3721: hit pc send to ibuffer,pc:0x10d11ca0,gid:1681.
+[info] [00003722]: normal_req, address is 0x10d11cb0
+[info] 3722: lookup_tag is fetch req addr:0x10d11cb0
+[info] 3722: icache read address is 0x10d11cb0, size is 0x00000010, status is HIT
+[info] 3722: hit pc send to ibuffer,pc:0x10d11cb0,gid:1682.
+[info] [00003723]: normal_req, address is 0x10d11cc0
+[info] 3723: lookup_tag is fetch req addr:0x10d11cc0
+[info] 3723: icache read address is 0x10d11cc0, size is 0x00000010, status is HIT
+[info] 3723: hit pc send to ibuffer,pc:0x10d11cc0,gid:1683.
+[info] [00003724]: normal_req, address is 0x10d11cd0
+[info] 3724: lookup_tag is fetch req addr:0x10d11cd0
+[info] 3724: icache read address is 0x10d11cd0, size is 0x00000010, status is HIT
+[info] 3724: hit pc send to ibuffer,pc:0x10d11cd0,gid:1684.
+[info] [00003741]: normal_req, address is 0x10d11ce0
+[info] 3741: lookup_tag is fetch req addr:0x10d11ce0
+[info] 3741: icache read address is 0x10d11ce0, size is 0x00000010, status is HIT
+[info] 3741: hit pc send to ibuffer,pc:0x10d11ce0,gid:1685.
+[info] [00003742]: normal_req, address is 0x10d11cf0
+[info] 3742: lookup_tag is fetch req addr:0x10d11cf0
+[info] 3742: icache read address is 0x10d11cf0, size is 0x00000010, status is HIT
+[info] 3742: hit pc send to ibuffer,pc:0x10d11cf0,gid:1686.
+[info] [00003743]: normal_req, address is 0x10d11d00
+[info] 3743: lookup_tag is fetch req addr:0x10d11d00
+[info] 3743: icache read address is 0x10d11d00, size is 0x00000010, status is HIT
+[info] 3743: hit pc send to ibuffer,pc:0x10d11d00,gid:1687.
+[info] [00003757]: normal_req, address is 0x10d11d1c
+[info] 3757: lookup_tag is fetch req addr:0x10d11d1c
+[info] 3757: icache read address is 0x10d11d1c, size is 0x00000004, status is HIT
+[info] 3757: hit pc send to ibuffer,pc:0x10d11d1c,gid:1688.
+[info] [00003758]: normal_req, address is 0x10d11d20
+[info] 3758: lookup_tag is fetch req addr:0x10d11d20
+[info] 3758: icache read address is 0x10d11d20, size is 0x00000010, status is HIT
+[info] 3758: hit pc send to ibuffer,pc:0x10d11d20,gid:1689.
+[info] [00003759]: normal_req, address is 0x10d11d30
+[info] 3759: lookup_tag is fetch req addr:0x10d11d30
+[info] 3759: icache read address is 0x10d11d30, size is 0x00000010, status is HIT
+[info] 3759: hit pc send to ibuffer,pc:0x10d11d30,gid:168a.
+[info] [00003760]: normal_req, address is 0x10d11d40
+[info] 3760: lookup_tag is fetch req addr:0x10d11d40
+[info] 3760: icache read address is 0x10d11d40, size is 0x00000010, status is HIT
+[info] 3760: hit pc send to ibuffer,pc:0x10d11d40,gid:168b.
+[info] [00003777]: normal_req, address is 0x10d11d50
+[info] 3777: lookup_tag is fetch req addr:0x10d11d50
+[info] 3777: icache read address is 0x10d11d50, size is 0x00000010, status is HIT
+[info] 3777: hit pc send to ibuffer,pc:0x10d11d50,gid:168c.
+[info] [00003778]: normal_req, address is 0x10d11d60
+[info] 3778: lookup_tag is fetch req addr:0x10d11d60
+[info] 3778: icache read address is 0x10d11d60, size is 0x00000010, status is HIT
+[info] 3778: hit pc send to ibuffer,pc:0x10d11d60,gid:168d.
+[info] [00003779]: normal_req, address is 0x10d11d70
+[info] 3779: lookup_tag is fetch req addr:0x10d11d70
+[info] 3779: icache read address is 0x10d11d70, size is 0x00000010, status is HIT
+[info] 3779: hit pc send to ibuffer,pc:0x10d11d70,gid:168e.
+[info] [00003780]: normal_req, address is 0x10d11d80
+[info] 3780: lookup_tag is fetch req addr:0x10d11d80
+[info] 3780: icache read address is 0x10d11d80, size is 0x00000010, status is HIT
+[info] 3780: hit pc send to ibuffer,pc:0x10d11d80,gid:168f.
+[info] [00003793]: normal_req, address is 0x10d11d08
+[info] 3793: lookup_tag is fetch req addr:0x10d11d08
+[info] 3793: icache read address is 0x10d11d08, size is 0x00000008, status is HIT
+[info] 3793: hit pc send to ibuffer,pc:0x10d11d08,gid:1690.
+[info] [00003794]: normal_req, address is 0x10d11d10
+[info] 3794: lookup_tag is fetch req addr:0x10d11d10
+[info] 3794: icache read address is 0x10d11d10, size is 0x00000010, status is HIT
+[info] 3794: hit pc send to ibuffer,pc:0x10d11d10,gid:1691.
+[info] [00003795]: normal_req, address is 0x10d11d20
+[info] 3795: lookup_tag is fetch req addr:0x10d11d20
+[info] 3795: icache read address is 0x10d11d20, size is 0x00000010, status is HIT
+[info] 3795: hit pc send to ibuffer,pc:0x10d11d20,gid:1692.
+[info] [00003796]: normal_req, address is 0x10d11d30
+[info] 3796: lookup_tag is fetch req addr:0x10d11d30
+[info] 3796: icache read address is 0x10d11d30, size is 0x00000010, status is HIT
+[info] 3796: hit pc send to ibuffer,pc:0x10d11d30,gid:1693.
+[info] [00003797]: normal_req, address is 0x10d11d40
+[info] 3797: lookup_tag is fetch req addr:0x10d11d40
+[info] 3797: icache read address is 0x10d11d40, size is 0x00000010, status is HIT
+[info] 3797: hit pc send to ibuffer,pc:0x10d11d40,gid:1694.
+[info] [00003798]: normal_req, address is 0x10d11d50
+[info] 3798: lookup_tag is fetch req addr:0x10d11d50
+[info] 3798: icache read address is 0x10d11d50, size is 0x00000010, status is HIT
+[info] 3798: hit pc send to ibuffer,pc:0x10d11d50,gid:1695.
+[info] [00003799]: normal_req, address is 0x10d11d60
+[info] 3799: lookup_tag is fetch req addr:0x10d11d60
+[info] 3799: icache read address is 0x10d11d60, size is 0x00000010, status is HIT
+[info] 3799: hit pc send to ibuffer,pc:0x10d11d60,gid:1696.
+[info] [00003800]: normal_req, address is 0x10d11d70
+[info] 3800: lookup_tag is fetch req addr:0x10d11d70
+[info] 3800: icache read address is 0x10d11d70, size is 0x00000010, status is HIT
+[info] 3800: hit pc send to ibuffer,pc:0x10d11d70,gid:1697.
+[info] [00003801]: normal_req, address is 0x10d11d80
+[info] 3801: lookup_tag is fetch req addr:0x10d11d80
+[info] 3801: icache read address is 0x10d11d80, size is 0x00000010, status is HIT
+[info] 3801: hit pc send to ibuffer,pc:0x10d11d80,gid:1698.
+[info] [00003802]: normal_req, address is 0x10d11d90
+[info] 3802: lookup_tag is fetch req addr:0x10d11d90
+[info] 3802: icache read address is 0x10d11d90, size is 0x00000010, status is HIT
+[info] 3802: hit pc send to ibuffer,pc:0x10d11d90,gid:1699.
+[info] [00003803]: normal_req, address is 0x10d11da0
+[info] 3803: lookup_tag is fetch req addr:0x10d11da0
+[info] 3803: icache read address is 0x10d11da0, size is 0x00000010, status is HIT
+[info] 3803: hit pc send to ibuffer,pc:0x10d11da0,gid:169a.
+[info] [00003804]: normal_req, address is 0x10d11db0
+[info] 3804: lookup_tag is fetch req addr:0x10d11db0
+[info] 3804: icache read address is 0x10d11db0, size is 0x00000010, status is HIT
+[info] 3804: hit pc send to ibuffer,pc:0x10d11db0,gid:169b.
+[info] [00003805]: normal_req, address is 0x10d11dc0
+[info] 3805: lookup_tag is fetch req addr:0x10d11dc0
+[info] 3805: icache read address is 0x10d11dc0, size is 0x00000010, status is HIT
+[info] 3805: hit pc send to ibuffer,pc:0x10d11dc0,gid:169c.
+[info] [00003806]: normal_req, address is 0x10d11dd0
+[info] 3806: lookup_tag is fetch req addr:0x10d11dd0
+[info] 3806: icache read address is 0x10d11dd0, size is 0x00000010, status is HIT
+[info] 3806: hit pc send to ibuffer,pc:0x10d11dd0,gid:169d.
+[info] [00003807]: normal_req, address is 0x10d11de0
+[info] 3807: lookup_tag is fetch req addr:0x10d11de0
+[info] 3807: icache read address is 0x10d11de0, size is 0x00000010, status is HIT
+[info] 3807: hit pc send to ibuffer,pc:0x10d11de0,gid:169e.
+[info] [00003822]: normal_req, address is 0x10d11df0
+[info] 3822: lookup_tag is fetch req addr:0x10d11df0
+[info] 3822: icache read address is 0x10d11df0, size is 0x00000010, status is HIT
+[info] 3822: hit pc send to ibuffer,pc:0x10d11df0,gid:169f.
+[info] [00003823]: normal_req, address is 0x10d11e00
+[info] 3823: lookup_tag is fetch req addr:0x10d11e00
+[info] 3823: icache read address is 0x10d11e00, size is 0x00000010, status is MISS
+[info] 3823: icache fetch request, id is 0x000016a2, address is 0x10d11e00
+[debug] 3823: icache prefetch addr is 0x10d11e80
+[debug] 3823: icache prefetch addr is 0x10d11f00
+[debug] 3823: icache prefetch addr is 0x10d11f80
+[info] 3824: lookup_tag is prefetch_req addr:0x10d11e80
+[info] 3824: icache read address is 0x10d11e80, size is 0x00000080, status is MISS
+[info] 3824: icache fetch request, id is 0x000016b7, address is 0x10d11e80
+[info] 3824:ll_send_req_success,the req addr is:0x10d11e00.
+[info] 3825: lookup_tag is prefetch_req addr:0x10d11f00
+[info] 3825: icache read address is 0x10d11f00, size is 0x00000080, status is MISS
+[info] 3825: icache fetch request, id is 0x000016b9, address is 0x10d11f00
+[info] 3825:ll_send_req_success,the req addr is:0x10d11e80.
+[info] 3826: lookup_tag is prefetch_req addr:0x10d11f80
+[info] 3826: icache read address is 0x10d11f80, size is 0x00000080, status is MISS
+[info] 3826: icache fetch request, id is 0x000016bb, address is 0x10d11f80
+[info] 3826:ll_send_req_success,the req addr is:0x10d11f00.
+[info] 3827:ll_send_req_success,the req addr is:0x10d11f80.
+[info] 4179:recv_ll_rep_succcess,the rsp addr is:0x10d11e80.
+[info] [00004179]: icache refill acknowledge, id is 0x000016b7, address is 0x10d11e80,setIdx:61, wayId:0
+[info] [00004179]: add to  refill_map, rsp_addr:10d11e80,tag_addr: 0x00008688
+[info] 4181:recv_ll_rep_succcess,the rsp addr is:0x10d11e00.
+[info] [00004181]: icache refill acknowledge, id is 0x000016a2, address is 0x10d11e00,setIdx:60, wayId:0
+[info] [00004181]: add to  refill_map, rsp_addr:10d11e00,tag_addr: 0x00008688
+[info] 4181:refill pc send to ibuffer,pc:0x10d11e00,gid:16a0.
+[info] 4182:recv_ll_rep_succcess,the rsp addr is:0x10d11f00.
+[info] [00004182]: icache refill acknowledge, id is 0x000016b9, address is 0x10d11f00,setIdx:62, wayId:0
+[info] [00004182]: add to  refill_map, rsp_addr:10d11f00,tag_addr: 0x00008688
+[info] 4183:recv_ll_rep_succcess,the rsp addr is:0x10d11f80.
+[info] [00004183]: icache refill acknowledge, id is 0x000016bb, address is 0x10d11f80,setIdx:63, wayId:0
+[info] [00004183]: add to  refill_map, rsp_addr:10d11f80,tag_addr: 0x00008688
+[info] [00004184]: normal_req, address is 0x10d11e10
+[info] 4184: lookup_tag is fetch req addr:0x10d11e10
+[info] 4184: icache read address is 0x10d11e10, size is 0x00000010, status is HIT
+[info] 4184: hit pc send to ibuffer,pc:0x10d11e10,gid:16a1.
+[info] [00004185]: normal_req, address is 0x10d11e20
+[info] 4185: lookup_tag is fetch req addr:0x10d11e20
+[info] 4185: icache read address is 0x10d11e20, size is 0x00000010, status is HIT
+[info] 4185: hit pc send to ibuffer,pc:0x10d11e20,gid:16b6.
+[info] [00004186]: normal_req, address is 0x10d11e30
+[info] 4186: lookup_tag is fetch req addr:0x10d11e30
+[info] 4186: icache read address is 0x10d11e30, size is 0x00000010, status is HIT
+[info] 4186: hit pc send to ibuffer,pc:0x10d11e30,gid:1822.
+[info] [00004187]: normal_req, address is 0x10d11e40
+[info] 4187: lookup_tag is fetch req addr:0x10d11e40
+[info] 4187: icache read address is 0x10d11e40, size is 0x00000010, status is HIT
+[info] 4187: hit pc send to ibuffer,pc:0x10d11e40,gid:1823.
+[info] [00004188]: normal_req, address is 0x10d11e50
+[info] 4188: lookup_tag is fetch req addr:0x10d11e50
+[info] 4188: icache read address is 0x10d11e50, size is 0x00000010, status is HIT
+[info] 4188: hit pc send to ibuffer,pc:0x10d11e50,gid:1824.
+[info] [00004189]: normal_req, address is 0x10d11e60
+[info] 4189: lookup_tag is fetch req addr:0x10d11e60
+[info] 4189: icache read address is 0x10d11e60, size is 0x00000010, status is HIT
+[info] 4189: hit pc send to ibuffer,pc:0x10d11e60,gid:1825.
+[info] [00004190]: normal_req, address is 0x10d11e70
+[info] 4190: lookup_tag is fetch req addr:0x10d11e70
+[info] 4190: icache read address is 0x10d11e70, size is 0x00000010, status is HIT
+[info] 4190: hit pc send to ibuffer,pc:0x10d11e70,gid:1826.
+[info] [00004191]: normal_req, address is 0x10d11e80
+[info] 4191: lookup_tag is fetch req addr:0x10d11e80
+[info] 4191: icache read address is 0x10d11e80, size is 0x00000010, status is HIT
+[info] 4191: hit pc send to ibuffer,pc:0x10d11e80,gid:1827.
+[info] [00004192]: normal_req, address is 0x10d11e90
+[info] 4192: lookup_tag is fetch req addr:0x10d11e90
+[info] 4192: icache read address is 0x10d11e90, size is 0x00000010, status is HIT
+[info] 4192: hit pc send to ibuffer,pc:0x10d11e90,gid:1828.
+[info] [00004193]: normal_req, address is 0x10d11e84
+[info] 4193: lookup_tag is fetch req addr:0x10d11e84
+[info] 4193: icache read address is 0x10d11e84, size is 0x0000000c, status is HIT
+[info] 4193: hit pc send to ibuffer,pc:0x10d11e84,gid:1829.
+[info] [00004194]: normal_req, address is 0x10d11e90
+[info] 4194: lookup_tag is fetch req addr:0x10d11e90
+[info] 4194: icache read address is 0x10d11e90, size is 0x00000010, status is HIT
+[info] 4194: hit pc send to ibuffer,pc:0x10d11e90,gid:182a.
+[info] [00004195]: normal_req, address is 0x10d11ea0
+[info] 4195: lookup_tag is fetch req addr:0x10d11ea0
+[info] 4195: icache read address is 0x10d11ea0, size is 0x00000010, status is HIT
+[info] 4195: hit pc send to ibuffer,pc:0x10d11ea0,gid:182b.
+[info] [00004196]: normal_req, address is 0x10d11eb0
+[info] 4196: lookup_tag is fetch req addr:0x10d11eb0
+[info] 4196: icache read address is 0x10d11eb0, size is 0x00000010, status is HIT
+[info] 4196: hit pc send to ibuffer,pc:0x10d11eb0,gid:182c.
+[info] [00004197]: normal_req, address is 0x10d11ec0
+[info] 4197: lookup_tag is fetch req addr:0x10d11ec0
+[info] 4197: icache read address is 0x10d11ec0, size is 0x00000010, status is HIT
+[info] 4197: hit pc send to ibuffer,pc:0x10d11ec0,gid:182d.
+[info] [00004198]: normal_req, address is 0x10d11ed0
+[info] 4198: lookup_tag is fetch req addr:0x10d11ed0
+[info] 4198: icache read address is 0x10d11ed0, size is 0x00000010, status is HIT
+[info] 4198: hit pc send to ibuffer,pc:0x10d11ed0,gid:182e.
+[info] [00004199]: normal_req, address is 0x10d11ee0
+[info] 4199: lookup_tag is fetch req addr:0x10d11ee0
+[info] 4199: icache read address is 0x10d11ee0, size is 0x00000010, status is HIT
+[info] 4199: hit pc send to ibuffer,pc:0x10d11ee0,gid:182f.
+[info] [00004211]: normal_req, address is 0x10d11e58
+[info] 4211: lookup_tag is fetch req addr:0x10d11e58
+[info] 4211: icache read address is 0x10d11e58, size is 0x00000008, status is HIT
+[info] 4211: hit pc send to ibuffer,pc:0x10d11e58,gid:1830.
+[info] [00004212]: normal_req, address is 0x10d11e60
+[info] 4212: lookup_tag is fetch req addr:0x10d11e60
+[info] 4212: icache read address is 0x10d11e60, size is 0x00000010, status is HIT
+[info] 4212: hit pc send to ibuffer,pc:0x10d11e60,gid:1831.
+[info] [00004213]: normal_req, address is 0x10d11e70
+[info] 4213: lookup_tag is fetch req addr:0x10d11e70
+[info] 4213: icache read address is 0x10d11e70, size is 0x00000010, status is HIT
+[info] 4213: hit pc send to ibuffer,pc:0x10d11e70,gid:1832.
+[info] [00004214]: normal_req, address is 0x10d11e80
+[info] 4214: lookup_tag is fetch req addr:0x10d11e80
+[info] 4214: icache read address is 0x10d11e80, size is 0x00000010, status is HIT
+[info] 4214: hit pc send to ibuffer,pc:0x10d11e80,gid:1833.
+[info] [00004215]: normal_req, address is 0x10d11e90
+[info] 4215: lookup_tag is fetch req addr:0x10d11e90
+[info] 4215: icache read address is 0x10d11e90, size is 0x00000010, status is HIT
+[info] 4215: hit pc send to ibuffer,pc:0x10d11e90,gid:1834.
+[info] [00004216]: normal_req, address is 0x10d11e84
+[info] 4216: lookup_tag is fetch req addr:0x10d11e84
+[info] 4216: icache read address is 0x10d11e84, size is 0x0000000c, status is HIT
+[info] 4216: hit pc send to ibuffer,pc:0x10d11e84,gid:1835.
+[info] [00004217]: normal_req, address is 0x10d11e90
+[info] 4217: lookup_tag is fetch req addr:0x10d11e90
+[info] 4217: icache read address is 0x10d11e90, size is 0x00000010, status is HIT
+[info] 4217: hit pc send to ibuffer,pc:0x10d11e90,gid:1836.
+[info] [00004218]: normal_req, address is 0x10d11ea0
+[info] 4218: lookup_tag is fetch req addr:0x10d11ea0
+[info] 4218: icache read address is 0x10d11ea0, size is 0x00000010, status is HIT
+[info] 4218: hit pc send to ibuffer,pc:0x10d11ea0,gid:1837.
+[info] [00004219]: normal_req, address is 0x10d11eb0
+[info] 4219: lookup_tag is fetch req addr:0x10d11eb0
+[info] 4219: icache read address is 0x10d11eb0, size is 0x00000010, status is HIT
+[info] 4219: hit pc send to ibuffer,pc:0x10d11eb0,gid:1838.
+[info] [00004220]: normal_req, address is 0x10d11ec0
+[info] 4220: lookup_tag is fetch req addr:0x10d11ec0
+[info] 4220: icache read address is 0x10d11ec0, size is 0x00000010, status is HIT
+[info] 4220: hit pc send to ibuffer,pc:0x10d11ec0,gid:1839.
+[info] [00004221]: normal_req, address is 0x10d11ed0
+[info] 4221: lookup_tag is fetch req addr:0x10d11ed0
+[info] 4221: icache read address is 0x10d11ed0, size is 0x00000010, status is HIT
+[info] 4221: hit pc send to ibuffer,pc:0x10d11ed0,gid:183a.
+[info] [00004222]: normal_req, address is 0x10d11ee0
+[info] 4222: lookup_tag is fetch req addr:0x10d11ee0
+[info] 4222: icache read address is 0x10d11ee0, size is 0x00000010, status is HIT
+[info] 4222: hit pc send to ibuffer,pc:0x10d11ee0,gid:183b.
+[info] [00004223]: normal_req, address is 0x10d11ef0
+[info] 4223: lookup_tag is fetch req addr:0x10d11ef0
+[info] 4223: icache read address is 0x10d11ef0, size is 0x00000010, status is HIT
+[info] 4223: hit pc send to ibuffer,pc:0x10d11ef0,gid:183c.
+[info] [00004224]: normal_req, address is 0x10d11f00
+[info] 4224: lookup_tag is fetch req addr:0x10d11f00
+[info] 4224: icache read address is 0x10d11f00, size is 0x00000010, status is HIT
+[info] 4224: hit pc send to ibuffer,pc:0x10d11f00,gid:183d.
+[info] [00004225]: normal_req, address is 0x10d11f10
+[info] 4225: lookup_tag is fetch req addr:0x10d11f10
+[info] 4225: icache read address is 0x10d11f10, size is 0x00000010, status is HIT
+[info] 4225: hit pc send to ibuffer,pc:0x10d11f10,gid:183e.
+[info] [00004226]: normal_req, address is 0x10d11f20
+[info] 4226: lookup_tag is fetch req addr:0x10d11f20
+[info] 4226: icache read address is 0x10d11f20, size is 0x00000010, status is HIT
+[info] 4226: hit pc send to ibuffer,pc:0x10d11f20,gid:183f.
+[info] [00004227]: normal_req, address is 0x10d11f30
+[info] 4227: lookup_tag is fetch req addr:0x10d11f30
+[info] 4227: icache read address is 0x10d11f30, size is 0x00000010, status is HIT
+[info] 4227: hit pc send to ibuffer,pc:0x10d11f30,gid:1840.
+[info] [00004233]: normal_req, address is 0x10d11f40
+[info] 4233: lookup_tag is fetch req addr:0x10d11f40
+[info] 4233: icache read address is 0x10d11f40, size is 0x00000010, status is HIT
+[info] 4233: hit pc send to ibuffer,pc:0x10d11f40,gid:1841.
+[info] [00004234]: normal_req, address is 0x10d11f50
+[info] 4234: lookup_tag is fetch req addr:0x10d11f50
+[info] 4234: icache read address is 0x10d11f50, size is 0x00000010, status is HIT
+[info] 4234: hit pc send to ibuffer,pc:0x10d11f50,gid:1842.
+[info] [00004235]: normal_req, address is 0x10d11f60
+[info] 4235: lookup_tag is fetch req addr:0x10d11f60
+[info] 4235: icache read address is 0x10d11f60, size is 0x00000010, status is HIT
+[info] 4235: hit pc send to ibuffer,pc:0x10d11f60,gid:1843.
+[info] [00004244]: normal_req, address is 0x10d11f70
+[info] 4244: lookup_tag is fetch req addr:0x10d11f70
+[info] 4244: icache read address is 0x10d11f70, size is 0x00000010, status is HIT
+[info] 4244: hit pc send to ibuffer,pc:0x10d11f70,gid:1844.
+[info] [00004245]: normal_req, address is 0x10d11f80
+[info] 4245: lookup_tag is fetch req addr:0x10d11f80
+[info] 4245: icache read address is 0x10d11f80, size is 0x00000010, status is HIT
+[info] 4245: hit pc send to ibuffer,pc:0x10d11f80,gid:1845.
+[info] [00004246]: normal_req, address is 0x10d11f90
+[info] 4246: lookup_tag is fetch req addr:0x10d11f90
+[info] 4246: icache read address is 0x10d11f90, size is 0x00000010, status is HIT
+[info] 4246: hit pc send to ibuffer,pc:0x10d11f90,gid:1846.
+[info] [00004247]: normal_req, address is 0x10d11fa0
+[info] 4247: lookup_tag is fetch req addr:0x10d11fa0
+[info] 4247: icache read address is 0x10d11fa0, size is 0x00000010, status is HIT
+[info] 4247: hit pc send to ibuffer,pc:0x10d11fa0,gid:1847.
+[info] [00004261]: normal_req, address is 0x10d11fb0
+[info] 4261: lookup_tag is fetch req addr:0x10d11fb0
+[info] 4261: icache read address is 0x10d11fb0, size is 0x00000010, status is HIT
+[info] 4261: hit pc send to ibuffer,pc:0x10d11fb0,gid:184a.
+[info] [00004262]: normal_req, address is 0x10d11fc0
+[info] 4262: lookup_tag is fetch req addr:0x10d11fc0
+[info] 4262: icache read address is 0x10d11fc0, size is 0x00000010, status is HIT
+[info] 4262: hit pc send to ibuffer,pc:0x10d11fc0,gid:184c.
+[info] [00004263]: normal_req, address is 0x10d11fd0
+[info] 4263: lookup_tag is fetch req addr:0x10d11fd0
+[info] 4263: icache read address is 0x10d11fd0, size is 0x00000010, status is HIT
+[info] 4263: hit pc send to ibuffer,pc:0x10d11fd0,gid:184e.
+[info] [00004279]: normal_req, address is 0x10d11fe0
+[info] 4279: lookup_tag is fetch req addr:0x10d11fe0
+[info] 4279: icache read address is 0x10d11fe0, size is 0x00000010, status is HIT
+[info] 4279: hit pc send to ibuffer,pc:0x10d11fe0,gid:185f.
+[info] [00004280]: normal_req, address is 0x10d11ff0
+[info] 4280: lookup_tag is fetch req addr:0x10d11ff0
+[info] 4280: icache read address is 0x10d11ff0, size is 0x00000010, status is HIT
+[info] 4280: hit pc send to ibuffer,pc:0x10d11ff0,gid:1861.
+[info] [00004281]: normal_req, address is 0x10d12000
+[info] 4281: lookup_tag is fetch req addr:0x10d12000
+[info] 4281: icache read address is 0x10d12000, size is 0x00000010, status is MISS
+[info] 4281: icache fetch request, id is 0x00001865, address is 0x10d12000
+[debug] 4281: icache prefetch addr is 0x10d12080
+[debug] 4281: icache prefetch addr is 0x10d12100
+[debug] 4281: icache prefetch addr is 0x10d12180
+[info] 4282:ll_send_req_success,the req addr is:0x10d12000.
+[info] [00004292]: normal_req, address is 0x10d11fd4
+[info] 4292: lookup_tag is prefetch_req addr:0x10d12080
+[info] 4292: icache read address is 0x10d12080, size is 0x00000080, status is MISS
+[info] 4292: icache fetch request, id is 0x00001877, address is 0x10d12080
+[info] [00004293]: normal_req, address is 0x10d11fd4
+[info] 4293: lookup_tag is fetch req addr:0x10d11fd4
+[info] 4293: icache read address is 0x10d11fd4, size is 0x0000000c, status is HIT
+[info] 4293: hit pc send to ibuffer,pc:0x10d11fd4,gid:1874.
+[info] 4293:ll_send_req_success,the req addr is:0x10d12080.
+[info] [00004294]: normal_req, address is 0x10d11fe0
+[info] 4294: lookup_tag is prefetch_req addr:0x10d12100
+[info] 4294: icache read address is 0x10d12100, size is 0x00000080, status is MISS
+[info] 4294: icache fetch request, id is 0x0000187d, address is 0x10d12100
+[info] [00004295]: normal_req, address is 0x10d11fe0
+[info] 4295: lookup_tag is fetch req addr:0x10d11fe0
+[info] 4295: icache read address is 0x10d11fe0, size is 0x00000010, status is HIT
+[info] 4295: hit pc send to ibuffer,pc:0x10d11fe0,gid:1876.
+[info] 4295:ll_send_req_success,the req addr is:0x10d12100.
+[info] [00004296]: normal_req, address is 0x10d11ff0
+[info] 4296: lookup_tag is prefetch_req addr:0x10d12180
+[info] 4296: icache read address is 0x10d12180, size is 0x00000080, status is MISS
+[info] 4296: icache fetch request, id is 0x00001882, address is 0x10d12180
+[info] [00004297]: normal_req, address is 0x10d11ff0
+[info] 4297: lookup_tag is fetch req addr:0x10d11ff0
+[info] 4297: icache read address is 0x10d11ff0, size is 0x00000010, status is HIT
+[info] 4297: hit pc send to ibuffer,pc:0x10d11ff0,gid:187c.
+[info] 4297:ll_send_req_success,the req addr is:0x10d12180.
+[info] [00004298]: normal_req, address is 0x10d12000
+[info] 4298: lookup_tag is fetch req addr:0x10d12000
+[info] 4298: icache read address is 0x10d12000, size is 0x00000010, status is MISS
+[info] 4298: icache fetch request, id is 0x00001888, address is 0x10d12000
+[debug] 4298: icache prefetch addr is 0x10d12080
+[debug] 4298: icache prefetch addr is 0x10d12100
+[debug] 4298: icache prefetch addr is 0x10d12180
+[info] 4299: lookup_tag is prefetch_req addr:0x10d12080
+[info] 4299: icache read address is 0x10d12080, size is 0x00000080, status is MISS
+[info] 4299: icache fetch request, id is 0x0000188e, address is 0x10d12080
+[debug] 4299:erase_ongoing_req,the req addr is:0x10d12000.
+[debug] 4300:erase_ongoing_req,the req addr is:0x10d12080.
+[info] [00004301]: normal_req, address is 0x10d12110
+[info] 4301: lookup_tag is fetch req addr:0x10d12110
+[info] 4301: icache read address is 0x10d12110, size is 0x00000010, status is MISS
+[info] 4301: icache fetch request, id is 0x00001893, address is 0x10d12100
+[debug] 4301: icache prefetch addr is 0x10d12180
+[debug] 4301: icache prefetch addr is 0x10d12200
+[debug] 4301: icache prefetch addr is 0x10d12280
+[info] 4302: lookup_tag is prefetch_req addr:0x10d12100
+[info] 4302: icache read address is 0x10d12100, size is 0x00000080, status is MISS
+[info] 4302: icache fetch request, id is 0x0000189a, address is 0x10d12100
+[debug] 4302:erase_ongoing_req,the req addr is:0x10d12100.
+[info] 4303: lookup_tag is prefetch_req addr:0x10d12180
+[info] 4303: icache read address is 0x10d12180, size is 0x00000080, status is MISS
+[info] 4303: icache fetch request, id is 0x0000189d, address is 0x10d12180
+[debug] 4303:erase_ongoing_req,the req addr is:0x10d12100.
+[info] 4304: lookup_tag is prefetch_req addr:0x10d12180
+[info] 4304: icache read address is 0x10d12180, size is 0x00000080, status is MISS
+[info] 4304: icache fetch request, id is 0x000018a0, address is 0x10d12180
+[debug] 4304:erase_ongoing_req,the req addr is:0x10d12180.
+[info] 4305: lookup_tag is prefetch_req addr:0x10d12200
+[info] 4305: icache read address is 0x10d12200, size is 0x00000080, status is MISS
+[info] 4305: icache fetch request, id is 0x000018a3, address is 0x10d12200
+[debug] 4305:erase_ongoing_req,the req addr is:0x10d12180.
+[info] 4306: lookup_tag is prefetch_req addr:0x10d12280
+[info] 4306: icache read address is 0x10d12280, size is 0x00000080, status is MISS
+[info] 4306: icache fetch request, id is 0x000018a7, address is 0x10d12280
+[info] 4306:ll_send_req_success,the req addr is:0x10d12200.
+[info] 4307:ll_send_req_success,the req addr is:0x10d12280.
+[info] 4637:recv_ll_rep_succcess,the rsp addr is:0x10d12000.
+[info] [00004637]: icache refill acknowledge, id is 0x00001865, address is 0x10d12000,setIdx:0, wayId:0
+[info] [00004637]: add to  refill_map, rsp_addr:10d12000,tag_addr: 0x00008689
+[info] 4651:recv_ll_rep_succcess,the rsp addr is:0x10d12080.
+[info] [00004651]: icache refill acknowledge, id is 0x00001877, address is 0x10d12080,setIdx:1, wayId:0
+[info] [00004651]: add to  refill_map, rsp_addr:10d12080,tag_addr: 0x00008689
+[info] 4652:recv_ll_rep_succcess,the rsp addr is:0x10d12100.
+[info] [00004652]: icache refill acknowledge, id is 0x0000187d, address is 0x10d12100,setIdx:2, wayId:0
+[info] [00004652]: add to  refill_map, rsp_addr:10d12100,tag_addr: 0x00008689
+[info] 4652:refill pc send to ibuffer,pc:0x10d12100,gid:1890.
+[info] 4653:recv_ll_rep_succcess,the rsp addr is:0x10d12180.
+[info] [00004653]: icache refill acknowledge, id is 0x00001882, address is 0x10d12180,setIdx:3, wayId:0
+[info] [00004653]: add to  refill_map, rsp_addr:10d12180,tag_addr: 0x00008689
+[info] [00004654]: normal_req, address is 0x10d12120
+[info] 4654: lookup_tag is fetch req addr:0x10d12120
+[info] 4654: icache read address is 0x10d12120, size is 0x00000010, status is HIT
+[info] 4654: hit pc send to ibuffer,pc:0x10d12120,gid:1892.
+[info] [00004655]: normal_req, address is 0x10d12130
+[info] 4655: lookup_tag is fetch req addr:0x10d12130
+[info] 4655: icache read address is 0x10d12130, size is 0x00000010, status is HIT
+[info] 4655: hit pc send to ibuffer,pc:0x10d12130,gid:1899.
+[info] [00004656]: normal_req, address is 0x10d11f20
+[info] 4656: lookup_tag is fetch req addr:0x10d11f20
+[info] 4656: icache read address is 0x10d11f20, size is 0x00000010, status is HIT
+[info] 4656: hit pc send to ibuffer,pc:0x10d11f20,gid:1a6f.
+[info] [00004657]: normal_req, address is 0x10d11f30
+[info] 4657: lookup_tag is fetch req addr:0x10d11f30
+[info] 4657: icache read address is 0x10d11f30, size is 0x00000010, status is HIT
+[info] 4657: hit pc send to ibuffer,pc:0x10d11f30,gid:1a70.
+[info] [00004658]: normal_req, address is 0x10d11f40
+[info] 4658: lookup_tag is fetch req addr:0x10d11f40
+[info] 4658: icache read address is 0x10d11f40, size is 0x00000010, status is HIT
+[info] 4658: hit pc send to ibuffer,pc:0x10d11f40,gid:1a71.
+[info] [00004659]: normal_req, address is 0x10d11f50
+[info] 4659: lookup_tag is fetch req addr:0x10d11f50
+[info] 4659: icache read address is 0x10d11f50, size is 0x00000010, status is HIT
+[info] 4659: hit pc send to ibuffer,pc:0x10d11f50,gid:1a72.
+[info] [00004660]: normal_req, address is 0x10d11f60
+[info] 4660: lookup_tag is fetch req addr:0x10d11f60
+[info] 4660: icache read address is 0x10d11f60, size is 0x00000010, status is HIT
+[info] 4660: hit pc send to ibuffer,pc:0x10d11f60,gid:1a73.
+[info] [00004661]: normal_req, address is 0x10d11f70
+[info] 4661: lookup_tag is fetch req addr:0x10d11f70
+[info] 4661: icache read address is 0x10d11f70, size is 0x00000010, status is HIT
+[info] 4661: hit pc send to ibuffer,pc:0x10d11f70,gid:1a74.
+[info] 4663:recv_ll_rep_succcess,the rsp addr is:0x10d12280.
+[info] [00004663]: icache refill acknowledge, id is 0x000018a7, address is 0x10d12280,setIdx:5, wayId:0
+[info] [00004663]: add to  refill_map, rsp_addr:10d12280,tag_addr: 0x00008689
+[info] 4664:recv_ll_rep_succcess,the rsp addr is:0x10d12200.
+[info] [00004664]: icache refill acknowledge, id is 0x000018a3, address is 0x10d12200,setIdx:4, wayId:0
+[info] [00004664]: add to  refill_map, rsp_addr:10d12200,tag_addr: 0x00008689
+[info] [00004665]: normal_req, address is 0x10d11f80
+[info] 4665: lookup_tag is fetch req addr:0x10d11f80
+[info] 4665: icache read address is 0x10d11f80, size is 0x00000010, status is HIT
+[info] 4665: hit pc send to ibuffer,pc:0x10d11f80,gid:1a75.
+[info] [00004666]: normal_req, address is 0x10d11f90
+[info] 4666: lookup_tag is fetch req addr:0x10d11f90
+[info] 4666: icache read address is 0x10d11f90, size is 0x00000010, status is HIT
+[info] 4666: hit pc send to ibuffer,pc:0x10d11f90,gid:1a76.
+[info] [00004667]: normal_req, address is 0x10d11fa0
+[info] 4667: lookup_tag is fetch req addr:0x10d11fa0
+[info] 4667: icache read address is 0x10d11fa0, size is 0x00000010, status is HIT
+[info] 4667: hit pc send to ibuffer,pc:0x10d11fa0,gid:1a7a.
+[info] [00004668]: normal_req, address is 0x10d11fb0
+[info] 4668: lookup_tag is fetch req addr:0x10d11fb0
+[info] 4668: icache read address is 0x10d11fb0, size is 0x00000010, status is HIT
+[info] 4668: hit pc send to ibuffer,pc:0x10d11fb0,gid:1a7b.
+[info] [00004670]: normal_req, address is 0x10d11f40
+[info] 4670: lookup_tag is fetch req addr:0x10d11f40
+[info] 4670: icache read address is 0x10d11f40, size is 0x00000010, status is HIT
+[info] 4670: hit pc send to ibuffer,pc:0x10d11f40,gid:1a7d.
+[info] [00004671]: normal_req, address is 0x10d11f50
+[info] 4671: lookup_tag is fetch req addr:0x10d11f50
+[info] 4671: icache read address is 0x10d11f50, size is 0x00000010, status is HIT
+[info] 4671: hit pc send to ibuffer,pc:0x10d11f50,gid:1a7e.
+[info] [00004672]: normal_req, address is 0x10d11f60
+[info] 4672: lookup_tag is fetch req addr:0x10d11f60
+[info] 4672: icache read address is 0x10d11f60, size is 0x00000010, status is HIT
+[info] 4672: hit pc send to ibuffer,pc:0x10d11f60,gid:1a7f.
+[info] [00004673]: normal_req, address is 0x10d11f70
+[info] 4673: lookup_tag is fetch req addr:0x10d11f70
+[info] 4673: icache read address is 0x10d11f70, size is 0x00000010, status is HIT
+[info] 4673: hit pc send to ibuffer,pc:0x10d11f70,gid:1a80.
+[info] [00004674]: normal_req, address is 0x10d11f80
+[info] 4674: lookup_tag is fetch req addr:0x10d11f80
+[info] 4674: icache read address is 0x10d11f80, size is 0x00000010, status is HIT
+[info] 4674: hit pc send to ibuffer,pc:0x10d11f80,gid:1a81.
+[info] [00004675]: normal_req, address is 0x10d11f90
+[info] 4675: lookup_tag is fetch req addr:0x10d11f90
+[info] 4675: icache read address is 0x10d11f90, size is 0x00000010, status is HIT
+[info] 4675: hit pc send to ibuffer,pc:0x10d11f90,gid:1a82.
+[info] [00004676]: normal_req, address is 0x10d11fa0
+[info] 4676: lookup_tag is fetch req addr:0x10d11fa0
+[info] 4676: icache read address is 0x10d11fa0, size is 0x00000010, status is HIT
+[info] 4676: hit pc send to ibuffer,pc:0x10d11fa0,gid:1a83.
+[info] [00004677]: normal_req, address is 0x10d11fb0
+[info] 4677: lookup_tag is fetch req addr:0x10d11fb0
+[info] 4677: icache read address is 0x10d11fb0, size is 0x00000010, status is HIT
+[info] 4677: hit pc send to ibuffer,pc:0x10d11fb0,gid:1a84.
+[info] [00004678]: normal_req, address is 0x10d11fc0
+[info] 4678: lookup_tag is fetch req addr:0x10d11fc0
+[info] 4678: icache read address is 0x10d11fc0, size is 0x00000010, status is HIT
+[info] 4678: hit pc send to ibuffer,pc:0x10d11fc0,gid:1a85.
+[info] [00004679]: normal_req, address is 0x10d11fd0
+[info] 4679: lookup_tag is fetch req addr:0x10d11fd0
+[info] 4679: icache read address is 0x10d11fd0, size is 0x00000010, status is HIT
+[info] 4679: hit pc send to ibuffer,pc:0x10d11fd0,gid:1a86.
+[info] [00004680]: normal_req, address is 0x10d11fe0
+[info] 4680: lookup_tag is fetch req addr:0x10d11fe0
+[info] 4680: icache read address is 0x10d11fe0, size is 0x00000010, status is HIT
+[info] 4680: hit pc send to ibuffer,pc:0x10d11fe0,gid:1a87.
+[info] [00004681]: normal_req, address is 0x10d11ff0
+[info] 4681: lookup_tag is fetch req addr:0x10d11ff0
+[info] 4681: icache read address is 0x10d11ff0, size is 0x00000010, status is HIT
+[info] 4681: hit pc send to ibuffer,pc:0x10d11ff0,gid:1a88.
+[info] [00004682]: normal_req, address is 0x10d12000
+[info] 4682: lookup_tag is fetch req addr:0x10d12000
+[info] 4682: icache read address is 0x10d12000, size is 0x00000010, status is HIT
+[info] 4682: hit pc send to ibuffer,pc:0x10d12000,gid:1a89.
+[info] [00004691]: normal_req, address is 0x10d11fd4
+[info] 4691: lookup_tag is fetch req addr:0x10d11fd4
+[info] 4691: icache read address is 0x10d11fd4, size is 0x0000000c, status is HIT
+[info] 4691: hit pc send to ibuffer,pc:0x10d11fd4,gid:1a8a.
+[info] [00004692]: normal_req, address is 0x10d11fe0
+[info] 4692: lookup_tag is fetch req addr:0x10d11fe0
+[info] 4692: icache read address is 0x10d11fe0, size is 0x00000010, status is HIT
+[info] 4692: hit pc send to ibuffer,pc:0x10d11fe0,gid:1a8b.
+[info] [00004693]: normal_req, address is 0x10d11ff0
+[info] 4693: lookup_tag is fetch req addr:0x10d11ff0
+[info] 4693: icache read address is 0x10d11ff0, size is 0x00000010, status is HIT
+[info] 4693: hit pc send to ibuffer,pc:0x10d11ff0,gid:1a8c.
+[info] [00004694]: normal_req, address is 0x10d12000
+[info] 4694: lookup_tag is fetch req addr:0x10d12000
+[info] 4694: icache read address is 0x10d12000, size is 0x00000010, status is HIT
+[info] 4694: hit pc send to ibuffer,pc:0x10d12000,gid:1a8d.
+[info] [00004695]: normal_req, address is 0x10d12010
+[info] 4695: lookup_tag is fetch req addr:0x10d12010
+[info] 4695: icache read address is 0x10d12010, size is 0x00000010, status is HIT
+[info] 4695: hit pc send to ibuffer,pc:0x10d12010,gid:1a8e.
+[info] [00004697]: normal_req, address is 0x10d1206c
+[info] 4697: lookup_tag is fetch req addr:0x10d1206c
+[info] 4697: icache read address is 0x10d1206c, size is 0x00000004, status is HIT
+[info] 4697: hit pc send to ibuffer,pc:0x10d1206c,gid:1a90.
+[info] [00004698]: normal_req, address is 0x10d12070
+[info] 4698: lookup_tag is fetch req addr:0x10d12070
+[info] 4698: icache read address is 0x10d12070, size is 0x00000010, status is HIT
+[info] 4698: hit pc send to ibuffer,pc:0x10d12070,gid:1a91.
+[info] [00004699]: normal_req, address is 0x10d12080
+[info] 4699: lookup_tag is fetch req addr:0x10d12080
+[info] 4699: icache read address is 0x10d12080, size is 0x00000010, status is HIT
+[info] 4699: hit pc send to ibuffer,pc:0x10d12080,gid:1a92.
+[info] [00004700]: normal_req, address is 0x10d12090
+[info] 4700: lookup_tag is fetch req addr:0x10d12090
+[info] 4700: icache read address is 0x10d12090, size is 0x00000010, status is HIT
+[info] 4700: hit pc send to ibuffer,pc:0x10d12090,gid:1a93.
+[info] [00004701]: normal_req, address is 0x10d120a0
+[info] 4701: lookup_tag is fetch req addr:0x10d120a0
+[info] 4701: icache read address is 0x10d120a0, size is 0x00000010, status is HIT
+[info] 4701: hit pc send to ibuffer,pc:0x10d120a0,gid:1a94.
+[info] [00004703]: normal_req, address is 0x10d12158
+[info] 4703: lookup_tag is fetch req addr:0x10d12158
+[info] 4703: icache read address is 0x10d12158, size is 0x00000008, status is HIT
+[info] 4703: hit pc send to ibuffer,pc:0x10d12158,gid:1a96.
+[info] [00004704]: normal_req, address is 0x10d12160
+[info] 4704: lookup_tag is fetch req addr:0x10d12160
+[info] 4704: icache read address is 0x10d12160, size is 0x00000010, status is HIT
+[info] 4704: hit pc send to ibuffer,pc:0x10d12160,gid:1a97.
+[info] [00004705]: normal_req, address is 0x10d12170
+[info] 4705: lookup_tag is fetch req addr:0x10d12170
+[info] 4705: icache read address is 0x10d12170, size is 0x00000010, status is HIT
+[info] 4705: hit pc send to ibuffer,pc:0x10d12170,gid:1a98.
+[info] [00004706]: normal_req, address is 0x10d12180
+[info] 4706: lookup_tag is fetch req addr:0x10d12180
+[info] 4706: icache read address is 0x10d12180, size is 0x00000010, status is HIT
+[info] 4706: hit pc send to ibuffer,pc:0x10d12180,gid:1a99.
+[info] [00004707]: normal_req, address is 0x10d11f20
+[info] 4707: lookup_tag is fetch req addr:0x10d11f20
+[info] 4707: icache read address is 0x10d11f20, size is 0x00000010, status is HIT
+[info] 4707: hit pc send to ibuffer,pc:0x10d11f20,gid:1a9a.
+[info] [00004708]: normal_req, address is 0x10d11f30
+[info] 4708: lookup_tag is fetch req addr:0x10d11f30
+[info] 4708: icache read address is 0x10d11f30, size is 0x00000010, status is HIT
+[info] 4708: hit pc send to ibuffer,pc:0x10d11f30,gid:1a9b.
+[info] [00004709]: normal_req, address is 0x10d11f40
+[info] 4709: lookup_tag is fetch req addr:0x10d11f40
+[info] 4709: icache read address is 0x10d11f40, size is 0x00000010, status is HIT
+[info] 4709: hit pc send to ibuffer,pc:0x10d11f40,gid:1a9c.
+[info] [00004710]: normal_req, address is 0x10d11f50
+[info] 4710: lookup_tag is fetch req addr:0x10d11f50
+[info] 4710: icache read address is 0x10d11f50, size is 0x00000010, status is HIT
+[info] 4710: hit pc send to ibuffer,pc:0x10d11f50,gid:1a9d.
+[info] [00004711]: normal_req, address is 0x10d11f60
+[info] 4711: lookup_tag is fetch req addr:0x10d11f60
+[info] 4711: icache read address is 0x10d11f60, size is 0x00000010, status is HIT
+[info] 4711: hit pc send to ibuffer,pc:0x10d11f60,gid:1a9e.
+[info] [00004712]: normal_req, address is 0x10d11f70
+[info] 4712: lookup_tag is fetch req addr:0x10d11f70
+[info] 4712: icache read address is 0x10d11f70, size is 0x00000010, status is HIT
+[info] 4712: hit pc send to ibuffer,pc:0x10d11f70,gid:1a9f.
+[info] [00004713]: normal_req, address is 0x10d11f80
+[info] 4713: lookup_tag is fetch req addr:0x10d11f80
+[info] 4713: icache read address is 0x10d11f80, size is 0x00000010, status is HIT
+[info] 4713: hit pc send to ibuffer,pc:0x10d11f80,gid:1aa0.
+[info] [00004714]: normal_req, address is 0x10d11f90
+[info] 4714: lookup_tag is fetch req addr:0x10d11f90
+[info] 4714: icache read address is 0x10d11f90, size is 0x00000010, status is HIT
+[info] 4714: hit pc send to ibuffer,pc:0x10d11f90,gid:1aa1.
+[info] [00004715]: normal_req, address is 0x10d11fa0
+[info] 4715: lookup_tag is fetch req addr:0x10d11fa0
+[info] 4715: icache read address is 0x10d11fa0, size is 0x00000010, status is HIT
+[info] 4715: hit pc send to ibuffer,pc:0x10d11fa0,gid:1aa2.
+[info] [00004716]: normal_req, address is 0x10d11fb0
+[info] 4716: lookup_tag is fetch req addr:0x10d11fb0
+[info] 4716: icache read address is 0x10d11fb0, size is 0x00000010, status is HIT
+[info] 4716: hit pc send to ibuffer,pc:0x10d11fb0,gid:1aa3.
+[info] [00004717]: normal_req, address is 0x10d11fc0
+[info] 4717: lookup_tag is fetch req addr:0x10d11fc0
+[info] 4717: icache read address is 0x10d11fc0, size is 0x00000010, status is HIT
+[info] 4717: hit pc send to ibuffer,pc:0x10d11fc0,gid:1aa4.
+[info] [00004718]: normal_req, address is 0x10d11fd0
+[info] 4718: lookup_tag is fetch req addr:0x10d11fd0
+[info] 4718: icache read address is 0x10d11fd0, size is 0x00000010, status is HIT
+[info] 4718: hit pc send to ibuffer,pc:0x10d11fd0,gid:1aa5.
+[info] [00004719]: normal_req, address is 0x10d11fe0
+[info] 4719: lookup_tag is fetch req addr:0x10d11fe0
+[info] 4719: icache read address is 0x10d11fe0, size is 0x00000010, status is HIT
+[info] 4719: hit pc send to ibuffer,pc:0x10d11fe0,gid:1aa6.
+[info] [00004721]: normal_req, address is 0x10d11f40
+[info] 4721: lookup_tag is fetch req addr:0x10d11f40
+[info] 4721: icache read address is 0x10d11f40, size is 0x00000010, status is HIT
+[info] 4721: hit pc send to ibuffer,pc:0x10d11f40,gid:1aa7.
+[info] [00004722]: normal_req, address is 0x10d11f50
+[info] 4722: lookup_tag is fetch req addr:0x10d11f50
+[info] 4722: icache read address is 0x10d11f50, size is 0x00000010, status is HIT
+[info] 4722: hit pc send to ibuffer,pc:0x10d11f50,gid:1aa8.
+[info] [00004723]: normal_req, address is 0x10d11f60
+[info] 4723: lookup_tag is fetch req addr:0x10d11f60
+[info] 4723: icache read address is 0x10d11f60, size is 0x00000010, status is HIT
+[info] 4723: hit pc send to ibuffer,pc:0x10d11f60,gid:1aa9.
+[info] [00004724]: normal_req, address is 0x10d11f70
+[info] 4724: lookup_tag is fetch req addr:0x10d11f70
+[info] 4724: icache read address is 0x10d11f70, size is 0x00000010, status is HIT
+[info] 4724: hit pc send to ibuffer,pc:0x10d11f70,gid:1aaa.
+[info] [00004725]: normal_req, address is 0x10d11f80
+[info] 4725: lookup_tag is fetch req addr:0x10d11f80
+[info] 4725: icache read address is 0x10d11f80, size is 0x00000010, status is HIT
+[info] 4725: hit pc send to ibuffer,pc:0x10d11f80,gid:1aab.
+[info] [00004726]: normal_req, address is 0x10d11f90
+[info] 4726: lookup_tag is fetch req addr:0x10d11f90
+[info] 4726: icache read address is 0x10d11f90, size is 0x00000010, status is HIT
+[info] 4726: hit pc send to ibuffer,pc:0x10d11f90,gid:1aac.
+[info] [00004727]: normal_req, address is 0x10d11fa0
+[info] 4727: lookup_tag is fetch req addr:0x10d11fa0
+[info] 4727: icache read address is 0x10d11fa0, size is 0x00000010, status is HIT
+[info] 4727: hit pc send to ibuffer,pc:0x10d11fa0,gid:1aad.
+[info] [00004728]: normal_req, address is 0x10d11fb0
+[info] 4728: lookup_tag is fetch req addr:0x10d11fb0
+[info] 4728: icache read address is 0x10d11fb0, size is 0x00000010, status is HIT
+[info] 4728: hit pc send to ibuffer,pc:0x10d11fb0,gid:1aae.
+[info] [00004729]: normal_req, address is 0x10d11fc0
+[info] 4729: lookup_tag is fetch req addr:0x10d11fc0
+[info] 4729: icache read address is 0x10d11fc0, size is 0x00000010, status is HIT
+[info] 4729: hit pc send to ibuffer,pc:0x10d11fc0,gid:1aaf.
+[info] [00004730]: normal_req, address is 0x10d11fd0
+[info] 4730: lookup_tag is fetch req addr:0x10d11fd0
+[info] 4730: icache read address is 0x10d11fd0, size is 0x00000010, status is HIT
+[info] 4730: hit pc send to ibuffer,pc:0x10d11fd0,gid:1ab0.
+[info] [00004731]: normal_req, address is 0x10d11fe0
+[info] 4731: lookup_tag is fetch req addr:0x10d11fe0
+[info] 4731: icache read address is 0x10d11fe0, size is 0x00000010, status is HIT
+[info] 4731: hit pc send to ibuffer,pc:0x10d11fe0,gid:1ab1.
+[info] [00004732]: normal_req, address is 0x10d11ff0
+[info] 4732: lookup_tag is fetch req addr:0x10d11ff0
+[info] 4732: icache read address is 0x10d11ff0, size is 0x00000010, status is HIT
+[info] 4732: hit pc send to ibuffer,pc:0x10d11ff0,gid:1ab2.
+[info] [00004733]: normal_req, address is 0x10d12000
+[info] 4733: lookup_tag is fetch req addr:0x10d12000
+[info] 4733: icache read address is 0x10d12000, size is 0x00000010, status is HIT
+[info] 4733: hit pc send to ibuffer,pc:0x10d12000,gid:1ab3.
+[info] [00004742]: normal_req, address is 0x10d11fd4
+[info] 4742: lookup_tag is fetch req addr:0x10d11fd4
+[info] 4742: icache read address is 0x10d11fd4, size is 0x0000000c, status is HIT
+[info] 4742: hit pc send to ibuffer,pc:0x10d11fd4,gid:1ab4.
+[info] [00004743]: normal_req, address is 0x10d11fe0
+[info] 4743: lookup_tag is fetch req addr:0x10d11fe0
+[info] 4743: icache read address is 0x10d11fe0, size is 0x00000010, status is HIT
+[info] 4743: hit pc send to ibuffer,pc:0x10d11fe0,gid:1ab5.
+[info] [00004744]: normal_req, address is 0x10d11ff0
+[info] 4744: lookup_tag is fetch req addr:0x10d11ff0
+[info] 4744: icache read address is 0x10d11ff0, size is 0x00000010, status is HIT
+[info] 4744: hit pc send to ibuffer,pc:0x10d11ff0,gid:1ab6.
+[info] [00004745]: normal_req, address is 0x10d12000
+[info] 4745: lookup_tag is fetch req addr:0x10d12000
+[info] 4745: icache read address is 0x10d12000, size is 0x00000010, status is HIT
+[info] 4745: hit pc send to ibuffer,pc:0x10d12000,gid:1ab7.
+[info] [00004746]: normal_req, address is 0x10d12010
+[info] 4746: lookup_tag is fetch req addr:0x10d12010
+[info] 4746: icache read address is 0x10d12010, size is 0x00000010, status is HIT
+[info] 4746: hit pc send to ibuffer,pc:0x10d12010,gid:1ab8.
+[info] [00004747]: normal_req, address is 0x10d12020
+[info] 4747: lookup_tag is fetch req addr:0x10d12020
+[info] 4747: icache read address is 0x10d12020, size is 0x00000010, status is HIT
+[info] 4747: hit pc send to ibuffer,pc:0x10d12020,gid:1ab9.
+[info] [00004748]: normal_req, address is 0x10d12030
+[info] 4748: lookup_tag is fetch req addr:0x10d12030
+[info] 4748: icache read address is 0x10d12030, size is 0x00000010, status is HIT
+[info] 4748: hit pc send to ibuffer,pc:0x10d12030,gid:1aba.
+[info] [00004750]: normal_req, address is 0x10d12110
+[info] 4750: lookup_tag is fetch req addr:0x10d12110
+[info] 4750: icache read address is 0x10d12110, size is 0x00000010, status is HIT
+[info] 4750: hit pc send to ibuffer,pc:0x10d12110,gid:1abc.
+[info] [00004751]: normal_req, address is 0x10d12120
+[info] 4751: lookup_tag is fetch req addr:0x10d12120
+[info] 4751: icache read address is 0x10d12120, size is 0x00000010, status is HIT
+[info] 4751: hit pc send to ibuffer,pc:0x10d12120,gid:1abd.
+[info] [00004752]: normal_req, address is 0x10d12130
+[info] 4752: lookup_tag is fetch req addr:0x10d12130
+[info] 4752: icache read address is 0x10d12130, size is 0x00000010, status is HIT
+[info] 4752: hit pc send to ibuffer,pc:0x10d12130,gid:1abe.
+[info] [00004753]: normal_req, address is 0x10d11f20
+[info] 4753: lookup_tag is fetch req addr:0x10d11f20
+[info] 4753: icache read address is 0x10d11f20, size is 0x00000010, status is HIT
+[info] 4753: hit pc send to ibuffer,pc:0x10d11f20,gid:1abf.
+[info] [00004754]: normal_req, address is 0x10d11f30
+[info] 4754: lookup_tag is fetch req addr:0x10d11f30
+[info] 4754: icache read address is 0x10d11f30, size is 0x00000010, status is HIT
+[info] 4754: hit pc send to ibuffer,pc:0x10d11f30,gid:1ac0.
+[info] [00004755]: normal_req, address is 0x10d11f40
+[info] 4755: lookup_tag is fetch req addr:0x10d11f40
+[info] 4755: icache read address is 0x10d11f40, size is 0x00000010, status is HIT
+[info] 4755: hit pc send to ibuffer,pc:0x10d11f40,gid:1ac1.
+[info] [00004756]: normal_req, address is 0x10d11f50
+[info] 4756: lookup_tag is fetch req addr:0x10d11f50
+[info] 4756: icache read address is 0x10d11f50, size is 0x00000010, status is HIT
+[info] 4756: hit pc send to ibuffer,pc:0x10d11f50,gid:1ac2.
+[info] [00004757]: normal_req, address is 0x10d11f60
+[info] 4757: lookup_tag is fetch req addr:0x10d11f60
+[info] 4757: icache read address is 0x10d11f60, size is 0x00000010, status is HIT
+[info] 4757: hit pc send to ibuffer,pc:0x10d11f60,gid:1ac3.
+[info] [00004758]: normal_req, address is 0x10d11f70
+[info] 4758: lookup_tag is fetch req addr:0x10d11f70
+[info] 4758: icache read address is 0x10d11f70, size is 0x00000010, status is HIT
+[info] 4758: hit pc send to ibuffer,pc:0x10d11f70,gid:1ac4.
+[info] [00004759]: normal_req, address is 0x10d11f80
+[info] 4759: lookup_tag is fetch req addr:0x10d11f80
+[info] 4759: icache read address is 0x10d11f80, size is 0x00000010, status is HIT
+[info] 4759: hit pc send to ibuffer,pc:0x10d11f80,gid:1ac5.
+[info] [00004760]: normal_req, address is 0x10d11f90
+[info] 4760: lookup_tag is fetch req addr:0x10d11f90
+[info] 4760: icache read address is 0x10d11f90, size is 0x00000010, status is HIT
+[info] 4760: hit pc send to ibuffer,pc:0x10d11f90,gid:1ac6.
+[info] [00004761]: normal_req, address is 0x10d11fa0
+[info] 4761: lookup_tag is fetch req addr:0x10d11fa0
+[info] 4761: icache read address is 0x10d11fa0, size is 0x00000010, status is HIT
+[info] 4761: hit pc send to ibuffer,pc:0x10d11fa0,gid:1ac7.
+[info] [00004762]: normal_req, address is 0x10d11fb0
+[info] 4762: lookup_tag is fetch req addr:0x10d11fb0
+[info] 4762: icache read address is 0x10d11fb0, size is 0x00000010, status is HIT
+[info] 4762: hit pc send to ibuffer,pc:0x10d11fb0,gid:1ac8.
+[info] [00004763]: normal_req, address is 0x10d11fc0
+[info] 4763: lookup_tag is fetch req addr:0x10d11fc0
+[info] 4763: icache read address is 0x10d11fc0, size is 0x00000010, status is HIT
+[info] 4763: hit pc send to ibuffer,pc:0x10d11fc0,gid:1ac9.
+[info] [00004764]: normal_req, address is 0x10d11fd0
+[info] 4764: lookup_tag is fetch req addr:0x10d11fd0
+[info] 4764: icache read address is 0x10d11fd0, size is 0x00000010, status is HIT
+[info] 4764: hit pc send to ibuffer,pc:0x10d11fd0,gid:1aca.
+[info] [00004765]: normal_req, address is 0x10d11fe0
+[info] 4765: lookup_tag is fetch req addr:0x10d11fe0
+[info] 4765: icache read address is 0x10d11fe0, size is 0x00000010, status is HIT
+[info] 4765: hit pc send to ibuffer,pc:0x10d11fe0,gid:1acb.
+[info] [00004767]: normal_req, address is 0x10d11f40
+[info] 4767: lookup_tag is fetch req addr:0x10d11f40
+[info] 4767: icache read address is 0x10d11f40, size is 0x00000010, status is HIT
+[info] 4767: hit pc send to ibuffer,pc:0x10d11f40,gid:1acc.
+[info] [00004768]: normal_req, address is 0x10d11f50
+[info] 4768: lookup_tag is fetch req addr:0x10d11f50
+[info] 4768: icache read address is 0x10d11f50, size is 0x00000010, status is HIT
+[info] 4768: hit pc send to ibuffer,pc:0x10d11f50,gid:1acd.
+[info] [00004769]: normal_req, address is 0x10d11f60
+[info] 4769: lookup_tag is fetch req addr:0x10d11f60
+[info] 4769: icache read address is 0x10d11f60, size is 0x00000010, status is HIT
+[info] 4769: hit pc send to ibuffer,pc:0x10d11f60,gid:1ace.
+[info] [00004770]: normal_req, address is 0x10d11f70
+[info] 4770: lookup_tag is fetch req addr:0x10d11f70
+[info] 4770: icache read address is 0x10d11f70, size is 0x00000010, status is HIT
+[info] 4770: hit pc send to ibuffer,pc:0x10d11f70,gid:1acf.
+[info] [00004771]: normal_req, address is 0x10d11f80
+[info] 4771: lookup_tag is fetch req addr:0x10d11f80
+[info] 4771: icache read address is 0x10d11f80, size is 0x00000010, status is HIT
+[info] 4771: hit pc send to ibuffer,pc:0x10d11f80,gid:1ad0.
+[info] [00004772]: normal_req, address is 0x10d11f90
+[info] 4772: lookup_tag is fetch req addr:0x10d11f90
+[info] 4772: icache read address is 0x10d11f90, size is 0x00000010, status is HIT
+[info] 4772: hit pc send to ibuffer,pc:0x10d11f90,gid:1ad1.
+[info] [00004773]: normal_req, address is 0x10d11fa0
+[info] 4773: lookup_tag is fetch req addr:0x10d11fa0
+[info] 4773: icache read address is 0x10d11fa0, size is 0x00000010, status is HIT
+[info] 4773: hit pc send to ibuffer,pc:0x10d11fa0,gid:1ad2.
+[info] [00004774]: normal_req, address is 0x10d11fb0
+[info] 4774: lookup_tag is fetch req addr:0x10d11fb0
+[info] 4774: icache read address is 0x10d11fb0, size is 0x00000010, status is HIT
+[info] 4774: hit pc send to ibuffer,pc:0x10d11fb0,gid:1ad3.
+[info] [00004775]: normal_req, address is 0x10d11fc0
+[info] 4775: lookup_tag is fetch req addr:0x10d11fc0
+[info] 4775: icache read address is 0x10d11fc0, size is 0x00000010, status is HIT
+[info] 4775: hit pc send to ibuffer,pc:0x10d11fc0,gid:1ad4.
+[info] [00004776]: normal_req, address is 0x10d11fd0
+[info] 4776: lookup_tag is fetch req addr:0x10d11fd0
+[info] 4776: icache read address is 0x10d11fd0, size is 0x00000010, status is HIT
+[info] 4776: hit pc send to ibuffer,pc:0x10d11fd0,gid:1ad5.
+[info] [00004777]: normal_req, address is 0x10d11fe0
+[info] 4777: lookup_tag is fetch req addr:0x10d11fe0
+[info] 4777: icache read address is 0x10d11fe0, size is 0x00000010, status is HIT
+[info] 4777: hit pc send to ibuffer,pc:0x10d11fe0,gid:1ad6.
+[info] [00004778]: normal_req, address is 0x10d11ff0
+[info] 4778: lookup_tag is fetch req addr:0x10d11ff0
+[info] 4778: icache read address is 0x10d11ff0, size is 0x00000010, status is HIT
+[info] 4778: hit pc send to ibuffer,pc:0x10d11ff0,gid:1ad7.
+[info] [00004779]: normal_req, address is 0x10d12000
+[info] 4779: lookup_tag is fetch req addr:0x10d12000
+[info] 4779: icache read address is 0x10d12000, size is 0x00000010, status is HIT
+[info] 4779: hit pc send to ibuffer,pc:0x10d12000,gid:1ad8.
+[info] [00004788]: normal_req, address is 0x10d11fd4
+[info] 4788: lookup_tag is fetch req addr:0x10d11fd4
+[info] 4788: icache read address is 0x10d11fd4, size is 0x0000000c, status is HIT
+[info] 4788: hit pc send to ibuffer,pc:0x10d11fd4,gid:1ad9.
+[info] [00004789]: normal_req, address is 0x10d11fe0
+[info] 4789: lookup_tag is fetch req addr:0x10d11fe0
+[info] 4789: icache read address is 0x10d11fe0, size is 0x00000010, status is HIT
+[info] 4789: hit pc send to ibuffer,pc:0x10d11fe0,gid:1ada.
+[info] [00004790]: normal_req, address is 0x10d11ff0
+[info] 4790: lookup_tag is fetch req addr:0x10d11ff0
+[info] 4790: icache read address is 0x10d11ff0, size is 0x00000010, status is HIT
+[info] 4790: hit pc send to ibuffer,pc:0x10d11ff0,gid:1adb.
+[info] [00004791]: normal_req, address is 0x10d12000
+[info] 4791: lookup_tag is fetch req addr:0x10d12000
+[info] 4791: icache read address is 0x10d12000, size is 0x00000010, status is HIT
+[info] 4791: hit pc send to ibuffer,pc:0x10d12000,gid:1adc.
+[info] [00004792]: normal_req, address is 0x10d12010
+[info] 4792: lookup_tag is fetch req addr:0x10d12010
+[info] 4792: icache read address is 0x10d12010, size is 0x00000010, status is HIT
+[info] 4792: hit pc send to ibuffer,pc:0x10d12010,gid:1add.
+[info] [00004794]: normal_req, address is 0x10d1206c
+[info] 4794: lookup_tag is fetch req addr:0x10d1206c
+[info] 4794: icache read address is 0x10d1206c, size is 0x00000004, status is HIT
+[info] 4794: hit pc send to ibuffer,pc:0x10d1206c,gid:1adf.
+[info] [00004795]: normal_req, address is 0x10d12070
+[info] 4795: lookup_tag is fetch req addr:0x10d12070
+[info] 4795: icache read address is 0x10d12070, size is 0x00000010, status is HIT
+[info] 4795: hit pc send to ibuffer,pc:0x10d12070,gid:1ae0.
+[info] [00004796]: normal_req, address is 0x10d12080
+[info] 4796: lookup_tag is fetch req addr:0x10d12080
+[info] 4796: icache read address is 0x10d12080, size is 0x00000010, status is HIT
+[info] 4796: hit pc send to ibuffer,pc:0x10d12080,gid:1ae1.
+[info] [00004797]: normal_req, address is 0x10d12090
+[info] 4797: lookup_tag is fetch req addr:0x10d12090
+[info] 4797: icache read address is 0x10d12090, size is 0x00000010, status is HIT
+[info] 4797: hit pc send to ibuffer,pc:0x10d12090,gid:1ae2.
+[info] [00004798]: normal_req, address is 0x10d120a0
+[info] 4798: lookup_tag is fetch req addr:0x10d120a0
+[info] 4798: icache read address is 0x10d120a0, size is 0x00000010, status is HIT
+[info] 4798: hit pc send to ibuffer,pc:0x10d120a0,gid:1ae3.
+[info] [00004800]: normal_req, address is 0x10d12158
+[info] 4800: lookup_tag is fetch req addr:0x10d12158
+[info] 4800: icache read address is 0x10d12158, size is 0x00000008, status is HIT
+[info] 4800: hit pc send to ibuffer,pc:0x10d12158,gid:1ae5.
+[info] [00004801]: normal_req, address is 0x10d12160
+[info] 4801: lookup_tag is fetch req addr:0x10d12160
+[info] 4801: icache read address is 0x10d12160, size is 0x00000010, status is HIT
+[info] 4801: hit pc send to ibuffer,pc:0x10d12160,gid:1ae6.
+[info] [00004802]: normal_req, address is 0x10d12170
+[info] 4802: lookup_tag is fetch req addr:0x10d12170
+[info] 4802: icache read address is 0x10d12170, size is 0x00000010, status is HIT
+[info] 4802: hit pc send to ibuffer,pc:0x10d12170,gid:1ae7.
+[info] [00004803]: normal_req, address is 0x10d12180
+[info] 4803: lookup_tag is fetch req addr:0x10d12180
+[info] 4803: icache read address is 0x10d12180, size is 0x00000010, status is HIT
+[info] 4803: hit pc send to ibuffer,pc:0x10d12180,gid:1ae8.
+[info] [00004804]: normal_req, address is 0x10d11f20
+[info] 4804: lookup_tag is fetch req addr:0x10d11f20
+[info] 4804: icache read address is 0x10d11f20, size is 0x00000010, status is HIT
+[info] 4804: hit pc send to ibuffer,pc:0x10d11f20,gid:1ae9.
+[info] [00004805]: normal_req, address is 0x10d11f30
+[info] 4805: lookup_tag is fetch req addr:0x10d11f30
+[info] 4805: icache read address is 0x10d11f30, size is 0x00000010, status is HIT
+[info] 4805: hit pc send to ibuffer,pc:0x10d11f30,gid:1aea.
+[info] [00004806]: normal_req, address is 0x10d11f40
+[info] 4806: lookup_tag is fetch req addr:0x10d11f40
+[info] 4806: icache read address is 0x10d11f40, size is 0x00000010, status is HIT
+[info] 4806: hit pc send to ibuffer,pc:0x10d11f40,gid:1aeb.
+[info] [00004807]: normal_req, address is 0x10d11f50
+[info] 4807: lookup_tag is fetch req addr:0x10d11f50
+[info] 4807: icache read address is 0x10d11f50, size is 0x00000010, status is HIT
+[info] 4807: hit pc send to ibuffer,pc:0x10d11f50,gid:1aec.
+[info] [00004808]: normal_req, address is 0x10d11f60
+[info] 4808: lookup_tag is fetch req addr:0x10d11f60
+[info] 4808: icache read address is 0x10d11f60, size is 0x00000010, status is HIT
+[info] 4808: hit pc send to ibuffer,pc:0x10d11f60,gid:1aed.
+[info] [00004809]: normal_req, address is 0x10d11f70
+[info] 4809: lookup_tag is fetch req addr:0x10d11f70
+[info] 4809: icache read address is 0x10d11f70, size is 0x00000010, status is HIT
+[info] 4809: hit pc send to ibuffer,pc:0x10d11f70,gid:1aee.
+[info] [00004810]: normal_req, address is 0x10d11f80
+[info] 4810: lookup_tag is fetch req addr:0x10d11f80
+[info] 4810: icache read address is 0x10d11f80, size is 0x00000010, status is HIT
+[info] 4810: hit pc send to ibuffer,pc:0x10d11f80,gid:1aef.
+[info] [00004811]: normal_req, address is 0x10d11f90
+[info] 4811: lookup_tag is fetch req addr:0x10d11f90
+[info] 4811: icache read address is 0x10d11f90, size is 0x00000010, status is HIT
+[info] 4811: hit pc send to ibuffer,pc:0x10d11f90,gid:1af0.
+[info] [00004812]: normal_req, address is 0x10d11fa0
+[info] 4812: lookup_tag is fetch req addr:0x10d11fa0
+[info] 4812: icache read address is 0x10d11fa0, size is 0x00000010, status is HIT
+[info] 4812: hit pc send to ibuffer,pc:0x10d11fa0,gid:1af1.
+[info] [00004813]: normal_req, address is 0x10d11fb0
+[info] 4813: lookup_tag is fetch req addr:0x10d11fb0
+[info] 4813: icache read address is 0x10d11fb0, size is 0x00000010, status is HIT
+[info] 4813: hit pc send to ibuffer,pc:0x10d11fb0,gid:1af2.
+[info] [00004814]: normal_req, address is 0x10d11fc0
+[info] 4814: lookup_tag is fetch req addr:0x10d11fc0
+[info] 4814: icache read address is 0x10d11fc0, size is 0x00000010, status is HIT
+[info] 4814: hit pc send to ibuffer,pc:0x10d11fc0,gid:1af3.
+[info] [00004815]: normal_req, address is 0x10d11fd0
+[info] 4815: lookup_tag is fetch req addr:0x10d11fd0
+[info] 4815: icache read address is 0x10d11fd0, size is 0x00000010, status is HIT
+[info] 4815: hit pc send to ibuffer,pc:0x10d11fd0,gid:1af4.
+[info] [00004816]: normal_req, address is 0x10d11fe0
+[info] 4816: lookup_tag is fetch req addr:0x10d11fe0
+[info] 4816: icache read address is 0x10d11fe0, size is 0x00000010, status is HIT
+[info] 4816: hit pc send to ibuffer,pc:0x10d11fe0,gid:1af5.
+[info] [00004818]: normal_req, address is 0x10d11f40
+[info] 4818: lookup_tag is fetch req addr:0x10d11f40
+[info] 4818: icache read address is 0x10d11f40, size is 0x00000010, status is HIT
+[info] 4818: hit pc send to ibuffer,pc:0x10d11f40,gid:1af6.
+[info] [00004819]: normal_req, address is 0x10d11f50
+[info] 4819: lookup_tag is fetch req addr:0x10d11f50
+[info] 4819: icache read address is 0x10d11f50, size is 0x00000010, status is HIT
+[info] 4819: hit pc send to ibuffer,pc:0x10d11f50,gid:1af7.
+[info] [00004820]: normal_req, address is 0x10d11f60
+[info] 4820: lookup_tag is fetch req addr:0x10d11f60
+[info] 4820: icache read address is 0x10d11f60, size is 0x00000010, status is HIT
+[info] 4820: hit pc send to ibuffer,pc:0x10d11f60,gid:1af8.
+[info] [00004821]: normal_req, address is 0x10d11f70
+[info] 4821: lookup_tag is fetch req addr:0x10d11f70
+[info] 4821: icache read address is 0x10d11f70, size is 0x00000010, status is HIT
+[info] 4821: hit pc send to ibuffer,pc:0x10d11f70,gid:1af9.
+[info] [00004822]: normal_req, address is 0x10d11f80
+[info] 4822: lookup_tag is fetch req addr:0x10d11f80
+[info] 4822: icache read address is 0x10d11f80, size is 0x00000010, status is HIT
+[info] 4822: hit pc send to ibuffer,pc:0x10d11f80,gid:1afa.
+[info] [00004823]: normal_req, address is 0x10d11f90
+[info] 4823: lookup_tag is fetch req addr:0x10d11f90
+[info] 4823: icache read address is 0x10d11f90, size is 0x00000010, status is HIT
+[info] 4823: hit pc send to ibuffer,pc:0x10d11f90,gid:1afb.
+[info] [00004824]: normal_req, address is 0x10d11fa0
+[info] 4824: lookup_tag is fetch req addr:0x10d11fa0
+[info] 4824: icache read address is 0x10d11fa0, size is 0x00000010, status is HIT
+[info] 4824: hit pc send to ibuffer,pc:0x10d11fa0,gid:1afc.
+[info] [00004825]: normal_req, address is 0x10d11fb0
+[info] 4825: lookup_tag is fetch req addr:0x10d11fb0
+[info] 4825: icache read address is 0x10d11fb0, size is 0x00000010, status is HIT
+[info] 4825: hit pc send to ibuffer,pc:0x10d11fb0,gid:1afd.
+[info] [00004826]: normal_req, address is 0x10d11fc0
+[info] 4826: lookup_tag is fetch req addr:0x10d11fc0
+[info] 4826: icache read address is 0x10d11fc0, size is 0x00000010, status is HIT
+[info] 4826: hit pc send to ibuffer,pc:0x10d11fc0,gid:1afe.
+[info] [00004827]: normal_req, address is 0x10d11fd0
+[info] 4827: lookup_tag is fetch req addr:0x10d11fd0
+[info] 4827: icache read address is 0x10d11fd0, size is 0x00000010, status is HIT
+[info] 4827: hit pc send to ibuffer,pc:0x10d11fd0,gid:1aff.
+[info] [00004828]: normal_req, address is 0x10d11fe0
+[info] 4828: lookup_tag is fetch req addr:0x10d11fe0
+[info] 4828: icache read address is 0x10d11fe0, size is 0x00000010, status is HIT
+[info] 4828: hit pc send to ibuffer,pc:0x10d11fe0,gid:1b00.
+[info] [00004829]: normal_req, address is 0x10d11ff0
+[info] 4829: lookup_tag is fetch req addr:0x10d11ff0
+[info] 4829: icache read address is 0x10d11ff0, size is 0x00000010, status is HIT
+[info] 4829: hit pc send to ibuffer,pc:0x10d11ff0,gid:1b01.
+[info] [00004830]: normal_req, address is 0x10d12000
+[info] 4830: lookup_tag is fetch req addr:0x10d12000
+[info] 4830: icache read address is 0x10d12000, size is 0x00000010, status is HIT
+[info] 4830: hit pc send to ibuffer,pc:0x10d12000,gid:1b02.
+[info] [00004838]: normal_req, address is 0x10d11f60
+[info] 4838: lookup_tag is fetch req addr:0x10d11f60
+[info] 4838: icache read address is 0x10d11f60, size is 0x00000010, status is HIT
+[info] 4838: hit pc send to ibuffer,pc:0x10d11f60,gid:1b03.
+[info] [00004839]: normal_req, address is 0x10d11f70
+[info] 4839: lookup_tag is fetch req addr:0x10d11f70
+[info] 4839: icache read address is 0x10d11f70, size is 0x00000010, status is HIT
+[info] 4839: hit pc send to ibuffer,pc:0x10d11f70,gid:1b04.
+[info] [00004840]: normal_req, address is 0x10d11f80
+[info] 4840: lookup_tag is fetch req addr:0x10d11f80
+[info] 4840: icache read address is 0x10d11f80, size is 0x00000010, status is HIT
+[info] 4840: hit pc send to ibuffer,pc:0x10d11f80,gid:1b05.
+[info] [00004841]: normal_req, address is 0x10d11f90
+[info] 4841: lookup_tag is fetch req addr:0x10d11f90
+[info] 4841: icache read address is 0x10d11f90, size is 0x00000010, status is HIT
+[info] 4841: hit pc send to ibuffer,pc:0x10d11f90,gid:1b06.
+[info] [00004842]: normal_req, address is 0x10d11fa0
+[info] 4842: lookup_tag is fetch req addr:0x10d11fa0
+[info] 4842: icache read address is 0x10d11fa0, size is 0x00000010, status is HIT
+[info] 4842: hit pc send to ibuffer,pc:0x10d11fa0,gid:1b07.
+[info] [00004844]: normal_req, address is 0x10d11f6c
+[info] 4844: lookup_tag is fetch req addr:0x10d11f6c
+[info] 4844: icache read address is 0x10d11f6c, size is 0x00000004, status is HIT
+[info] 4844: hit pc send to ibuffer,pc:0x10d11f6c,gid:1b09.
+[info] [00004845]: normal_req, address is 0x10d11f70
+[info] 4845: lookup_tag is fetch req addr:0x10d11f70
+[info] 4845: icache read address is 0x10d11f70, size is 0x00000010, status is HIT
+[info] 4845: hit pc send to ibuffer,pc:0x10d11f70,gid:1b0a.
+[info] [00004846]: normal_req, address is 0x10d11f80
+[info] 4846: lookup_tag is fetch req addr:0x10d11f80
+[info] 4846: icache read address is 0x10d11f80, size is 0x00000010, status is HIT
+[info] 4846: hit pc send to ibuffer,pc:0x10d11f80,gid:1b0b.
+[info] [00004847]: normal_req, address is 0x10d11f90
+[info] 4847: lookup_tag is fetch req addr:0x10d11f90
+[info] 4847: icache read address is 0x10d11f90, size is 0x00000010, status is HIT
+[info] 4847: hit pc send to ibuffer,pc:0x10d11f90,gid:1b0c.
+[info] [00004848]: normal_req, address is 0x10d11fa0
+[info] 4848: lookup_tag is fetch req addr:0x10d11fa0
+[info] 4848: icache read address is 0x10d11fa0, size is 0x00000010, status is HIT
+[info] 4848: hit pc send to ibuffer,pc:0x10d11fa0,gid:1b0d.
+[info] [00004849]: normal_req, address is 0x10d11fb0
+[info] 4849: lookup_tag is fetch req addr:0x10d11fb0
+[info] 4849: icache read address is 0x10d11fb0, size is 0x00000010, status is HIT
+[info] 4849: hit pc send to ibuffer,pc:0x10d11fb0,gid:1b0e.
+[info] [00004851]: normal_req, address is 0x10d120ec
+[info] 4851: lookup_tag is fetch req addr:0x10d120ec
+[info] 4851: icache read address is 0x10d120ec, size is 0x00000004, status is HIT
+[info] 4851: hit pc send to ibuffer,pc:0x10d120ec,gid:1b10.
+[info] [00004852]: normal_req, address is 0x10d120f0
+[info] 4852: lookup_tag is fetch req addr:0x10d120f0
+[info] 4852: icache read address is 0x10d120f0, size is 0x00000010, status is HIT
+[info] 4852: hit pc send to ibuffer,pc:0x10d120f0,gid:1b11.
+[info] [00004853]: normal_req, address is 0x10d12100
+[info] 4853: lookup_tag is fetch req addr:0x10d12100
+[info] 4853: icache read address is 0x10d12100, size is 0x00000010, status is HIT
+[info] 4853: hit pc send to ibuffer,pc:0x10d12100,gid:1b12.
+[info] [00004854]: normal_req, address is 0x10d12110
+[info] 4854: lookup_tag is fetch req addr:0x10d12110
+[info] 4854: icache read address is 0x10d12110, size is 0x00000010, status is HIT
+[info] 4854: hit pc send to ibuffer,pc:0x10d12110,gid:1b13.
+[info] [00004855]: normal_req, address is 0x10d11f20
+[info] 4855: lookup_tag is fetch req addr:0x10d11f20
+[info] 4855: icache read address is 0x10d11f20, size is 0x00000010, status is HIT
+[info] 4855: hit pc send to ibuffer,pc:0x10d11f20,gid:1b14.
+[info] [00004856]: normal_req, address is 0x10d11f30
+[info] 4856: lookup_tag is fetch req addr:0x10d11f30
+[info] 4856: icache read address is 0x10d11f30, size is 0x00000010, status is HIT
+[info] 4856: hit pc send to ibuffer,pc:0x10d11f30,gid:1b15.
+[info] [00004857]: normal_req, address is 0x10d11f40
+[info] 4857: lookup_tag is fetch req addr:0x10d11f40
+[info] 4857: icache read address is 0x10d11f40, size is 0x00000010, status is HIT
+[info] 4857: hit pc send to ibuffer,pc:0x10d11f40,gid:1b16.
+[info] [00004858]: normal_req, address is 0x10d11f50
+[info] 4858: lookup_tag is fetch req addr:0x10d11f50
+[info] 4858: icache read address is 0x10d11f50, size is 0x00000010, status is HIT
+[info] 4858: hit pc send to ibuffer,pc:0x10d11f50,gid:1b17.
+[info] [00004859]: normal_req, address is 0x10d11f60
+[info] 4859: lookup_tag is fetch req addr:0x10d11f60
+[info] 4859: icache read address is 0x10d11f60, size is 0x00000010, status is HIT
+[info] 4859: hit pc send to ibuffer,pc:0x10d11f60,gid:1b18.
+[info] [00004860]: normal_req, address is 0x10d11f70
+[info] 4860: lookup_tag is fetch req addr:0x10d11f70
+[info] 4860: icache read address is 0x10d11f70, size is 0x00000010, status is HIT
+[info] 4860: hit pc send to ibuffer,pc:0x10d11f70,gid:1b19.
+[info] [00004861]: normal_req, address is 0x10d11f80
+[info] 4861: lookup_tag is fetch req addr:0x10d11f80
+[info] 4861: icache read address is 0x10d11f80, size is 0x00000010, status is HIT
+[info] 4861: hit pc send to ibuffer,pc:0x10d11f80,gid:1b1a.
+[info] [00004862]: normal_req, address is 0x10d11f90
+[info] 4862: lookup_tag is fetch req addr:0x10d11f90
+[info] 4862: icache read address is 0x10d11f90, size is 0x00000010, status is HIT
+[info] 4862: hit pc send to ibuffer,pc:0x10d11f90,gid:1b1b.
+[info] [00004863]: normal_req, address is 0x10d11fa0
+[info] 4863: lookup_tag is fetch req addr:0x10d11fa0
+[info] 4863: icache read address is 0x10d11fa0, size is 0x00000010, status is HIT
+[info] 4863: hit pc send to ibuffer,pc:0x10d11fa0,gid:1b1c.
+[info] [00004864]: normal_req, address is 0x10d11fb0
+[info] 4864: lookup_tag is fetch req addr:0x10d11fb0
+[info] 4864: icache read address is 0x10d11fb0, size is 0x00000010, status is HIT
+[info] 4864: hit pc send to ibuffer,pc:0x10d11fb0,gid:1b1d.
+[info] [00004865]: normal_req, address is 0x10d11fc0
+[info] 4865: lookup_tag is fetch req addr:0x10d11fc0
+[info] 4865: icache read address is 0x10d11fc0, size is 0x00000010, status is HIT
+[info] 4865: hit pc send to ibuffer,pc:0x10d11fc0,gid:1b1e.
+[info] [00004866]: normal_req, address is 0x10d11fd0
+[info] 4866: lookup_tag is fetch req addr:0x10d11fd0
+[info] 4866: icache read address is 0x10d11fd0, size is 0x00000010, status is HIT
+[info] 4866: hit pc send to ibuffer,pc:0x10d11fd0,gid:1b1f.
+[info] [00004867]: normal_req, address is 0x10d11fe0
+[info] 4867: lookup_tag is fetch req addr:0x10d11fe0
+[info] 4867: icache read address is 0x10d11fe0, size is 0x00000010, status is HIT
+[info] 4867: hit pc send to ibuffer,pc:0x10d11fe0,gid:1b20.
+[info] [00004869]: normal_req, address is 0x10d11f40
+[info] 4869: lookup_tag is fetch req addr:0x10d11f40
+[info] 4869: icache read address is 0x10d11f40, size is 0x00000010, status is HIT
+[info] 4869: hit pc send to ibuffer,pc:0x10d11f40,gid:1b21.
+[info] [00004870]: normal_req, address is 0x10d11f50
+[info] 4870: lookup_tag is fetch req addr:0x10d11f50
+[info] 4870: icache read address is 0x10d11f50, size is 0x00000010, status is HIT
+[info] 4870: hit pc send to ibuffer,pc:0x10d11f50,gid:1b22.
+[info] [00004871]: normal_req, address is 0x10d11f60
+[info] 4871: lookup_tag is fetch req addr:0x10d11f60
+[info] 4871: icache read address is 0x10d11f60, size is 0x00000010, status is HIT
+[info] 4871: hit pc send to ibuffer,pc:0x10d11f60,gid:1b23.
+[info] [00004872]: normal_req, address is 0x10d11f70
+[info] 4872: lookup_tag is fetch req addr:0x10d11f70
+[info] 4872: icache read address is 0x10d11f70, size is 0x00000010, status is HIT
+[info] 4872: hit pc send to ibuffer,pc:0x10d11f70,gid:1b24.
+[info] [00004873]: normal_req, address is 0x10d11f80
+[info] 4873: lookup_tag is fetch req addr:0x10d11f80
+[info] 4873: icache read address is 0x10d11f80, size is 0x00000010, status is HIT
+[info] 4873: hit pc send to ibuffer,pc:0x10d11f80,gid:1b25.
+[info] [00004874]: normal_req, address is 0x10d11f90
+[info] 4874: lookup_tag is fetch req addr:0x10d11f90
+[info] 4874: icache read address is 0x10d11f90, size is 0x00000010, status is HIT
+[info] 4874: hit pc send to ibuffer,pc:0x10d11f90,gid:1b26.
+[info] [00004875]: normal_req, address is 0x10d11fa0
+[info] 4875: lookup_tag is fetch req addr:0x10d11fa0
+[info] 4875: icache read address is 0x10d11fa0, size is 0x00000010, status is HIT
+[info] 4875: hit pc send to ibuffer,pc:0x10d11fa0,gid:1b27.
+[info] [00004876]: normal_req, address is 0x10d11fb0
+[info] 4876: lookup_tag is fetch req addr:0x10d11fb0
+[info] 4876: icache read address is 0x10d11fb0, size is 0x00000010, status is HIT
+[info] 4876: hit pc send to ibuffer,pc:0x10d11fb0,gid:1b28.
+[info] [00004877]: normal_req, address is 0x10d11fc0
+[info] 4877: lookup_tag is fetch req addr:0x10d11fc0
+[info] 4877: icache read address is 0x10d11fc0, size is 0x00000010, status is HIT
+[info] 4877: hit pc send to ibuffer,pc:0x10d11fc0,gid:1b29.
+[info] [00004878]: normal_req, address is 0x10d11fd0
+[info] 4878: lookup_tag is fetch req addr:0x10d11fd0
+[info] 4878: icache read address is 0x10d11fd0, size is 0x00000010, status is HIT
+[info] 4878: hit pc send to ibuffer,pc:0x10d11fd0,gid:1b2a.
+[info] [00004879]: normal_req, address is 0x10d11fe0
+[info] 4879: lookup_tag is fetch req addr:0x10d11fe0
+[info] 4879: icache read address is 0x10d11fe0, size is 0x00000010, status is HIT
+[info] 4879: hit pc send to ibuffer,pc:0x10d11fe0,gid:1b2b.
+[info] [00004880]: normal_req, address is 0x10d11ff0
+[info] 4880: lookup_tag is fetch req addr:0x10d11ff0
+[info] 4880: icache read address is 0x10d11ff0, size is 0x00000010, status is HIT
+[info] 4880: hit pc send to ibuffer,pc:0x10d11ff0,gid:1b2c.
+[info] [00004881]: normal_req, address is 0x10d12000
+[info] 4881: lookup_tag is fetch req addr:0x10d12000
+[info] 4881: icache read address is 0x10d12000, size is 0x00000010, status is HIT
+[info] 4881: hit pc send to ibuffer,pc:0x10d12000,gid:1b2d.
+[info] [00004890]: normal_req, address is 0x10d11fd4
+[info] 4890: lookup_tag is fetch req addr:0x10d11fd4
+[info] 4890: icache read address is 0x10d11fd4, size is 0x0000000c, status is HIT
+[info] 4890: hit pc send to ibuffer,pc:0x10d11fd4,gid:1b2e.
+[info] [00004891]: normal_req, address is 0x10d11fe0
+[info] 4891: lookup_tag is fetch req addr:0x10d11fe0
+[info] 4891: icache read address is 0x10d11fe0, size is 0x00000010, status is HIT
+[info] 4891: hit pc send to ibuffer,pc:0x10d11fe0,gid:1b2f.
+[info] [00004892]: normal_req, address is 0x10d11ff0
+[info] 4892: lookup_tag is fetch req addr:0x10d11ff0
+[info] 4892: icache read address is 0x10d11ff0, size is 0x00000010, status is HIT
+[info] 4892: hit pc send to ibuffer,pc:0x10d11ff0,gid:1b30.
+[info] [00004893]: normal_req, address is 0x10d12000
+[info] 4893: lookup_tag is fetch req addr:0x10d12000
+[info] 4893: icache read address is 0x10d12000, size is 0x00000010, status is HIT
+[info] 4893: hit pc send to ibuffer,pc:0x10d12000,gid:1b31.
+[info] [00004894]: normal_req, address is 0x10d12010
+[info] 4894: lookup_tag is fetch req addr:0x10d12010
+[info] 4894: icache read address is 0x10d12010, size is 0x00000010, status is HIT
+[info] 4894: hit pc send to ibuffer,pc:0x10d12010,gid:1b32.
+[info] [00004895]: normal_req, address is 0x10d12020
+[info] 4895: lookup_tag is fetch req addr:0x10d12020
+[info] 4895: icache read address is 0x10d12020, size is 0x00000010, status is HIT
+[info] 4895: hit pc send to ibuffer,pc:0x10d12020,gid:1b33.
+[info] [00004896]: normal_req, address is 0x10d12030
+[info] 4896: lookup_tag is fetch req addr:0x10d12030
+[info] 4896: icache read address is 0x10d12030, size is 0x00000010, status is HIT
+[info] 4896: hit pc send to ibuffer,pc:0x10d12030,gid:1b34.
+[info] [00004898]: normal_req, address is 0x10d12110
+[info] 4898: lookup_tag is fetch req addr:0x10d12110
+[info] 4898: icache read address is 0x10d12110, size is 0x00000010, status is HIT
+[info] 4898: hit pc send to ibuffer,pc:0x10d12110,gid:1b36.
+[info] [00004899]: normal_req, address is 0x10d12120
+[info] 4899: lookup_tag is fetch req addr:0x10d12120
+[info] 4899: icache read address is 0x10d12120, size is 0x00000010, status is HIT
+[info] 4899: hit pc send to ibuffer,pc:0x10d12120,gid:1b37.
+[info] [00004900]: normal_req, address is 0x10d12130
+[info] 4900: lookup_tag is fetch req addr:0x10d12130
+[info] 4900: icache read address is 0x10d12130, size is 0x00000010, status is HIT
+[info] 4900: hit pc send to ibuffer,pc:0x10d12130,gid:1b38.
+[info] [00004901]: normal_req, address is 0x10d11f20
+[info] 4901: lookup_tag is fetch req addr:0x10d11f20
+[info] 4901: icache read address is 0x10d11f20, size is 0x00000010, status is HIT
+[info] 4901: hit pc send to ibuffer,pc:0x10d11f20,gid:1b39.
+[info] [00004902]: normal_req, address is 0x10d11f30
+[info] 4902: lookup_tag is fetch req addr:0x10d11f30
+[info] 4902: icache read address is 0x10d11f30, size is 0x00000010, status is HIT
+[info] 4902: hit pc send to ibuffer,pc:0x10d11f30,gid:1b3a.
+[info] [00004903]: normal_req, address is 0x10d11f40
+[info] 4903: lookup_tag is fetch req addr:0x10d11f40
+[info] 4903: icache read address is 0x10d11f40, size is 0x00000010, status is HIT
+[info] 4903: hit pc send to ibuffer,pc:0x10d11f40,gid:1b3b.
+[info] [00004904]: normal_req, address is 0x10d11f50
+[info] 4904: lookup_tag is fetch req addr:0x10d11f50
+[info] 4904: icache read address is 0x10d11f50, size is 0x00000010, status is HIT
+[info] 4904: hit pc send to ibuffer,pc:0x10d11f50,gid:1b3c.
+[info] [00004905]: normal_req, address is 0x10d11f60
+[info] 4905: lookup_tag is fetch req addr:0x10d11f60
+[info] 4905: icache read address is 0x10d11f60, size is 0x00000010, status is HIT
+[info] 4905: hit pc send to ibuffer,pc:0x10d11f60,gid:1b3d.
+[info] [00004906]: normal_req, address is 0x10d11f70
+[info] 4906: lookup_tag is fetch req addr:0x10d11f70
+[info] 4906: icache read address is 0x10d11f70, size is 0x00000010, status is HIT
+[info] 4906: hit pc send to ibuffer,pc:0x10d11f70,gid:1b3e.
+[info] [00004907]: normal_req, address is 0x10d11f80
+[info] 4907: lookup_tag is fetch req addr:0x10d11f80
+[info] 4907: icache read address is 0x10d11f80, size is 0x00000010, status is HIT
+[info] 4907: hit pc send to ibuffer,pc:0x10d11f80,gid:1b3f.
+[info] [00004908]: normal_req, address is 0x10d11f90
+[info] 4908: lookup_tag is fetch req addr:0x10d11f90
+[info] 4908: icache read address is 0x10d11f90, size is 0x00000010, status is HIT
+[info] 4908: hit pc send to ibuffer,pc:0x10d11f90,gid:1b40.
+[info] [00004909]: normal_req, address is 0x10d11fa0
+[info] 4909: lookup_tag is fetch req addr:0x10d11fa0
+[info] 4909: icache read address is 0x10d11fa0, size is 0x00000010, status is HIT
+[info] 4909: hit pc send to ibuffer,pc:0x10d11fa0,gid:1b41.
+[info] [00004910]: normal_req, address is 0x10d11fb0
+[info] 4910: lookup_tag is fetch req addr:0x10d11fb0
+[info] 4910: icache read address is 0x10d11fb0, size is 0x00000010, status is HIT
+[info] 4910: hit pc send to ibuffer,pc:0x10d11fb0,gid:1b42.
+[info] [00004911]: normal_req, address is 0x10d11fc0
+[info] 4911: lookup_tag is fetch req addr:0x10d11fc0
+[info] 4911: icache read address is 0x10d11fc0, size is 0x00000010, status is HIT
+[info] 4911: hit pc send to ibuffer,pc:0x10d11fc0,gid:1b43.
+[info] [00004912]: normal_req, address is 0x10d11fd0
+[info] 4912: lookup_tag is fetch req addr:0x10d11fd0
+[info] 4912: icache read address is 0x10d11fd0, size is 0x00000010, status is HIT
+[info] 4912: hit pc send to ibuffer,pc:0x10d11fd0,gid:1b44.
+[info] [00004913]: normal_req, address is 0x10d11fe0
+[info] 4913: lookup_tag is fetch req addr:0x10d11fe0
+[info] 4913: icache read address is 0x10d11fe0, size is 0x00000010, status is HIT
+[info] 4913: hit pc send to ibuffer,pc:0x10d11fe0,gid:1b45.
+[info] [00004915]: normal_req, address is 0x10d11f40
+[info] 4915: lookup_tag is fetch req addr:0x10d11f40
+[info] 4915: icache read address is 0x10d11f40, size is 0x00000010, status is HIT
+[info] 4915: hit pc send to ibuffer,pc:0x10d11f40,gid:1b46.
+[info] [00004916]: normal_req, address is 0x10d11f50
+[info] 4916: lookup_tag is fetch req addr:0x10d11f50
+[info] 4916: icache read address is 0x10d11f50, size is 0x00000010, status is HIT
+[info] 4916: hit pc send to ibuffer,pc:0x10d11f50,gid:1b47.
+[info] [00004917]: normal_req, address is 0x10d11f60
+[info] 4917: lookup_tag is fetch req addr:0x10d11f60
+[info] 4917: icache read address is 0x10d11f60, size is 0x00000010, status is HIT
+[info] 4917: hit pc send to ibuffer,pc:0x10d11f60,gid:1b48.
+[info] [00004918]: normal_req, address is 0x10d11f70
+[info] 4918: lookup_tag is fetch req addr:0x10d11f70
+[info] 4918: icache read address is 0x10d11f70, size is 0x00000010, status is HIT
+[info] 4918: hit pc send to ibuffer,pc:0x10d11f70,gid:1b49.
+[info] [00004919]: normal_req, address is 0x10d11f80
+[info] 4919: lookup_tag is fetch req addr:0x10d11f80
+[info] 4919: icache read address is 0x10d11f80, size is 0x00000010, status is HIT
+[info] 4919: hit pc send to ibuffer,pc:0x10d11f80,gid:1b4a.
+[info] [00004920]: normal_req, address is 0x10d11f90
+[info] 4920: lookup_tag is fetch req addr:0x10d11f90
+[info] 4920: icache read address is 0x10d11f90, size is 0x00000010, status is HIT
+[info] 4920: hit pc send to ibuffer,pc:0x10d11f90,gid:1b4b.
+[info] [00004921]: normal_req, address is 0x10d11fa0
+[info] 4921: lookup_tag is fetch req addr:0x10d11fa0
+[info] 4921: icache read address is 0x10d11fa0, size is 0x00000010, status is HIT
+[info] 4921: hit pc send to ibuffer,pc:0x10d11fa0,gid:1b4c.
+[info] [00004922]: normal_req, address is 0x10d11fb0
+[info] 4922: lookup_tag is fetch req addr:0x10d11fb0
+[info] 4922: icache read address is 0x10d11fb0, size is 0x00000010, status is HIT
+[info] 4922: hit pc send to ibuffer,pc:0x10d11fb0,gid:1b4d.
+[info] [00004923]: normal_req, address is 0x10d11fc0
+[info] 4923: lookup_tag is fetch req addr:0x10d11fc0
+[info] 4923: icache read address is 0x10d11fc0, size is 0x00000010, status is HIT
+[info] 4923: hit pc send to ibuffer,pc:0x10d11fc0,gid:1b4e.
+[info] [00004924]: normal_req, address is 0x10d11fd0
+[info] 4924: lookup_tag is fetch req addr:0x10d11fd0
+[info] 4924: icache read address is 0x10d11fd0, size is 0x00000010, status is HIT
+[info] 4924: hit pc send to ibuffer,pc:0x10d11fd0,gid:1b4f.
+[info] [00004925]: normal_req, address is 0x10d11fe0
+[info] 4925: lookup_tag is fetch req addr:0x10d11fe0
+[info] 4925: icache read address is 0x10d11fe0, size is 0x00000010, status is HIT
+[info] 4925: hit pc send to ibuffer,pc:0x10d11fe0,gid:1b50.
+[info] [00004926]: normal_req, address is 0x10d11ff0
+[info] 4926: lookup_tag is fetch req addr:0x10d11ff0
+[info] 4926: icache read address is 0x10d11ff0, size is 0x00000010, status is HIT
+[info] 4926: hit pc send to ibuffer,pc:0x10d11ff0,gid:1b51.
+[info] [00004927]: normal_req, address is 0x10d12000
+[info] 4927: lookup_tag is fetch req addr:0x10d12000
+[info] 4927: icache read address is 0x10d12000, size is 0x00000010, status is HIT
+[info] 4927: hit pc send to ibuffer,pc:0x10d12000,gid:1b52.
+[info] [00004936]: normal_req, address is 0x10d11fd4
+[info] 4936: lookup_tag is fetch req addr:0x10d11fd4
+[info] 4936: icache read address is 0x10d11fd4, size is 0x0000000c, status is HIT
+[info] 4936: hit pc send to ibuffer,pc:0x10d11fd4,gid:1b53.
+[info] [00004937]: normal_req, address is 0x10d11fe0
+[info] 4937: lookup_tag is fetch req addr:0x10d11fe0
+[info] 4937: icache read address is 0x10d11fe0, size is 0x00000010, status is HIT
+[info] 4937: hit pc send to ibuffer,pc:0x10d11fe0,gid:1b54.
+[info] [00004938]: normal_req, address is 0x10d11ff0
+[info] 4938: lookup_tag is fetch req addr:0x10d11ff0
+[info] 4938: icache read address is 0x10d11ff0, size is 0x00000010, status is HIT
+[info] 4938: hit pc send to ibuffer,pc:0x10d11ff0,gid:1b55.
+[info] [00004939]: normal_req, address is 0x10d12000
+[info] 4939: lookup_tag is fetch req addr:0x10d12000
+[info] 4939: icache read address is 0x10d12000, size is 0x00000010, status is HIT
+[info] 4939: hit pc send to ibuffer,pc:0x10d12000,gid:1b56.
+[info] [00004940]: normal_req, address is 0x10d12010
+[info] 4940: lookup_tag is fetch req addr:0x10d12010
+[info] 4940: icache read address is 0x10d12010, size is 0x00000010, status is HIT
+[info] 4940: hit pc send to ibuffer,pc:0x10d12010,gid:1b57.
+[info] [00004942]: normal_req, address is 0x10d1206c
+[info] 4942: lookup_tag is fetch req addr:0x10d1206c
+[info] 4942: icache read address is 0x10d1206c, size is 0x00000004, status is HIT
+[info] 4942: hit pc send to ibuffer,pc:0x10d1206c,gid:1b59.
+[info] [00004943]: normal_req, address is 0x10d12070
+[info] 4943: lookup_tag is fetch req addr:0x10d12070
+[info] 4943: icache read address is 0x10d12070, size is 0x00000010, status is HIT
+[info] 4943: hit pc send to ibuffer,pc:0x10d12070,gid:1b5a.
+[info] [00004944]: normal_req, address is 0x10d12080
+[info] 4944: lookup_tag is fetch req addr:0x10d12080
+[info] 4944: icache read address is 0x10d12080, size is 0x00000010, status is HIT
+[info] 4944: hit pc send to ibuffer,pc:0x10d12080,gid:1b5b.
+[info] [00004945]: normal_req, address is 0x10d12090
+[info] 4945: lookup_tag is fetch req addr:0x10d12090
+[info] 4945: icache read address is 0x10d12090, size is 0x00000010, status is HIT
+[info] 4945: hit pc send to ibuffer,pc:0x10d12090,gid:1b5c.
+[info] [00004946]: normal_req, address is 0x10d120a0
+[info] 4946: lookup_tag is fetch req addr:0x10d120a0
+[info] 4946: icache read address is 0x10d120a0, size is 0x00000010, status is HIT
+[info] 4946: hit pc send to ibuffer,pc:0x10d120a0,gid:1b5d.
+[info] [00004948]: normal_req, address is 0x10d12158
+[info] 4948: lookup_tag is fetch req addr:0x10d12158
+[info] 4948: icache read address is 0x10d12158, size is 0x00000008, status is HIT
+[info] 4948: hit pc send to ibuffer,pc:0x10d12158,gid:1b5f.
+[info] [00004949]: normal_req, address is 0x10d12160
+[info] 4949: lookup_tag is fetch req addr:0x10d12160
+[info] 4949: icache read address is 0x10d12160, size is 0x00000010, status is HIT
+[info] 4949: hit pc send to ibuffer,pc:0x10d12160,gid:1b60.
+[info] [00004950]: normal_req, address is 0x10d12170
+[info] 4950: lookup_tag is fetch req addr:0x10d12170
+[info] 4950: icache read address is 0x10d12170, size is 0x00000010, status is HIT
+[info] 4950: hit pc send to ibuffer,pc:0x10d12170,gid:1b61.
+[info] [00004951]: normal_req, address is 0x10d12180
+[info] 4951: lookup_tag is fetch req addr:0x10d12180
+[info] 4951: icache read address is 0x10d12180, size is 0x00000010, status is HIT
+[info] 4951: hit pc send to ibuffer,pc:0x10d12180,gid:1b62.
+[info] [00004952]: normal_req, address is 0x10d11f20
+[info] 4952: lookup_tag is fetch req addr:0x10d11f20
+[info] 4952: icache read address is 0x10d11f20, size is 0x00000010, status is HIT
+[info] 4952: hit pc send to ibuffer,pc:0x10d11f20,gid:1b63.
+[info] [00004953]: normal_req, address is 0x10d11f30
+[info] 4953: lookup_tag is fetch req addr:0x10d11f30
+[info] 4953: icache read address is 0x10d11f30, size is 0x00000010, status is HIT
+[info] 4953: hit pc send to ibuffer,pc:0x10d11f30,gid:1b64.
+[info] [00004954]: normal_req, address is 0x10d11f40
+[info] 4954: lookup_tag is fetch req addr:0x10d11f40
+[info] 4954: icache read address is 0x10d11f40, size is 0x00000010, status is HIT
+[info] 4954: hit pc send to ibuffer,pc:0x10d11f40,gid:1b65.
+[info] [00004955]: normal_req, address is 0x10d11f50
+[info] 4955: lookup_tag is fetch req addr:0x10d11f50
+[info] 4955: icache read address is 0x10d11f50, size is 0x00000010, status is HIT
+[info] 4955: hit pc send to ibuffer,pc:0x10d11f50,gid:1b66.
+[info] [00004956]: normal_req, address is 0x10d11f60
+[info] 4956: lookup_tag is fetch req addr:0x10d11f60
+[info] 4956: icache read address is 0x10d11f60, size is 0x00000010, status is HIT
+[info] 4956: hit pc send to ibuffer,pc:0x10d11f60,gid:1b67.
+[info] [00004957]: normal_req, address is 0x10d11f70
+[info] 4957: lookup_tag is fetch req addr:0x10d11f70
+[info] 4957: icache read address is 0x10d11f70, size is 0x00000010, status is HIT
+[info] 4957: hit pc send to ibuffer,pc:0x10d11f70,gid:1b68.
+[info] [00004958]: normal_req, address is 0x10d11f80
+[info] 4958: lookup_tag is fetch req addr:0x10d11f80
+[info] 4958: icache read address is 0x10d11f80, size is 0x00000010, status is HIT
+[info] 4958: hit pc send to ibuffer,pc:0x10d11f80,gid:1b69.
+[info] [00004959]: normal_req, address is 0x10d11f90
+[info] 4959: lookup_tag is fetch req addr:0x10d11f90
+[info] 4959: icache read address is 0x10d11f90, size is 0x00000010, status is HIT
+[info] 4959: hit pc send to ibuffer,pc:0x10d11f90,gid:1b6a.
+[info] [00004960]: normal_req, address is 0x10d11fa0
+[info] 4960: lookup_tag is fetch req addr:0x10d11fa0
+[info] 4960: icache read address is 0x10d11fa0, size is 0x00000010, status is HIT
+[info] 4960: hit pc send to ibuffer,pc:0x10d11fa0,gid:1b6b.
+[info] [00004961]: normal_req, address is 0x10d11fb0
+[info] 4961: lookup_tag is fetch req addr:0x10d11fb0
+[info] 4961: icache read address is 0x10d11fb0, size is 0x00000010, status is HIT
+[info] 4961: hit pc send to ibuffer,pc:0x10d11fb0,gid:1b6c.
+[info] [00004962]: normal_req, address is 0x10d11fc0
+[info] 4962: lookup_tag is fetch req addr:0x10d11fc0
+[info] 4962: icache read address is 0x10d11fc0, size is 0x00000010, status is HIT
+[info] 4962: hit pc send to ibuffer,pc:0x10d11fc0,gid:1b6d.
+[info] [00004963]: normal_req, address is 0x10d11fd0
+[info] 4963: lookup_tag is fetch req addr:0x10d11fd0
+[info] 4963: icache read address is 0x10d11fd0, size is 0x00000010, status is HIT
+[info] 4963: hit pc send to ibuffer,pc:0x10d11fd0,gid:1b6e.
+[info] [00004964]: normal_req, address is 0x10d11fe0
+[info] 4964: lookup_tag is fetch req addr:0x10d11fe0
+[info] 4964: icache read address is 0x10d11fe0, size is 0x00000010, status is HIT
+[info] 4964: hit pc send to ibuffer,pc:0x10d11fe0,gid:1b6f.
+[info] [00004967]: normal_req, address is 0x10d121a0
+[info] 4967: lookup_tag is fetch req addr:0x10d121a0
+[info] 4967: icache read address is 0x10d121a0, size is 0x00000010, status is HIT
+[info] 4967: hit pc send to ibuffer,pc:0x10d121a0,gid:1b70.
+[info] [00004968]: normal_req, address is 0x10d121b0
+[info] 4968: lookup_tag is fetch req addr:0x10d121b0
+[info] 4968: icache read address is 0x10d121b0, size is 0x00000010, status is HIT
+[info] 4968: hit pc send to ibuffer,pc:0x10d121b0,gid:1b71.
+[info] [00004969]: normal_req, address is 0x10d121c0
+[info] 4969: lookup_tag is fetch req addr:0x10d121c0
+[info] 4969: icache read address is 0x10d121c0, size is 0x00000010, status is HIT
+[info] 4969: hit pc send to ibuffer,pc:0x10d121c0,gid:1b72.
+[info] [00004970]: normal_req, address is 0x10d121d0
+[info] 4970: lookup_tag is fetch req addr:0x10d121d0
+[info] 4970: icache read address is 0x10d121d0, size is 0x00000010, status is HIT
+[info] 4970: hit pc send to ibuffer,pc:0x10d121d0,gid:1b73.
+[info] [00004971]: normal_req, address is 0x10d121e0
+[info] 4971: lookup_tag is fetch req addr:0x10d121e0
+[info] 4971: icache read address is 0x10d121e0, size is 0x00000010, status is HIT
+[info] 4971: hit pc send to ibuffer,pc:0x10d121e0,gid:1b74.
+[info] [00004972]: normal_req, address is 0x10d121f0
+[info] 4972: lookup_tag is fetch req addr:0x10d121f0
+[info] 4972: icache read address is 0x10d121f0, size is 0x00000010, status is HIT
+[info] 4972: hit pc send to ibuffer,pc:0x10d121f0,gid:1b75.
+[info] [00004973]: normal_req, address is 0x10d12200
+[info] 4973: lookup_tag is fetch req addr:0x10d12200
+[info] 4973: icache read address is 0x10d12200, size is 0x00000010, status is HIT
+[info] 4973: hit pc send to ibuffer,pc:0x10d12200,gid:1b76.
+[info] [00004974]: normal_req, address is 0x10d12210
+[info] 4974: lookup_tag is fetch req addr:0x10d12210
+[info] 4974: icache read address is 0x10d12210, size is 0x00000010, status is HIT
+[info] 4974: hit pc send to ibuffer,pc:0x10d12210,gid:1b77.
+[info] [00004975]: normal_req, address is 0x10d12220
+[info] 4975: lookup_tag is fetch req addr:0x10d12220
+[info] 4975: icache read address is 0x10d12220, size is 0x00000010, status is HIT
+[info] 4975: hit pc send to ibuffer,pc:0x10d12220,gid:1b78.
+[info] [00004976]: normal_req, address is 0x10d12230
+[info] 4976: lookup_tag is fetch req addr:0x10d12230
+[info] 4976: icache read address is 0x10d12230, size is 0x00000010, status is HIT
+[info] 4976: hit pc send to ibuffer,pc:0x10d12230,gid:1b79.
+[info] [00004977]: normal_req, address is 0x10d1224c
+[info] 4977: lookup_tag is fetch req addr:0x10d1224c
+[info] 4977: icache read address is 0x10d1224c, size is 0x00000004, status is HIT
+[info] 4977: hit pc send to ibuffer,pc:0x10d1224c,gid:1b7a.
+[info] [00004978]: normal_req, address is 0x10d12250
+[info] 4978: lookup_tag is fetch req addr:0x10d12250
+[info] 4978: icache read address is 0x10d12250, size is 0x00000010, status is HIT
+[info] 4978: hit pc send to ibuffer,pc:0x10d12250,gid:1b7b.
+[info] [00004979]: normal_req, address is 0x10d12260
+[info] 4979: lookup_tag is fetch req addr:0x10d12260
+[info] 4979: icache read address is 0x10d12260, size is 0x00000010, status is HIT
+[info] 4979: hit pc send to ibuffer,pc:0x10d12260,gid:1b7c.
+[info] [00004980]: normal_req, address is 0x10d12270
+[info] 4980: lookup_tag is fetch req addr:0x10d12270
+[info] 4980: icache read address is 0x10d12270, size is 0x00000010, status is HIT
+[info] 4980: hit pc send to ibuffer,pc:0x10d12270,gid:1b7d.
+[info] ++++++++++++++++++++++core: 0, start: 236, tick: 5794, kernal: 0, blkID 0 of blkdim 1, streamId 0, taskId 0, subtaskId 0, threadId 0, done++++++++++++++++++++++.

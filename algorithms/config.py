@@ -1,5 +1,5 @@
 # config.py
-
+import logging
 # =========================
 # Default model/run config
 # =========================
@@ -33,7 +33,7 @@ ALL_PASSES_RESULT_PATH: str = "./output/all_passes_results.json"
 BEST_PASS_SUMMARY_PATH: str = "./output/best_pass_summary.json"
 
 # Progressive multi-pass tuning (iterate until converged or reach max passes)
-FORMAT_TUNING_MAX_PASSES: int = 10
+FORMAT_TUNING_MAX_PASSES: int = 1
 # stop when |Δtime| <= TIME_EPS AND mapping_change_ratio <= MAP_EPS
 FORMAT_TUNING_TIME_EPS: float = 1e-4      # 0.1 ms
 FORMAT_TUNING_MAP_EPS: float  = 0.01      # <=1% of weights changed
@@ -114,3 +114,69 @@ SA_ENABLE: bool = True          # turn off to disable SA
 SA_T0: float = 1.0              # initial temperature
 SA_ALPHA: float = 0.85          # cooling rate per pass
 SA_FLIP_PROB: float = 0.15      # per-weight flip prob when proposing neighbor
+
+
+# Global debug switch reflecting the --debug CLI flag
+DEBUG_GLOBAL: bool = False
+
+# Logging filter that enforces: only emit DEBUG records when both
+# (1) global debug is enabled, and (2) the module's local flag (if provided) is True.
+class LocalDebugFilter(logging.Filter):
+    def __init__(self, get_local_flag=None):
+        super().__init__()
+        self.get_local_flag = get_local_flag
+    def filter(self, record):
+        # Always allow INFO and above
+        if record.levelno >= logging.INFO:
+            return True
+        try:
+            from config import DEBUG_GLOBAL
+        except Exception:
+            DEBUG_GLOBAL = False
+        local_ok = True
+        if self.get_local_flag is not None:
+            try:
+                local_ok = bool(self.get_local_flag())
+            except Exception:
+                local_ok = False
+        return bool(DEBUG_GLOBAL) and bool(local_ok)
+
+def attach_local_debug_filter(logger: "logging.Logger", get_local_flag=None):
+    """Attach the LocalDebugFilter to a module logger."""
+    logger.addFilter(LocalDebugFilter(get_local_flag))
+
+# --- debug logging setup (auto-added) ---
+def setup_logging(debug: bool, log_file: str = "debug_log.txt"):
+    """
+    Configure root logging. When debug is True, logs go to console and a fixed text file.
+    Otherwise, silence debug logs by raising level to CRITICAL.
+    Also updates config.DEBUG_GLOBAL to reflect CLI flag.
+    """
+    import logging as _logging
+    global DEBUG_GLOBAL
+    DEBUG_GLOBAL = bool(debug)
+
+    logger = _logging.getLogger()
+    # Remove any pre-existing handlers to avoid duplication
+    for h in list(logger.handlers):
+        logger.removeHandler(h)
+    if debug:
+        logger.setLevel(_logging.DEBUG)
+        formatter = _logging.Formatter(
+            "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            "%Y-%m-%d %H:%M:%S",
+        )
+        # File handler
+        fh = _logging.FileHandler(log_file, encoding="utf-8")
+        fh.setLevel(_logging.DEBUG)
+        fh.setFormatter(formatter)
+        logger.addHandler(fh)
+        # Console handler
+        ch = _logging.StreamHandler()
+        ch.setLevel(_logging.DEBUG)
+        ch.setFormatter(formatter)
+        logger.addHandler(ch)
+    else:
+        # Silence logs by raising the threshold
+        logger.setLevel(_logging.CRITICAL)
+# --- end debug logging setup ---

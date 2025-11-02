@@ -30,9 +30,16 @@ do
     esac
 done
 
+# export SOFTMAX_CASE=1024x2048
+export SOFTMAX_CASES="128x128,128x512,256x1024"
+# {16, 128}, {32, 128}, {64, 128}, {32, 256}, {64, 256}, {128, 256}, {64, 384}, {128, 384}, {64, 512}, {128, 512}, {256, 512}, {128, 768}, {256, 768}, {128, 1024}, {256, 1024}, {512, 1024}, {256, 1536}, {512, 1536}, {256, 2048}, {512, 2048}, {1024, 2048}, {512, 3072}, {1024, 3072}, {512, 4096}, {1024, 4096}
+
 rm -rf build
 mkdir build
 cd build
+
+export ASCEND_HOME_DIR=/usr/local/Ascend/ascend-toolkit/latest
+export ASCEND_CANN_PACKAGE_PATH=$ASCEND_HOME_DIR
 
 # in case of running op in simulator, use stub so instead
 if [ "${RUN_MODE}" = "sim" ]; then
@@ -61,9 +68,9 @@ elif [ "${RUN_MODE}" = "sim" ]; then
         idx=0
         for C in "${CASE_ARR[@]}"; do
             export SOFTMAX_CASE="${C}"
+            unset SOFTMAX_CASES
             echo "[msprof] Simulating case ${C}"
             msprof op simulator --application=./softmax_direct_kernel_op
-            # 可按你本地 msprof 生成目录进行重命名归档（不同版本输出目录命名略有差异）
             idx=$((idx+1))
         done
         unset SOFTMAX_CASE
