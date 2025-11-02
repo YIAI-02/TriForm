@@ -1,0 +1,18 @@
+{
+  "model": "T_us = a*MK + b*M + c",
+  "target_file": "softmax_kernel.h",
+  "target_lines": [
+    98,
+    103
+  ],
+  "coefficients": {
+    "a_MK": 4.84840543045841e-07,
+    "b_M": 0.0046032726953186024,
+    "c_bias": -0.020254640250794684
+  },
+  "metrics": {
+    "r2": 0.984071789096306,
+    "mape": 22.216690719342044
+  },
+  "samples": 8
+}
