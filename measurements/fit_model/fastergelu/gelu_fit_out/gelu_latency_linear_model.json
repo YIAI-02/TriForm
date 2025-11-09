@@ -1,0 +1,16 @@
+{
+  "model": "time_us = alpha * dataLength + beta",
+  "alpha": 6.967054146640114e-05,
+  "beta": 0.0682844397475891,
+  "metrics": {
+    "R2": 0.9982046334314297,
+    "RMSE": 0.030507039368352314,
+    "MAPE": 6.726622538169365
+  },
+  "target_file": "faster_gelu_custom.h",
+  "target_lines": [
+    37
+  ],
+  "time_col": "running_time(us)",
+  "num_points": 11
+}
