@@ -479,6 +479,9 @@ class PIMLatencyCache:
             self._save_cache()
 _pim_cache = PIMLatencyCache()
 _DEF_RUNTIME_REL = os.path.join(os.path.dirname(__file__), 'runtime_models', 'mmad_latency_model.json')
+_DEF_SOFTMAX_MODEL_REL = os.path.join(os.path.dirname(__file__), 'runtime_models', 'softmax_latency_model.json')
+_DEF_GELU_MODEL_REL    = os.path.join(os.path.dirname(__file__), 'runtime_models', 'gelu_latency_linear_model.json')
+_DEF_LAYERNORM_MODEL_REL  = os.path.join(os.path.dirname(__file__), 'runtime_models', 'layernorm_latency_model.json')
 
 def _candidate_model_paths() -> list:
     env_path = os.environ.get('TRIFORM_MMAD_MODEL')
@@ -486,6 +489,26 @@ def _candidate_model_paths() -> list:
     if env_path:
         cand.append(env_path)
     cand.extend([_DEF_RUNTIME_REL])
+    return cand
+def _candidate_softmax_model_paths() -> list:
+    cand = []
+    env_path = os.environ.get('TRIFORM_SOFTMAX_MODEL')
+    if env_path: cand.append(env_path)
+    cand.append(_DEF_SOFTMAX_MODEL_REL)
+    return cand
+
+def _candidate_gelu_model_paths() -> list:
+    cand = []
+    env_path = os.environ.get('TRIFORM_GELU_MODEL')
+    if env_path: cand.append(env_path)
+    cand.append(_DEF_GELU_MODEL_REL)
+    return cand
+
+def _candidate_layernorm_model_paths() -> list:
+    cand = []
+    env_path = os.environ.get('TRIFORM_LAYERNORM_MODEL')
+    if env_path: cand.append(env_path)
+    cand.append(_DEF_LAYERNORM_MODEL_REL)
     return cand
 
 @lru_cache(maxsize=1)
@@ -501,6 +524,46 @@ def _load_mmad_model_json() -> Optional[Dict]:
             logger.debug(str(f"[MMAD-Model] Failed to load '{p}': {e}"))
     return None
 
+
+@lru_cache(maxsize=1)
+def _load_softmax_model_json() -> Optional[Dict]:
+    for p in _candidate_softmax_model_paths():
+        try:
+            if p and os.path.isfile(p):
+                with open(p, 'r') as f:
+                    obj = json.load(f)
+                if 'coefficients' in obj:
+                    return obj
+        except Exception as e:
+            logger.debug(str(f"[SOFTMAX-Model] Failed to load '{p}': {e}"))
+    return None
+
+@lru_cache(maxsize=1)
+def _load_gelu_model_json() -> Optional[Dict]:
+    for p in _candidate_gelu_model_paths():
+        try:
+            if p and os.path.isfile(p):
+                with open(p, 'r') as f:
+                    obj = json.load(f)
+                if ('alpha' in obj) and ('beta' in obj):
+                    return obj
+        except Exception as e:
+            logger.debug(str(f"[GELU-Model] Failed to load '{p}': {e}"))
+    return None
+
+@lru_cache(maxsize=1)
+def _load_layernorm_model_json() -> Optional[Dict]:
+    for p in _candidate_layernorm_model_paths():
+        try:
+            if p and os.path.isfile(p):
+                with open(p, 'r') as f:
+                    obj = json.load(f)
+                # 支持 hinge（首选）或线性回退
+                if (obj.get('family') == 'hinge') or (('alpha' in obj) and ('beta' in obj)):
+                    return obj
+        except Exception as e:
+            logger.debug(str(f"[LN-Model] Failed to load '{p}': {e}"))
+    return None
 def _ceil_div(a: int, b: int) -> int:
     return (a + b - 1) // b
 
@@ -575,6 +638,66 @@ def _map_op_to_mmad_dims(op: str, dim: int, n_heads: int, n_kv_heads: int, ffn_d
     else:
         logger.debug(str(f"[MAP-MMAD] ✗ No match for op='{op}'"))
     return result
+
+def _predict_softmax_latency_us_from_json(M: int, K: int, *, phase: str='decode', causal: bool=True) -> Optional[float]:
+    """
+    JSON: T_us = a*MK + b*M + d*blocks + e*k_tail + c
+    blocks = M * ceil(K_eff / K_ALIGN), k_tail = K_eff % K_ALIGN
+    prefill+causal 使用三角平均：MK *= 0.5 且 K_eff = (K+1)//2
+    """
+    model = _load_softmax_model_json()
+    if model is None:
+        return None
+    coefs = model.get('coefficients', {})
+    a = float(coefs.get('a_MK', 0.0))
+    b = float(coefs.get('b_M', 0.0))
+    d = float(coefs.get('d_blk', 0.0))
+    e = float(coefs.get('e_ktl', 0.0))
+    c = float(coefs.get('c_bias', 0.0))
+    K_ALIGN = int(model.get('knobs', {}).get('K_ALIGN', 128))
+
+    mk_factor = 0.5 if (phase == 'prefill' and causal) else 1.0
+    K_eff = int(K) if mk_factor == 1.0 else int((K + 1) // 2)
+    M = int(max(1, M)); K_eff = int(max(1, K_eff))
+    blocks_per_row = (K_eff + K_ALIGN - 1) // K_ALIGN
+    blocks = M * blocks_per_row
+    k_tail = K_eff % K_ALIGN
+    MK_eff = float(M) * float(K) * mk_factor
+    T_us = a * MK_eff + b * float(M) + d * float(blocks) + e * float(k_tail) + c
+    return float(max(0.0, T_us))
+
+def _predict_gelu_latency_us_from_json(length: int) -> Optional[float]:
+    """GELU: time_us = alpha * dataLength + beta"""
+    model = _load_gelu_model_json()
+    if model is None:
+        return None
+    alpha = float(model.get('alpha', 0.0)); beta = float(model.get('beta', 0.0))
+    us = alpha * float(max(0, int(length))) + beta
+    return float(max(0.0, us))
+
+def _predict_layernorm_latency_us_from_json(rows: int, width: int) -> Optional[float]:
+    """
+    LayerNorm（首选 hinge）:
+      T_us = a*x + b*B + d*D + t*max(0, x - c) + bias
+      x = rows*width, B=rows, D=width
+    若非 hinge，线性回退: time_us = alpha*x + beta
+    """
+    model = _load_layernorm_model_json()
+    if model is None:
+        return None
+    rows = int(max(1, rows)); width = int(max(1, width)); x = float(rows * width)
+    if model.get('family') == 'hinge':
+        state = model.get('state', {})
+        coef = state.get('coef', [])
+        a, b, d, t, bias = [float(v) for v in coef] if len(coef) >= 5 else (0.0, 0.0, 0.0, 0.0, 0.0)
+        c = float(state.get('c', 0.0))
+        B = float(rows); D = float(width)
+        T_us = a*x + b*B + d*D + t*max(0.0, x - c) + bias
+        return float(max(0.0, T_us))
+    # 线性回退
+    alpha = float(model.get('alpha', 0.0)); beta = float(model.get('beta', 0.0))
+    T_us = alpha * x + beta
+    return float(max(0.0, T_us))
 
 class SimulationLogger:
 
@@ -977,46 +1100,69 @@ class CostModel:
             logger.debug(str(f'[NPU-PATH] ✓ Entering NPU branch'))
             if ffn_dim == 0 and dim > 0:
                 ffn_dim = int(ffn_dim_mul * dim)
-            logger.debug(str(f'[NPU-PATH] Node: {node.name}, dim={dim}, heads={n_heads}, kv_heads={n_kv_heads}, ffn_dim={ffn_dim}, seq_len={seq_len}'))
             keys = self._resolve_pim_key(node)
-            logger.debug(str(f'[NPU-PATH] Resolved keys: {keys}'))
-            op_key = keys[0] if keys else None
+            op_key = (keys[0].lower() if keys else None)
+            # 预先算好内存时间；所有分支都与其取 max
+            rd, wr = self.estimate_activation_bytes(node, batch, seq_len, phase)
+            mem_t = self.mem_time(rd + wr, dev)
+    
+            ACT_KEYS = {
+                'gelu','relu','silu','swish','mish','tanh','sigmoid','relu6','leaky_relu','elu','hardtanh','selu','prelu',
+                'geglu','swiglu','glu_act','activation'
+            }
+            NORM_KEYS = {
+                'layernorm','layer_norm','ln','rmsnorm','rms_norm','norm','groupnorm','group_norm','instancenorm','instance_norm','batchnorm','batch_norm'
+            }
+    
+            # 1) Softmax → Softmax JSON
+            if op_key == 'softmax':
+                b = int(batch or attrs.get('batch', 1) or 1)
+                qh = int(attrs.get('q_heads', attrs.get('n_heads', attrs.get('n_head', n_heads))) or n_heads)
+                causal = bool(attrs.get('causal', True))
+                active_tokens = int(seq_len if phase == 'prefill' else 1)
+                M_rows = max(1, b * max(1, qh) * max(1, active_tokens))
+                K_cols = max(1, int(seq_len if phase == 'prefill' else attrs.get('kv_len', attrs.get('past_kv_len', seq_len))))
+                us = _predict_softmax_latency_us_from_json(M_rows, K_cols, phase=phase, causal=causal)
+                logger.debug(str(f'[NPU-SOFTMAX] Inputs: M={M_rows}, K={K_cols}, phase={phase}, causal={causal}; us={us}'))
+                if us is not None:
+                    return max(us * 1e-06, mem_t)
+    
+            # 2) Activation（统一走 GELU）→ GELU JSON
+            if op_key in ACT_KEYS:
+                b = int(batch or 1)
+                active_tokens = int(seq_len if phase == 'prefill' else 1)
+                width = int(attrs.get('ffn_dim', attrs.get('hidden_dim', ffn_dim)) or 0)
+                if not width or width <= 0: width = dim
+                data_len = max(1, b) * max(1, active_tokens) * max(1, int(width))
+                us = _predict_gelu_latency_us_from_json(data_len)
+                logger.debug(str(f'[NPU-ACT] Inputs: data_len={data_len}; us={us}'))
+                if us is not None:
+                    return max(us * 1e-06, mem_t)
+    
+            # 3) Norm（统一走 LayerNorm）→ LayerNorm JSON
+            if op_key in NORM_KEYS:
+                b = int(batch or 1)
+                rows = max(1, b) * (seq_len if phase == 'prefill' else 1)
+                width = int(attrs.get('dim', attrs.get('hidden_dim', dim)) or dim)
+                us = _predict_layernorm_latency_us_from_json(rows, width)
+                logger.debug(str(f'[NPU-NORM] Inputs: rows={rows}, width={width}; us={us}'))
+                if us is not None:
+                    return max(us * 1e-06, mem_t)
+    
+            # 4) 线性/FFN/注意力 → MMAD JSON
             dims = _map_op_to_mmad_dims(op_key, dim, n_heads, n_kv_heads, ffn_dim, seq_len) if op_key else None
             if dims is not None:
                 M, N, K, reps = dims
-                logger.debug(str(f'[NPU-PATH] ✓ MMAD dims exist: M={M}, N={N}, K={K}, reps={reps}'))
                 us = _predict_mmad_latency_us_from_json(M, N, K)
-                logger.debug(str(f'[NPU-PATH] MMAD model returned: {us} μs'))
+                logger.debug(str(f'[NPU-MMAD] Inputs: M={M}, N={N}, K={K}, reps={reps}; us={us}'))
                 if us is not None:
-                    logger.debug(str(f'[NPU-MMAD] ✓✓✓ USING MMAD MODEL!'))
                     t_us = us * max(1, reps) * max(1, batch)
-                    rd, wr = self.estimate_activation_bytes(node, batch, seq_len, phase)
-                    mem_t = self.mem_time(rd + wr, dev)
-                    final_time = max(t_us * 1e-06, mem_t)
-                    logger.debug(str(f'[NPU-MMAD] Single MMAD latency: {us:.4f} μs'))
-                    logger.debug(str(f'[NPU-MMAD] Total compute time: {t_us:.4f} μs = {t_us * 1e-06:.6e} s'))
-                    logger.debug(str(f'[NPU-MMAD] Memory time: {mem_t:.6e} s'))
-                    logger.debug(str(f'[NPU-MMAD] Final cost: {final_time:.6e} s'))
-                    logger.debug(str(f"{'=' * 60}\n"))
-                    return final_time
-                else:
-                    logger.debug(str(f'[NPU-FALLBACK] ✗ Model returned None for {node.name}'))
-            else:
-                logger.debug(str(f'[NPU-FALLBACK] ✗ Could not map {node.name} (op_key={op_key}) to MMAD dims'))
-                if not op_key:
-                    logger.debug(str(f'[NPU-FALLBACK]   Reason: op_key is None/empty'))
-                else:
-                    logger.debug(str(f'[NPU-FALLBACK]   Reason: _map_op_to_mmad_dims returned None'))
-                    logger.debug(str(f'[NPU-FALLBACK]   Params passed: op={op_key}, dim={dim}, heads={n_heads}, ffn={ffn_dim}, seq={seq_len}'))
-            logger.debug(str(f'[NPU-FALLBACK] Using FLOP-based estimation'))
+                    return max(t_us * 1e-06, mem_t)
+    
+            # 5) 回退 FLOPs
             flops = self.estimate_flops(node, batch, seq_len, phase)
-            rd, wr = self.estimate_activation_bytes(node, batch, seq_len, phase)
-            fallback_time = max(self.flop_time(flops, dev), self.mem_time(rd + wr, dev))
-            logger.debug(str(f'[NPU-FALLBACK] FLOP time: {self.flop_time(flops, dev):.6e} s'))
-            logger.debug(str(f'[NPU-FALLBACK] Memory time: {self.mem_time(rd + wr, dev):.6e} s'))
-            logger.debug(str(f'[NPU-FALLBACK] Final fallback cost: {fallback_time:.6e} s'))
-            logger.debug(str(f"{'=' * 60}\n"))
-            return fallback_time
+            return max(self.flop_time(flops, dev), mem_t)
+ 
         if dev.type == 'pim':
             if not self.pim_config_path or not self.ramulator_config_path:
                 logger.debug(str(f'[PIM] Warning: PIM configs not set, returning 0 for {node.name}'))

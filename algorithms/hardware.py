@@ -37,15 +37,15 @@ class Cluster:
 
 def demo_cluster() -> Cluster:
     c = Cluster()
-    c.add_device(DeviceSpec("CPU0","cpu", tflops=3.0,  mem_bw_GBs=120.0, onchip_bw_GBs=200.0, mem_capacity_GB=256))
-    c.add_device(DeviceSpec("NPU0","npu", tflops=180.0, mem_bw_GBs=900.0, onchip_bw_GBs=20000.0, mem_capacity_GB=80))
+    c.add_device(DeviceSpec("CPU0","cpu", tflops=3.0,  mem_bw_GBs=51.2, onchip_bw_GBs=128.0, mem_capacity_GB=0.009))
+    c.add_device(DeviceSpec("NPU0","npu", tflops=10.0, mem_bw_GBs=51.2, onchip_bw_GBs=128.0, mem_capacity_GB=0.003))
     # Two PIM stacks as example
-    c.add_device(DeviceSpec("PIM0","pim", tflops=20.0,  mem_bw_GBs=1500.0, onchip_bw_GBs=5000.0, mem_capacity_GB=2))
-    c.add_device(DeviceSpec("PIM1","pim", tflops=20.0,  mem_bw_GBs=1500.0, onchip_bw_GBs=5000.0, mem_capacity_GB=2))
+    c.add_device(DeviceSpec("PIM0","pim", tflops=1.0,  mem_bw_GBs=32.0, onchip_bw_GBs=512, mem_capacity_GB=1))
+    c.add_device(DeviceSpec("PIM1","pim", tflops=1.0,  mem_bw_GBs=32.0, onchip_bw_GBs=512, mem_capacity_GB=1))
     # Links
-    c.connect("CPU0","NPU0", 24.0, "PCIe")
-    c.connect("CPU0","PIM0", 24.0, "PCIe")
-    c.connect("CPU0","PIM1", 24.0, "PCIe")
-    c.connect("NPU0","PIM0", 100.0, "NVLink")
-    c.connect("NPU0","PIM1", 100.0, "NVLink")
+    # c.connect("CPU0","NPU0", 24.0, "PCIe")
+    # c.connect("CPU0","PIM0", 24.0, "PCIe")
+    # c.connect("CPU0","PIM1", 24.0, "PCIe")
+    # c.connect("NPU0","PIM0", 100.0, "NVLink")
+    # c.connect("NPU0","PIM1", 100.0, "NVLink")
     return c
