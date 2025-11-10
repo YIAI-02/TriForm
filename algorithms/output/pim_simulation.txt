@@ -1,10 +1,10 @@
 ================================================================================
-PIM Simulation Log - 2025-11-10 21:19:17
+PIM Simulation Log - 2025-11-10 21:35:41
 ================================================================================
 
 
 ================================================================================
-Simulation Started at 2025-11-10 21:19:17.894
+Simulation Started at 2025-11-10 21:35:41.846
 ================================================================================
 
 [PIM Cache] Hit for rmsnorm (dim=4096, heads=32, seq=128)
@@ -63008,7 +63008,7 @@ Simulation Started at 2025-11-10 21:19:17.894
 [PIM Cache] Hit for residual (dim=4096, heads=32, seq=159)
 [PIM Cache] Hit for residual (dim=4096, heads=32, seq=159)
 [PIM Cache] Hit for residual (dim=4096, heads=32, seq=159)
-[PASS1] CurrentMap  WallTime: 1.970s | Prefill(sim): 0.009560s, Decode(sim): 0.056840s, Total(sim): 0.066400s
+[PASS1] CurrentMap  WallTime: 2.188s | Prefill(sim): 0.009560s, Decode(sim): 0.056840s, Total(sim): 0.066400s
 [PIM Cache] Hit for rmsnorm (dim=4096, heads=32, seq=128)
 [PIM Cache] Hit for rmsnorm (dim=4096, heads=32, seq=128)
 [PIM Cache] Hit for rmsnorm (dim=4096, heads=32, seq=128)
@@ -126001,12 +126001,12 @@ Simulation Started at 2025-11-10 21:19:17.894
 [PIM Cache] Hit for residual (dim=4096, heads=32, seq=159)
 [PIM Cache] Hit for residual (dim=4096, heads=32, seq=159)
 [PIM Cache] Hit for residual (dim=4096, heads=32, seq=159)
-[PASS1] NeighborMap WallTime: 1.984s | Prefill(sim): 0.075005s, Decode(sim): 0.124235s, Total(sim): 0.199240s
+[PASS1] NeighborMap WallTime: 2.224s | Prefill(sim): 0.075005s, Decode(sim): 0.124235s, Total(sim): 0.199240s
 [PASS1] SA decision: ACCEPT (Δ=+0.132840, T=1.0000)
 
 ================================================================================
-Simulation Completed at 2025-11-10 21:19:22.132
-Total Simulation Time: 4.238 seconds (0.07 minutes)
+Simulation Completed at 2025-11-10 21:35:46.523
+Total Simulation Time: 4.677 seconds (0.08 minutes)
 ================================================================================
 
 

@@ -19,7 +19,7 @@ from collections import defaultdict
 from task_graph import TaskGraph, TaskNode
 from hardware import Cluster, DeviceSpec
 from plan_label import PlanLabel
-from config import HOST_NAME, DEVICE_PREFERRED_FORMAT, FORMAT_SIZE_MULTIPLIER, FORMAT_CONV_BW_GBs, PIM_FREQ_GHZ, GB_FREQ_GHZ
+from config import HOST_NAME, DEVICE_PREFERRED_FORMAT, FORMAT_SIZE_MULTIPLIER, FORMAT_CONV_BW_GBs, PIM_FREQ_GHZ, GB_FREQ_GHZ, OPERATOR_DEVICE_ALLOWED
 import logging
 logger = logging.getLogger(__name__)
 attach_local_debug_filter(logger)
@@ -878,7 +878,63 @@ class CostModel:
             return 0.0
         return self.link_time(bytes_amount, src, dst)
 
-    def get_host_device(self) -> DeviceSpec:
+    def _canonical_conf_key(self, node: TaskNode) -> Optional[str]:
+        """
+        Map a node name to the canonical key used by OPERATOR_DEVICE_ALLOWED in config.py.
+        Returns None if unknown (treated as allowed).
+        """
+        name = (getattr(node, 'name', '') or '').upper()
+        # Direct hits (most common)
+        direct = {
+            'Q': 'Q', 'Q_PROJ': 'Q',
+            'K': 'K', 'K_PROJ': 'K',
+            'V': 'V', 'V_PROJ': 'V',
+            'O': 'O', 'WO': 'O', 'WO_PROJ': 'O', 'O_PROJ': 'O',
+            'FFN_W1': 'FFN_W1', 'FFN_UP': 'FFN_W1',
+            'FFN_W2': 'FFN_W2', 'FFN_DOWN': 'FFN_W2',
+            'FFN_W3': 'FFN_W3', 'FFN_GATE': 'FFN_W3',
+            'QK': 'QK', 'SCORE': 'QK', 'ATTN_SCORE': 'QK',
+            'SV': 'SV', 'OUTPUT': 'SV', 'ATTN_OUTPUT': 'SV',
+            'SOFTMAX': 'Softmax', 'ATTN_SOFTMAX': 'Softmax',
+            'IDENTITY': 'Identity',
+            'KV_READ': 'KV_read', 'KV_WRITE': 'KV_write',
+        }
+        if name in direct:
+            return direct[name]
+        # Norm family
+        if any(k in name for k in ('RMSNORM','RMS_NORM','LAYERNORM','LAYER_NORM','GROUPNORM','GROUP_NORM','BATCHNORM','BATCH_NORM','INSTANCE_NORM','INSTANCENORM')):
+            return 'LN'
+        if name == 'LN':
+            return 'LN'
+        # Activation family
+        if any(k in name for k in ('GELU','SILU','SWISH','SWIGLU','MISH','TANH','SIGMOID','RELU','RELU6','LEAKY_RELU','ELU','HARDTANH','SELU','PRELU','GLU_ACT','ACT')):
+            # Prefer specific keys if present in config, otherwise fall back to 'Act'
+            for cand in ('GELU','SwiGLU','Act'):
+                if cand in OPERATOR_DEVICE_ALLOWED:
+                    return cand
+            return 'Act'
+        return None
+
+    def _op_allowed_on(self, node: TaskNode, dev_type: str) -> bool:
+        key = self._canonical_conf_key(node)
+        if not key:
+            return True
+        allow = OPERATOR_DEVICE_ALLOWED.get(key, {})
+        val = allow.get(dev_type, True)
+        logger.debug(str(f"[ALLOW] node={getattr(node,'name','?')} key={key} dev={dev_type} allowed={val}"))
+        return bool(val)
+
+    def _cpu_fallback_cost(self, node: TaskNode, batch: int, seq_len: int, phase: str) -> float:
+        host = self.get_host_device()
+        flops = self.estimate_flops(node, batch, seq_len, phase)
+        rd, wr = self.estimate_activation_bytes(node, batch, seq_len, phase)
+        t_comp = self.flop_time(flops, host)
+        t_mem = self.mem_time(rd + wr, host)
+        t = max(t_comp, t_mem)
+        logger.debug(str(f"[CPU-FALLBACK] node={getattr(node,'name','?')} flops={flops:.3e} rd+wr={rd+wr} t_comp={t_comp:.3e}s t_mem={t_mem:.3e}s t={t:.3e}s"))
+        return t
+
+    def get_host_device(self) -> DeviceSpec:    
         if HOST_NAME in self.cluster.devices:
             return self.cluster.devices[HOST_NAME]
         cpus = self.cluster.devices_by_type('cpu')
@@ -1098,6 +1154,10 @@ class CostModel:
         ffn_dim_mul = float(attrs.get('ffn_dim_mul', 4.0))
         if dev.type == 'npu':
             logger.debug(str(f'[NPU-PATH] ✓ Entering NPU branch'))
+            # Device allowance check from config.py
+            if not self._op_allowed_on(node, 'npu'):
+                logger.debug(str(f"[DISPATCH] {node.name} not allowed on NPU, fallback to CPU"))
+                return self._cpu_fallback_cost(node, batch, seq_len, phase)
             if ffn_dim == 0 and dim > 0:
                 ffn_dim = int(ffn_dim_mul * dim)
             keys = self._resolve_pim_key(node)
@@ -1105,7 +1165,7 @@ class CostModel:
             # 预先算好内存时间；所有分支都与其取 max
             rd, wr = self.estimate_activation_bytes(node, batch, seq_len, phase)
             mem_t = self.mem_time(rd + wr, dev)
-    
+
             ACT_KEYS = {
                 'gelu','relu','silu','swish','mish','tanh','sigmoid','relu6','leaky_relu','elu','hardtanh','selu','prelu',
                 'geglu','swiglu','glu_act','activation'
@@ -1113,7 +1173,7 @@ class CostModel:
             NORM_KEYS = {
                 'layernorm','layer_norm','ln','rmsnorm','rms_norm','norm','groupnorm','group_norm','instancenorm','instance_norm','batchnorm','batch_norm'
             }
-    
+
             # 1) Softmax → Softmax JSON
             if op_key == 'softmax':
                 b = int(batch or attrs.get('batch', 1) or 1)
@@ -1126,7 +1186,7 @@ class CostModel:
                 logger.debug(str(f'[NPU-SOFTMAX] Inputs: M={M_rows}, K={K_cols}, phase={phase}, causal={causal}; us={us}'))
                 if us is not None:
                     return max(us * 1e-06, mem_t)
-    
+
             # 2) Activation（统一走 GELU）→ GELU JSON
             if op_key in ACT_KEYS:
                 b = int(batch or 1)
@@ -1138,7 +1198,7 @@ class CostModel:
                 logger.debug(str(f'[NPU-ACT] Inputs: data_len={data_len}; us={us}'))
                 if us is not None:
                     return max(us * 1e-06, mem_t)
-    
+
             # 3) Norm（统一走 LayerNorm）→ LayerNorm JSON
             if op_key in NORM_KEYS:
                 b = int(batch or 1)
@@ -1148,7 +1208,7 @@ class CostModel:
                 logger.debug(str(f'[NPU-NORM] Inputs: rows={rows}, width={width}; us={us}'))
                 if us is not None:
                     return max(us * 1e-06, mem_t)
-    
+
             # 4) 线性/FFN/注意力 → MMAD JSON
             dims = _map_op_to_mmad_dims(op_key, dim, n_heads, n_kv_heads, ffn_dim, seq_len) if op_key else None
             if dims is not None:
@@ -1158,12 +1218,16 @@ class CostModel:
                 if us is not None:
                     t_us = us * max(1, reps) * max(1, batch)
                     return max(t_us * 1e-06, mem_t)
-    
+
             # 5) 回退 FLOPs
             flops = self.estimate_flops(node, batch, seq_len, phase)
             return max(self.flop_time(flops, dev), mem_t)
  
         if dev.type == 'pim':
+            # Device allowance check from config.py
+            if not self._op_allowed_on(node, 'pim'):
+                logger.debug(str(f"[DISPATCH] {node.name} not allowed on PIM, fallback to CPU"))
+                return self._cpu_fallback_cost(node, batch, seq_len, phase)
             if not self.pim_config_path or not self.ramulator_config_path:
                 logger.debug(str(f'[PIM] Warning: PIM configs not set, returning 0 for {node.name}'))
                 return 0.0
