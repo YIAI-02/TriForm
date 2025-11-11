@@ -19,7 +19,7 @@ from collections import defaultdict
 from task_graph import TaskGraph, TaskNode
 from hardware import Cluster, DeviceSpec
 from plan_label import PlanLabel
-from config import HOST_NAME, DEVICE_PREFERRED_FORMAT, FORMAT_SIZE_MULTIPLIER, FORMAT_CONV_BW_GBs, PIM_FREQ_GHZ, GB_FREQ_GHZ, OPERATOR_DEVICE_ALLOWED
+from config import HOST_NAME, DEVICE_PREFERRED_FORMAT, FORMAT_SIZE_MULTIPLIER, FORMAT_CONV_BW_GBs, PIM_FREQ_GHZ, GB_FREQ_GHZ, OPERATOR_DEVICE_ALLOWED, NONOVERLAP_TIME
 import logging
 logger = logging.getLogger(__name__)
 attach_local_debug_filter(logger)
@@ -358,7 +358,7 @@ def _simulate_weight_loading_latency(weight_bytes: int, pim_config_path: Path, g
         logger.debug(str(f'[Weight Load] Running READ simulation...'))
         read_cycles = _run_ramulator(read_trace, ramulator_config_path)
         f_gb = GB_FREQ_GHZ if GB_FREQ_GHZ and GB_FREQ_GHZ > 0 else PIM_FREQ_GHZ
-        read_latency = float(read_cycles) / (f_gb * 1000000000.0) if f_gb > 0 else 0.0
+        read_latency = float(read_cycles) / (f_gb * 1000000000) if f_gb > 0 else 0.0 #us
         write_trace = trace_dir / 'weight_write.trace'
         logger.debug(str(f'[Weight Load] Generating WRITE trace to PIM: {write_trace}'))
         _generate_weight_write_trace_to_pim(write_trace, weight_bytes, pim_cfg, dtype_bytes, model_dict)
@@ -373,7 +373,7 @@ def _simulate_weight_loading_latency(weight_bytes: int, pim_config_path: Path, g
         logger.debug(str(f'[Weight Load] Running WRITE simulation...'))
         write_cycles = _run_ramulator(write_trace, ramulator_config_path)
         f_pim = PIM_FREQ_GHZ
-        write_latency = float(write_cycles) / (f_pim * 1000000000.0) if f_pim > 0 else 0.0
+        write_latency = float(write_cycles) / (f_pim * 1000000000) if f_pim > 0 else 0.0 #us
         total_latency = (read_latency, write_latency)
         logger.debug(str(f'[Weight Load] Read: {read_latency:.6e}s ({read_cycles} cycles)'))
         logger.debug(str(f'[Weight Load] Write: {write_latency:.6e}s ({write_cycles} cycles)'))
@@ -416,20 +416,14 @@ def _run_ramulator(trace_path: Path, ramulator_config: Path, timeout: int=300) -
             error_msg += f'Trace file: {trace_path}\n'
             error_msg += f'Config file: {ramulator_config}\n'
             raise RuntimeError(error_msg)
-        cycles = 0
-        for line in result.stdout.splitlines():
-            if 'cpu.total_cycles' in line.lower() or 'total cycles' in line.lower():
-                match = re.search('(\\d+)', line)
-                if match:
-                    cycles = int(match.group(1))
-                    break
-        if cycles == 0:
-            for line in result.stdout.splitlines():
-                if re.search('\\d+', line):
-                    match = re.search('(\\d+)', line)
-                    if match and int(match.group(1)) > 0:
-                        cycles = int(match.group(1))
-                        break
+        out = (result.stdout or '') + '\n'+ (result.stderr or '')
+        m = re.search(r'(?mi)^\s*memory_system_cycles\s*:\s*([0-9]+)\s*$', out)
+        if not m:
+            raise RuntimeError(f'Failed to parse Ramulator output for cycles:\n{out}')
+        cycles = int(m.group(1))
+        if cycles <= 0:
+            raise RuntimeError(f'Invalid cycle count from Ramulator: {cycles}')
+        logger.debug(str(f'[PIM] Ramulator cycles: {cycles}'))
         return cycles
     except subprocess.TimeoutExpired:
         raise RuntimeError(f'Ramulator timed out after {timeout}s')
@@ -958,7 +952,7 @@ class CostModel:
         host = self.get_host_device()
         t_move = self.link_time(size_src_bytes, host, dev)
         t_conv = self.format_conversion_time(size_src_bytes, src_fmt, dst_fmt, dev)
-        return max(t_move, t_conv)
+        return t_move + NONOVERLAP_TIME* t_conv
 
     def _resolve_pim_key(self, node) -> List[str]:
         """将 node 映射到 PIM op key"""
@@ -1162,7 +1156,6 @@ class CostModel:
                 ffn_dim = int(ffn_dim_mul * dim)
             keys = self._resolve_pim_key(node)
             op_key = (keys[0].lower() if keys else None)
-            # 预先算好内存时间；所有分支都与其取 max
             rd, wr = self.estimate_activation_bytes(node, batch, seq_len, phase)
             mem_t = self.mem_time(rd + wr, dev)
 

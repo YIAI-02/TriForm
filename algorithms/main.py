@@ -206,9 +206,9 @@ def run(cfg: Dict):
                 sched2.reset_state()
                 t_wall1 = time.time()
                 logger.debug(str(f'[PASS{p}] Running prefill phase (neighbor map)...'))
-                prefill_time_nb, prefill_sched_ser_nb = simulate_prefill(sched, cfg, graph)
+                prefill_time_nb, prefill_sched_ser_nb = simulate_prefill(sched2, cfg, graph)
                 logger.debug(str(f'[PASS{p}] Running decode phase (neighbor map)...'))
-                decode_time_nb, decode_steps_ser_nb = simulate_decode_progressive(sched, cfg, graph, prefill_end=prefill_time)
+                decode_time_nb, decode_steps_ser_nb = simulate_decode_progressive(sched2, cfg, graph, prefill_end=prefill_time)
                 total_time_nb = prefill_time_nb + decode_time_nb
                 wall_time_neighbor = time.time() - t_wall1
                 cost.logger._log(f'[PASS{p}] NeighborMap WallTime: {wall_time_neighbor:.3f}s | Prefill(sim): {prefill_time_nb:.6f}s, Decode(sim): {decode_time_nb:.6f}s, Total(sim): {total_time_nb:.6f}s')

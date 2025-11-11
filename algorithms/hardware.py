@@ -41,11 +41,11 @@ def demo_cluster() -> Cluster:
     c.add_device(DeviceSpec("NPU0","npu", tflops=10.0, mem_bw_GBs=51.2, onchip_bw_GBs=128.0, mem_capacity_GB=0.003))
     # Two PIM stacks as example
     c.add_device(DeviceSpec("PIM0","pim", tflops=1.0,  mem_bw_GBs=32.0, onchip_bw_GBs=512, mem_capacity_GB=1))
-    c.add_device(DeviceSpec("PIM1","pim", tflops=1.0,  mem_bw_GBs=32.0, onchip_bw_GBs=512, mem_capacity_GB=1))
+    # c.add_device(DeviceSpec("PIM1","pim", tflops=1.0,  mem_bw_GBs=32.0, onchip_bw_GBs=512, mem_capacity_GB=1))
     # Links
-    # c.connect("CPU0","NPU0", 24.0, "PCIe")
-    # c.connect("CPU0","PIM0", 24.0, "PCIe")
-    # c.connect("CPU0","PIM1", 24.0, "PCIe")
-    # c.connect("NPU0","PIM0", 100.0, "NVLink")
-    # c.connect("NPU0","PIM1", 100.0, "NVLink")
+    c.connect("CPU0","NPU0", 12.0, "PCIe")
+    c.connect("CPU0","PIM0", 12.0, "PCIe")
+    # c.connect("CPU0","PIM1", 12.0, "PCIe")
+    c.connect("NPU0","PIM0", 24.0, "NVLink")
+    # c.connect("NPU0","PIM1", 24.0, "NVLink")
     return c

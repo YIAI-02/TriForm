@@ -378,16 +378,41 @@ class HEFTScheduler:
         for k, v in self.storage_fmt_map.items():
             self.buffer.set_host_fmt(k, v)
 
+
+    
+# scheduler.py
     def suggest_weight_storage_formats(self) -> Dict[str, str]:
-        candidates = ['ND', 'NPU_OPT', 'PIM_OPT']
+        """
+        Propose a host-side weight storage format for each weight_id based on
+        how often that weight is consumed by each device type during the last
+        scheduling pass. We evaluate candidate formats by estimating the
+        (host->device move + format-conversion) time aggregated across all
+        loads observed for that weight.
+        """
+        from collections import defaultdict
+        Base = ['ND', 'NPU_OPT', 'PIM_OPT']
         sugg: Dict[str, str] = {}
-        by_wid: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
+
+        # 统计：{wid: {dev_type: load_count}}
+        by_wid = defaultdict(lambda: defaultdict(int))
         for (wid, dev_type), cnt in self._weight_load_count.items():
             by_wid[wid][dev_type] += cnt
+
+        EPS = 1e-6
         for wid, counts in by_wid.items():
             w_bytes_nd = self._weight_sizes.get(wid, 0)
-            best_fmt = 'ND'
-            best_t = float('inf')
+            dominant = max(counts.items(), key=lambda x: x[1])[0] if counts else 'pim'
+            if dominant == 'npu':
+                candidates = ['NPU_OPT', 'ND', 'PIM_OPT']
+                native = 'NPU_OPT'
+            elif dominant == 'pim':
+                candidates = ['PIM_OPT', 'ND', 'NPU_OPT']
+                native = 'PIM_OPT'
+            else:
+                candidates = Base
+                native = 'ND'
+
+            best_t, best_fmt = float('inf'), candidates[0]
             for fmt in candidates:
                 size_src = self.cost.format_size(w_bytes_nd, fmt)
                 total = 0.0
@@ -396,12 +421,17 @@ class HEFTScheduler:
                     if not devs:
                         continue
                     d = devs[0]
-                    total += cnt * self.cost.gb_move_and_format(d, size_src, fmt, self.cost.device_preferred_fmt(d))
-                if total < best_t:
-                    best_t, best_fmt = (total, fmt)
+                    total += cnt * self.cost.gb_move_and_format(
+                        d, size_src, fmt, self.cost.device_preferred_fmt(d)
+                    )
+                if total + EPS < best_t or (abs(total - best_t) < EPS and fmt == native):
+                    best_t, best_fmt = total, fmt
             sugg[wid] = best_fmt
+
         return sugg
 
+    
+    
     def reset_state(self):
         """Reset mutable scheduling state for a fresh pass (keep stats and storage_fmt_map)."""
         self.comm.timeline_end.clear()
@@ -419,8 +449,3 @@ class HEFTScheduler:
         self._node_out_fmt.clear()
         self.weight_cached.clear()
         self.mode_mem.clear()
-        for cache in self.buffer.device_cache.values():
-            cache.items.clear()
-            cache.order.clear()
-            cache.used = 0
-            cache.pinned.intersection_update(cache.pinned)

@@ -1,1 +1,8 @@
 measurements/**/build/**
+algorithms/debug_log.txt
+algorithms/output/
+# Python cache
+__pycache__/
+*.py[cod]
+# OS
+.DS_Store

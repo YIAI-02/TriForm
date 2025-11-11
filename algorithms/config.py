@@ -63,11 +63,11 @@ FORMAT_CONV_BW_GBs = {
     "pim": 100.0,
     "default": 50.0,
 }
-
+NONOVERLAP_TIME: float = 0.3  # 0.0 means fully overlapped, 1.0 means non-overlapped
 
 # PIM 频率（GHz）：cycles / (PIM_FREQ_GHZ * 1e9) = seconds
-PIM_FREQ_GHZ: float = 2.0
-GB_FREQ_GHZ: float = 2.0
+PIM_FREQ_GHZ: float = 1.0
+GB_FREQ_GHZ: float = 1.0
 
 # =========================
 # Operator device constraints
