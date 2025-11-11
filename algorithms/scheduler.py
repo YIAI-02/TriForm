@@ -183,7 +183,8 @@ class HEFTScheduler:
                 self._weight_load_count[wid, dev.type] += 1
                 self._weight_sizes[wid] = node.weight_size
                 self.weight_cached[dev.name, wid] = True
-                self.buffer.mark_cached(dev.name, wid, node.weight_size, pinned=False)
+                pinned_flag = bool(getattr(self.label, 'pinned_fc_on_pim', set()) and (wid in self.label.pinned_fc_on_pim))
+                self.buffer.mark_cached(dev.name, wid, node.weight_size, pinned=pinned_flag)                
                 if wid not in self.buffer.host_format and wid in self.storage_fmt_map:
                     self.buffer.set_host_fmt(wid, self.storage_fmt_map[wid])
             return load_time

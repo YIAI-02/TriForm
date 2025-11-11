@@ -768,6 +768,14 @@ def get_simulation_logger(log_file: Optional[Path]=None) -> SimulationLogger:
         _sim_logger = SimulationLogger(log_file)
     return _sim_logger
 
+def reset_simulation_logger() -> None:
+    """Reset the global simulation logger (for use between runs)"""
+    global _sim_logger
+    if _sim_logger is not None:
+        if hasattr(_sim_logger, 'close'):
+            _sim_logger.close()
+        _sim_logger = None
+
 def _get_pim_latency_via_trace(op: str, pim_config: Path, ramulator_config: Path, dim: int, n_heads: int, n_kv_heads: int, ffn_dim: int, seqlen: Optional[int], model_dict: Optional[Dict]=None, use_cache: bool=True) -> float:
     """
     Generate trace and run Ramulator, returning the latency (in seconds).
@@ -1241,7 +1249,8 @@ class CostModel:
             else:
                 logger.debug(str(f'[PIM] Warning: Insufficient parameters for {node.name} (op={op_key}, dim={dim}, heads={n_heads})'))
             kv_in_pim = getattr(label, 'kv_in_pim', False)
-            if kv_in_pim:
+            ATTENTION_DATAFLOW = {'QK', 'SV', 'SOFTMAX', 'KV_READ', 'KV_WRITE'}
+            if kv_in_pim and ((node.name or '').upper() in ATTENTION_DATAFLOW):
                 mem_time = 0.0
             else:
                 rd, wr = self.estimate_activation_bytes(node, batch, seq_len, phase)
