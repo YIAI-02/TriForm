@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Best Pass 可视化（阶段×层×Token）</title>
+  <!-- 前端依赖：Cytoscape + dagre 布局插件（CDN） -->
+  <script src="https://unpkg.com/cytoscape/dist/cytoscape.min.js"></script>
+  <script src="https://unpkg.com/dagre/dist/dagre.min.js"></script>
+  <script src="https://unpkg.com/cytoscape-dagre/cytoscape-dagre.js"></script>
+  <style>
+    :root {
+      --bg: #0b0d10; --fg: #e6e8ea; --muted: #9aa4af; --card: #12161a; --border: #1f2429; --accent: #5b9cff;
+    }
+    @media (prefers-color-scheme: light) {
+      :root { --bg: #fafafa; --fg: #1f2328; --muted: #6b7280; --card: #ffffff; --border: #e5e7eb; --accent: #376dff; }
+    }
+    html, body { height:100%; margin:0; background:var(--bg); color:var(--fg); font:14px/1.4 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; }
+    .wrap { display:grid; grid-template-columns: 320px 1fr; height:100vh; }
+    .panel { padding:14px; border-right:1px solid var(--border); background:var(--card); overflow:auto; }
+    .panel h1 { font-size:18px; margin:0 0 10px; }
+    .control { margin-bottom:12px; }
+    label { display:block; margin-bottom:6px; color:var(--muted); font-size:12px; }
+    select,input[type=file] { width:100%; padding:8px; border:1px solid var(--border); border-radius:8px; background:transparent; color:var(--fg); }
+    button { padding:8px 10px; border:1px solid var(--border); border-radius:8px; background:var(--accent); color:white; cursor:pointer; }
+    button.secondary { background:transparent; color:var(--fg); }
+    #cy { width:100%; height:100vh; }
+    .legend { border:1px solid var(--border); border-radius:12px; padding:10px; background:rgba(255,255,255,0.02); }
+    .legend h3 { margin:0 0 8px; font-size:14px; }
+    .legend .row { display:flex; align-items:center; gap:10px; margin:6px 0; font-size:13px; }
+    .swatch { width:14px; height:14px; border-radius:3px; display:inline-block; border:1px solid var(--border); }
+    .shape { width:14px; height:14px; display:inline-block; border:1px solid var(--border); background:transparent; }
+    .shape.square { border-radius:2px; }
+    .shape.triangle { width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:14px solid var(--fg); border: none; }
+    .shape.diamond { transform: rotate(45deg); }
+    .shape.hexagon { clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%); }
+    .shape.vee { clip-path: polygon(0 0,100% 0,50% 100%); }
+    .shape.ellipse { border-radius:50%; }
+    .footer { color:var(--muted); font-size:12px; margin-top:10px; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <aside class="panel">
+    <h1>Best Pass 可视化</h1>
+    <div class="control">
+      <label>加载 best_pass_summary.json</label>
+      <input id="file" type="file" accept="application/json"/>
+      <div style="color:var(--muted);font-size:12px;margin-top:6px;">也可放到 <code>data/best_pass_summary.json</code>，页面会自动读取。</div>
+    </div>
+    <div class="control">
+      <label>阶段 Stage</label>
+      <select id="stage"></select>
+    </div>
+    <div class="control">
+      <label>层 Layer</label>
+      <select id="layer"></select>
+    </div>
+    <div class="control" id="tokenWrap" style="display:none;">
+      <label>Token（仅 decode）</label>
+      <select id="token"></select>
+    </div>
+    <div class="control">
+      <label>搜索（按名字或类型）</label>
+      <input id="search" placeholder="例如：matmul / softmax / LN1 / FFN_W2 / K_read / V_read" style="width:100%; padding:8px; border:1px solid var(--border); border-radius:8px; background:transparent; color:var(--fg);" />
+    </div>
+    <div class="control" style="display:flex; gap:8px;">
+      <button id="fit">适配视图</button>
+      <button id="export" class="secondary">导出 PNG</button>
+    </div>
+
+    <div class="legend">
+      <h3>图例</h3>
+      <div style="margin:6px 0 8px;color:var(--muted);font-size:12px;">颜色=硬件，形状=算子类型</div>
+      <div class="row"><span class="swatch" style="background:#1f77b4"></span> NPU</div>
+      <div class="row"><span class="swatch" style="background:#d62728"></span> PIM</div>
+      <div class="row"><span class="swatch" style="background:#9467bd"></span> HYBRID</div>
+      <div class="row"><span class="swatch" style="background:#7f7f7f"></span> 其他/未知</div>
+      <hr style="border:none;border-top:1px solid var(--border);margin:8px 0;">
+      <div class="row"><span class="shape triangle" style="background:none;border-bottom-color:var(--fg)"></span> Softmax</div>
+      <div class="row"><span class="shape diamond" style="background:var(--fg)"></span> QK / SV</div>
+      <div class="row"><span class="shape square" style="background:var(--fg)"></span> Q / K / V / O / FFN_W*</div>
+      <div class="row"><span class="shape ellipse" style="background:var(--fg)"></span> LN / X</div>
+      <div class="row"><span class="shape hexagon" style="background:var(--fg)"></span> Add</div>
+      <div class="row"><span class="shape ellipse" style="background:var(--fg)"></span> Act（圆）</div>
+      <div class="row"><span class="shape vee" style="background:var(--fg)"></span> K_read / V_read / IO</div>
+    </div>
+
+    <div class="footer">提示：选择 Stage / Layer（decode 时可选 Token）。仅渲染该层 DAG。</div>
+  </aside>
+
+  <main id="cy"></main>
+</div>
+
+<script>
+// ========= Helpers =========
+function deviceClass(d) {
+  const u = (d||"").toUpperCase();
+  if (u.includes("HYBRID")) return "HYBRID";
+  if (u.includes("PIM")) return "PIM";
+  if (u.includes("NPU")) return "NPU";
+  return "OTHER";
+}
+function parseLayerOp(nodeId) {
+  const m = /^L(\d+)_([^/]+)$/i.exec(nodeId||"");
+  return { layer: m ? Number(m[1]) : null, op: m ? m[2] : nodeId };
+}
+function opType(label) {
+  const L = (label||"").toUpperCase();
+  // 保证 KV_read_K / KV_read_V / K_read / V_read 都归为 IO
+  if (L.startsWith("KV_READ") || L==="K_READ" || L==="V_READ") return "io";
+  if (L === "LN" || L === "LN1" || L === "LN2" || L.includes("LAYERNORM")) return "norm";
+  if (L === "Q" || L === "K" || L === "V" || L === "O" || L.startsWith("FFN_W") || L==="GEMM" || L==="MATMUL" || L==="PROJ") return "matmul";
+  if (L.includes("QK") || L==="SV" || L==="ATTN" || L==="ATTENTION") return "attention";
+  if (L.includes("SOFTMAX")) return "softmax";
+  if (L==="ACT" || L.includes("GELU") || L.includes("SILU") || L.includes("RELU")) return "activation";
+  if (L.startsWith("ADD") || L.includes("RES") || L.includes("BIAS") || L==="MUL") return "elementwise";
+  if (L.includes("KV_") || L.endsWith("_READ") || L.endsWith("_WRITE")) return "io";
+  if (L==="X") return "norm";
+  return "other";
+}
+// 把 KV_read_K / KV_read_V 的显示名变成 K_read / V_read
+function shortLabel(opOrId) {
+  const s = (opOrId || "").toString();
+  const u = s.toUpperCase();
+  if (u === "KV_READ_K") return "K_read";
+  if (u === "KV_READ_V") return "V_read";
+  return s;
+}
+
+const shapeByType = {
+  "attention": "diamond",
+  "matmul": "square",
+  "norm": "ellipse",
+  "softmax": "triangle",
+  "activation": "ellipse",
+  "elementwise": "hexagon",
+  "io": "vee",
+  "other": "round-rectangle"
+};
+const colorByDev = { NPU:"#1f77b4", PIM:"#d62728", HYBRID:"#9467bd", OTHER:"#7f7f7f" };
+
+// ========= Edges: 把 KV 拆两次读取，插入两条链 =========
+function buildLayerEdges(nodesById, L) {
+  const N = (name) => `L${L}_${name}`;
+  const exists = (name) => !!nodesById[N(name)];
+  const E = [];
+  const add = (u, v) => { if (exists(u) && exists(v)) E.push([N(u), N(v)]); };
+
+  // LN1 → Q/K/V
+  add("LN1","Q"); add("LN1","K"); add("LN1","V");
+
+  // QK 路径：Q + (K → K_read) → QK
+  // 支持几种命名：K_read / KV_read_K / KV_read（最后回退）
+  let kReadName = null;
+  if (exists("K_read")) kReadName = "K_read";
+  else if (exists("KV_read_K")) kReadName = "KV_read_K";
+  else if (exists("KV_read")) kReadName = "KV_read";
+
+  add("Q","QK");
+  if (kReadName) {
+    add("K", kReadName);
+    add(kReadName, "QK");
+  } else {
+    add("K","QK"); // 无读点时回退
+  }
+
+  // QK → Softmax
+  add("QK","Softmax");
+
+  // SV 路径：Softmax + (V → V_read) → SV
+  let vReadName = null;
+  if (exists("V_read")) vReadName = "V_read";
+  else if (exists("KV_read_V")) vReadName = "KV_read_V";
+  else if (exists("KV_read")) vReadName = "KV_read";
+
+  add("Softmax","SV");
+  if (vReadName) {
+    add("V", vReadName);
+    add(vReadName, "SV");
+  } else {
+    add("V","SV");
+  }
+
+  // 后续 + 残差
+  add("SV","O");
+  add("X","Add1"); add("O","Add1"); add("Add1","LN2");
+  add("LN2","FFN_W1"); add("LN2","FFN_W3");
+  add("FFN_W1","Act"); add("Act","FFN_W2"); add("FFN_W3","FFN_W2");
+  add("FFN_W2","Add2");
+
+  // KV 写回（当前 token 的 K/V）
+  add("K","KV_write"); add("V","KV_write");
+
+  return E;
+}
+
+// ========= 读取 JSON 并构建（含 decode_steps 支持） =========
+let rawData = null;
+// store[stage][layer][token] = {elements}
+let store = {};
+
+async function loadDefault() {
+  try {
+    const r = await fetch("./data/best_pass_summary.json", {cache:"no-store"});
+    if (r.ok) {
+      rawData = await r.json();
+      buildStore();
+      fillSelectors();
+      refresh();
+    } else {
+      console.warn("未找到 data/best_pass_summary.json");
+    }
+  } catch(e){ console.warn(e); }
+}
+
+function takeAllSchedules() {
+  const out = [];
+  const pre = Array.isArray(rawData?.prefill_schedule) ? rawData.prefill_schedule : [];
+  for (const it of pre) out.push({ ...it, phase: 'prefill', token_idx: null });
+
+  const decOld = Array.isArray(rawData?.decode_schedule) ? rawData.decode_schedule : [];
+  for (const it of decOld) out.push({ ...it, phase: 'decode' });
+
+  const steps = Array.isArray(rawData?.decode_steps) ? rawData.decode_steps : [];
+  for (const st of steps) {
+    const t = st?.t;
+    const sch = Array.isArray(st?.schedule) ? st.schedule : [];
+    for (const it of sch) out.push({ ...it, phase: 'decode', token_idx: t });
+  }
+  return out;
+}
+
+// ★★★★★ 把单一 KV_read 拆成 K_read / V_read（仅限可视化层面）
+function splitKvReadNodesIfNeeded(nodesById, layer) {
+  const idBase = `L${layer}_KV_read`;
+  const hasBase = !!nodesById[idBase];
+  const hasK = !!nodesById[`L${layer}_K_read`] || !!nodesById[`L${layer}_KV_read_K`];
+  const hasV = !!nodesById[`L${layer}_V_read`] || !!nodesById[`L${layer}_KV_read_V`];
+
+  if (hasBase && (!hasK || !hasV)) {
+    const base = nodesById[idBase];
+    // 克隆为两个读点（显示名直接是 K_read / V_read）
+    if (!hasK) {
+      nodesById[`L${layer}_K_read`] = { ...base, node_id: `L${layer}_K_read`, op: 'K_read' };
+    }
+    if (!hasV) {
+      nodesById[`L${layer}_V_read`] = { ...base, node_id: `L${layer}_V_read`, op: 'V_read' };
+    }
+    delete nodesById[idBase]; // 删除单一 KV_read，避免重复显示
+  }
+}
+
+function buildStore() {
+  store = {};
+  const all = takeAllSchedules();
+  const nodeByKey = {};
+
+  // 先分桶 (stage, layer, token)
+  for (const it of all) {
+    const stage = it.phase || (it.token_idx!=null ? "decode" : "prefill");
+    const {layer, op} = parseLayerOp(it.node_id);
+    if (layer==null) continue;
+    const token = stage === 'decode' ? (Number.isFinite(+it.token_idx) ? Number(it.token_idx) : 0) : -1;
+    const key = stage+"|"+layer+"|"+token;
+    nodeByKey[key] ||= {};
+    nodeByKey[key][it.node_id] = { ...it, layer, op };
+  }
+
+  // 每个桶内：若需要则拆分 KV_read → K_read / V_read，然后生成元素与边
+  for (const key of Object.keys(nodeByKey)) {
+    const [stage, layerStr, tokStr] = key.split("|");
+    const layer = Number(layerStr);
+    const token = Number(tokStr);
+    const nodesById = nodeByKey[key];
+
+    // ★ 拆分
+    splitKvReadNodesIfNeeded(nodesById, layer);
+
+    // 组装 Cytoscape elements（节点标签显示算子名）
+    const elements = [];
+    for (const id of Object.keys(nodesById)) {
+      const n = nodesById[id];
+      const typ = opType(n.op);
+      const dev = deviceClass(n.device);
+      elements.push({
+        data: {
+          id,
+          label: id,                          // 完整 ID（搜索可用）
+          labelShort: shortLabel(n.op || id), // 只显示算子名：Q/K/V/Softmax/K_read/V_read 等
+          op: n.op,
+          type: typ,
+          dev,
+          start: n.start, finish: n.finish, duration: n.duration
+        }
+      });
+    }
+
+    // 连边（已按 K_read / V_read 插入）
+    const E = buildLayerEdges(nodesById, layer);
+    for (const [u,v] of E) {
+      if (nodesById[u] && nodesById[v]) {
+        elements.push({ data: { id: `${u}->${v}`, source: u, target: v } });
+      }
+    }
+
+    store[stage] ||= {};
+    store[stage][layer] ||= {};
+    store[stage][layer][token] = { elements };
+  }
+}
+
+// ========= 选择器与图 =========
+function stages() { return Object.keys(store).sort(); }
+function layersOf(stage) { return Object.keys(store[stage]||{}).map(x=>Number(x)).sort((a,b)=>a-b); }
+function tokensOf(stage, layer) { return Object.keys(store?.[stage]?.[layer]||{}).map(x=>Number(x)).sort((a,b)=>a-b); }
+
+let cy = null;
+function ensureCy() {
+  if (cy) return cy;
+  cy = cytoscape({
+    container: document.getElementById("cy"),
+    layout: { name: "dagre", rankDir: "LR", nodeSep: 28, rankSep: 64, edgeSep: 14 },
+    style: [
+      {
+        selector: "node",
+        style: {
+          "shape": ele => shapeByType[ele.data("type")] || "round-rectangle",
+          "background-color": ele => colorByDev[ele.data("dev")] || "#7f7f7f",
+          "label": "data(labelShort)",
+          "color": "#ffffff",
+          "font-size": 12,
+          "min-zoomed-font-size": 8,
+          "text-wrap": "wrap",
+          "text-max-width": 140,
+          "padding": "10px",
+          "border-width": 1.2,
+          "border-color": "#1f2429",
+          "text-outline-width": 3,
+          "text-outline-color": "rgba(0,0,0,0.35)"
+        }
+      },
+      {
+        selector: "edge",
+        style: {
+          "width": 2.2, "line-color": "#8b9199",
+          "target-arrow-shape": "triangle",
+          "target-arrow-color": "#8b9199",
+          "curve-style": "bezier"
+        }
+      },
+      { selector: "node:selected", style: { "border-width": 2, "border-color": "#5b9cff" } },
+      { selector: "edge:selected", style: { "line-color": "#5b9cff", "target-arrow-color": "#5b9cff", "width": 3 } }
+    ]
+  });
+  return cy;
+}
+
+function fillSelectors() {
+  const stageSel = document.getElementById("stage");
+  const layerSel = document.getElementById("layer");
+  const tokenWrap = document.getElementById("tokenWrap");
+  const tokenSel = document.getElementById("token");
+
+  stageSel.innerHTML = "";
+  for (const s of stages()) {
+    const opt = document.createElement("option"); opt.value=s; opt.textContent=s; stageSel.appendChild(opt);
+  }
+  stageSel.onchange = () => { fillLayers(); refresh(); };
+
+  function fillTokens() {
+    const s = stageSel.value || stages()[0];
+    const L = Number(layerSel.value || (layersOf(s)[0] ?? 0));
+    const toks = tokensOf(s, L);
+    tokenSel.innerHTML = "";
+    if (s === 'decode' && toks.length) {
+      tokenWrap.style.display = "";
+      for (const t of toks) {
+        const opt = document.createElement("option"); opt.value=String(t); opt.textContent=String(t); tokenSel.appendChild(opt);
+      }
+      tokenSel.value = String(toks[toks.length - 1]); // 默认最后一个 token
+    } else {
+      tokenWrap.style.display = "none";
+    }
+  }
+
+  function _fillLayers() {
+    const s = stageSel.value || stages()[0];
+    const layers = layersOf(s);
+    layerSel.innerHTML = "";
+    for (const L of layers) {
+      const opt = document.createElement("option"); opt.value=String(L); opt.textContent=`L${L}`; layerSel.appendChild(opt);
+    }
+    layerSel.onchange = () => { fillTokens(); refresh(); };
+    fillTokens();
+  }
+
+  _fillLayers();
+}
+
+function refresh() {
+  const stageSel = document.getElementById("stage");
+  const layerSel = document.getElementById("layer");
+  const tokenSel = document.getElementById("token");
+  const s = stageSel.value || stages()[0];
+  const L = Number(layerSel.value || (layersOf(s)[0] ?? 0));
+  const toks = tokensOf(s, L);
+  const tok = (s === 'decode' && toks.length) ? Number(tokenSel.value || toks[toks.length-1]) : -1;
+
+  const g = store?.[s]?.[L]?.[tok];
+  const cy = ensureCy();
+  cy.elements().remove();
+  if (!g) return;
+  cy.add(g.elements);
+  cy.layout({ name: "dagre", rankDir: "LR", nodeSep: 28, rankSep: 64, edgeSep: 14 }).run();
+  cy.fit();
+}
+
+// 搜索过滤（id / op / type / labelShort 都能搜）
+document.getElementById("search").addEventListener("input", (e) => {
+  const q = (e.target.value||"").trim().toLowerCase();
+  if (!cy) return;
+  cy.nodes().forEach(n => {
+    const keep = !q
+      || (n.data("label")||"").toLowerCase().includes(q)
+      || (n.data("labelShort")||"").toLowerCase().includes(q)
+      || (n.data("op")||"").toLowerCase().includes(q)
+      || (n.data("type")||"").toLowerCase().includes(q);
+    n.style("display", keep ? "element" : "none");
+  });
+  cy.edges().forEach(ed => {
+    const s = ed.source().style("display") !== "none";
+    const t = ed.target().style("display") !== "none";
+    ed.style("display", (s && t) ? "element" : "none");
+  });
+});
+
+document.getElementById("fit").onclick = () => { if (cy) cy.fit(); };
+document.getElementById("export").onclick = () => {
+  if (!cy) return;
+  const png = cy.png({ full:true, scale:2 });
+  const a = document.createElement("a");
+  a.href = png; a.download = "layer_graph.png"; a.click();
+};
+
+// 本地选择 JSON
+document.getElementById("file").addEventListener("change", async (e) => {
+  const f = e.target.files?.[0]; if (!f) return;
+  try {
+    const text = await f.text();
+    rawData = JSON.parse(text);
+    buildStore(); fillSelectors(); refresh();
+  } catch (err) {
+    alert("JSON 加载失败，请检查文件格式。");
+  } finally {
+    e.target.value = "";
+  }
+});
+
+// 默认尝试读取 data/best_pass_summary.json
+loadDefault();
+</script>
+</body>
+</html>

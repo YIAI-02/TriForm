@@ -92,6 +92,7 @@ def simulate_decode_progressive(sched: HEFTScheduler, cfg: Dict, graph: TaskGrap
     global_end = prefill_end
     steps_serialized: List[Dict] = []
     for t in range(decode_len):
+        logger.debug(str(f'[DEBUG] Simulating decode token {t+1}/{decode_len} (seq_len={prefill_len + t})'))
         current_length = prefill_len + t
         sched.set_seq_len(current_length)
         dec_sched_t = sched.schedule(graph, phase='decode')

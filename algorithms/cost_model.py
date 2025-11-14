@@ -1276,3 +1276,23 @@ class CostModel:
             if pim_devs:
                 return self.mem_time(weight_bytes, pim_devs[0])
             return 0.0
+        
+    def activation_read_time_pim(self, activation_bytes_nd: int) -> float:
+        try:
+            read_lat, _ = _simulate_weight_loading_latency(
+                activation_bytes_nd,
+                self.gb_config_path,         # 传给 pim_config_path（用于内部 WRITE；此处写回不关心）
+                self.pim_config_path,        # 传给 gb_config_path（用于内部 READ；← 用 PIM 配置读）
+                self.ramulator_config_path,
+                dtype_bytes=getattr(self, 'dtype_bytes', 2),  # 没有就默认 2（FP16）
+                use_cache=getattr(self, 'pim_cache_enabled', True),
+                keep_traces=getattr(self, 'debug_traces', False),
+                model_dict=getattr(self, 'model_dict', None)
+            )
+            return float(read_lat)
+        except Exception as e:
+            logger.debug(f"[activation_read_time_pim] fallback to mem_time due to: {e}")
+            pim_devs = getattr(self.cluster, 'devices_by_type', lambda *_: [])('pim')
+            if pim_devs:
+                return self.mem_time(activation_bytes_nd, pim_devs[0])
+            return 0.0
