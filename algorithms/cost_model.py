@@ -433,7 +433,7 @@ def _run_ramulator(trace_path: Path, ramulator_config: Path, timeout: int=300) -
 class PIMLatencyCache:
 
     def __init__(self, cache_file: Optional[Path]=None):
-        self.cache_file = cache_file or Path('./output/pim_latency_cache.pkl')
+        self.cache_file = cache_file or Path('./pkl/pim_latency_cache.pkl')
         self.cache: Dict[str, float] = {}
         self.lock = Lock()
         self._load_cache()
@@ -576,59 +576,39 @@ def _predict_mmad_latency_us_from_json(M: int, N: int, K: int) -> Optional[float
     """
     用运行时 JSON 模型预测单次 MMAD 的总延迟（μs），包含 SplitA/SplitB/SplitBias/Compute 四阶段。
     """
-    logger.debug(str(f'\n[MMAD-MODEL] Called with M={M}, N={N}, K={K}'))
     model = _load_mmad_model_json()
     if model is None:
-        logger.debug(str('[MMAD-MODEL] ✗ Model loading failed, returning None'))
+        logger.error(str('[MMAD-MODEL] ✗ Model loading failed, returning None'))
         return None
-    logger.debug(str(f'[MMAD-MODEL] ✓ Model loaded successfully'))
     block_size = int(model.get('block_size', 16))
     feature_names = model.get('features', ['tiles', 'mn', 'sum_b'])
     coefs = model['coefficients']
-    logger.debug(str(f'[MMAD-MODEL] block_size={block_size}'))
-    logger.debug(str(f'[MMAD-MODEL] features={feature_names}'))
     feats, blocks = _compute_feature_vector(M, N, K, block_size, feature_names)
-    logger.debug(str(f'[MMAD-MODEL] Block counts: MB={blocks[0]}, NB={blocks[1]}, KB={blocks[2]}'))
-    logger.debug(str(f'[MMAD-MODEL] Feature vector: {dict(zip(feature_names, feats))}'))
     y = float(coefs.get('b0', 0.0))
-    logger.debug(str(f'[MMAD-MODEL] b0 = {y}'))
     for name, val in zip(feature_names, feats):
         coef = float(coefs.get(f'b_{name}', 0.0))
         contribution = coef * val
         y += contribution
-        logger.debug(str(f'[MMAD-MODEL] b_{name} = {coef:.6f}, feat = {val:.2f}, contribution = {contribution:.6f}'))
     result = max(0.0, y)
-    logger.debug(str(f'[MMAD-MODEL] ✓ Final prediction: {result:.4f} μs'))
     return result
 
 def _map_op_to_mmad_dims(op: str, dim: int, n_heads: int, n_kv_heads: int, ffn_dim: int, seqlen: int) -> Optional[Tuple[int, int, int, int]]:
-    """
-    线性/FFN/注意力算子 → MMAD (M,N,K,reps)
-    """
-    logger.debug(str(f"\n[MAP-MMAD] Mapping op='{op}' to MMAD dims"))
-    logger.debug(str(f'[MAP-MMAD] Input: dim={dim}, n_heads={n_heads}, n_kv_heads={n_kv_heads}, ffn_dim={ffn_dim}, seqlen={seqlen}'))
     if not op:
         logger.debug(str(f'[MAP-MMAD] ✗ op is None/empty, returning None'))
         return None
     op = op.lower()
     head_dim = dim // max(1, n_heads)
-    logger.debug(str(f'[MAP-MMAD] Computed head_dim={head_dim}'))
     result = None
     if op in ('q_proj', 'k_proj', 'v_proj', 'wo_proj'):
         result = (1, dim, dim, max(1, seqlen))
-        logger.debug(str(f'[MAP-MMAD] ✓ Matched linear projection: {result}'))
     elif op in ('ffn_up', 'ffn_gate'):
         result = (1, ffn_dim if ffn_dim > 0 else 4 * dim, dim, max(1, seqlen))
-        logger.debug(str(f'[MAP-MMAD] ✓ Matched FFN up/gate: {result}'))
     elif op == 'ffn_down':
         result = (1, dim, ffn_dim if ffn_dim > 0 else 4 * dim, max(1, seqlen))
-        logger.debug(str(f'[MAP-MMAD] ✓ Matched FFN down: {result}'))
     elif op == 'score' and seqlen and head_dim:
         result = (1, seqlen, head_dim, max(1, n_heads * seqlen))
-        logger.debug(str(f'[MAP-MMAD] ✓ Matched attention score: {result}'))
     elif op == 'output' and seqlen and head_dim:
         result = (1, head_dim, seqlen, max(1, n_heads * seqlen))
-        logger.debug(str(f'[MAP-MMAD] ✓ Matched attention output: {result}'))
     else:
         logger.debug(str(f"[MAP-MMAD] ✗ No match for op='{op}'"))
     return result
@@ -923,7 +903,6 @@ class CostModel:
             return True
         allow = OPERATOR_DEVICE_ALLOWED.get(key, {})
         val = allow.get(dev_type, True)
-        logger.debug(str(f"[ALLOW] node={getattr(node,'name','?')} key={key} dev={dev_type} allowed={val}"))
         return bool(val)
 
     def _cpu_fallback_cost(self, node: TaskNode, batch: int, seq_len: int, phase: str) -> float:
@@ -1155,8 +1134,6 @@ class CostModel:
         ffn_dim = int(attrs.get('ffn_dim', 0) or 0)
         ffn_dim_mul = float(attrs.get('ffn_dim_mul', 4.0))
         if dev.type == 'npu':
-            logger.debug(str(f'[NPU-PATH] ✓ Entering NPU branch'))
-            # Device allowance check from config.py
             if not self._op_allowed_on(node, 'npu'):
                 logger.debug(str(f"[DISPATCH] {node.name} not allowed on NPU, fallback to CPU"))
                 return self._cpu_fallback_cost(node, batch, seq_len, phase)

@@ -39,7 +39,9 @@ class CommManager:
         end = start + dt
         if commit:
             self.timeline_end[key] = end
-            logger.debug(f'[COMM] {src}->{dst} bytes={bytes_amount} start={start} end={end}')
+            logger.debug(
+                f"[COMM] {src}->{dst} bytes={bytes_amount} bw={bw/1e9:.2f}GB/s start={start:.6f} end={end:.6f} dt={end-start:.6f} commit={commit}"
+            )
             assert not ((src.startswith('NPU') and dst.startswith('PIM')) or
             (src.startswith('PIM') and dst.startswith('NPU'))), f'Forbidden direct NPU<->PIM transfer: {src}->{dst}'
         return (start, end)
@@ -55,9 +57,27 @@ class HEFTScheduler:
         self.buffer = buffer or GlobalMemoryManager()
         self._pim_cache_capacity: Dict[str, int] = {}
         self._node_host_store_end: Dict[str, float] = {}  #节点输出在host上的可用时间
-        self._pim_act_bytes: Dict[str, int] = defaultdict(int) #pim 可以用于保留激活值的容量
+        self._act_cap: Dict[str, int] = {}                 # 每个设备用于激活的容量上限（字节），约 90% 可用
+        self._act_used: Dict[str, int] = defaultdict(int)  # 当前每个设备已被激活占用的字节数
+        self._act_resident: Dict[Tuple[str, str], int] = {}# (dev.name, node_id) -> bytes，表示该结点输出是否仍驻留在该设备
+        self._act_refcnt: Dict[str, int] = {}              # node_id -> 还剩多少个下游消费者未消费
+        self._max_util: float = 0.90                       # 最多只能占满 90%
+        self._kv_reserved_per_dev: Dict[str, int] = {}     # PIM 每块设备为 KV 预留的容量（字节）
+        self.comm = CommManager(cluster)
+        self.avail: Dict[str, float] = {name: 0.0 for name in self.cluster.devices}
+        self._node_finish_time: Dict[str, float] = {}
+        self._node_placement: Dict[str, str] = {}
+        self._node_out_fmt: Dict[str, str] = {}
+        self.weight_cached: Dict[Tuple[str, str], bool] = {}
+        self.storage_fmt_map: Dict[str, str] = {}
+        self._weight_load_count: Dict[Tuple[str, str], int] = defaultdict(int)
+        self._weight_sizes: Dict[str, int] = {}
+        self.mode_mem: Dict[str, str] = {}
+        self._kv_reserved_per_dev: Dict[str, int] = {}
+
         total_budget = int(getattr(self.label, 'pim_weight_capacity_bytes', 0) or 0)
         pim_devs = self.cluster.devices_by_type('pim')
+
         if pim_devs:
             n_dev = len(pim_devs)
             share = total_budget // n_dev
@@ -77,30 +97,31 @@ class HEFTScheduler:
                         cache.used -= cache.items.pop(ev, 0)
                 else:
                     self.buffer.ensure_device_cache(d.name, desired)
-        self.comm = CommManager(cluster)
-        self.avail: Dict[str, float] = {name: 0.0 for name in self.cluster.devices}
-        self._node_finish_time: Dict[str, float] = {}
-        self._node_placement: Dict[str, str] = {}
-        self._node_out_fmt: Dict[str, str] = {}
-        self.weight_cached: Dict[Tuple[str, str], bool] = {}
-        self.storage_fmt_map: Dict[str, str] = {}
-        self._weight_load_count: Dict[Tuple[str, str], int] = defaultdict(int)
-        self._weight_sizes: Dict[str, int] = {}
-        self.mode_mem: Dict[str, str] = {}
-        self._kv_reserved_per_dev: Dict[str, int] = {}
 
         if pim_devs and getattr(self.label, 'kv_in_pim', False):
-            pim_total_bytes = sum(int(d.mem_capacity_GB * 1e9) for d in pim_devs)
-            weight_budget_total = int(getattr(self.label, 'pim_weight_capacity_bytes', 0) or 0)
-            kv_total_bytes = max(0, pim_total_bytes - weight_budget_total)
-            # 平均分摊到每块 PIM（尽量均匀）
-            share = kv_total_bytes // len(pim_devs)
-            remainder = kv_total_bytes % len(pim_devs)
-            for idx, d in enumerate(pim_devs):
-                self._kv_reserved_per_dev[d.name] = share + (1 if idx < remainder else 0)
+            kv_total_bytes = int(getattr(self.label, 'kv_total_bytes', 0) or 0)
+            caps = [int(d.mem_capacity_GB * 1e9) for d in pim_devs]
+            cap_sum = max(1, sum(caps))
+            alloc = [ (caps[i] * kv_total_bytes) // cap_sum for i in range(len(pim_devs)) ]
+            remainder = kv_total_bytes - sum(alloc)
+            order = sorted(range(len(pim_devs)), key=lambda i: caps[i], reverse=True)
+            for i in range(remainder):
+                alloc[order[i % len(order)]] += 1
+            for i, d in enumerate(pim_devs):
+                self._kv_reserved_per_dev[d.name] = alloc[i]
+                logger.debug(f"[INIT] KV_RESERVE dev={d.name} = {alloc[i]}")
         else:
             for d in pim_devs:
                 self._kv_reserved_per_dev[d.name] = 0
+
+        # --- Compute activation residency budget for ALL devices (90%) ---
+        for name, d in self.cluster.devices.items():
+            phy = int(d.mem_capacity_GB * 1e9)
+            kv_reserve = int(self._kv_reserved_per_dev.get(name, 0)) if d.type == 'pim' else 0
+            weight_budget = int(self._pim_cache_capacity.get(name, 0)) if d.type == 'pim' else 0
+            cap = max(0, int(self._max_util * max(0, phy - kv_reserve - weight_budget)))
+            self._act_cap[name] = cap
+            logger.debug(f"[INIT] ACT_CAP dev={name} phy={phy} kv={kv_reserve} weight_budget={weight_budget} act_cap(90%)={cap}")
 
     def _kv_reserved_for(self, dev: DeviceSpec) -> int:
         return int(self._kv_reserved_per_dev.get(dev.name, 0))
@@ -197,10 +218,12 @@ class HEFTScheduler:
             return 0.0
         wid = node.weight_id
         if dev.type == 'pim' and self.buffer.is_cached(dev.name, wid):
+            logger.debug(f"[WEIGHT] cache-hit wid={wid} dev={dev.name}")
             if commit:
                 self.buffer.device_cache[dev.name].touch(wid)
             return 0.0
         if dev.type == 'pim':
+            logger.debug(f"[WEIGHT] host->pim load wid={wid} size={node.weight_size}")
             load_time = self.cost.weight_load_time_pim(node.weight_size)
             if commit:
                 self._weight_load_count[wid, dev.type] += 1
@@ -214,6 +237,7 @@ class HEFTScheduler:
         host = self.cost.get_host_device().name
         stored_fmt = self.storage_fmt_map.get(wid, self.buffer.get_host_fmt(wid) or 'ND')
         size_src = self.cost.format_size(node.weight_size, stored_fmt)
+        logger.debug(f"[WEIGHT] host->{dev.name} load wid={wid} stored_fmt={stored_fmt} size={node.weight_size}")
         _, link_end = self.comm.reserve(host, dev.name, size_src, earliest=t0, commit=commit)
         conv_t = self.cost.format_conversion_time(size_src, stored_fmt, self.cost.device_preferred_fmt(dev), dev)
         end = link_end + conv_t
@@ -240,6 +264,23 @@ class HEFTScheduler:
             finish = cursor
         if commit:
             self._node_out_fmt[nid] = self.cost.device_preferred_fmt(dev)
+            # ——尝试为当前结点输出做“就地驻留”，否则立即回写 Host（只写一次的早触发）——
+            out_read_nd, out_write_nd = self.cost.estimate_activation_bytes(node, self.batch, self.seq_len, phase)
+            out_nd = max(out_write_nd, out_read_nd)
+            cap = int(self._act_cap.get(dev.name, 0))
+            used = int(self._act_used.get(dev.name, 0))
+            if used + out_nd <= cap:
+                self._act_used[dev.name] = used + out_nd
+                self._act_resident[(dev.name, nid)] = out_nd
+                logger.debug(f"[LOCAL] retain out nid={nid}@{dev.name} bytes_nd={out_nd} used={self._act_used[dev.name]}/{cap}")
+            else:
+                # 空间不足：立即把该输出写回 Host（供后续消费者复用）
+                logger.debug(f"[LOCAL->HOST] evict out nid={nid}@{dev.name} need={out_nd} used={used}/{cap}")
+                src_fmt = self.cost.device_preferred_fmt(dev)
+                self._ensure_host_store(nid, dev, out_nd, src_fmt, finish, commit=True)
+
+            if nid not in self._act_refcnt:
+                self._act_refcnt[nid] = len(g.successors(nid))
         return (t0, finish)
 
     def _earliest_free_device(self, dev_type: str) -> Tuple[Optional[DeviceSpec], float]:
@@ -266,8 +307,30 @@ class HEFTScheduler:
             pred_dev_name = self._node_placement.get(u, dev.name)
             pred_dev = self.cluster.devices[pred_dev_name]
             if pred_dev.name == dev.name:
-                inbound_start_times.append(pred_finish)
-                inbound_end_times.append(pred_finish)
+                src_fmt = self._node_out_fmt.get(u, self.cost.device_preferred_fmt(pred_dev))
+                pred_node = g.nodes[u]
+                _, pred_write = self.cost.estimate_activation_bytes(pred_node, batch, seq_len, phase)
+                payload_nd = max(pred_write, node_read)
+                size_nd = self.cost.format_size(payload_nd, 'ND')
+                if dev.type == 'pim':
+                    avail = self._pim_avail_for_activation(pred_dev)
+                    if avail >= payload_nd:
+                        if commit:
+                            self._act_used[pred_dev.name] = self._act_used.get(pred_dev.name, 0) + payload_nd
+                        logger.debug(f"[LOCAL] PIM in-place u={u}@{pred_dev.name} -> {nid}@{dev.name} bytes_nd={payload_nd} (use_inplace, avail={avail})")
+                        inbound_start_times.append(pred_finish)
+                        inbound_end_times.append(pred_finish)
+                    else:
+                        logger.debug(f"[LOCAL->HOST] PIM fallback (no space) u={u}@{pred_dev.name} -> {nid}@{dev.name} need={payload_nd} avail={avail}")
+                        host_ready = self._ensure_host_store(u, pred_dev, payload_nd, src_fmt, pred_finish, commit)
+                        l2s, l2e = self.comm.reserve(self.cost.get_host_device().name, dev.name, size_nd, earliest=host_ready, commit=commit)
+                        conv2 = self.cost.format_conversion_time(size_nd, 'ND', self.cost.device_preferred_fmt(dev), dev)
+                        inbound_start_times.append(l2s)
+                        inbound_end_times.append(l2e + conv2)
+                else:
+                    logger.debug(f"[LOCAL] NPU reuse u={u}@{pred_dev.name} -> {nid}@{dev.name} (no xfer) pred_finish={pred_finish:.6f}")
+                    inbound_start_times.append(pred_finish)
+                    inbound_end_times.append(pred_finish)
                 continue
             else:
                 src_fmt = self._node_out_fmt.get(u, self.cost.device_preferred_fmt(pred_dev))
@@ -296,6 +359,7 @@ class HEFTScheduler:
                     size_nd = self.cost.format_size(payload_nd, 'ND')
                     l2s, l2e = self.comm.reserve(host.name, dev.name, size_nd, earliest=host_ready, commit=commit)
                     conv2 = self.cost.format_conversion_time(size_nd, 'ND', dst_fmt, dev)
+                    logger.debug(f"[CROSS] HOST->NPU u={u}@{pred_dev.name} -> {nid}@{dev.name} bytes_nd={payload_nd}")
                     inbound_start_times.append(l2s)
                     inbound_end_times.append(l2e + conv2)
                     continue
@@ -305,7 +369,8 @@ class HEFTScheduler:
                     if pred_dev.type == 'pim' and (self._pim_avail_for_activation(pred_dev) >= payload_nd):
                         # (a) PIM->PIM 就地：容量足够且允许就地，直接复用；不走 Host
                         if commit:
-                            self._pim_act_bytes[pred_dev.name] = self._pim_act_bytes.get(pred_dev.name, 0) + payload_nd
+                            self._act_used[pred_dev.name] = self._act_used.get(pred_dev.name, 0) + payload_nd
+                        logger.debug(f"[LOCAL] PIM in-place (cross device branch) u={u}@{pred_dev.name} -> {nid}@{dev.name} bytes_nd={payload_nd}")
                         inbound_start_times.append(pred_finish)
                         inbound_end_times.append(pred_finish)
                     else:
@@ -314,6 +379,7 @@ class HEFTScheduler:
                             host_ready = self._ensure_host_store(u, pred_dev, payload_nd, src_fmt, pred_finish, commit)
                         size_nd = self.cost.format_size(payload_nd, 'ND')
                         l2s, l2e = self.comm.reserve(host.name, dev.name, size_nd, earliest=host_ready, commit=commit)
+                        logger.debug(f"[CROSS] HOST->PIM u={u}@{pred_dev.name} -> {nid}@{dev.name} bytes_nd={payload_nd}")
                         conv2 = self.cost.format_conversion_time(size_nd, 'ND', dst_fmt, dev)
                         inbound_start_times.append(l2s)
                         inbound_end_times.append(l2e + conv2)
@@ -467,35 +533,31 @@ class HEFTScheduler:
             self._node_out_fmt[nid] = 'ND'
             self._node_host_store_end[nid] = finish   # 供后续消费者复用 Host 版本，避免重复写回
 
-        result = {
+
+        logger.debug(f"[HYBRID] nid={nid} alpha={alpha} "
+                     f"start_npu={start_npu:.6f} finish_npu={finish_npu:.6f} "
+                     f"start_pim={start_pim:.6f} finish_pim={finish_pim:.6f} finish={finish:.6f}")
+        return {
             'device': 'HYBRID',
-            # 供 schedule() 直接使用的键：
-            'npu': npu_dev,                 # DeviceSpec
-            'pim': pim_dev,                 # DeviceSpec
-            'out_dev': host,                # HYBRID 输出统一写回 Host
-            'out_fmt': 'ND',
-            'start_npu': start_npu if alpha > 0 else float('inf'),
-            'start_pim': start_pim if (1.0 - alpha) > 0 else float('inf'),
-            'start': start,                 # 仍保留整体“开始”语义
+            'start': start,
             'finish': finish,
-            # 详细分解信息（保留你原来的结构，便于调试/可视化）：
+            'npu': npu_dev,                     # DeviceSpec（供上层 .name）
+            'pim': pim_dev,                     # DeviceSpec
+            'out_dev': host,                    # 输出对外驻留在 Host
+            'out_fmt': 'ND',
+            'start_npu': start_npu,
+            'start_pim': start_pim,
             'npu_detail': {
                 'ready': t_ready_npu,
                 'w_end': t_w_npu_end,
-                'start': start_npu,
                 'finish_compute': finish_npu,
-                'writeback_end': npu_w_end,
-                'share': alpha,
             },
             'pim_detail': {
                 'ready': t_ready_pim,
                 'w_end': t_w_pim_end,
-                'start': start_pim,
                 'finish_compute': finish_pim,
-                'writeback_end': pim_w_end,
-                'share': 1.0 - alpha,
             },
-            'unified_writeback_to_host': True,
+            'unified_writeback_to_host': True
         }
         return result
 
@@ -533,15 +595,6 @@ class HEFTScheduler:
         return t_done
 
     def _pim_avail_for_activation(self, dev: DeviceSpec) -> int:
-        """
-        返回：当前这块 PIM 可用于“就地保留激活”的剩余容量（字节）。
-        规则：
-        可用 = PIM总容量
-                - KV 预留（按 PlanLabel 分摊）
-                - 权重缓存预算（按 PlanLabel 分摊的 pim_weight_capacity_bytes）
-                - 已被激活占用（本调度器跟踪的 _pim_act_bytes）
-        注：这里把“权重预算容量”整体视为不可被激活使用（即使当前未完全用满）。
-        """
         total = int(dev.mem_capacity_GB * 1e9)
 
         # 1) KV 预留（若 kv_in_pim=True）
@@ -551,7 +604,7 @@ class HEFTScheduler:
         weight_budget = self._pim_cache_capacity_for(dev)
 
         # 3) 已被“激活就地”占用的字节（我们自己维护，用于防止过量就地缓存）
-        act_used = int(self._pim_act_bytes.get(dev.name, 0))
+        act_used = int(self._act_used.get(dev.name, 0))
 
         # 4) 计算可用
         avail = total - kv_reserved - weight_budget - act_used
@@ -605,6 +658,7 @@ class HEFTScheduler:
                 schedule.append(ScheduledTask(nid, f'HYBRID({npu.name}+{pim.name})', start, finish))
                 op_name = node.attrs.get('op') or node.name
                 self.mode_mem[op_name] = 'HYBRID'
+                self._after_commit_consume_predecessors(g, nid)
             else:
                 dev = chosen_data
                 start, finish = self._earliest_finish_on_device(g, nid, dev, self.label, phase, commit=True)
@@ -615,6 +669,7 @@ class HEFTScheduler:
                 schedule.append(ScheduledTask(nid, dev.name, start, finish))
                 op_name = node.attrs.get('op') or node.name
                 self.mode_mem[op_name] = chosen_mode
+                self._after_commit_consume_predecessors(g, nid)
             logger.debug(str(f'[Schedule] Node {nid} on {self._node_placement[nid]} from {start:.3f} to {finish:.3f} ({chosen_mode})'))
         return schedule
 
@@ -641,9 +696,18 @@ class HEFTScheduler:
         for k, v in self.storage_fmt_map.items():
             self.buffer.set_host_fmt(k, v)
 
+    # 用尽即释放：在一个结点 commit 后，视为完成对所有pre的一次“消费”
+    def _after_commit_consume_predecessors(self, g: TaskGraph, nid: str) -> None:
+        for u in g.predecessors(nid):
+            if u not in self._act_refcnt:
+                self._act_refcnt[u] = len(g.successors(u))
+            self._act_refcnt[u] = max(0, self._act_refcnt[u] - 1)
+            udev = self._node_placement.get(u)
+            if udev and (udev, u) in self._act_resident and self._act_refcnt[u] == 0:
+                bytes_kept = self._act_resident.pop((udev, u), 0)
+                self._act_used[udev] = max(0, self._act_used[udev] - bytes_kept)
+                logger.debug(f"[ACT] release u={u}@{udev} freed={bytes_kept} used={self._act_used[udev]}/{self._act_cap.get(udev,0)}")
 
-    
-# scheduler.py
     def suggest_weight_storage_formats(self) -> Dict[str, str]:
         """
         Propose a host-side weight storage format for each weight_id based on
@@ -694,7 +758,6 @@ class HEFTScheduler:
         return sugg
 
     
-    
     def reset_state(self):
         """Reset mutable scheduling state for a fresh pass (keep stats and storage_fmt_map)."""
         self.comm.timeline_end.clear()
@@ -712,3 +775,7 @@ class HEFTScheduler:
         self._node_out_fmt.clear()
         self.weight_cached.clear()
         self.mode_mem.clear()
+        self._act_used.clear()
+        self._act_resident.clear()
+        self._act_refcnt.clear()
+        self._node_host_store_end.clear()

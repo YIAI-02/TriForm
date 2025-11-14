@@ -27,14 +27,13 @@ RANKU_INCLUDE_AVG_WEIGHT_LOAD: bool = True
 # =========================
 # Weight storage & formats
 # =========================
-ENABLE_TWO_PASS_FORMAT_TUNING: bool = True
-WEIGHT_FORMAT_JSON_PATH: str = "./format_tuning/weight_storage_suggestion.json"
+WEIGHT_FORMAT_JSON_PATH: str = "./output/weight_storage_suggestion.json"
 ALL_PASSES_RESULT_PATH: str = "./output/all_passes_results.json"
 BEST_PASS_SUMMARY_PATH: str = "./output/best_pass_summary.json"
 
 # Progressive multi-pass tuning (iterate until converged or reach max passes)
+ENABLE_TWO_PASS_FORMAT_TUNING: bool = True
 FORMAT_TUNING_MAX_PASSES: int = 1
-# stop when |Δtime| <= TIME_EPS AND mapping_change_ratio <= MAP_EPS
 FORMAT_TUNING_TIME_EPS: float = 1e-4      # 0.1 ms
 FORMAT_TUNING_MAP_EPS: float  = 0.01      # <=1% of weights changed
 
@@ -68,6 +67,9 @@ NONOVERLAP_TIME: float = 0.3  # 0.0 means fully overlapped, 1.0 means non-overla
 # PIM 频率（GHz）：cycles / (PIM_FREQ_GHZ * 1e9) = seconds
 PIM_FREQ_GHZ: float = 1.0
 GB_FREQ_GHZ: float = 1.0
+
+# PIM 容量分配系数
+PIM_WEIGHT_CAPACITY_FACTOR: float = 0.5 #去除kvcache之后，权重和激活值怎么分配
 
 # =========================
 # Operator device constraints
@@ -114,7 +116,6 @@ SA_ENABLE: bool = True          # turn off to disable SA
 SA_T0: float = 1.0              # initial temperature
 SA_ALPHA: float = 0.85          # cooling rate per pass
 SA_FLIP_PROB: float = 0.15      # per-weight flip prob when proposing neighbor
-
 
 # Global debug switch reflecting the --debug CLI flag
 DEBUG_GLOBAL: bool = False

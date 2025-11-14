@@ -24,4 +24,3 @@ rm_dir() {
 
 rm_file "./debug_log.txt"
 rm_dir "./output"
-rm_dir "./format_tuning"

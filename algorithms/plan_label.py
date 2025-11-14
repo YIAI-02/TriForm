@@ -11,6 +11,7 @@ class PlanLabel:
     """Memory planning decision shared across modules."""
     pim_mode: str
     kv_in_pim: bool
+    kv_total_bytes: int = 0
     pim_weight_capacity_bytes: int = 0
     pinned_fc_on_pim: Set[str] = field(default_factory=set)
 
@@ -21,6 +22,7 @@ class PlanLabel:
         logger.debug(str('=' * 50))
         logger.debug(str(f'PIM Mode: {self.pim_mode}'))
         logger.debug(str(f'KV Cache in PIM: {self.kv_in_pim}'))
+        logger.debug(str(f'KV Total Bytes: {self.kv_total_bytes:,}'))
         logger.debug(str(f'Number of Pinned FC Weights: {len(self.pinned_fc_on_pim)}'))
         if self.pinned_fc_on_pim:
             logger.debug(str('Pinned FC Weights:'))

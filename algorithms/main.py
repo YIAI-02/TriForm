@@ -11,7 +11,7 @@ from hardware import demo_cluster, Cluster
 from cost_model import CostModel, DTYPE_BYTES, _make_shared_model_dict, reset_simulation_logger
 from buffer_manager import GlobalMemoryManager
 from model_parser import build_graph
-from config import DEFAULT_CONFIG, WEIGHT_FORMAT_JSON_PATH, FORMAT_TUNING_MAX_PASSES, FORMAT_TUNING_TIME_EPS, FORMAT_TUNING_MAP_EPS, SA_ENABLE, SA_T0, SA_ALPHA, SA_FLIP_PROB, ALL_PASSES_RESULT_PATH, BEST_PASS_SUMMARY_PATH
+from config import DEFAULT_CONFIG, WEIGHT_FORMAT_JSON_PATH, FORMAT_TUNING_MAX_PASSES, FORMAT_TUNING_TIME_EPS, FORMAT_TUNING_MAP_EPS, SA_ENABLE, SA_T0, SA_ALPHA, SA_FLIP_PROB, ALL_PASSES_RESULT_PATH, BEST_PASS_SUMMARY_PATH, PIM_WEIGHT_CAPACITY_FACTOR
 from plan_label import PlanLabel
 from scheduler import HEFTScheduler, ScheduledTask
 from pathlib import Path
@@ -55,11 +55,23 @@ def plan_memory_and_label(cfg: Dict, cluster: Cluster) -> PlanLabel:
         logger.debug(str(f'[DEBUG] PIM capacity: {pim_bytes:,} ({pim_bytes / 1000000000.0:.2f} GB)'))
         logger.debug(str(f'[DEBUG] Total weights found: {len(per_weight_size)}'))
     if pim_bytes < KV_total_bytes:
-        label = PlanLabel(pim_mode='small', kv_in_pim=False, pim_weight_capacity_bytes=0)
+        label = PlanLabel(
+            pim_mode='small', kv_in_pim=False,
+            kv_total_bytes=0,
+            pim_weight_capacity_bytes=0
+        )
     elif pim_bytes >= KV_total_bytes + FC_total_bytes:
-        label = PlanLabel(pim_mode='large', kv_in_pim=True, pim_weight_capacity_bytes=pim_bytes - KV_total_bytes)
+        label = PlanLabel(
+            pim_mode='large', kv_in_pim=True,
+            kv_total_bytes=int(KV_total_bytes),
+            pim_weight_capacity_bytes=int(PIM_WEIGHT_CAPACITY_FACTOR * max(0, pim_bytes - KV_total_bytes))
+        )
     else:
-        label = PlanLabel(pim_mode='medium', kv_in_pim=True, pim_weight_capacity_bytes=pim_bytes - KV_total_bytes)
+        label = PlanLabel(
+            pim_mode='medium', kv_in_pim=True,
+            kv_total_bytes=int(KV_total_bytes),
+            pim_weight_capacity_bytes=int(PIM_WEIGHT_CAPACITY_FACTOR * max(0, pim_bytes - KV_total_bytes))
+        )
     if DEBUG_MAIN:
         label.print_debug()
     return label
@@ -269,6 +281,8 @@ def run(cfg: Dict):
         logger.debug(str(f'Best total time: {best_total:.6f}s (at pass {best_pass})'))
         logger.debug(str(f'Last accepted prefill(sim): {last_prefill:.6f}s'))
         logger.debug(str(f'Last accepted decode(sim):  {last_decode:.6f}s'))
+        pkl_dir = Path('./pkl')
+        pkl_dir.mkdir(parents=True, exist_ok=True)
         out_dir = Path('./output')
         out_dir.mkdir(parents=True, exist_ok=True)
         all_path = Path(cfg.get('all_passes_json', ALL_PASSES_RESULT_PATH))
