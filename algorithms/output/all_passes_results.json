@@ -10753,12 +10753,12 @@
           "L0_W1": "NPU_OPT",
           "L0_W3": "NPU_OPT",
           "L0_W2": "NPU_OPT",
-          "L1_WQ": "NPU_OPT",
+          "L1_WQ": "ND",
           "L1_WO": "NPU_OPT",
-          "L1_W1": "PIM_OPT",
+          "L1_W1": "NPU_OPT",
           "L1_W3": "NPU_OPT",
           "L1_W2": "NPU_OPT",
-          "L0_WK": "ND"
+          "L0_WK": "NPU_OPT"
         }
       }
     }

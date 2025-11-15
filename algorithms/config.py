@@ -181,3 +181,33 @@ def setup_logging(debug: bool, log_file: str = "debug_log.txt"):
         # Silence logs by raising the threshold
         logger.setLevel(_logging.CRITICAL)
 # --- end debug logging setup ---
+
+
+
+# =========================
+# Scheduler algorithm controls
+# =========================
+SCHED_DEFAULT: str = "heft"   # one of: heft | sa | ga | rl | astar
+# SA for scheduler (not the separate weight-format SA in this project)
+SCHED_SA_ITERS: int = 120
+SCHED_SA_T0: float = 1.0
+SCHED_SA_ALPHA: float = 0.90
+SCHED_SA_FLIP_PROB: float = 0.12
+
+# GA
+SCHED_GA_POP: int = 24
+SCHED_GA_GENS: int = 40
+SCHED_GA_ELITE: int = 2
+SCHED_GA_MUT_PROB: float = 0.08
+SCHED_GA_CROSS_PROB: float = 0.50
+
+# RL
+SCHED_RL_EPISODES: int = 30
+SCHED_RL_EPS0: float = 0.30
+SCHED_RL_EPSE: float = 0.05
+SCHED_RL_ALPHA: float = 0.30
+SCHED_RL_GAMMA: float = 0.90
+
+# A* (beam)
+SCHED_ASTAR_BEAM: int = 6
+SCHED_ASTAR_MAX_EXPANSIONS: int = 200

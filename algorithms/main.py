@@ -13,7 +13,7 @@ from buffer_manager import GlobalMemoryManager
 from model_parser import build_graph
 from config import DEFAULT_CONFIG, WEIGHT_FORMAT_JSON_PATH, FORMAT_TUNING_MAX_PASSES, FORMAT_TUNING_TIME_EPS, FORMAT_TUNING_MAP_EPS, SA_ENABLE, SA_T0, SA_ALPHA, SA_FLIP_PROB, ALL_PASSES_RESULT_PATH, BEST_PASS_SUMMARY_PATH, PIM_WEIGHT_CAPACITY_FACTOR
 from plan_label import PlanLabel
-from scheduler import HEFTScheduler, ScheduledTask
+from scheduler import HEFTScheduler, ScheduledTask, SimulatedAnnealingScheduler, GeneticScheduler, RLScheduler, AStarBeamScheduler
 from pathlib import Path
 import logging
 from config import setup_logging
@@ -148,6 +148,7 @@ def _sa_make_neighbor_map(base_map: Dict[str, str], weight_ids: List[str], flip_
         out[wid] = random.choice(choices)
     return out
 
+
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument('--model_family', type=str, default=DEFAULT_CONFIG['model_family'])
@@ -157,17 +158,40 @@ def parse_args():
     p.add_argument('--prefill_len', type=int, default=DEFAULT_CONFIG['prefill_len'])
     p.add_argument('--decode_len', type=int, default=DEFAULT_CONFIG['decode_len'])
     p.add_argument('--pim_config_path', type=str, default=DEFAULT_CONFIG['pim_config_path'])
-    p.add_argument('--gb_config_path', type=str, default=DEFAULT_CONFIG['gb_config_path'], help='Path to the Global Buffer configuration file')
+    p.add_argument('--gb_config_path', type=str, default=DEFAULT_CONFIG['gb_config_path'], help='Path to Global Buffer configuration')
     p.add_argument('--ramulator_config_path', type=str, default=DEFAULT_CONFIG['ramulator_config_path'])
     p.add_argument('--simulation_log_file', type=str, default='./output/pim_simulation.txt', help='Output log file')
-    p.add_argument('--all_passes_json', type=str, default=ALL_PASSES_RESULT_PATH, help='Write all-pass records (schedules/times/weights) to this JSON')
-    p.add_argument('--best_summary_json', type=str, default=BEST_PASS_SUMMARY_PATH, help='Write best-pass detail and improvements to this JSON')
+    p.add_argument('--all_passes_json', type=str, default=ALL_PASSES_RESULT_PATH, help='Write all-pass records to this JSON')
+    p.add_argument('--best_summary_json', type=str, default=BEST_PASS_SUMMARY_PATH, help='Write best-pass summary to this JSON')
     p.add_argument('--debug', action='store_true', help='Enable debug logging')
-    p.add_argument('--run_baselines_after', action='store_true',
-                   help='Run 3 baselines after finishing your algorithm and print a combined comparison table.')
-    p.add_argument('--baseline_out', type=str, default='./output/baseline_compare.json',
-            help='Where to save the combined evaluation JSON when --run_baselines_after is set.')
+    p.add_argument('--run_baselines_after', action='store_true', help='Run naive baselines after your algorithm')
+    p.add_argument('--baseline_out', type=str, default='./output/baseline_compare.json', help='Where to save the combined evaluation JSON')
+    p.add_argument('--baselines', type=str,default='pd,weights_on_pim,attn_on_pim',help='Comma-separated baselines, e.g. "ianus,neupims,attacc,facil,pd,weights_on_pim,attn_on_pim"')
+    p.add_argument('--scheduler', type=str, default=None, help='One of: heft | sa | ga | rl | astar')
+    p.add_argument('--schedulers', type=str, default=None, help='Comma-separated list of strategies to run and compare (e.g., "heft,sa,ga,rl,astar")')
     return p.parse_args()
+
+def _make_scheduler(name: str, cluster: Cluster, cost: CostModel, label: PlanLabel, batch: int, seq_len: int, buffer: GlobalMemoryManager):
+    from config import (SCHED_SA_ITERS, SCHED_SA_T0, SCHED_SA_ALPHA, SCHED_SA_FLIP_PROB,
+                        SCHED_GA_POP, SCHED_GA_GENS, SCHED_GA_ELITE, SCHED_GA_MUT_PROB, SCHED_GA_CROSS_PROB,
+                        SCHED_RL_EPISODES, SCHED_RL_EPS0, SCHED_RL_EPSE, SCHED_RL_ALPHA, SCHED_RL_GAMMA,
+                        SCHED_ASTAR_BEAM, SCHED_ASTAR_MAX_EXPANSIONS)
+    name = (name or 'heft').strip().lower()
+    if name in ('heft','heft+greedy','greedy'):
+        return HEFTScheduler(cluster, cost, label, batch=batch, seq_len=seq_len, buffer=buffer)
+    if name in ('sa','anneal','simulated_annealing'):
+        return SimulatedAnnealingScheduler(cluster, cost, label, batch=batch, seq_len=seq_len, buffer=buffer,
+                                           sa_iters=SCHED_SA_ITERS, T0=SCHED_SA_T0, alpha=SCHED_SA_ALPHA, flip_prob=SCHED_SA_FLIP_PROB)
+    if name in ('ga','genetic'):
+        return GeneticScheduler(cluster, cost, label, batch=batch, seq_len=seq_len, buffer=buffer,
+                                pop=SCHED_GA_POP, gens=SCHED_GA_GENS, elite=SCHED_GA_ELITE, mut_prob=SCHED_GA_MUT_PROB, cross_prob=SCHED_GA_CROSS_PROB)
+    if name in ('rl','bandit'):
+        return RLScheduler(cluster, cost, label, batch=batch, seq_len=seq_len, buffer=buffer,
+                           episodes=SCHED_RL_EPISODES, epsilon_start=SCHED_RL_EPS0, epsilon_end=SCHED_RL_EPSE, alpha=SCHED_RL_ALPHA, gamma=SCHED_RL_GAMMA)
+    if name in ('astar','a*','a_star'):
+        return AStarBeamScheduler(cluster, cost, label, batch=batch, seq_len=seq_len, buffer=buffer,
+                                  beam=SCHED_ASTAR_BEAM, max_expansions=SCHED_ASTAR_MAX_EXPANSIONS)
+    raise ValueError(f"Unknown scheduler strategy: {name}")
 
 def run(cfg: Dict):
     cluster = demo_cluster()
@@ -370,6 +394,122 @@ def _apply_policy_on_graph(g: TaskGraph, policy: str, *, phase: str) -> TaskGrap
 
     raise ValueError(f'Unknown policy: {policy}')
 
+
+# ===== Baseline registry and paper baselines =====
+from typing import Callable
+
+_BASELINE_REGISTRY: Dict[str, Callable[[TaskGraph], TaskGraph]] = {}
+
+def register_baseline(name: str):
+    name = (name or "").strip().lower()
+    def _deco(fn):
+        _BASELINE_REGISTRY[name] = fn
+        return fn
+    return _deco
+
+def _canonical_baseline_name(s: str) -> str:
+    s = (s or "").strip().lower()
+    alias = {
+        'ianus': 'ianus',
+        'neupims': 'neupims', 'neu-pims': 'neupims',
+        'attacc': 'attacc',
+        'facil': 'facil',
+        'pd': 'pd', 'prefill_npu_decode_pim': 'pd',
+        'weights_on_pim': 'weights_on_pim',
+        'attn_on_pim': 'attn_on_pim',
+    }
+    return alias.get(s, s)
+
+def _is_op(n: TaskNode, *tags: str) -> bool:
+    op = str(getattr(n, 'attrs', {}).get('op') or n.name or '').upper()
+    return any(tag.upper() in op for tag in tags)
+
+def _arith_intensity(n: TaskNode) -> float:
+    bytes_total = float(getattr(n, 'bytes_read', 0.0) + getattr(n, 'bytes_write', 0.0)) + 1e-9
+    return float(getattr(n, 'flops', 0.0)) / bytes_total
+
+def _is_kv_rw(n: TaskNode) -> bool:
+    nm = (n.name or '').lower()
+    op = str(getattr(n, 'attrs', {}).get('op') or '').lower()
+    return any(k in nm or k in op for k in ('kv_read','kv_write','k_cache','v_cache'))
+
+def _is_gemv_like(n: TaskNode, *, phase: str) -> bool:
+    op = str(getattr(n, 'attrs', {}).get('op') or n.name or '').upper()
+    if phase == 'decode' and any(t in op for t in ['Q','K','V','O','FFN_W1','FFN_W2','GELU']):
+        return True
+    return str(getattr(n, 'attrs', {}).get('arith_op') or '').lower() == 'gemv'
+
+
+@register_baseline('ianus')
+def _baseline_ianus(g: TaskGraph, *, phase: str) -> TaskGraph:
+    g2 = _clone_graph(g)
+    if phase == 'prefill':
+        # 全 NPU
+        for _, n in g2.nodes.items():
+            n.allowed['npu'] = True; n.allowed['pim'] = False; n.allowed['cpu'] = n.allowed.get('cpu', True)
+        return g2
+
+    # decode：按规则划分
+    for _, n in g2.nodes.items():
+        if _is_op(n, 'QK', 'SV', 'FFN_W1', 'GELU', 'FFN_W2'):
+            on_pim = True
+        elif _is_op(n, 'Q', 'K', 'SOFTMAX', 'NORM', 'ADD'):
+            on_pim = False
+        else:
+            on_pim = (_arith_intensity(n) < 4.0)  # 兜底：AI<4 走 PIM
+        n.allowed['pim'] = on_pim
+        n.allowed['npu'] = not on_pim
+        n.allowed['cpu'] = n.allowed.get('cpu', True)
+    return g2
+
+@register_baseline('neupims')
+def _baseline_neupims(g: TaskGraph, *, phase: str) -> TaskGraph:
+    g2 = _clone_graph(g)
+    for _, n in g2.nodes.items():
+        if _is_op(n, 'SOFTMAX', 'NORM', 'ADD'):
+            on_pim = False
+        elif _is_kv_rw(n):
+            on_pim = True
+        else:
+            inten = _arith_intensity(n)
+            on_pim = (inten < 4.0) or _is_gemv_like(n, phase=phase)
+        n.allowed['pim'] = on_pim
+        n.allowed['npu'] = not on_pim
+        n.allowed['cpu'] = n.allowed.get('cpu', True)
+    return g2
+
+@register_baseline('attacc')
+def _baseline_attacc(g: TaskGraph, *, phase: str) -> TaskGraph:
+    g2 = _clone_graph(g)
+    if phase == 'prefill':
+        for _, n in g2.nodes.items():
+            n.allowed['npu'] = True; n.allowed['pim'] = False; n.allowed['cpu'] = n.allowed.get('cpu', True)
+        return g2
+    for _, n in g2.nodes.items():
+        on_pim = _is_op(n, 'QK', 'SV') or _is_kv_rw(n)
+        n.allowed['pim'] = on_pim
+        n.allowed['npu'] = not on_pim
+        n.allowed['cpu'] = n.allowed.get('cpu', True)
+    return g2
+
+@register_baseline('facil')
+def _baseline_facil(g: TaskGraph, *, phase: str) -> TaskGraph:
+    g2 = _clone_graph(g)
+    if phase == 'prefill':
+        for _, n in g2.nodes.items():
+            n.allowed['npu'] = True; n.allowed['pim'] = False; n.allowed['cpu'] = n.allowed.get('cpu', True)
+        return g2
+    for _, n in g2.nodes.items():
+        if _is_op(n, 'SOFTMAX', 'NORM', 'ADD'):
+            on_pim = False
+        else:
+            on_pim = _is_gemv_like(n, phase='decode') or _is_op(n, 'QK', 'SV')
+        n.allowed['pim'] = on_pim
+        n.allowed['npu'] = not on_pim
+        n.allowed['cpu'] = n.allowed.get('cpu', True)
+    return g2
+
+
 def _run_phase_once(sched, graph: TaskGraph, *, phase: str, seq_len: int) -> float:
     sched.set_seq_len(seq_len)
     schedule = sched.schedule(graph, phase=phase)
@@ -404,10 +544,7 @@ def _parse_algo_best_times(cfg: Dict) -> Dict:
     }
 
 def _eval_one_baseline(cfg: Dict, policy: str) -> Dict:
-    """
-    构建 cluster/cost/graph/label，然后按policy约束allowed，
-    分别评估 prefill 与 progressive decode。
-    """
+
     # Reset the global simulation logger before each baseline run
     reset_simulation_logger()
     
@@ -448,12 +585,12 @@ def _eval_one_baseline(cfg: Dict, policy: str) -> Dict:
         sched = HEFTScheduler(cluster, cost, label, batch=batch, seq_len=prefill_len, buffer=buffer_mgr)
 
         # --- Prefill：根据 policy 约束 allowed 后评估 ---
-        g_prefill = _apply_policy_on_graph(graph, policy, phase='prefill')
+        g_prefill = (_BASELINE_REGISTRY[policy](graph, phase='prefill') if policy in _BASELINE_REGISTRY else _apply_policy_on_graph(graph, policy, phase='prefill'))
         sched.reset_state()
         t_prefill = _run_phase_once(sched, g_prefill, phase='prefill', seq_len=prefill_len)
 
         # --- Decode：根据 policy 约束 allowed 后 progressive 累加 ---
-        g_decode = _apply_policy_on_graph(graph, policy, phase='decode')
+        g_decode = (_BASELINE_REGISTRY[policy](graph, phase='decode') if policy in _BASELINE_REGISTRY else _apply_policy_on_graph(graph, policy, phase='decode'))
         t_decode = _decode_progressive(sched, g_decode, prefill_len=prefill_len, decode_len=decode_len)
 
         return {
@@ -483,45 +620,150 @@ def _print_combined_table(results: List[Dict], cfg: Dict, wall: float) -> None:
         print(f"{r['policy']:<18} {r['prefill_time_s']:>12.4f} {r['decode_time_s']:>12.4f} {r['total_time_s']:>12.4f} {s_algo:>10} {s_pd:>10}")
 
 
+def _run_strategy_once(strategy: str, cfg: Dict, *, shared_graph=None, shared_shape=None) -> Dict:
+    """Build env, run one scheduling strategy (prefill + progressive decode) and return timing."""
+    cluster = demo_cluster()
+    # graph/shape
+    graph, shape = (shared_graph, shared_shape)
+    if graph is None or shape is None:
+        graph, shape = build_graph(cfg)
+
+    batch = int(cfg.get('batch', 1))
+    prefill_len = int(cfg.get('prefill_len', 128))
+    decode_len = int(cfg.get('decode_len', 32))
+
+    # make model_dict for PIM cost paths
+    model_dict = _make_shared_model_dict(
+        dim=int(getattr(shape, 'dim', 1)),
+        n_heads=int(getattr(shape, 'n_heads', 1)),
+        n_kv_heads=int(getattr(shape, 'n_kv_heads', 1)),
+        ffn_dim=int(getattr(shape, 'ffn_dim', 1)),
+        seqlen=prefill_len,
+    )
+
+    # fresh CostModel each run to avoid state bleed
+    reset_simulation_logger()
+    cost = CostModel(
+        cluster=cluster,
+        dtype=cfg.get('dtype', 'fp16'),
+        pim_config_path=Path(cfg.get('pim_config_path')),
+        gb_config_path=Path(cfg.get('gb_config_path')),
+        ramulator_config_path=Path(cfg.get('ramulator_config_path')),
+        simulation_log_file=Path(cfg.get('simulation_log_file', './output/pim_simulation.txt')),
+        model_dict=model_dict,
+    )
+    try:
+        cost.logger.start_simulation()
+    except Exception:
+        pass
+
+    label = plan_memory_and_label(cfg, cluster)
+    buffer_mgr = GlobalMemoryManager()
+    sched = _make_scheduler(strategy, cluster, cost, label, batch=batch, seq_len=prefill_len, buffer=buffer_mgr)
+    try:
+        sched.set_storage_format_map({})
+    except Exception:
+        pass
+    sched.reset_state()
+
+    # simulate
+    prefill_time, _prefill = simulate_prefill(sched, cfg, graph)
+    decode_time, _decode = simulate_decode_progressive(sched, cfg, graph, prefill_end=prefill_time)
+    total_time = float(prefill_time + decode_time)
+
+    try:
+        cost.logger.end_simulation()
+        cost.logger.close()
+    except Exception:
+        pass
+
+    return {
+        'policy': f'algo:{strategy}',
+        'prefill_time_s': float(prefill_time),
+        'decode_time_s': float(decode_time),
+        'total_time_s': total_time,
+        'batch': batch,
+        'prefill_len': prefill_len,
+        'decode_len': decode_len,
+    }
+
+
+
 def main():
     args = parse_args()
     setup_logging(args.debug)
-    cfg = {'model_family': args.model_family, 'model_variant': args.model_variant, 'dtype': args.dtype, 'batch': args.batch, 'prefill_len': args.prefill_len, 'decode_len': args.decode_len, 'pim_config_path': args.pim_config_path, 'gb_config_path': args.gb_config_path, 'ramulator_config_path': args.ramulator_config_path, 'simulation_log_file': args.simulation_log_file, 'all_passes_json': args.all_passes_json, 'best_summary_json': args.best_summary_json}
+    cfg = {'model_family': args.model_family, 'model_variant': args.model_variant, 'dtype': args.dtype,
+           'batch': args.batch, 'prefill_len': args.prefill_len, 'decode_len': args.decode_len,
+           'pim_config_path': args.pim_config_path, 'gb_config_path': args.gb_config_path,
+           'ramulator_config_path': args.ramulator_config_path,
+           'simulation_log_file': args.simulation_log_file,
+           'all_passes_json': args.all_passes_json, 'best_summary_json': args.best_summary_json}
+
+    # Unified compare path: if user provides schedulers and/or asks to run baselines
+    if args.schedulers or getattr(args, 'run_baselines_after', False):
+        # Build once
+        reset_simulation_logger()
+        graph, shape = build_graph(cfg)
+        results: List[Dict] = []
+
+        if args.schedulers:
+            strategies = [s.strip() for s in args.schedulers.split(',') if s.strip()]
+            for sname in strategies:
+                try:
+                    r = _run_strategy_once(sname, cfg, shared_graph=graph, shared_shape=shape)
+                    results.append(r)
+                except Exception as e:
+                    logger.exception("Strategy %s failed: %s", sname, e)
+
+        if getattr(args, 'run_baselines_after', False):
+            raw = getattr(args, 'baselines', '') or ''
+            baseline_list = [s.strip() for s in raw.split(',') if s.strip()] or ['pd','weights_on_pim','attn_on_pim']
+            canonicalize = globals().get('_canonical_baseline_name', lambda s: s)
+            baseline_list = [canonicalize(b) for b in baseline_list]
+            # de-duplicate preserving order
+            seen = set()
+            baseline_list = [b for b in baseline_list if not (b in seen or seen.add(b))]
+            for base in baseline_list:
+                try:
+                    r = _eval_one_baseline(cfg, base)
+                    results.append(r)
+                except Exception as e:
+                    logger.error('Baseline %s failed: %s', base, e)
+                    continue
+
+        if results:
+            # Print table
+            print("\n=== Strategy/Baseline Comparison ===")
+            header = f"{'Policy':<22} {'Prefill(s)':>12} {'Decode(s)':>12} {'Total(s)':>12}"
+            print(header)
+            print('-' * len(header))
+            for r in results:
+                print(f"{r['policy']:<22} {r['prefill_time_s']:>12.4f} {r['decode_time_s']:>12.4f} {r['total_time_s']:>12.4f}")
+
+            # Save
+            try:
+                os.makedirs(os.path.dirname(args.baseline_out), exist_ok=True)
+                with open(args.baseline_out, 'w', encoding='utf-8') as f:
+                    json.dump({'config': cfg, 'results': results}, f, ensure_ascii=False, indent=2)
+                print(f"Saved comparison to: {args.baseline_out}")
+            except Exception as e:
+                print(f"Warning: failed to save comparison: {e}")
+        else:
+            print("No results to show.")
+        return
+
+    # Single strategy path
+    if getattr(args, 'scheduler', None):
+        reset_simulation_logger()
+        graph, shape = build_graph(cfg)
+        res = _run_strategy_once(args.scheduler, cfg, shared_graph=graph, shared_shape=shape)
+        print("\n=== Selected Strategy Result ===")
+        print(f"{'Policy':<18} {'Prefill(s)':>12} {'Decode(s)':>12} {'Total(s)':>12}")
+        print(f"{res['policy']:<18} {res['prefill_time_s']:>12.4f} {res['decode_time_s']:>12.4f} {res['total_time_s']:>12.4f}")
+        return
+
+    # Default: original pipeline (including weight-format tuning etc.)
     run(cfg)
-
-    if args.run_baselines_after:
-        t0 = time.time()
-        algo_res = _parse_algo_best_times(cfg)
-        algo_res.update({
-            'batch': cfg['batch'],
-            'prefill_len': cfg['prefill_len'],
-            'decode_len': cfg['decode_len'],
-        })
-
-        baseline_names = ['pd', 'weights_on_pim', 'attn_on_pim']
-        results = [algo_res]
-        for name in baseline_names:
-            results.append(_eval_one_baseline(cfg, name))
-        wall = time.time() - t0
-
-        idx_algo = 0
-        idx_pd = next((i for i, r in enumerate(results) if r['policy'] == 'pd'), None)
-        for r in results:
-            base_algo = results[idx_algo]['total_time_s']
-            r['speedup_vs_algo'] = (base_algo / r['total_time_s']) if r['total_time_s'] > 0 else None
-            if idx_pd is not None:
-                base_pd = results[idx_pd]['total_time_s']
-                r['speedup_vs_pd'] = (base_pd / r['total_time_s']) if r['total_time_s'] > 0 else None
-
-        try:
-            os.makedirs(os.path.dirname(args.baseline_out), exist_ok=True)
-        except Exception:
-            pass
-        with open(args.baseline_out, 'w', encoding='utf-8') as f:
-            json.dump({'config': cfg, 'results': results, 'wall_time_s': wall}, f, ensure_ascii=False, indent=2)
-
-        _print_combined_table(results, cfg, wall)
-        print(f"Saved baseline comparison to: {args.baseline_out}")
 
 if __name__ == '__main__':
     main()

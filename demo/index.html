@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Best Pass 可视化（阶段×层×Token）</title>
+  <title>Best Pass</title>
   <!-- 前端依赖：Cytoscape + dagre 布局插件（CDN） -->
   <script src="https://unpkg.com/cytoscape/dist/cytoscape.min.js"></script>
   <script src="https://unpkg.com/dagre/dist/dagre.min.js"></script>
@@ -31,7 +31,7 @@
     .swatch { width:14px; height:14px; border-radius:3px; display:inline-block; border:1px solid var(--border); }
     .shape { width:14px; height:14px; display:inline-block; border:1px solid var(--border); background:transparent; }
     .shape.square { border-radius:2px; }
-    .shape.triangle { width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:14px solid var(--fg); border: none; }
+    .shape.triangle { width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:14px solid var(--fg); }
     .shape.diamond { transform: rotate(45deg); }
     .shape.hexagon { clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%); }
     .shape.vee { clip-path: polygon(0 0,100% 0,50% 100%); }
@@ -42,51 +42,44 @@
 <body>
 <div class="wrap">
   <aside class="panel">
-    <h1>Best Pass 可视化</h1>
+    <h1>Best Pass Visualization</h1>
     <div class="control">
-      <label>加载 best_pass_summary.json</label>
+      <label>Load best_pass_summary.json</label>
       <input id="file" type="file" accept="application/json"/>
-      <div style="color:var(--muted);font-size:12px;margin-top:6px;">也可放到 <code>data/best_pass_summary.json</code>，页面会自动读取。</div>
+      <div style="color:var(--muted);font-size:12px;margin-top:6px;">You can also place it in <code>data/best_pass_summary.json</code>, and the page will load it automatically.</div>
     </div>
     <div class="control">
-      <label>阶段 Stage</label>
+      <label>Stage</label>
       <select id="stage"></select>
     </div>
     <div class="control">
-      <label>层 Layer</label>
+      <label>Layer</label>
       <select id="layer"></select>
     </div>
     <div class="control" id="tokenWrap" style="display:none;">
-      <label>Token（仅 decode）</label>
+      <label>Token (decode only)</label>
       <select id="token"></select>
     </div>
     <div class="control">
-      <label>搜索（按名字或类型）</label>
-      <input id="search" placeholder="例如：matmul / softmax / LN1 / FFN_W2 / K_read / V_read" style="width:100%; padding:8px; border:1px solid var(--border); border-radius:8px; background:transparent; color:var(--fg);" />
+      <label>Search</label>
+      <input id="search" placeholder="For example: matmul / softmax / LN1 / FFN_W2 / K_read / V_read" style="width:100%; padding:8px; border:1px solid var(--border); border-radius:8px; background:transparent; color:var(--fg);" />
     </div>
     <div class="control" style="display:flex; gap:8px;">
-      <button id="fit">适配视图</button>
-      <button id="export" class="secondary">导出 PNG</button>
+      <button id="fit">Fit View</button>
+      <button id="export" class="secondary">Export PNG</button>
     </div>
 
     <div class="legend">
-      <h3>图例</h3>
-      <div style="margin:6px 0 8px;color:var(--muted);font-size:12px;">颜色=硬件，形状=算子类型</div>
+      <h3>Legend </h3>
+      <div style="margin:6px 0 8px;color:var(--muted);font-size:12px;">color=device, shape=operator type</div>
       <div class="row"><span class="swatch" style="background:#1f77b4"></span> NPU</div>
       <div class="row"><span class="swatch" style="background:#d62728"></span> PIM</div>
       <div class="row"><span class="swatch" style="background:#9467bd"></span> HYBRID</div>
-      <div class="row"><span class="swatch" style="background:#7f7f7f"></span> 其他/未知</div>
+      <div class="row"><span class="swatch" style="background:#7f7f7f"></span> OTHER</div>
       <hr style="border:none;border-top:1px solid var(--border);margin:8px 0;">
-      <div class="row"><span class="shape triangle" style="background:none;border-bottom-color:var(--fg)"></span> Softmax</div>
-      <div class="row"><span class="shape diamond" style="background:var(--fg)"></span> QK / SV</div>
-      <div class="row"><span class="shape square" style="background:var(--fg)"></span> Q / K / V / O / FFN_W*</div>
-      <div class="row"><span class="shape ellipse" style="background:var(--fg)"></span> LN / X</div>
-      <div class="row"><span class="shape hexagon" style="background:var(--fg)"></span> Add</div>
-      <div class="row"><span class="shape ellipse" style="background:var(--fg)"></span> Act（圆）</div>
-      <div class="row"><span class="shape vee" style="background:var(--fg)"></span> K_read / V_read / IO</div>
     </div>
 
-    <div class="footer">提示：选择 Stage / Layer（decode 时可选 Token）。仅渲染该层 DAG。</div>
+    <div class="footer">Tip: Select Stage / Layer (Token optional in decode). Only the DAG of the selected layer is rendered.</div>
   </aside>
 
   <main id="cy"></main>
@@ -132,10 +125,10 @@ const shapeByType = {
   "attention": "diamond",
   "matmul": "square",
   "norm": "ellipse",
-  "softmax": "triangle",
+  "softmax": "tag",
   "activation": "ellipse",
   "elementwise": "hexagon",
-  "io": "vee",
+  "io": "triangle",
   "other": "round-rectangle"
 };
 const colorByDev = { NPU:"#1f77b4", PIM:"#d62728", HYBRID:"#9467bd", OTHER:"#7f7f7f" };
