@@ -19,8 +19,7 @@ import logging
 from config import setup_logging
 from task_graph import TaskGraph, TaskNode
 logger = logging.getLogger(__name__)
-attach_local_debug_filter(logger, lambda: DEBUG_MAIN)
-DEBUG_MAIN = False
+attach_local_debug_filter(logger, lambda: True)
 
 def plan_memory_and_label(cfg: Dict, cluster: Cluster) -> PlanLabel:
     """
@@ -49,11 +48,11 @@ def plan_memory_and_label(cfg: Dict, cluster: Cluster) -> PlanLabel:
     pim_bytes = 0
     for d in cluster.devices_by_type('pim'):
         pim_bytes += int(d.mem_capacity_GB * 1000000000.0)
-    if DEBUG_MAIN:
-        logger.debug(str(f'[DEBUG] KV total bytes: {KV_total_bytes:,} ({KV_total_bytes / 1000000000.0:.2f} GB)'))
-        logger.debug(str(f'[DEBUG] FC total bytes: {FC_total_bytes:,} ({FC_total_bytes / 1000000000.0:.2f} GB)'))
-        logger.debug(str(f'[DEBUG] PIM capacity: {pim_bytes:,} ({pim_bytes / 1000000000.0:.2f} GB)'))
-        logger.debug(str(f'[DEBUG] Total weights found: {len(per_weight_size)}'))
+        
+    # logger.debug(str(f'[DEBUG] KV total bytes: {KV_total_bytes:,} ({KV_total_bytes / 1000000000.0:.2f} GB)'))
+    # logger.debug(str(f'[DEBUG] FC total bytes: {FC_total_bytes:,} ({FC_total_bytes / 1000000000.0:.2f} GB)'))
+    # logger.debug(str(f'[DEBUG] PIM capacity: {pim_bytes:,} ({pim_bytes / 1000000000.0:.2f} GB)'))
+    # logger.debug(str(f'[DEBUG] Total weights found: {len(per_weight_size)}'))
     if pim_bytes < KV_total_bytes:
         label = PlanLabel(
             pim_mode='small', kv_in_pim=False,
@@ -205,7 +204,7 @@ def run(cfg: Dict):
     prefill_len = int(cfg.get('prefill_len', 128))
     batch = int(cfg.get('batch', 1))
     graph, shape = build_graph(cfg)
-    logger.debug(str('[Main] Creating shared model dictionary...'))
+    # logger.debug(str('[Main] Creating shared model dictionary...'))
     model_dict = _make_shared_model_dict(dim=int(getattr(shape, 'dim', 128)), n_heads=int(getattr(shape, 'n_heads', 1)), n_kv_heads=int(getattr(shape, 'n_kv_heads', 1)), ffn_dim=int(getattr(shape, 'ffn_dim', 512)), seqlen=prefill_len)
     logger.debug(str(f"[Main] Model dict created: dim={getattr(shape, 'dim')}, n_heads={getattr(shape, 'n_heads')}, n_kv_heads={getattr(shape, 'n_kv_heads')}, ffn_dim={getattr(shape, 'ffn_dim')}"))
     log_file = Path(cfg.get('simulation_log_file', 'pim_simulation.txt'))

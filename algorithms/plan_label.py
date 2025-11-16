@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Set
 import logging
 logger = logging.getLogger(__name__)
-attach_local_debug_filter(logger)
+attach_local_debug_filter(logger, lambda: False)
 
 @dataclass
 class PlanLabel:

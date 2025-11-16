@@ -22,7 +22,7 @@ from plan_label import PlanLabel
 from config import HOST_NAME, DEVICE_PREFERRED_FORMAT, FORMAT_SIZE_MULTIPLIER, FORMAT_CONV_BW_GBs, PIM_FREQ_GHZ, GB_FREQ_GHZ, OPERATOR_DEVICE_ALLOWED, NONOVERLAP_TIME
 import logging
 logger = logging.getLogger(__name__)
-attach_local_debug_filter(logger)
+attach_local_debug_filter(logger, lambda: False)
 DTYPE_BYTES: Dict[str, int] = {'fp32': 4, 'fp16': 2, 'bf16': 2, 'int8': 1, 'fp8': 1}
 
 def _ensure_cent_on_path(start: Optional[Path]=None) -> Tuple[Path, Path]:

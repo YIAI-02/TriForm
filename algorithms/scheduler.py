@@ -16,7 +16,7 @@ import copy
 
 logger = logging.getLogger(__name__)
 attach_local_debug_filter(logger, lambda: DEBUG_SCHEDULER)
-DEBUG_SCHEDULER = True
+DEBUG_SCHEDULER = False
 
 @dataclass
 class ScheduledTask:
