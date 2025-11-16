@@ -825,8 +825,8 @@ class _SearchSchedulerMixin(HEFTScheduler):
 
     def _allowed_actions(self, node: TaskNode) -> List[str]:
         acts = []
-        for t in ['cpu','npu','pim']:
-            if node.allowed.get(t, True):
+        for t in ['npu','pim']:
+            if node.allowed.get(t, False):
                 acts.append(t)
         if ALLOW_HYBRID and node.allowed.get('npu', False) and node.allowed.get('pim', False):
             acts.append('hybrid')
@@ -836,9 +836,14 @@ class _SearchSchedulerMixin(HEFTScheduler):
         """
         Run greedy HEFT once; derive an action map from its placements.
         """
-        # snapshot and reset to keep caller's state clean
-        self.reset_state()
-        base_sched = super().schedule(g, phase=phase)
+        # Build a seed action map WITHOUT touching the caller's state.
+        snap = self._snapshot()
+        try:
+            self.reset_state()
+            base_sched = super().schedule(g, phase=phase)
+        finally:
+            # Restore whatever state the caller already had (prefill / previous tokens)
+            self._restore(snap)
         actions: Dict[str, str] = {}
         for t in base_sched:
             devs = str(t.device)
@@ -848,16 +853,53 @@ class _SearchSchedulerMixin(HEFTScheduler):
                 actions[t.node_id] = _dev_type(devs)
         return actions
 
-    def _evaluate_action_map(self, g: TaskGraph, phase: str, actions: Dict[str, str]) -> Tuple[float, List[ScheduledTask]]:
+    def _snapshot(self):
+        return {
+            'avail': copy.deepcopy(self.avail),
+            'comm': copy.deepcopy(self.comm.timeline_end),
+            'node_finish': copy.deepcopy(self._node_finish_time),
+            'node_place': copy.deepcopy(self._node_placement),
+            'node_fmt': copy.deepcopy(self._node_out_fmt),
+            'weight_cached': copy.deepcopy(self.weight_cached),
+            'weight_load_count': copy.deepcopy(self._weight_load_count),
+            'weight_sizes': copy.deepcopy(self._weight_sizes),
+            'mode_mem': copy.deepcopy(self.mode_mem),
+            'act_used': copy.deepcopy(self._act_used),
+            'act_resident': copy.deepcopy(self._act_resident),
+            'act_refcnt': copy.deepcopy(self._act_refcnt),
+            'host_store_end': copy.deepcopy(self._node_host_store_end),
+            'buffer_device_cache': copy.deepcopy(self.buffer.device_cache),
+            'buffer_host_fmt': copy.deepcopy(self.buffer.host_format),
+        }
+
+    def _restore(self, snap):
+        self.avail = copy.deepcopy(snap['avail'])
+        self.comm.timeline_end = copy.deepcopy(snap['comm'])
+        self._node_finish_time = copy.deepcopy(snap['node_finish'])
+        self._node_placement = copy.deepcopy(snap['node_place'])
+        self._node_out_fmt = copy.deepcopy(snap['node_fmt'])
+        self.weight_cached = copy.deepcopy(snap['weight_cached'])
+        self._weight_load_count = copy.deepcopy(snap['weight_load_count'])
+        self._weight_sizes = copy.deepcopy(snap['weight_sizes'])
+        self.mode_mem = copy.deepcopy(snap['mode_mem'])
+        self._act_used = copy.deepcopy(snap['act_used'])
+        self._act_resident = copy.deepcopy(snap['act_resident'])
+        self._act_refcnt = copy.deepcopy(snap['act_refcnt'])
+        self._node_host_store_end = copy.deepcopy(snap['host_store_end'])
+        self.buffer.device_cache = copy.deepcopy(snap['buffer_device_cache'])
+        self.buffer.host_format = copy.deepcopy(snap['buffer_host_fmt'])
+
+
+    def _evaluate_action_map(self, g: TaskGraph, phase: str, actions: Dict[str, str], dry_run: bool) -> Tuple[float, List[ScheduledTask]]:
         """
         Build a full schedule according to the provided per-node action map.
         Returns (makespan, schedule). This call resets internal state.
         """
-        self.reset_state()
+        snap = self._snapshot() if dry_run else None
         order = self._topo_order(g)
         ready_pred = {nid: set(g.predecessors(nid)) for nid in g.nodes}
         ready = [nid for nid in order if not ready_pred[nid]]
-        scheduled: List[ScheduledTask] = []
+        scheduled = []
         placed: set[str] = set()
 
         while ready:
@@ -961,7 +1003,10 @@ class _SearchSchedulerMixin(HEFTScheduler):
                 if not deps and (v not in ready):
                     ready.append(v)
 
-        return (self.makespan(scheduled), scheduled)
+            cost = self.makespan(scheduled)
+            if snap is not None:
+                self._restore(snap)
+        return cost, scheduled
 
 
 class SimulatedAnnealingScheduler(_SearchSchedulerMixin):
@@ -990,13 +1035,13 @@ class SimulatedAnnealingScheduler(_SearchSchedulerMixin):
     def schedule(self, g: TaskGraph, phase: str) -> List[ScheduledTask]:
         # initial mapping from greedy HEFT
         cur_map = self._make_initial_action_map(g, phase)
-        cur_cost, cur_sched = self._evaluate_action_map(g, phase, cur_map)
+        cur_cost, cur_sched = self._evaluate_action_map(g, phase, cur_map, dry_run=True)
         best_map, best_cost, best_sched = dict(cur_map), float(cur_cost), list(cur_sched)
 
         T = self.T0
         for _ in range(max(1, self.sa_iters)):
             nb = self._neighbors(g, cur_map)
-            nb_cost, nb_sched = self._evaluate_action_map(g, phase, nb)
+            nb_cost, nb_sched = self._evaluate_action_map(g, phase, nb, dry_run=True)
             delta = nb_cost - cur_cost
             accept = (delta < 0) or (random.random() < math.exp(-max(0.0, delta) / max(1e-9, T)))
             if accept:
@@ -1006,7 +1051,7 @@ class SimulatedAnnealingScheduler(_SearchSchedulerMixin):
             T *= self.alpha
 
         # rebuild best to ensure internal state reflects it
-        _, sched = self._evaluate_action_map(g, phase, best_map)
+        _, sched = self._evaluate_action_map(g, phase, best_map, dry_run=False)
         return sched
 
 
@@ -1056,7 +1101,7 @@ class GeneticScheduler(_SearchSchedulerMixin):
         pop: List[Tuple[float, Dict[str, str]]] = []
         # evaluate helper
         def eval_map(m: Dict[str, str]) -> float:
-            cost, _ = self._evaluate_action_map(g, phase, m)
+            cost, _ = self._evaluate_action_map(g, phase, m, dry_run=True)
             return cost
 
         # initial population
@@ -1094,7 +1139,7 @@ class GeneticScheduler(_SearchSchedulerMixin):
                 best_cost, best_map = pop[0][0], dict(pop[0][1])
 
         # rebuild best
-        _, sched = self._evaluate_action_map(g, phase, best_map)
+        _, sched = self._evaluate_action_map(g, phase, best_map, dry_run=False)
         return sched
 
 
@@ -1137,9 +1182,10 @@ class RLScheduler(_SearchSchedulerMixin):
     def schedule(self, g: TaskGraph, phase: str) -> List[ScheduledTask]:
         order = self._upward_rank(g, phase=phase)
         # training episodes
+        base_snap = self._snapshot()
         for ep in range(max(1, self.episodes)):
             eps = self._eps(ep)
-            self.reset_state()
+            self._restore(base_snap)
             prev_op = None
             prev_a = None
             prev_q = None
@@ -1189,7 +1235,8 @@ class RLScheduler(_SearchSchedulerMixin):
                 if q > best_q:
                     best_q, best_a = q, a
             action_map[nid] = best_a or random.choice(self._allowed_actions(node))
-        _, sched = self._evaluate_action_map(g, phase, action_map)
+        self._restore(base_snap)
+        _, sched = self._evaluate_action_map(g, phase, action_map, dry_run=False)
         return sched
 
 
@@ -1277,8 +1324,6 @@ class AStarBeamScheduler(_SearchSchedulerMixin):
 
     def schedule(self, g: TaskGraph, phase: str) -> List[ScheduledTask]:
         order = self._topo_order(g)
-        # initialize
-        self.reset_state()
         init = AStarBeamScheduler._State(
             idx=0,
             order=order,
@@ -1358,5 +1403,5 @@ class AStarBeamScheduler(_SearchSchedulerMixin):
         actions = best.actions
         for nid in g.nodes:
             actions.setdefault(nid, 'auto')
-        _, sched = self._evaluate_action_map(g, phase, actions)
+        _, sched = self._evaluate_action_map(g, phase, actions, dry_run=False)
         return sched

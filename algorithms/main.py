@@ -104,7 +104,6 @@ def simulate_decode_progressive(sched: HEFTScheduler, cfg: Dict, graph: TaskGrap
     global_end = prefill_end
     steps_serialized: List[Dict] = []
     for t in range(decode_len):
-        logger.debug(str(f'[DEBUG] Simulating decode token {t+1}/{decode_len} (seq_len={prefill_len + t})'))
         current_length = prefill_len + t
         sched.set_seq_len(current_length)
         dec_sched_t = sched.schedule(graph, phase='decode')
@@ -113,6 +112,12 @@ def simulate_decode_progressive(sched: HEFTScheduler, cfg: Dict, graph: TaskGrap
         steps_serialized.append({'t': t, 'seq_len': current_length, 'end_time': float(token_end), 'delta_time': float(step_time), 'schedule': _serialize_schedule(dec_sched_t, phase='decode', token_idx=t)})
         if token_end > global_end:
             global_end = token_end
+        if token_end + 1e-9 < global_end:
+            logger.warning("Non-monotonic makespan: token_end=%.6f < global_end=%.6f; "
+                        "your scheduler probably reset internal state.", token_end, global_end)
+        from collections import Counter
+        print("token", t, Counter(t.device.split('(')[0].lower() for t in dec_sched_t))
+
     return (max(0.0, global_end - prefill_end), steps_serialized)
 
 def mapping_diff_ratio(a: Dict[str, str], b: Dict[str, str]) -> float:
@@ -167,7 +172,6 @@ def parse_args():
     p.add_argument('--run_baselines_after', action='store_true', help='Run naive baselines after your algorithm')
     p.add_argument('--baseline_out', type=str, default='./output/baseline_compare.json', help='Where to save the combined evaluation JSON')
     p.add_argument('--baselines', type=str,default='pd,weights_on_pim,attn_on_pim',help='Comma-separated baselines, e.g. "ianus,neupims,attacc,facil,pd,weights_on_pim,attn_on_pim"')
-    p.add_argument('--scheduler', type=str, default=None, help='One of: heft | sa | ga | rl | astar')
     p.add_argument('--schedulers', type=str, default=None, help='Comma-separated list of strategies to run and compare (e.g., "heft,sa,ga,rl,astar")')
     return p.parse_args()
 
@@ -713,7 +717,7 @@ def main():
                     r = _run_strategy_once(sname, cfg, shared_graph=graph, shared_shape=shape)
                     results.append(r)
                 except Exception as e:
-                    logger.exception("Strategy %s failed: %s", sname, e)
+                    logger.error("Strategy %s failed: %s", sname, e)
 
         if getattr(args, 'run_baselines_after', False):
             raw = getattr(args, 'baselines', '') or ''
@@ -750,16 +754,6 @@ def main():
                 print(f"Warning: failed to save comparison: {e}")
         else:
             print("No results to show.")
-        return
-
-    # Single strategy path
-    if getattr(args, 'scheduler', None):
-        reset_simulation_logger()
-        graph, shape = build_graph(cfg)
-        res = _run_strategy_once(args.scheduler, cfg, shared_graph=graph, shared_shape=shape)
-        print("\n=== Selected Strategy Result ===")
-        print(f"{'Policy':<18} {'Prefill(s)':>12} {'Decode(s)':>12} {'Total(s)':>12}")
-        print(f"{res['policy']:<18} {res['prefill_time_s']:>12.4f} {res['decode_time_s']:>12.4f} {res['total_time_s']:>12.4f}")
         return
 
     # Default: original pipeline (including weight-format tuning etc.)

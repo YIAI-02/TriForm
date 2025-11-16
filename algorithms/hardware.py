@@ -37,7 +37,7 @@ class Cluster:
 
 def demo_cluster() -> Cluster:
     c = Cluster()
-    c.add_device(DeviceSpec("CPU0","cpu", tflops=3.0,  mem_bw_GBs=51.2, onchip_bw_GBs=128.0, mem_capacity_GB=0.009))
+    c.add_device(DeviceSpec("CPU0","cpu", tflops=0.5,  mem_bw_GBs=51.2, onchip_bw_GBs=128.0, mem_capacity_GB=0.009))
     c.add_device(DeviceSpec("NPU0","npu", tflops=10.0, mem_bw_GBs=51.2, onchip_bw_GBs=128.0, mem_capacity_GB=0.003))
     # Two PIM stacks as example
     c.add_device(DeviceSpec("PIM0","pim", tflops=1.0,  mem_bw_GBs=32.0, onchip_bw_GBs=512, mem_capacity_GB=1))
