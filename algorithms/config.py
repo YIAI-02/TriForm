@@ -4,17 +4,18 @@ import logging
 # Default model/run config
 # =========================
 DEFAULT_CONFIG = {
-    "model_family": "llama",       # or "mpt", "palm" ...
+    "model_family": "llama",
     "model_variant": "7b",
-    "dtype": "fp16",               # "fp16" | "bf16" | "fp32" | "int8" | "fp8"
+    "dtype": "fp16",
     "batch": 1,
     "prefill_len": 128,
     "decode_len": 32,
-    "decode_mode": "mul",  
+    "decode_sample_stride": 32,   # decode 采样步长
     "pim_config_path":"./aim_simulator/pim.json",
     "gb_config_path":"./aim_simulator/gb.json",
     "ramulator_config_path":"./aim_simulator/example.yaml"
 }
+
 # =========================
 # Hybrid scheduling params
 # =========================
@@ -27,15 +28,15 @@ RANKU_INCLUDE_AVG_WEIGHT_LOAD: bool = True
 # =========================
 # Weight storage & formats
 # =========================
-WEIGHT_FORMAT_JSON_PATH: str = "./output/weight_storage_suggestion.json"
+WEIGHT_FORMAT_JSON_PATH: str = "./output/weight_suggestion_30/weight_storage_suggestion.json"
 ALL_PASSES_RESULT_PATH: str = "./output/all_passes_results.json"
 BEST_PASS_SUMMARY_PATH: str = "./output/best_pass_summary.json"
 
 # Progressive multi-pass tuning (iterate until converged or reach max passes)
 ENABLE_TWO_PASS_FORMAT_TUNING: bool = True
-FORMAT_TUNING_MAX_PASSES: int = 1
+FORMAT_TUNING_MAX_PASSES: int = 30
 FORMAT_TUNING_TIME_EPS: float = 1e-4      # 0.1 ms
-FORMAT_TUNING_MAP_EPS: float  = 0.01      # <=1% of weights changed
+FORMAT_TUNING_MAP_EPS: float  = 0.02      # <=1% of weights changed
 
 # Host (weights live in "main memory")
 HOST_NAME: str = "CPU0"
@@ -147,7 +148,7 @@ def attach_local_debug_filter(logger: "logging.Logger", get_local_flag=None):
     logger.addFilter(LocalDebugFilter(get_local_flag))
 
 # --- debug logging setup (auto-added) ---
-def setup_logging(debug: bool, log_file: str = "debug_log.txt"):
+def setup_logging(debug: bool, log_file: str = "./output/debug_log.txt"):
     """
     Configure root logging. When debug is True, logs go to console and a fixed text file.
     Otherwise, silence debug logs by raising level to CRITICAL.

@@ -6,28 +6,21 @@ import os
 import time
 import math
 import random
-from typing import Dict, List
+from typing import Dict, List, Callable
 from hardware import demo_cluster, Cluster
 from cost_model import CostModel, DTYPE_BYTES, _make_shared_model_dict, reset_simulation_logger
 from buffer_manager import GlobalMemoryManager
 from model_parser import build_graph
-from config import DEFAULT_CONFIG, WEIGHT_FORMAT_JSON_PATH, FORMAT_TUNING_MAX_PASSES, FORMAT_TUNING_TIME_EPS, FORMAT_TUNING_MAP_EPS, SA_ENABLE, SA_T0, SA_ALPHA, SA_FLIP_PROB, ALL_PASSES_RESULT_PATH, BEST_PASS_SUMMARY_PATH, PIM_WEIGHT_CAPACITY_FACTOR
+from config import DEFAULT_CONFIG, WEIGHT_FORMAT_JSON_PATH, FORMAT_TUNING_MAX_PASSES, FORMAT_TUNING_TIME_EPS, FORMAT_TUNING_MAP_EPS, SA_ENABLE, SA_T0, SA_ALPHA, SA_FLIP_PROB, ALL_PASSES_RESULT_PATH, BEST_PASS_SUMMARY_PATH, PIM_WEIGHT_CAPACITY_FACTOR,setup_logging
 from plan_label import PlanLabel
 from scheduler import HEFTScheduler, ScheduledTask, SimulatedAnnealingScheduler, GeneticScheduler, RLScheduler, AStarBeamScheduler
 from pathlib import Path
 import logging
-from config import setup_logging
 from task_graph import TaskGraph, TaskNode
 logger = logging.getLogger(__name__)
 attach_local_debug_filter(logger, lambda: True)
 
 def plan_memory_and_label(cfg: Dict, cluster: Cluster) -> PlanLabel:
-    """
-    Decide PIM mode and effective LRU budget for weights on PIM.
-    small:   PIM capacity < KV_total -> kv_in_pim=False, no persistent cache
-    medium:  KV_total <= cap < (KV_total + FC_total) -> kv_in_pim=True, weight cache budget = cap - KV_total
-    large:   cap >= KV_total + FC_total -> kv_in_pim=True, budget large enough to avoid eviction
-    """
     g, shape = build_graph(cfg)
     dtype_bytes = int(DTYPE_BYTES.get(cfg.get('dtype', 'fp16'), 2))
     S = int(cfg.get('prefill_len', 128))
@@ -39,20 +32,11 @@ def plan_memory_and_label(cfg: Dict, cluster: Cluster) -> PlanLabel:
     kv_elems = 2 * (S + T) * n_kv_heads * head_dim * batch * layers
     KV_total_bytes = kv_elems * dtype_bytes
     FC_total_bytes = 0
-    per_weight_size: Dict[str, int] = {}
     for n in g.nodes.values():
         if getattr(n, 'weight_id', None) and isinstance(n.weight_id, str):
-            if n.weight_id.endswith('W1') or n.weight_id.endswith('W2') or n.weight_id.endswith('W3') or n.weight_id.endswith('WQ') or n.weight_id.endswith('WK') or n.weight_id.endswith('WV') or n.weight_id.endswith('WO'):
+            if n.weight_id.endswith(('W1','W2','W3','WQ','WK','WV','WO')):
                 FC_total_bytes += int(getattr(n, 'weight_size', 0))
-                per_weight_size[n.weight_id] = int(getattr(n, 'weight_size', 0))
-    pim_bytes = 0
-    for d in cluster.devices_by_type('pim'):
-        pim_bytes += int(d.mem_capacity_GB * 1000000000.0)
-        
-    # logger.debug(str(f'[DEBUG] KV total bytes: {KV_total_bytes:,} ({KV_total_bytes / 1000000000.0:.2f} GB)'))
-    # logger.debug(str(f'[DEBUG] FC total bytes: {FC_total_bytes:,} ({FC_total_bytes / 1000000000.0:.2f} GB)'))
-    # logger.debug(str(f'[DEBUG] PIM capacity: {pim_bytes:,} ({pim_bytes / 1000000000.0:.2f} GB)'))
-    # logger.debug(str(f'[DEBUG] Total weights found: {len(per_weight_size)}'))
+    pim_bytes = sum(int(d.mem_capacity_GB * (1024**3)) for d in cluster.devices_by_type('pim'))
     if pim_bytes < KV_total_bytes:
         label = PlanLabel(
             pim_mode='small', kv_in_pim=False,
@@ -71,8 +55,6 @@ def plan_memory_and_label(cfg: Dict, cluster: Cluster) -> PlanLabel:
             kv_total_bytes=int(KV_total_bytes),
             pim_weight_capacity_bytes=int(PIM_WEIGHT_CAPACITY_FACTOR * max(0, pim_bytes - KV_total_bytes))
         )
-    if DEBUG_MAIN:
-        label.print_debug()
     return label
 
 def _serialize_schedule(schedule: List[ScheduledTask], *, phase: str, token_idx: int | None=None) -> List[Dict]:
@@ -94,85 +76,95 @@ def simulate_prefill(sched: HEFTScheduler, cfg: Dict, graph: TaskGraph) -> tuple
     return (prefill_time, _serialize_schedule(prefill_sched, phase='prefill', token_idx=None))
 
 def simulate_decode_progressive(sched: HEFTScheduler, cfg: Dict, graph: TaskGraph, prefill_end: float) -> tuple[float, List[Dict]]:
-    """
-    Simulate decode phase progressively: one token at a time.
-    current_length increases from (prefill_len) to (prefill_len + decode_len - 1)
-    """
+  
     prefill_len = int(cfg.get('prefill_len', 128))
-    decode_len = int(cfg.get('decode_len', 32))
-    global_end = prefill_end
+    decode_len  = int(cfg.get('decode_len', 32))
+    global_end  = float(prefill_end)
     steps_serialized: List[Dict] = []
-    for t in range(decode_len):
-        current_length = prefill_len + t
-        sched.set_seq_len(current_length)
-        dec_sched_t = sched.schedule(graph, phase='decode')
-        token_end = sched.makespan(dec_sched_t)
-        step_time = max(0.0, token_end - global_end)
-        steps_serialized.append({'t': t, 'seq_len': current_length, 'end_time': float(token_end), 'delta_time': float(step_time), 'schedule': _serialize_schedule(dec_sched_t, phase='decode', token_idx=t)})
-        if token_end > global_end:
+
+    # 取有效 stride（cfg 优先，其次 DEFAULT_CONFIG，最后 16）
+    try:
+        from config import DEFAULT_CONFIG
+        default_stride = int(DEFAULT_CONFIG.get('decode_sample_stride', 16))
+    except Exception:
+        default_stride = 32
+    stride = default_stride
+    if isinstance(cfg, dict):
+        try:
+            stride = int(cfg.get('decode_sample_stride', default_stride))
+        except Exception:
+            stride = default_stride
+    # 精确仿真
+    if stride <= 1:
+        for t in range(decode_len):
+            cur_len = prefill_len + t
+            sched.set_seq_len(cur_len)
+            dec_sched = sched.schedule(graph, phase='decode')
+            token_end = float(sched.makespan(dec_sched))
+            step_time = max(0.0, token_end - global_end)
             global_end = token_end
-        if token_end + 1e-9 < global_end:
-            logger.warning("Non-monotonic makespan: token_end=%.6f < global_end=%.6f; "
-                        "your scheduler probably reset internal state.", token_end, global_end)
-        from collections import Counter
-        print("token", t, Counter(t.device.split('(')[0].lower() for t in dec_sched_t))
+            steps_serialized.append({
+                't': t, 'seq_len': cur_len, 'step_time': float(step_time),
+                'estimated': False, 'schedule': _serialize_schedule(dec_sched, phase='decode', token_idx=t)
+            })
+        return (float(global_end - prefill_end), steps_serialized)
 
-    return (max(0.0, global_end - prefill_end), steps_serialized)
+    # 采样
+    last_sample_time: float | None = None
+    last_sample_t: int = -1
+    def _advance_to(t_target: float):
+        try:
+            for name in list(getattr(sched, 'avail', {}).keys()):
+                sched.avail[name] = max(float(sched.avail.get(name, 0.0)), float(t_target))
+        except Exception:
+            pass
+        try:
+            tl = getattr(getattr(sched, 'comm', None), 'timeline_end', None)
+            if isinstance(tl, dict):
+                for k in list(tl.keys()):
+                    tl[k] = max(float(tl.get(k, 0.0)), float(t_target))
+        except Exception:
+            pass
+    for t in range(decode_len):
+        cur_len = prefill_len + t
+        is_last = (t == decode_len - 1)
+        do_sample = (t % stride == 0) or is_last
+        if do_sample:
+            if last_sample_time is not None and last_sample_t >= 0 and t > last_sample_t + 1:
+                gap = t - last_sample_t - 1
+                if gap > 0:
+                    global_end += float(last_sample_time) * float(gap)
+                    for u in range(last_sample_t + 1, t):
+                        steps_serialized.append({'t': u, 'seq_len': prefill_len + u, 'step_time': float(last_sample_time), 'estimated': True, 'schedule': None})
+            _advance_to(global_end)
+            sched.set_seq_len(cur_len)
+            dec_sched = sched.schedule(graph, phase='decode')
+            token_end = float(sched.makespan(dec_sched))
+            step_time = max(0.0, token_end - global_end)
+            global_end = token_end
+            last_sample_time = float(step_time)
+            last_sample_t = t
+            steps_serialized.append({'t': t, 'seq_len': cur_len, 'step_time': float(step_time), 'estimated': False, 'schedule': _serialize_schedule(dec_sched, phase='decode', token_idx=t)})
+    return (float(global_end - prefill_end), steps_serialized)
 
-def mapping_diff_ratio(a: Dict[str, str], b: Dict[str, str]) -> float:
-    """两个权重-格式映射的差异比例（Hamming ratio）。"""
-    if not a and (not b):
-        return 0.0
-    keys = set(a.keys()) | set(b.keys())
-    if not keys:
-        return 0.0
-    diff = sum((1 for k in keys if a.get(k) != b.get(k)))
-    return diff / float(len(keys))
-
-def _sa_make_neighbor_map(base_map: Dict[str, str], weight_ids: List[str], flip_prob: float=0.15) -> Dict[str, str]:
+def _parse_algos(raw: str) -> list[str]:
     """
-    基于 base_map 生成邻域解：对若干权重随机翻转其存储格式（在 ND / NPU_OPT / PIM_OPT 中切换）。
-    至少翻转 1 个权重，避免与 base_map 完全相同。
+    Parse comma/space separated algo names into a unique, ordered list:
+    e.g. "heft,sa, rl ,ga,astar" -> ["heft","sa","rl","ga","astar"]
     """
-    CAND = ('ND', 'NPU_OPT', 'PIM_OPT')
-    if not weight_ids:
-        return dict(base_map)
-    out = dict(base_map)
-    flips = 0
-    for wid in weight_ids:
-        if random.random() < max(0.0, min(1.0, flip_prob)):
-            old = out.get(wid, base_map.get(wid, 'ND'))
-            choices = [x for x in CAND if x != old] or ['ND']
-            out[wid] = random.choice(choices)
-            flips += 1
-    if flips == 0:
-        wid = random.choice(weight_ids)
-        old = out.get(wid, base_map.get(wid, 'ND'))
-        choices = [x for x in CAND if x != old] or ['ND']
-        out[wid] = random.choice(choices)
-    return out
-
-
-def parse_args():
-    p = argparse.ArgumentParser()
-    p.add_argument('--model_family', type=str, default=DEFAULT_CONFIG['model_family'])
-    p.add_argument('--model_variant', type=str, default=DEFAULT_CONFIG['model_variant'])
-    p.add_argument('--dtype', type=str, default=DEFAULT_CONFIG['dtype'])
-    p.add_argument('--batch', type=int, default=DEFAULT_CONFIG['batch'])
-    p.add_argument('--prefill_len', type=int, default=DEFAULT_CONFIG['prefill_len'])
-    p.add_argument('--decode_len', type=int, default=DEFAULT_CONFIG['decode_len'])
-    p.add_argument('--pim_config_path', type=str, default=DEFAULT_CONFIG['pim_config_path'])
-    p.add_argument('--gb_config_path', type=str, default=DEFAULT_CONFIG['gb_config_path'], help='Path to Global Buffer configuration')
-    p.add_argument('--ramulator_config_path', type=str, default=DEFAULT_CONFIG['ramulator_config_path'])
-    p.add_argument('--simulation_log_file', type=str, default='./output/pim_simulation.txt', help='Output log file')
-    p.add_argument('--all_passes_json', type=str, default=ALL_PASSES_RESULT_PATH, help='Write all-pass records to this JSON')
-    p.add_argument('--best_summary_json', type=str, default=BEST_PASS_SUMMARY_PATH, help='Write best-pass summary to this JSON')
-    p.add_argument('--debug', action='store_true', help='Enable debug logging')
-    p.add_argument('--run_baselines_after', action='store_true', help='Run naive baselines after your algorithm')
-    p.add_argument('--baseline_out', type=str, default='./output/baseline_compare.json', help='Where to save the combined evaluation JSON')
-    p.add_argument('--baselines', type=str,default='pd,weights_on_pim,attn_on_pim',help='Comma-separated baselines, e.g. "ianus,neupims,attacc,facil,pd,weights_on_pim,attn_on_pim"')
-    p.add_argument('--schedulers', type=str, default=None, help='Comma-separated list of strategies to run and compare (e.g., "heft,sa,ga,rl,astar")')
-    return p.parse_args()
+    raw = (raw or 'heft')
+    parts = []
+    for token in raw.replace(',', ' ').split():
+        t = token.strip().lower()
+        if t:
+            parts.append(t)
+    # de-duplicate but keep order
+    seen = set()
+    uniq = []
+    for t in parts:
+        if t not in seen:
+            uniq.append(t); seen.add(t)
+    return uniq
 
 def _make_scheduler(name: str, cluster: Cluster, cost: CostModel, label: PlanLabel, batch: int, seq_len: int, buffer: GlobalMemoryManager):
     from config import (SCHED_SA_ITERS, SCHED_SA_T0, SCHED_SA_ALPHA, SCHED_SA_FLIP_PROB,
@@ -196,6 +188,35 @@ def _make_scheduler(name: str, cluster: Cluster, cost: CostModel, label: PlanLab
                                   beam=SCHED_ASTAR_BEAM, max_expansions=SCHED_ASTAR_MAX_EXPANSIONS)
     raise ValueError(f"Unknown scheduler strategy: {name}")
 
+def mapping_diff_ratio(a: Dict[str, str], b: Dict[str, str]) -> float:
+    if not a and (not b):
+        return 0.0
+    keys = set(a.keys()) | set(b.keys())
+    if not keys:
+        return 0.0
+    diff = sum((1 for k in keys if a.get(k) != b.get(k)))
+    return diff / float(len(keys))
+
+def _sa_make_neighbor_map(base_map: Dict[str, str], weight_ids: List[str], flip_prob: float=0.15) -> Dict[str, str]:
+
+    CAND = ('ND', 'NPU_OPT', 'PIM_OPT')
+    if not weight_ids:
+        return dict(base_map)
+    out = dict(base_map)
+    flips = 0
+    for wid in weight_ids:
+        if random.random() < max(0.0, min(1.0, flip_prob)):
+            old = out.get(wid, base_map.get(wid, 'ND'))
+            choices = [x for x in CAND if x != old] or ['ND']
+            out[wid] = random.choice(choices)
+            flips += 1
+    if flips == 0:
+        wid = random.choice(weight_ids)
+        old = out.get(wid, base_map.get(wid, 'ND'))
+        choices = [x for x in CAND if x != old] or ['ND']
+        out[wid] = random.choice(choices)
+    return out
+
 def run(cfg: Dict):
     cluster = demo_cluster()
     pim_config_path = Path(cfg['pim_config_path'])
@@ -204,18 +225,15 @@ def run(cfg: Dict):
     prefill_len = int(cfg.get('prefill_len', 128))
     batch = int(cfg.get('batch', 1))
     graph, shape = build_graph(cfg)
-    # logger.debug(str('[Main] Creating shared model dictionary...'))
     model_dict = _make_shared_model_dict(dim=int(getattr(shape, 'dim', 128)), n_heads=int(getattr(shape, 'n_heads', 1)), n_kv_heads=int(getattr(shape, 'n_kv_heads', 1)), ffn_dim=int(getattr(shape, 'ffn_dim', 512)), seqlen=prefill_len)
-    logger.debug(str(f"[Main] Model dict created: dim={getattr(shape, 'dim')}, n_heads={getattr(shape, 'n_heads')}, n_kv_heads={getattr(shape, 'n_kv_heads')}, ffn_dim={getattr(shape, 'ffn_dim')}"))
-    log_file = Path(cfg.get('simulation_log_file', 'pim_simulation.txt'))
-    cost = CostModel(cluster, dtype=cfg.get('dtype', 'fp16'), pim_config_path=pim_config_path, gb_config_path=gb_config_path, ramulator_config_path=ramulator_config_path, simulation_log_file=log_file, debug_traces=False, model_dict=model_dict)
+    cost = CostModel(cluster, dtype=cfg.get('dtype', 'fp16'), pim_config_path=pim_config_path, gb_config_path=gb_config_path, ramulator_config_path=ramulator_config_path,  simulation_log_file='./output/pim_simulation.txt', debug_traces=False, model_dict=model_dict)
     cost.logger.start_simulation()
     try:
         label = plan_memory_and_label(cfg, cluster)
         fmt_map: Dict[str, str] = {}
-        prev_total: float = None
+        prev_total: float|None = None
         prev_map: Dict[str, str] = {}
-        best_total: float = None
+        best_total: float|None = None
         best_map: Dict[str, str] = {}
         best_pass: int = -1
         last_prefill = 0.0
@@ -250,9 +268,9 @@ def run(cfg: Dict):
                 sched2.reset_state()
                 t_wall1 = time.time()
                 logger.debug(str(f'[PASS{p}] Running prefill phase (neighbor map)...'))
-                prefill_time_nb, prefill_sched_ser_nb = simulate_prefill(sched, cfg, graph)
+                prefill_time_nb, prefill_sched_ser_nb = simulate_prefill(sched2, cfg, graph)
                 logger.debug(str(f'[PASS{p}] Running decode phase (neighbor map)...'))
-                decode_time_nb, decode_steps_ser_nb = simulate_decode_progressive(sched, cfg, graph, prefill_end=prefill_time)
+                decode_time_nb, decode_steps_ser_nb = simulate_decode_progressive(sched2, cfg, graph, prefill_end=prefill_time)
                 total_time_nb = prefill_time_nb + decode_time_nb
                 wall_time_neighbor = time.time() - t_wall1
                 cost.logger._log(f'[PASS{p}] NeighborMap WallTime: {wall_time_neighbor:.3f}s | Prefill(sim): {prefill_time_nb:.6f}s, Decode(sim): {decode_time_nb:.6f}s, Total(sim): {total_time_nb:.6f}s')
@@ -410,19 +428,6 @@ def register_baseline(name: str):
         return fn
     return _deco
 
-def _canonical_baseline_name(s: str) -> str:
-    s = (s or "").strip().lower()
-    alias = {
-        'ianus': 'ianus',
-        'neupims': 'neupims', 'neu-pims': 'neupims',
-        'attacc': 'attacc',
-        'facil': 'facil',
-        'pd': 'pd', 'prefill_npu_decode_pim': 'pd',
-        'weights_on_pim': 'weights_on_pim',
-        'attn_on_pim': 'attn_on_pim',
-    }
-    return alias.get(s, s)
-
 def _is_op(n: TaskNode, *tags: str) -> bool:
     op = str(getattr(n, 'attrs', {}).get('op') or n.name or '').upper()
     return any(tag.upper() in op for tag in tags)
@@ -518,48 +523,68 @@ def _run_phase_once(sched, graph: TaskGraph, *, phase: str, seq_len: int) -> flo
     schedule = sched.schedule(graph, phase=phase)
     return sched.makespan(schedule)
 
-def _decode_progressive(sched, graph: TaskGraph, *, prefill_len: int, decode_len: int) -> float:
-    """逐 token 递增 seq_len 的 decode 累加时延。"""
-    total = 0.0
-    for t in range(decode_len):
-        cur_len = prefill_len + t
-        sched.reset_state()
-        total += _run_phase_once(sched, graph, phase='decode', seq_len=cur_len)
-    return total
+def _decode_progressive(sched, graph: TaskGraph, *, prefill_len: int, decode_len: int, cfg=None, policy_name: str = 'baseline') -> float:
+    logger = logging.getLogger(__name__)
+   
+    try:
+        from config import DEFAULT_CONFIG
+        default_stride = int(DEFAULT_CONFIG.get('decode_sample_stride', 16))
+    except Exception:
+        default_stride = 32
+    stride = default_stride
 
-def _parse_algo_best_times(cfg: Dict) -> Dict:
-    """从你的主流程产出的 all_passes_json 里，读取 best pass 的 prefill/decode/total。"""
-    all_path = cfg.get('all_passes_json', None) or './output/all_passes_results.json'
-    with open(all_path, 'r', encoding='utf-8') as f:
-        payload = json.load(f)
-    passes = payload.get('passes', [])
-    if not passes:
-        raise RuntimeError('No passes found in all_passes_results.json; make sure your main pipeline produced it.')
-    best_idx = min(range(len(passes)), key=lambda i: passes[i].get('times', {}).get('total', float('inf')))
-    best = passes[best_idx]
-    t_prefill = float(best.get('times', {}).get('prefill', 0.0))
-    t_decode  = float(best.get('times', {}).get('decode', 0.0))
-    return {
-        'policy': 'algo',
-        'prefill_time_s': t_prefill,
-        'decode_time_s':  t_decode,
-        'total_time_s':   t_prefill + t_decode,
-    }
+    if stride <= 1:
+        total = 0.0
+        for t in range(decode_len):
+            cur_len = prefill_len + t
+            sched.reset_state()
+            step = _run_phase_once(sched, graph, phase='decode', seq_len=cur_len)
+            total += float(step)
+        return float(total)
+
+    total = 0.0
+    D = int(decode_len); P = int(prefill_len)
+    for t0 in range(0, D, stride):
+        cur_len = P + t0
+        blk = min(stride, D - t0)
+        sched.reset_state()
+        step = _run_phase_once(sched, graph, phase='decode', seq_len=cur_len)
+        add  = float(step) * float(blk)
+        total += add
+    logger.debug(f"[baseline:{policy_name}] decode done (sampled stride={stride}). total={float(total):.6f}s")
+    return float(total)
+
 
 def _eval_one_baseline(cfg: Dict, policy: str) -> Dict:
 
-    # Reset the global simulation logger before each baseline run
     reset_simulation_logger()
-    
-    # --- Build environment（与主流程口径一致） ---
     cluster = demo_cluster()
-    # 构图 + 形状
     graph, shape = build_graph(cfg)
     batch = int(cfg.get('batch', getattr(shape, 'batch', 1)))
     prefill_len = int(cfg.get('prefill_len', 128))
     decode_len = int(cfg.get('decode_len', 32))
+    tag = f"{prefill_len}x{decode_len}"
+    base_dir = Path(cfg.get('best_summary_json', './output/best_pass_summary.json')).parent
+    algo_dir = base_dir / f"algo_{policy}"
+    algo_dir.mkdir(parents=True, exist_ok=True)
 
-    # PIM trace 需要的 model_dict（若你的 CostModel 用不到也无妨）
+    try:
+        setup_logging(bool(cfg.get('debug', False)), log_file=str(algo_dir / f"debug_{tag}.txt"))
+    except Exception:
+        pass
+
+    # Debug: baseline start
+    logger = logging.getLogger(__name__)
+    try:
+        _stride_for_log = int(cfg['decode_sample_stride'])
+    except Exception:
+        try:
+            from config import DEFAULT_CONFIG
+            _stride_for_log = int(DEFAULT_CONFIG.get('decode_sample_stride', 16))
+        except Exception:
+            _stride_for_log = None
+    logger.debug(f"[Baseline] Start policy='{policy}' batch={batch} prefill_len={prefill_len} decode_len={decode_len} stride={_stride_for_log}")
+
     model_dict = _make_shared_model_dict(
         dim=int(getattr(shape, 'dim', 128)),
         n_heads=int(getattr(shape, 'n_heads', 1)),
@@ -574,7 +599,7 @@ def _eval_one_baseline(cfg: Dict, policy: str) -> Dict:
         pim_config_path=Path(cfg.get('pim_config_path')),
         gb_config_path=Path(cfg.get('gb_config_path')),
         ramulator_config_path=Path(cfg.get('ramulator_config_path')),
-        simulation_log_file=Path(cfg.get('simulation_log_file', './output/pim_simulation.txt')),
+        simulation_log_file=algo_dir / f"pim_sim_{tag}.txt",
         model_dict=model_dict
     )
     
@@ -587,14 +612,29 @@ def _eval_one_baseline(cfg: Dict, policy: str) -> Dict:
         buffer_mgr = GlobalMemoryManager()
         sched = HEFTScheduler(cluster, cost, label, batch=batch, seq_len=prefill_len, buffer=buffer_mgr)
 
-        # --- Prefill：根据 policy 约束 allowed 后评估 ---
+        # --- Prefill ---
         g_prefill = (_BASELINE_REGISTRY[policy](graph, phase='prefill') if policy in _BASELINE_REGISTRY else _apply_policy_on_graph(graph, policy, phase='prefill'))
         sched.reset_state()
+        logger.debug(f"[baseline:{policy}] prefill begin seq_len={prefill_len}")
         t_prefill = _run_phase_once(sched, g_prefill, phase='prefill', seq_len=prefill_len)
+        logger.debug(f"[baseline:{policy}] prefill end time={float(t_prefill):.6f}s")
 
-        # --- Decode：根据 policy 约束 allowed 后 progressive 累加 ---
+        # --- Decode ---
         g_decode = (_BASELINE_REGISTRY[policy](graph, phase='decode') if policy in _BASELINE_REGISTRY else _apply_policy_on_graph(graph, policy, phase='decode'))
-        t_decode = _decode_progressive(sched, g_decode, prefill_len=prefill_len, decode_len=decode_len)
+        t_decode = _decode_progressive(sched, g_decode, prefill_len=prefill_len, decode_len=decode_len, cfg=cfg, policy_name=policy)
+
+        logger.debug(f"[Baseline] Done policy='{policy}': Prefill={float(t_prefill):.6f}s Decode={float(t_decode):.6f}s Total={(float(t_prefill)+float(t_decode)):.6f}s")
+        try:
+            out_path = algo_dir / f"best_summary_{tag}.json"
+            with open(out_path, 'w', encoding='utf-8') as f:
+                json.dump({
+                    'policy': f"algo:{policy}",
+                    'config': {'batch': batch, 'prefill_len': prefill_len, 'decode_len': decode_len, 'dtype': cfg.get('dtype')},
+                    'times':  {'prefill': float(t_prefill), 'decode': float(t_decode), 'total': float(t_prefill + t_decode)}
+                }, f, ensure_ascii=False, indent=2)
+            logger.debug(f"[Baseline] Saved per-baseline summary to: {out_path}")
+        except Exception as e:
+            logger.warning(f"[Baseline] Failed to save per-baseline summary: {e}")
 
         return {
             'policy': policy,
@@ -610,21 +650,10 @@ def _eval_one_baseline(cfg: Dict, policy: str) -> Dict:
         cost.logger.end_simulation()
         cost.logger.close()
 
-def _print_combined_table(results: List[Dict], cfg: Dict, wall: float) -> None:
-    print("\n=== Combined Evaluation (Your Algo + Baselines) ===")
-    print(f"Config: family={cfg['model_family']} variant={cfg['model_variant']} batch={cfg['batch']} dtype={cfg['dtype']}")
-    print(f"prefill_len={cfg['prefill_len']} decode_len={cfg['decode_len']}   (sim wall={wall:.2f}s)\n")
-    header = f"{'Policy':<18} {'Prefill(s)':>12} {'Decode(s)':>12} {'Total(s)':>12} {'vs Algo':>10} {'vs PD':>10}"
-    print(header)
-    print('-' * len(header))
-    for r in results:
-        s_algo = (f"{r.get('speedup_vs_algo', None):.3f}x" if r.get('speedup_vs_algo') is not None else '-')
-        s_pd   = (f"{r.get('speedup_vs_pd', None):.3f}x"   if r.get('speedup_vs_pd')   is not None else '-')
-        print(f"{r['policy']:<18} {r['prefill_time_s']:>12.4f} {r['decode_time_s']:>12.4f} {r['total_time_s']:>12.4f} {s_algo:>10} {s_pd:>10}")
-
 
 def _run_strategy_once(strategy: str, cfg: Dict, *, shared_graph=None, shared_shape=None) -> Dict:
     """Build env, run one scheduling strategy (prefill + progressive decode) and return timing."""
+    logger.debug(f"\n{'='*60}\n[Strategy] Running for: '{strategy}'\n{'='*60}")
     cluster = demo_cluster()
     # graph/shape
     graph, shape = (shared_graph, shared_shape)
@@ -674,6 +703,8 @@ def _run_strategy_once(strategy: str, cfg: Dict, *, shared_graph=None, shared_sh
     decode_time, _decode = simulate_decode_progressive(sched, cfg, graph, prefill_end=prefill_time)
     total_time = float(prefill_time + decode_time)
 
+    logger.debug(f"[Strategy] Finished '{strategy}': Prefill={prefill_time:.6f}s, Decode={decode_time:.6f}s, Total={total_time:.6f}s")
+
     try:
         cost.logger.end_simulation()
         cost.logger.close()
@@ -690,73 +721,143 @@ def _run_strategy_once(strategy: str, cfg: Dict, *, shared_graph=None, shared_sh
         'decode_len': decode_len,
     }
 
+def _ensure_dir(p:Path):
+    try:
+        p.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+    return p
 
+def _save_best_json(algo_dir: Path, tag: str, policy: str, *, times: Dict, prefill_schedule=None, decode_steps=None, cfg: Dict|None=None):
+    payload = {
+        'policy': policy,
+        'config': {'batch': int((cfg or {}).get('batch', 1)), 'prefill_len': int((cfg or {}).get('prefill_len', 0)), 'decode_len': int((cfg or {}).get('decode_len', 0)), 'dtype': (cfg or {}).get('dtype')},
+        'best_times': {'prefill': float(times.get('prefill_time_s', 0.0)), 'decode': float(times.get('decode_time_s', 0.0)), 'total': float(times.get('total_time_s', 0.0))},
+    }
+
+    if prefill_schedule is not None:
+        payload['prefill_schedule'] = prefill_schedule
+    if decode_steps is not None:
+        payload['decode_steps'] = decode_steps
+    path = algo_dir / f"best_summary_{tag}.json"
+    with open(path,'w', encoding='utf-8') as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+    logger.debug(f"[Strategy] Saved best summary to: {path}")
+    return path
+
+def evaluate_suite(cfg: Dict, *, algos: List[str], baselines: List[str], result_dir: str | None, debug: bool, combined_out: str):
+    base_dir = _ensure_dir(Path(result_dir or './output/len_sweep'))
+    tag = f"{int(cfg.get('prefill_len', 0))}x{int(cfg.get('decode_len', 0))}"
+    results: List[Dict] = []
+    # --- baselines ONCE ---
+    blist = []
+    for b in baselines:
+        b = b.strip().lower()
+        if not b: continue
+        if b not in blist: blist.append(b)
+    for b in blist:
+        algo_dir = _ensure_dir(base_dir / f"algo_{b}")
+        try: 
+            setup_logging(bool(cfg.get('debug', False)), log_file=str(algo_dir / f"debug_{tag}.txt"))
+        except Exception: 
+            logger.error(f"Failed to setup logging for baseline '{b}'")
+            pass
+        cfg_b = dict(cfg)
+        cfg_b['simulation_log_file'] = str(algo_dir / f"pim_sim_{tag}.txt")
+        r = _eval_one_baseline(cfg_b, b)
+        _save_best_json(algo_dir, tag, policy=f"algo:{b}", times=r, cfg=cfg_b)
+        results.append({'policy': f"algo:{b}", **{k: r[k] for k in ('prefill_time_s','decode_time_s','total_time_s')}})
+    # --- algorithms ---
+    alist = []
+    for a in algos:
+        a = a.strip().lower()
+        if not a: continue
+        if a not in alist: alist.append(a)
+    # Build once to share across algos
+    shared_graph, shared_shape = build_graph(cfg)
+    for a in alist:
+        algo_dir = _ensure_dir(base_dir / f"algo_{a}")
+        try: 
+            setup_logging(bool(cfg.get('debug', False)), log_file=str(algo_dir / f"debug_{tag}.txt"))
+        except Exception: 
+            logger.error(f"Failed to setup logging for algo '{a}'")
+            pass
+            
+        cfg_a = dict(cfg)
+        cfg_a['simulation_log_file'] = str(algo_dir / f"pim_sim_{tag}.txt")
+        res = _run_strategy_once(a, cfg_a, shared_graph=shared_graph, shared_shape=shared_shape)
+        _save_best_json(algo_dir, tag, policy=res.get('policy', f"algo:{a}"), times=res, prefill_schedule=res.get('prefill_schedule'), decode_steps=res.get('decode_steps'), cfg=cfg_a)
+        results.append({'policy': res['policy'], **{k: res[k] for k in ('prefill_time_s','decode_time_s','total_time_s')}})
+    # --- combined ---
+    if results:
+        os.makedirs(os.path.dirname(combined_out), exist_ok=True)
+        with open(combined_out, 'w', encoding='utf-8') as f:
+            json.dump({'config': cfg, 'results': results}, f, ensure_ascii=False, indent=2)
+        print(f"[REPORT] Combined comparison saved to: {combined_out}")
+    # Pretty print
+    print("\n=== Strategy/Baseline Comparison ===")
+    header = f"{'Policy':<22} {'Prefill(s)':>12} {'Decode(s)':>12} {'Total(s)':>12}"
+    print(header); print('-'*len(header))
+    for r in results:
+        print(f"{r['policy']:<22} {r['prefill_time_s']:>12.4f} {r['decode_time_s']:>12.4f} {r['total_time_s']:>12.4f}")
+
+def parse_args():
+    p = argparse.ArgumentParser()
+    p.add_argument('--model_family', type=str, default=DEFAULT_CONFIG['model_family'])
+    p.add_argument('--model_variant', type=str, default=DEFAULT_CONFIG['model_variant'])
+    p.add_argument('--dtype', type=str, default=DEFAULT_CONFIG['dtype'])
+    p.add_argument('--batch', type=int, default=DEFAULT_CONFIG['batch'])
+    p.add_argument('--prefill_len', type=int, default=DEFAULT_CONFIG['prefill_len'])
+    p.add_argument('--decode_len', type=int, default=DEFAULT_CONFIG['decode_len'])
+    p.add_argument('--pim_config_path', type=str, default=DEFAULT_CONFIG['pim_config_path'])
+    p.add_argument('--gb_config_path', type=str, default=DEFAULT_CONFIG['gb_config_path'])
+    p.add_argument('--ramulator_config_path', type=str, default=DEFAULT_CONFIG['ramulator_config_path'])
+    p.add_argument('--simulation_log_file', type=str, default='./output/pim_simulation.txt')
+    p.add_argument('--all_passes_json', type=str, default=ALL_PASSES_RESULT_PATH)
+    p.add_argument('--best_summary_json', type=str, default=BEST_PASS_SUMMARY_PATH)
+    p.add_argument('--debug', action='store_true')
+    p.add_argument('--baselines', type=str, default='pd,weights_on_pim,attn_on_pim')
+    p.add_argument('--once', action='store_true')
+    p.add_argument('--compare_only', action='store_true')
+    p.add_argument('--baseline_out', type=str, default='./output/baseline_compare.json')
+    p.add_argument('--result_dir', type=str, default=None)
+    p.add_argument('--algo', type=str, default='heft')
+    p.add_argument('--decode_sample_stride', type=int, default=None)
+    return p.parse_args()
 
 def main():
     args = parse_args()
-    setup_logging(args.debug)
-    cfg = {'model_family': args.model_family, 'model_variant': args.model_variant, 'dtype': args.dtype,
-           'batch': args.batch, 'prefill_len': args.prefill_len, 'decode_len': args.decode_len,
-           'pim_config_path': args.pim_config_path, 'gb_config_path': args.gb_config_path,
-           'ramulator_config_path': args.ramulator_config_path,
-           'simulation_log_file': args.simulation_log_file,
-           'all_passes_json': args.all_passes_json, 'best_summary_json': args.best_summary_json}
 
-    # Unified compare path: if user provides schedulers and/or asks to run baselines
-    if args.schedulers or getattr(args, 'run_baselines_after', False):
-        # Build once
-        reset_simulation_logger()
-        graph, shape = build_graph(cfg)
-        results: List[Dict] = []
-
-        if args.schedulers:
-            strategies = [s.strip() for s in args.schedulers.split(',') if s.strip()]
-            for sname in strategies:
-                try:
-                    r = _run_strategy_once(sname, cfg, shared_graph=graph, shared_shape=shape)
-                    results.append(r)
-                except Exception as e:
-                    logger.error("Strategy %s failed: %s", sname, e)
-
-        if getattr(args, 'run_baselines_after', False):
-            raw = getattr(args, 'baselines', '') or ''
-            baseline_list = [s.strip() for s in raw.split(',') if s.strip()] or ['pd','weights_on_pim','attn_on_pim']
-            canonicalize = globals().get('_canonical_baseline_name', lambda s: s)
-            baseline_list = [canonicalize(b) for b in baseline_list]
-            # de-duplicate preserving order
-            seen = set()
-            baseline_list = [b for b in baseline_list if not (b in seen or seen.add(b))]
-            for base in baseline_list:
-                try:
-                    r = _eval_one_baseline(cfg, base)
-                    results.append(r)
-                except Exception as e:
-                    logger.error('Baseline %s failed: %s', base, e)
-                    continue
-
-        if results:
-            # Print table
-            print("\n=== Strategy/Baseline Comparison ===")
-            header = f"{'Policy':<22} {'Prefill(s)':>12} {'Decode(s)':>12} {'Total(s)':>12}"
-            print(header)
-            print('-' * len(header))
-            for r in results:
-                print(f"{r['policy']:<22} {r['prefill_time_s']:>12.4f} {r['decode_time_s']:>12.4f} {r['total_time_s']:>12.4f}")
-
-            # Save
-            try:
-                os.makedirs(os.path.dirname(args.baseline_out), exist_ok=True)
-                with open(args.baseline_out, 'w', encoding='utf-8') as f:
-                    json.dump({'config': cfg, 'results': results}, f, ensure_ascii=False, indent=2)
-                print(f"Saved comparison to: {args.baseline_out}")
-            except Exception as e:
-                print(f"Warning: failed to save comparison: {e}")
-        else:
-            print("No results to show.")
+    # Top-level driver logger to a separate file (avoid mixing with per-policy logs)
+    driver_log_dir = Path(args.result_dir or "./output")
+    driver_log_dir.mkdir(parents=True, exist_ok=True)
+    setup_logging(args.debug, log_file=str(driver_log_dir / "driver_debug.txt"))
+    cfg = {
+        'model_family': args.model_family, 'model_variant': args.model_variant, 'dtype': args.dtype,
+        'batch': args.batch, 'prefill_len': args.prefill_len, 'decode_len': args.decode_len,
+        'pim_config_path': args.pim_config_path, 'gb_config_path': args.gb_config_path, 'ramulator_config_path': args.ramulator_config_path,
+        'simulation_log_file': args.simulation_log_file, 'all_passes_json': args.all_passes_json, 'best_summary_json': args.best_summary_json,
+        'debug': bool(args.debug)
+    }
+    if args.decode_sample_stride is not None:
+        try: cfg['decode_sample_stride'] = int(args.decode_sample_stride)
+        except Exception: pass
+    if args.result_dir:
+        tag = f"{args.prefill_len}x{args.decode_len}"
+        d = Path(args.result_dir); d.mkdir(parents=True, exist_ok=True)
+        cfg['all_passes_json']  = str(d / f"all_passes_{tag}.json")
+        cfg['best_summary_json'] = str(d / f"best_summary_{tag}.json")
+        args.baseline_out = str(d / f"baseline_compare_{tag}.json")
+    # compare-only path: DON'T run pipeline
+    if args.compare_only:
+        evaluate_suite(cfg, algos=_parse_algos(args.algo), baselines=[b for b in (args.baselines or '').split(',') if b.strip()], result_dir=args.result_dir, debug=args.debug, combined_out=args.baseline_out)
         return
-
-    # Default: original pipeline (including weight-format tuning etc.)
+    
     run(cfg)
+
+    if args.once:
+        evaluate_suite(cfg, algos=_parse_algos(args.algo), baselines=[b for b in (args.baselines or '').split(',') if b.strip()], result_dir=args.result_dir, debug=args.debug, combined_out=args.baseline_out)
+        return
 
 if __name__ == '__main__':
     main()

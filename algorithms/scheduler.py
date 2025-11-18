@@ -817,11 +817,7 @@ class _SearchSchedulerMixin(HEFTScheduler):
     Each action is one of: 'npu' | 'pim' | 'cpu' | 'hybrid' (if both 'npu' and 'pim' allowed).
     """
     def _topo_order(self, g: TaskGraph) -> List[str]:
-        try:
-            return list(g.topological())
-        except Exception:
-            # fallback to HEFT order if needed
-            return self._upward_rank(g, phase="prefill")
+        return self._upward_rank(g, phase="prefill")
 
     def _allowed_actions(self, node: TaskNode) -> List[str]:
         acts = []
@@ -851,7 +847,32 @@ class _SearchSchedulerMixin(HEFTScheduler):
                 actions[t.node_id] = 'hybrid'
             else:
                 actions[t.node_id] = _dev_type(devs)
+            try:
+                self._heft_seed_device = {t.node_id: str(t.device) for t in base_sched}
+                self._heft_seed_actions = dict(actions)
+            except Exception:
+                pass
         return actions
+    
+
+    def _ensure_heft_seed(self, g: TaskGraph, phase: str) -> None:
+        """
+        Lazily compute and cache HEFT seed device/actions if not present.
+        """
+        if getattr(self, "_heft_seed_device", None) is not None and getattr(self, "_heft_seed_actions", None) is not None:
+            return
+        snap = self._snapshot()
+        try:
+            self.reset_state()
+            base_sched = super().schedule(g, phase=phase)
+            self._heft_seed_device = {t.node_id: str(t.device) for t in base_sched}
+            actions: Dict[str, str] = {}
+            for t in base_sched:
+                devs = str(t.device)
+                actions[t.node_id] = 'hybrid' if 'HYBRID' in devs else _dev_type(devs)
+            self._heft_seed_actions = actions
+        finally:
+            self._restore(snap)
 
     def _snapshot(self):
         return {
@@ -896,6 +917,18 @@ class _SearchSchedulerMixin(HEFTScheduler):
         Returns (makespan, schedule). This call resets internal state.
         """
         snap = self._snapshot() if dry_run else None
+        # Ensure we have a HEFT seed cached (device + actions) for preference hints
+        try:
+            self._ensure_heft_seed(g, phase)
+        except Exception:
+            pass
+        # If all actions are 'auto'/None, delegate to HEFT for an exact baseline
+        if all((actions.get(nid) in (None, 'auto')) for nid in g.nodes):
+            sched = super().schedule(g, phase=phase)
+            cost = self.makespan(sched)
+            if snap is not None:
+                self._restore(snap)
+            return cost, sched
         order = self._topo_order(g)
         ready_pred = {nid: set(g.predecessors(nid)) for nid in g.nodes}
         ready = [nid for nid in order if not ready_pred[nid]]
@@ -919,16 +952,24 @@ class _SearchSchedulerMixin(HEFTScheduler):
                         for dev in self.cluster.devices_by_type('pim'):
                             start, finish = self._earliest_finish_on_device(g, nid, dev, self.label, phase, commit=False)
                             cands.append( (finish, start, 'pim', dev) )
-                    if node.allowed.get('cpu', False):
-                        for dev in self.cluster.devices_by_type('cpu'):
-                            start, finish = self._earliest_finish_on_device(g, nid, dev, self.label, phase, commit=False)
-                            cands.append( (finish, start, 'cpu', dev) )
+                    # CPU candidates intentionally disabled to align with HEFT baseline
                     if ALLOW_HYBRID and node.allowed.get('npu', False) and node.allowed.get('pim', False):
                         hy = self._earliest_finish_hybrid(g, nid, phase, commit=False)
                         if hy is not None:
                             cands.append( (hy['finish'], min(hy['start_npu'], hy['start_pim']), 'hybrid', None) )
                     if not cands:
                         continue
+                    # Hybrid gating: keep 'hybrid' only if it clearly wins vs best single-device
+                    try:
+                        hy_idx = next((i for i, c in enumerate(cands) if c[2] == 'hybrid'), None)
+                        if hy_idx is not None:
+                            best_nonhy = min((c for c in cands if c[2] != 'hybrid'), default=None, key=lambda x: x[0])
+                            if best_nonhy is not None:
+                                hy_finish = cands[hy_idx][0]
+                                if hy_finish > best_nonhy[0] * 0.98:  # require >=2% better to keep hybrid
+                                    cands = [c for c in cands if c[2] != 'hybrid']
+                    except Exception:
+                        pass
                     f, s, mode, dev = min(cands, key=lambda x: x[0])
                 else:
                     mode = act
@@ -956,6 +997,18 @@ class _SearchSchedulerMixin(HEFTScheduler):
                         if best is None:
                             continue
                         f, s, dev = best[0], best[1], best[2]
+                        # Prefer HEFT's seed device if comparable (<=1% slower)
+                        try:
+                            seed_name = getattr(self, '_heft_seed_device', {}).get(nid)
+                            if seed_name and (_dev_type(seed_name) == mode):
+                                for dd in devs:
+                                    if dd.name == seed_name:
+                                        st0, ft0 = self._earliest_finish_on_device(g, nid, dd, self.label, phase, commit=False)
+                                        if (ft0 <= f * 1.01):
+                                            f, s, dev = ft0, st0, dd
+                                        break
+                        except Exception:
+                            pass
                 # choose best across ready set
                 cand = (f, s, nid, mode, dev)
                 if (best_tuple is None) or (cand[0] < best_tuple[0]):
@@ -1013,23 +1066,42 @@ class SimulatedAnnealingScheduler(_SearchSchedulerMixin):
     """
     SA over device-type assignment per node; schedule built with list scheduling.
     """
-    def __init__(self, *args, sa_iters: int = 200, T0: float = 1.0, alpha: float = 0.9, flip_prob: float = 0.15, **kwargs):
+    def __init__(self, *args, sa_iters: int = 200, T0: float = -1.0, alpha: float = 0.95, flip_prob: float = 0.05, sa_k: int = 2, critical_frac: float = 0.2, **kwargs):
         super().__init__(*args, **kwargs)
         self.sa_iters = int(sa_iters)
         self.T0 = float(T0)
         self.alpha = float(alpha)
         self.flip_prob = float(flip_prob)
+        self.sa_k = int(sa_k)
+        self.critical_frac = float(critical_frac)
 
-    def _neighbors(self, g: TaskGraph, base: Dict[str, str]) -> Dict[str, str]:
+    def _neighbors(self, g: TaskGraph, phase: str, base: Dict[str, str]) -> Dict[str, str]:
         out = dict(base)
-        for nid, node in g.nodes.items():
-            if random.random() < self.flip_prob:
+        # Guided small-step neighborhood: flip K nodes, biasing to critical (high rank_u) nodes
+        if getattr(self, 'sa_k', 0) and self.sa_k > 0:
+            order = self._upward_rank(g, phase=phase)
+            hot_n = max(1, int(max(0.05, self.critical_frac) * len(order)))
+            pool = order[:hot_n] or order
+            k = min(self.sa_k, len(pool))
+            flip_nodes = set(random.sample(pool, k))
+            for nid in flip_nodes:
+                node = g.nodes[nid]
                 acts = self._allowed_actions(node)
                 if not acts:
                     continue
                 old = out.get(nid, None)
                 choices = [a for a in acts if a != old] or acts
                 out[nid] = random.choice(choices)
+        else:
+            # fallback: independent flips by probability
+            for nid, node in g.nodes.items():
+                if random.random() < self.flip_prob:
+                    acts = self._allowed_actions(node)
+                    if not acts:
+                        continue
+                    old = out.get(nid, None)
+                    choices = [a for a in acts if a != old] or acts
+                    out[nid] = random.choice(choices)
         return out
 
     def schedule(self, g: TaskGraph, phase: str) -> List[ScheduledTask]:
@@ -1038,9 +1110,9 @@ class SimulatedAnnealingScheduler(_SearchSchedulerMixin):
         cur_cost, cur_sched = self._evaluate_action_map(g, phase, cur_map, dry_run=True)
         best_map, best_cost, best_sched = dict(cur_map), float(cur_cost), list(cur_sched)
 
-        T = self.T0
+        T = self.T0 if self.T0 > 0 else 0.05 * cur_cost
         for _ in range(max(1, self.sa_iters)):
-            nb = self._neighbors(g, cur_map)
+            nb = self._neighbors(g, phase, cur_map)
             nb_cost, nb_sched = self._evaluate_action_map(g, phase, nb, dry_run=True)
             delta = nb_cost - cur_cost
             accept = (delta < 0) or (random.random() < math.exp(-max(0.0, delta) / max(1e-9, T)))
@@ -1059,13 +1131,13 @@ class GeneticScheduler(_SearchSchedulerMixin):
     """
     Simple GA over device-type assignment per node.
     """
-    def __init__(self, *args, pop: int = 24, gens: int = 40, elite: int = 2, mut_prob: float = 0.08, cross_prob: float = 0.5, **kwargs):
+    def __init__(self, *args, pop: int = 100, gens: int = 100, elite: int = 10, mut_prob: float = 0.05, cross_prob: float = 0.5, **kwargs):
         super().__init__(*args, **kwargs)
-        self.pop = int(pop)
-        self.gens = int(gens)
-        self.elite = int(elite)
-        self.mut_prob = float(mut_prob)
-        self.cross_prob = float(cross_prob)
+        self.pop = int(pop) # population size
+        self.gens = int(gens) # generations
+        self.elite = int(elite) # number of elites to keep
+        self.mut_prob = float(mut_prob) # per-gene mutation probability
+        self.cross_prob = float(cross_prob) # per-gene crossover probability(from parent A)
 
     def _random_map(self, g: TaskGraph, phase: str) -> Dict[str, str]:
         m = {}
@@ -1087,10 +1159,16 @@ class GeneticScheduler(_SearchSchedulerMixin):
             out[nid] = cand
         return out
 
-    def _mutate(self, g: TaskGraph, m: Dict[str, str]) -> Dict[str, str]:
+    def _mutate(self, g: TaskGraph, phase: str, m: Dict[str, str]) -> Dict[str, str]:
         out = dict(m)
+        try:
+            order = self._upward_rank(g, phase=phase)
+            hot = set(order[:max(1, int(0.3 * len(order)))])
+        except Exception:
+            hot = set()
         for nid, node in g.nodes.items():
-            if random.random() < self.mut_prob:
+            p = self.mut_prob * (2.0 if nid in hot else 1.0)
+            if random.random() < p:
                 acts = self._allowed_actions(node)
                 out[nid] = random.choice(acts)
         return out
@@ -1105,7 +1183,27 @@ class GeneticScheduler(_SearchSchedulerMixin):
             return cost
 
         # initial population
-        pop_maps = [seed] + [self._random_map(g, phase) for _ in range(max(0, self.pop - 1))]
+        pop_maps = [seed]
+        # extra heuristic seeds to diversify population
+        def _pref_seed(pref: str) -> Dict[str, str]:
+            m = {}
+            for nid, node in g.nodes.items():
+                if node.allowed.get(pref, False):
+                    m[nid] = pref
+                else:
+                    m[nid] = 'auto'
+            return m
+        pop_maps += [_pref_seed('npu'), _pref_seed('pim')]
+        if ALLOW_HYBRID:
+            m_h = {}
+            for nid, node in g.nodes.items():
+                if node.allowed.get('npu', False) and node.allowed.get('pim', False):
+                    m_h[nid] = 'hybrid'
+                else:
+                    m_h[nid] = 'auto'
+            pop_maps.append(m_h)
+        # fill rest with randoms
+        pop_maps += [self._random_map(g, phase) for _ in range(max(0, self.pop - len(pop_maps)))]
         for m in pop_maps:
             pop.append( (eval_map(m), m) )
         pop.sort(key=lambda x: x[0])
@@ -1129,7 +1227,7 @@ class GeneticScheduler(_SearchSchedulerMixin):
                 p1 = select_one()
                 p2 = select_one()
                 child = self._crossover(g, p1, p2)
-                child = self._mutate(g, child)
+                child = self._mutate(g, phase, child)
                 score = eval_map(child)
                 new_pop.append( (score, child) )
 
@@ -1149,14 +1247,14 @@ class RLScheduler(_SearchSchedulerMixin):
     State = op kind; Action = device-type; Reward = negative task duration (finish - start).
     Trains for a small number of episodes, then schedules greedily.
     """
-    def __init__(self, *args, episodes: int = 30, epsilon_start: float = 0.3, epsilon_end: float = 0.05, alpha: float = 0.3, gamma: float = 0.9, **kwargs):
+    def __init__(self, *args, episodes: int = 120, epsilon_start: float = 0.5, epsilon_end: float = 0.05, alpha: float = 0.3, gamma: float = 0.9, **kwargs):
         super().__init__(*args, **kwargs)
-        self.episodes = int(episodes)
-        self.epsilon_start = float(epsilon_start)
-        self.epsilon_end = float(epsilon_end)
-        self.alpha = float(alpha)
-        self.gamma = float(gamma)
-        self.Q: Dict[Tuple[str, str], float] = {}
+        self.episodes = int(episodes) # training episodes
+        self.epsilon_start = float(epsilon_start) # initial exploration probability
+        self.epsilon_end = float(epsilon_end) # final exploration probability
+        self.alpha = float(alpha) # learning rate
+        self.gamma = float(gamma) # discount factor
+        self.Q: Dict[Tuple[str, str], float] = {} # (算子类型, 动作类型) -> 价值
 
     def _op_key(self, node: TaskNode) -> str:
         return str(node.attrs.get('op') or node.name)
@@ -1170,7 +1268,7 @@ class RLScheduler(_SearchSchedulerMixin):
     def _pick_action(self, node: TaskNode, eps: float) -> str:
         acts = self._allowed_actions(node)
         if (random.random() < eps) or all(self.Q.get((self._op_key(node), a), 0.0) == 0.0 for a in acts):
-            return random.choice(acts)
+            return random.choice(acts) #以概率 eps 进行随机探索，如果 Q 值全为 0 也随机选择
         # greedy by Q
         best_a, best_q = None, -1e30
         for a in acts:
@@ -1189,6 +1287,7 @@ class RLScheduler(_SearchSchedulerMixin):
             prev_op = None
             prev_a = None
             prev_q = None
+            g_end = 0.0
             for nid in order:
                 node = g.nodes[nid]
                 a = self._pick_action(node, eps)
@@ -1206,7 +1305,7 @@ class RLScheduler(_SearchSchedulerMixin):
                     continue
                 # choose the specific device with min finish
                 st, ft, d, a = min(cand_s_f, key=lambda x: x[1])
-                reward = -(ft - st)
+                reward = -(max(g_end, ft) - g_end)
                 # TD(0) update for previous state-action with max over current state's actions
                 if prev_op is not None and prev_a is not None:
                     key_prev = (prev_op, prev_a)
@@ -1219,9 +1318,11 @@ class RLScheduler(_SearchSchedulerMixin):
                     hy = self._earliest_finish_hybrid(g, nid, phase, commit=True)
                     self.avail[hy['npu'].name] = hy['finish']
                     self.avail[hy['pim'].name] = hy['finish']
+                    g_end = max(g_end, hy['finish'])
                 else:
                     st, ft = self._earliest_finish_on_device(g, nid, d, self.label, phase, commit=True)
                     self.avail[d.name] = ft
+                    g_end = max(g_end, ft)
                 prev_op = self._op_key(node)
                 prev_a = a
                 prev_q = self.Q.get((prev_op, prev_a), 0.0)
@@ -1257,7 +1358,7 @@ class AStarBeamScheduler(_SearchSchedulerMixin):
         scheduled: List[ScheduledTask]
         snapshot: Any  # opaque snapshot of internal state
 
-    def __init__(self, *args, beam: int = 5, max_expansions: int = 200, **kwargs):
+    def __init__(self, *args, beam: int = 24, max_expansions: int = 3000, **kwargs):
         super().__init__(*args, **kwargs)
         self.beam = int(beam)
         self.max_expansions = int(max_expansions)
@@ -1300,27 +1401,33 @@ class AStarBeamScheduler(_SearchSchedulerMixin):
         self.buffer.host_format = copy.deepcopy(snap['buffer_host_fmt'])
 
     def _heuristic_remaining(self, g: TaskGraph, phase: str, remaining: Iterable[str]) -> float:
-        # optimistic: take max of upward ranks among remaining nodes
-        ru_order = self._upward_rank(g, phase=phase)
-        rank_u = {nid: (len(ru_order)-i) for i, nid in enumerate(ru_order)}  # fallback monotonic priority if needed
-        try:
-            # better: recompute precise rank_u subset using helper already in HEFT
-            ru_sorted = self._upward_rank(g, phase=phase)
-            # Create a numeric map where earlier-in-ru_sorted means larger remaining work.
-            rank_u = {nid: (len(ru_sorted) - idx) for idx, nid in enumerate(ru_sorted)}
-        except Exception:
-            pass
+        """
+        Time-dimension lower bound: max of HEFT-style rank_u times over remaining nodes
+        where rank_u includes avg compute + avg comm to successor.
+        """
         if not remaining:
             return 0.0
-        # scale by average per-node cost proxy using cost model
-        avg_cost = 0.0
-        k = 0
-        for nid in remaining:
+        succ = {nid: list(g.successors(nid)) for nid in g.nodes}
+        # compute rank_u times in reverse topological order
+        try:
+            topo = list(reversed(g.topological()))
+        except Exception:
+            topo = list(reversed(self._upward_rank(g, phase=phase)))
+        rank_u: Dict[str, float] = {}
+        for nid in topo:
             node = g.nodes[nid]
-            avg_cost += self._avg_compute_cost(node, phase)
-            k += 1
-        avg_cost = (avg_cost / k) if k else 0.0
-        return max((rank_u.get(nid, 1) for nid in remaining)) * (avg_cost * 0.5)
+            if not succ[nid]:
+                rank_u[nid] = self._avg_compute_cost(node, phase=phase)
+            else:
+                comp = self._avg_compute_cost(node, phase=phase)
+                best = 0.0
+                for v in succ[nid]:
+                    comm = self._avg_comm_cost(node, g.nodes[v], phase=phase)
+                    path = comm + rank_u.get(v, 0.0)
+                    if path > best:
+                        best = path
+                rank_u[nid] = comp + best
+        return max((rank_u.get(nid, 0.0) for nid in remaining), default=0.0)
 
     def schedule(self, g: TaskGraph, phase: str) -> List[ScheduledTask]:
         order = self._topo_order(g)
