@@ -23,7 +23,7 @@ from config import HOST_NAME, DEVICE_PREFERRED_FORMAT, FORMAT_SIZE_MULTIPLIER, F
 import logging
 logger = logging.getLogger(__name__)
 attach_local_debug_filter(logger, lambda: False)
-DTYPE_BYTES: Dict[str, int] = {'fp32': 4, 'fp16': 2, 'bf16': 2, 'int8': 1, 'fp8': 1}
+DTYPE_BYTES: Dict[str, float] = {'fp32': 4, 'fp16': 2, 'bf16': 2, 'int8': 1, 'int4': 0.5}
 
 def _ensure_cent_on_path(start: Optional[Path]=None) -> Tuple[Path, Path]:
     here = (start or Path(__file__)).resolve()
@@ -1118,9 +1118,9 @@ class CostModel:
             out_elems = b * qh * active_tokens * hd
             return (to_bytes(attn_read + v_read), to_bytes(out_elems))
         if name in ('KV_READ', 'KV_WRITE'):
-            read = 2 * batch * kvh * hd * kv_len
-            write = 2 * batch * kvh * hd * active_tokens
-            return (read, write)
+            read = 2 * b * kvh * hd * kv_len
+            write = 2 * b * kvh * hd * active_tokens
+            return (to_bytes(read), to_bytes(write))
         if D > 0:
             elems = b * active_tokens * D
             return (to_bytes(elems), to_bytes(elems))
@@ -1191,6 +1191,27 @@ class CostModel:
             dims = _map_op_to_mmad_dims(op_key, dim, n_heads, n_kv_heads, ffn_dim, seq_len) if op_key else None
             if dims is not None:
                 M, N, K, reps = dims
+
+                # --- Phase-aware adjustment of MMAD mapping to avoid O(S^2) in decode ---
+                try:
+                    active_tokens = int(seq_len if phase == 'prefill' else 1)
+                    kv_len = int(attrs.get('kv_len', attrs.get('past_kv_len', seq_len)) or seq_len)
+                    qh_eff = int(attrs.get('q_heads', attrs.get('n_heads', attrs.get('n_head', n_heads))) or n_heads)
+                    hd_eff = int(attrs.get('head_dim', dim // max(1, qh_eff)) or 0)
+                    if op_key == 'score':
+                        # QK^T: for prefill N=S, for decode N=kv_len; reps = heads * active_tokens
+                        M, N, K = 1, (seq_len if phase == 'prefill' else kv_len), max(1, hd_eff)
+                        reps = max(1, qh_eff * active_tokens)
+                    elif op_key == 'output':
+                        # (Softmax@S) * V: for prefill K=S, for decode K=kv_len; reps = heads * active_tokens
+                        M, N, K = 1, max(1, hd_eff), (seq_len if phase == 'prefill' else kv_len)
+                        reps = max(1, qh_eff * active_tokens)
+                    elif op_key in ('q_proj','k_proj','v_proj','wo_proj','ffn_up','ffn_gate','ffn_down'):
+                        # Per-token linear layers should only repeat over active tokens in this pass.
+                        reps = max(1, active_tokens)
+                except Exception as _e:
+                    logger.debug(str(f'[NPU-MMAD] phase-aware adjust skipped due to: {_e}'))
+                # -------------------------------------------------------------------------
                 us = _predict_mmad_latency_us_from_json(M, N, K)
                 logger.debug(str(f'[NPU-MMAD] Inputs: M={M}, N={N}, K={K}, reps={reps}; us={us}'))
                 if us is not None:

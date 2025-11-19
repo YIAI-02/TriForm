@@ -13,10 +13,11 @@ import logging
 import math
 import random
 import copy
+from stats_recorder import StatsRecorder
 
+DEBUG_SCHEDULER = False
 logger = logging.getLogger(__name__)
 attach_local_debug_filter(logger, lambda: DEBUG_SCHEDULER)
-DEBUG_SCHEDULER = False
 
 @dataclass
 class ScheduledTask:
@@ -30,11 +31,12 @@ class CommManager:
     Maintain independent timelines per (src, dst) channel.
     """
 
-    def __init__(self, cluster: Cluster):
+    def __init__(self, cluster: Cluster, stats: StatsRecorder | None = None):
         self.cluster = cluster
         self.timeline_end: Dict[Tuple[str, str], float] = {}
+        self.stats = stats
 
-    def reserve(self, src: str, dst: str, bytes_amount: int, earliest: float, commit: bool=True) -> Tuple[float, float]:
+    def reserve(self, src: str, dst: str, bytes_amount: int, earliest: float, commit: bool=True, tag: str | None = None) -> Tuple[float, float]:
         key = (src, dst)
         bw = self.cluster.get_link_bw(src, dst) * 1000000000.0
         ch_end = self.timeline_end.get(key, 0.0)
@@ -48,6 +50,15 @@ class CommManager:
             )
             assert not ((src.startswith('NPU') and dst.startswith('PIM')) or
             (src.startswith('PIM') and dst.startswith('NPU'))), f'Forbidden direct NPU<->PIM transfer: {src}->{dst}'
+            if self.stats is not None:
+                try:
+                    self.stats.log_comm(
+                        src=src, dst=dst, bytes=bytes_amount,
+                        start=float(start), end=float(end),
+                        tag=tag or 'comm'
+                    )
+                except AttributeError:
+                    pass
         return (start, end)
 
 class HEFTScheduler:
@@ -67,7 +78,8 @@ class HEFTScheduler:
         self._act_refcnt: Dict[str, int] = {}              # node_id -> 还剩多少个下游消费者未消费
         self._max_util: float = 0.90                       # 最多只能占满 90%
         self._kv_reserved_per_dev: Dict[str, int] = {}     # PIM 每块设备为 KV 预留的容量（字节）
-        self.comm = CommManager(cluster)
+        self.stats = StatsRecorder()
+        self.comm = CommManager(cluster, stats=self.stats)
         self.avail: Dict[str, float] = {name: 0.0 for name in self.cluster.devices}
         self._node_finish_time: Dict[str, float] = {}
         self._node_placement: Dict[str, str] = {}
@@ -606,7 +618,7 @@ class HEFTScheduler:
             earliest = pred_finish + t_conv_src
 
         _, t_link_end = self.comm.reserve(pred_dev.name, host.name, size_nd,
-                                        earliest=earliest, commit=commit)
+                                        earliest=earliest, commit=commit, tag='act_move')
         t_done = t_link_end
         if commit:
             self._node_host_store_end[u] = t_done
@@ -630,6 +642,8 @@ class HEFTScheduler:
 
 
     def schedule(self, g: TaskGraph, phase: str) -> List[ScheduledTask]:
+        if getattr(self, 'stats', None):
+            self.stats.set_phase(phase)
         order = self._upward_rank(g, phase=phase)
         schedule: List[ScheduledTask] = []
         for nid in order:
@@ -677,6 +691,25 @@ class HEFTScheduler:
                 op_name = node.attrs.get('op') or node.name
                 self.mode_mem[op_name] = 'HYBRID'
                 self._after_commit_consume_predecessors(g, nid)
+                if getattr(self, 'stats', None):
+                    op_name = node.attrs.get('op') or node.name
+                    try:
+                        self.stats.log_op_device(
+                            nid=nid, op=op_name,
+                            device=npu.name, device_type=npu.type,
+                            start=float(hy['start_npu']),
+                            end=float(hy['npu_detail']['finish_compute']),
+                            mode='HYBRID'
+                        )
+                        self.stats.log_op_device(
+                            nid=nid, op=op_name,
+                            device=pim.name, device_type=pim.type,
+                            start=float(hy['start_pim']),
+                            end=float(hy['pim_detail']['finish_compute']),
+                            mode='HYBRID'
+                        )
+                    except Exception:
+                        pass
             else:
                 dev = chosen_data
                 start, finish = self._earliest_finish_on_device(g, nid, dev, self.label, phase, commit=True)
@@ -688,6 +721,17 @@ class HEFTScheduler:
                 op_name = node.attrs.get('op') or node.name
                 self.mode_mem[op_name] = chosen_mode
                 self._after_commit_consume_predecessors(g, nid)
+                if getattr(self, 'stats', None):
+                    op_name = node.attrs.get('op') or node.name
+                    try:
+                        self.stats.log_op_device(
+                            nid=nid, op=op_name,
+                            device=dev.name, device_type=dev.type,
+                            start=float(start), end=float(finish),
+                            mode=chosen_mode
+                        )
+                    except Exception:
+                        pass
             logger.debug(str(f'[Schedule] Node {nid} on {self._node_placement[nid]} from {start:.3f} to {finish:.3f} ({chosen_mode})'))
         return schedule
 
@@ -1106,6 +1150,8 @@ class SimulatedAnnealingScheduler(_SearchSchedulerMixin):
 
     def schedule(self, g: TaskGraph, phase: str) -> List[ScheduledTask]:
         # initial mapping from greedy HEFT
+        if getattr(self, 'stats', None):
+            self.stats.set_phase(phase)
         cur_map = self._make_initial_action_map(g, phase)
         cur_cost, cur_sched = self._evaluate_action_map(g, phase, cur_map, dry_run=True)
         best_map, best_cost, best_sched = dict(cur_map), float(cur_cost), list(cur_sched)
@@ -1175,6 +1221,8 @@ class GeneticScheduler(_SearchSchedulerMixin):
 
     def schedule(self, g: TaskGraph, phase: str) -> List[ScheduledTask]:
         # seed population: greedy + randoms
+        if getattr(self, 'stats', None):
+            self.stats.set_phase(phase)
         seed = self._make_initial_action_map(g, phase)
         pop: List[Tuple[float, Dict[str, str]]] = []
         # evaluate helper
@@ -1278,6 +1326,8 @@ class RLScheduler(_SearchSchedulerMixin):
         return best_a or random.choice(acts)
 
     def schedule(self, g: TaskGraph, phase: str) -> List[ScheduledTask]:
+        if getattr(self, 'stats', None):
+            self.stats.set_phase(phase)
         order = self._upward_rank(g, phase=phase)
         # training episodes
         base_snap = self._snapshot()
@@ -1430,6 +1480,8 @@ class AStarBeamScheduler(_SearchSchedulerMixin):
         return max((rank_u.get(nid, 0.0) for nid in remaining), default=0.0)
 
     def schedule(self, g: TaskGraph, phase: str) -> List[ScheduledTask]:
+        if getattr(self, 'stats', None):
+            self.stats.set_phase(phase)
         order = self._topo_order(g)
         init = AStarBeamScheduler._State(
             idx=0,

@@ -20,6 +20,20 @@ from task_graph import TaskGraph, TaskNode
 logger = logging.getLogger(__name__)
 attach_local_debug_filter(logger, lambda: True)
 
+# ---- path helper (unify result_dir naming incl. batch) ----
+def _build_result_dir(cfg: Dict, default_root: str = './output') -> Path:
+    """
+    Compose a result directory path that always includes batch:
+      <base>/<family>_<variant>_<dtype>_b<batch>
+    """
+    base   = cfg.get('result_dir') or default_root
+    family = cfg.get('model_family', 'unnamed')
+    variant= cfg.get('model_variant', '')
+    dtype  = cfg.get('dtype', 'fp16')
+    batch  = int(cfg.get('batch', 1))
+    return Path(base) / f"{family}_{variant}_{dtype}_b{batch}"
+
+
 def plan_memory_and_label(cfg: Dict, cluster: Cluster) -> PlanLabel:
     g, shape = build_graph(cfg)
     dtype_bytes = int(DTYPE_BYTES.get(cfg.get('dtype', 'fp16'), 2))
@@ -218,6 +232,9 @@ def _sa_make_neighbor_map(base_map: Dict[str, str], weight_ids: List[str], flip_
     return out
 
 def run(cfg: Dict):
+    result_dir = _build_result_dir(cfg, cfg.get('result_dir') or './output/weight_suggestions')
+    weight_format_path = result_dir / 'weight_storage_suggestion.json'
+
     cluster = demo_cluster()
     pim_config_path = Path(cfg['pim_config_path'])
     gb_config_path = Path(cfg['gb_config_path'])
@@ -288,16 +305,26 @@ def run(cfg: Dict):
                 chosen_total = total_time
                 chosen_prefill = prefill_time
                 chosen_decode = decode_time
+
+            # >>> dump per-op and per-link CSV stats for this pass
+            try:
+                ops_csv = Path(result_dir) / f"pass_{p:02d}_ops.csv"
+                comms_csv = Path(result_dir) / f"pass_{p:02d}_comms.csv"
+                getattr(sched, 'stats', None) and sched.stats.dump_csv(ops_csv, comms_csv)
+            except Exception:
+                pass
+            # <<< end stats dump
+
             if best_total is None or chosen_total < best_total:
                 best_total = chosen_total
                 best_map = dict(fmt_next)
                 best_pass = p
-            os.makedirs(os.path.dirname(WEIGHT_FORMAT_JSON_PATH), exist_ok=True)
-            with open(WEIGHT_FORMAT_JSON_PATH, 'w') as f:
+            os.makedirs(os.path.dirname(weight_format_path), exist_ok=True)
+            with open(weight_format_path, 'w') as f:
                 json.dump(fmt_next, f, indent=2, sort_keys=True)
-            logger.debug(str(f'[INFO] Accepted weight storage map saved: {WEIGHT_FORMAT_JSON_PATH}'))
+            logger.debug(str(f'[INFO] Accepted weight storage map saved: {weight_format_path}'))
             weight_stats = sched.export_weight_stats()
-            all_pass_records.append({'pass': p, 'times': {'prefill': float(prefill_time), 'decode': float(decode_time), 'total': float(total_time)}, 'schedules': {'prefill': prefill_sched_ser, 'decode_steps': decode_steps_ser}, 'formats': {'used_storage_map': dict(fmt_map or {}), 'suggested_storage_map': dict(fmt_suggestion or {}), 'suggestion_json_path': WEIGHT_FORMAT_JSON_PATH}, 'weights': weight_stats})
+            all_pass_records.append({'pass': p, 'times': {'prefill': float(prefill_time), 'decode': float(decode_time), 'total': float(total_time)}, 'schedules': {'prefill': prefill_sched_ser, 'decode_steps': decode_steps_ser}, 'formats': {'used_storage_map': dict(fmt_map or {}), 'suggested_storage_map': dict(fmt_suggestion or {}), 'suggestion_json_path': str(weight_format_path)}, 'weights': weight_stats})
             if prev_total is not None:
                 time_improve = prev_total - chosen_total
                 map_delta = mapping_diff_ratio(prev_map, fmt_next)
@@ -320,9 +347,9 @@ def run(cfg: Dict):
         logger.debug(str(f'Optimization Complete'))
         logger.debug(str(f"{'=' * 80}"))
         if best_map:
-            with open(WEIGHT_FORMAT_JSON_PATH, 'w') as f:
+            with open(weight_format_path, 'w') as f:
                 json.dump(best_map, f, indent=2, sort_keys=True)
-            logger.debug(str(f'[INFO] Best weight storage map (found at pass {best_pass}) saved to: {WEIGHT_FORMAT_JSON_PATH}'))
+            logger.debug(str(f'[INFO] Best weight storage map (found at pass {best_pass}) saved to: {weight_format_path}'))
         logger.debug(str(f'Best total time: {best_total:.6f}s (at pass {best_pass})'))
         logger.debug(str(f'Last accepted prefill(sim): {last_prefill:.6f}s'))
         logger.debug(str(f'Last accepted decode(sim):  {last_decode:.6f}s'))
@@ -556,100 +583,105 @@ def _decode_progressive(sched, graph: TaskGraph, *, prefill_len: int, decode_len
 
 
 def _eval_one_baseline(cfg: Dict, policy: str) -> Dict:
-
+    """
+    Run one baseline policy and return both timing and full schedules
+    (prefill schedule + sampled decode steps) so downstream visualization
+    matches the weight-suggestion style best_summary.json.
+    """
     reset_simulation_logger()
     cluster = demo_cluster()
     graph, shape = build_graph(cfg)
-    batch = int(cfg.get('batch', getattr(shape, 'batch', 1)))
     prefill_len = int(cfg.get('prefill_len', 128))
-    decode_len = int(cfg.get('decode_len', 32))
-    tag = f"{prefill_len}x{decode_len}"
-    base_dir = Path(cfg.get('best_summary_json', './output/best_pass_summary.json')).parent
+    decode_len  = int(cfg.get('decode_len', 32))
+    batch = int(cfg.get('batch', 1))
+
+    base_dir = Path(cfg['result_dir'])
     algo_dir = base_dir / f"algo_{policy}"
     algo_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        setup_logging(bool(cfg.get('debug', False)), log_file=str(algo_dir / f"debug_{tag}.txt"))
+        setup_logging(bool(cfg.get('debug', False)), log_file=str(algo_dir / f"debug.txt"))
     except Exception:
         pass
 
-    # Debug: baseline start
     logger = logging.getLogger(__name__)
     try:
-        _stride_for_log = int(cfg['decode_sample_stride'])
+        _stride_for_log = int(cfg.get('decode_sample_stride'))
     except Exception:
         try:
             from config import DEFAULT_CONFIG
             _stride_for_log = int(DEFAULT_CONFIG.get('decode_sample_stride', 16))
         except Exception:
             _stride_for_log = None
-    logger.debug(f"[Baseline] Start policy='{policy}' batch={batch} prefill_len={prefill_len} decode_len={decode_len} stride={_stride_for_log}")
+    
 
     model_dict = _make_shared_model_dict(
         dim=int(getattr(shape, 'dim', 128)),
         n_heads=int(getattr(shape, 'n_heads', 1)),
         n_kv_heads=int(getattr(shape, 'n_kv_heads', 1)),
         ffn_dim=int(getattr(shape, 'ffn_dim', 512)),
-        seqlen=prefill_len
+        seqlen=prefill_len,
     )
-
     cost = CostModel(
-        cluster,
+        cluster=cluster,
         dtype=cfg.get('dtype', 'fp16'),
         pim_config_path=Path(cfg.get('pim_config_path')),
         gb_config_path=Path(cfg.get('gb_config_path')),
         ramulator_config_path=Path(cfg.get('ramulator_config_path')),
-        simulation_log_file=algo_dir / f"pim_sim_{tag}.txt",
-        model_dict=model_dict
+        simulation_log_file=Path(cfg.get('simulation_log_file', './output/pim_simulation.txt')),
+        model_dict=model_dict,
     )
-    
-    # Start simulation logger for this baseline
-    cost.logger.start_simulation()
-    
     try:
-        label = plan_memory_and_label(cfg, cluster)
+        cost.logger.start_simulation()
+    except Exception:
+        pass
 
-        buffer_mgr = GlobalMemoryManager()
-        sched = HEFTScheduler(cluster, cost, label, batch=batch, seq_len=prefill_len, buffer=buffer_mgr)
+    # Apply policy to graphs
+    g_prefill = (_BASELINE_REGISTRY[policy](graph, phase='prefill') if policy in _BASELINE_REGISTRY else _apply_policy_on_graph(graph, policy, phase='prefill'))
+    g_decode  = (_BASELINE_REGISTRY[policy](graph, phase='decode')  if policy in _BASELINE_REGISTRY else _apply_policy_on_graph(graph, policy, phase='decode'))
 
-        # --- Prefill ---
-        g_prefill = (_BASELINE_REGISTRY[policy](graph, phase='prefill') if policy in _BASELINE_REGISTRY else _apply_policy_on_graph(graph, policy, phase='prefill'))
-        sched.reset_state()
-        logger.debug(f"[baseline:{policy}] prefill begin seq_len={prefill_len}")
-        t_prefill = _run_phase_once(sched, g_prefill, phase='prefill', seq_len=prefill_len)
-        logger.debug(f"[baseline:{policy}] prefill end time={float(t_prefill):.6f}s")
+    # Make scheduler
+    label = plan_memory_and_label(cfg, cluster)
+    buffer_mgr = GlobalMemoryManager()
+    sched = _make_scheduler('heft', cluster, cost, label, batch=batch, seq_len=prefill_len, buffer=buffer_mgr)
+    try:
+        sched.set_storage_format_map({})
+    except Exception:
+        pass
 
-        # --- Decode ---
-        g_decode = (_BASELINE_REGISTRY[policy](graph, phase='decode') if policy in _BASELINE_REGISTRY else _apply_policy_on_graph(graph, policy, phase='decode'))
-        t_decode = _decode_progressive(sched, g_decode, prefill_len=prefill_len, decode_len=decode_len, cfg=cfg, policy_name=policy)
+    # Prefill (full schedule)
+    t_prefill, prefill_sched_ser = simulate_prefill(sched, cfg, g_prefill)
 
-        logger.debug(f"[Baseline] Done policy='{policy}': Prefill={float(t_prefill):.6f}s Decode={float(t_decode):.6f}s Total={(float(t_prefill)+float(t_decode)):.6f}s")
-        try:
-            out_path = algo_dir / f"best_summary_{tag}.json"
-            with open(out_path, 'w', encoding='utf-8') as f:
-                json.dump({
-                    'policy': f"algo:{policy}",
-                    'config': {'batch': batch, 'prefill_len': prefill_len, 'decode_len': decode_len, 'dtype': cfg.get('dtype')},
-                    'times':  {'prefill': float(t_prefill), 'decode': float(t_decode), 'total': float(t_prefill + t_decode)}
-                }, f, ensure_ascii=False, indent=2)
-            logger.debug(f"[Baseline] Saved per-baseline summary to: {out_path}")
-        except Exception as e:
-            logger.warning(f"[Baseline] Failed to save per-baseline summary: {e}")
+    # Decode (sampled / full schedule depending on stride)
+    t_decode, decode_steps_ser = simulate_decode_progressive(sched, cfg, g_decode, prefill_end=t_prefill)
+    try:
+        ops_csv   = algo_dir / "ops.csv"
+        comms_csv = algo_dir / "comms.csv"
+        if getattr(sched, 'stats', None):
+            sched.stats.dump_csv(ops_csv, comms_csv)
+    except Exception as e:
+        logger.debug(f"[stats] CSV dump skipped: {e}")
 
-        return {
-            'policy': policy,
-            'prefill_time_s': float(t_prefill),
-            'decode_time_s': float(t_decode),
-            'total_time_s': float(t_prefill + t_decode),
-            'batch': batch,
-            'prefill_len': prefill_len,
-            'decode_len': decode_len,
-        }
-    finally:
-        # Clean up logger for this baseline
+    logger.debug(f"[Baseline] Done policy='{policy}': Prefill={float(t_prefill):.6f}s Decode={float(t_decode):.6f}s Total={float(t_prefill + t_decode):.6f}s")
+
+    try:
         cost.logger.end_simulation()
         cost.logger.close()
+    except Exception:
+        pass
 
+    # Return a rich result; the caller (evaluate_suite) will persist via _save_best_json
+    return {
+        'policy': policy,
+        'prefill_time_s': float(t_prefill),
+        'decode_time_s': float(t_decode),
+        'total_time_s': float(t_prefill + t_decode),
+        'batch': batch,
+        'prefill_len': prefill_len,
+        'decode_len': decode_len,
+        'prefill_schedule': prefill_sched_ser,
+        'decode_steps': decode_steps_ser,
+    }
 
 def _run_strategy_once(strategy: str, cfg: Dict, *, shared_graph=None, shared_shape=None) -> Dict:
     """Build env, run one scheduling strategy (prefill + progressive decode) and return timing."""
@@ -702,6 +734,17 @@ def _run_strategy_once(strategy: str, cfg: Dict, *, shared_graph=None, shared_sh
     prefill_time, _prefill = simulate_prefill(sched, cfg, graph)
     decode_time, _decode = simulate_decode_progressive(sched, cfg, graph, prefill_end=prefill_time)
     total_time = float(prefill_time + decode_time)
+    # ---- dump CSV stats for this algo run ----
+    try:
+        result_dir = Path(cfg.get('result_dir', './output/strategy_results'))
+        result_dir.mkdir(parents=True, exist_ok=True)
+        tag = f"{int(cfg.get('prefill_len', 0))}x{int(cfg.get('decode_len', 0))}"
+        ops_csv   = result_dir / f"{tag}_ops.csv"
+        comms_csv = result_dir / f"{tag}_comms.csv"
+        if getattr(sched, 'stats', None):
+            sched.stats.dump_csv(ops_csv, comms_csv)
+    except Exception as e:
+        logger.debug(f"[stats] CSV dump skipped: {e}")
 
     logger.debug(f"[Strategy] Finished '{strategy}': Prefill={prefill_time:.6f}s, Decode={decode_time:.6f}s, Total={total_time:.6f}s")
 
@@ -765,7 +808,7 @@ def evaluate_suite(cfg: Dict, *, algos: List[str], baselines: List[str], result_
         cfg_b = dict(cfg)
         cfg_b['simulation_log_file'] = str(algo_dir / f"pim_sim_{tag}.txt")
         r = _eval_one_baseline(cfg_b, b)
-        _save_best_json(algo_dir, tag, policy=f"algo:{b}", times=r, cfg=cfg_b)
+        _save_best_json(algo_dir, tag, policy=f"algo:{b}", times=r, cfg=cfg_b, prefill_schedule=r.get('prefill_schedule'), decode_steps=r.get('decode_steps'))
         results.append({'policy': f"algo:{b}", **{k: r[k] for k in ('prefill_time_s','decode_time_s','total_time_s')}})
     # --- algorithms ---
     alist = []
@@ -785,6 +828,7 @@ def evaluate_suite(cfg: Dict, *, algos: List[str], baselines: List[str], result_
             
         cfg_a = dict(cfg)
         cfg_a['simulation_log_file'] = str(algo_dir / f"pim_sim_{tag}.txt")
+        cfg_a['result_dir'] = str(algo_dir)
         res = _run_strategy_once(a, cfg_a, shared_graph=shared_graph, shared_shape=shared_shape)
         _save_best_json(algo_dir, tag, policy=res.get('policy', f"algo:{a}"), times=res, prefill_schedule=res.get('prefill_schedule'), decode_steps=res.get('decode_steps'), cfg=cfg_a)
         results.append({'policy': res['policy'], **{k: res[k] for k in ('prefill_time_s','decode_time_s','total_time_s')}})
@@ -802,62 +846,132 @@ def evaluate_suite(cfg: Dict, *, algos: List[str], baselines: List[str], result_
         print(f"{r['policy']:<22} {r['prefill_time_s']:>12.4f} {r['decode_time_s']:>12.4f} {r['total_time_s']:>12.4f}")
 
 def parse_args():
-    p = argparse.ArgumentParser()
-    p.add_argument('--model_family', type=str, default=DEFAULT_CONFIG['model_family'])
-    p.add_argument('--model_variant', type=str, default=DEFAULT_CONFIG['model_variant'])
-    p.add_argument('--dtype', type=str, default=DEFAULT_CONFIG['dtype'])
-    p.add_argument('--batch', type=int, default=DEFAULT_CONFIG['batch'])
-    p.add_argument('--prefill_len', type=int, default=DEFAULT_CONFIG['prefill_len'])
-    p.add_argument('--decode_len', type=int, default=DEFAULT_CONFIG['decode_len'])
-    p.add_argument('--pim_config_path', type=str, default=DEFAULT_CONFIG['pim_config_path'])
-    p.add_argument('--gb_config_path', type=str, default=DEFAULT_CONFIG['gb_config_path'])
-    p.add_argument('--ramulator_config_path', type=str, default=DEFAULT_CONFIG['ramulator_config_path'])
-    p.add_argument('--simulation_log_file', type=str, default='./output/pim_simulation.txt')
-    p.add_argument('--all_passes_json', type=str, default=ALL_PASSES_RESULT_PATH)
-    p.add_argument('--best_summary_json', type=str, default=BEST_PASS_SUMMARY_PATH)
-    p.add_argument('--debug', action='store_true')
-    p.add_argument('--baselines', type=str, default='pd,weights_on_pim,attn_on_pim')
-    p.add_argument('--once', action='store_true')
-    p.add_argument('--compare_only', action='store_true')
-    p.add_argument('--baseline_out', type=str, default='./output/baseline_compare.json')
-    p.add_argument('--result_dir', type=str, default=None)
-    p.add_argument('--algo', type=str, default='heft')
-    p.add_argument('--decode_sample_stride', type=int, default=None)
-    return p.parse_args()
+    parser = argparse.ArgumentParser()
+    sub = parser.add_subparsers(dest='mode')
+
+    # evaluate mode: run all algos + baselines
+    # evaluate mode: run all algos + baselines
+    sp_eval = sub.add_parser('evaluate', help='Run selected algos and baselines; outputs go under result_dir.')
+    sp_eval.add_argument('--config', required=True, type=str, help='Path to a JSON config with run parameters.')
+    sp_eval.add_argument('--debug', action='store_true', help='Enable verbose logging.')
+    sp_eval.add_argument('--model_family', type=str)
+    sp_eval.add_argument('--model_variant', type=str)
+    sp_eval.add_argument('--dtype', type=str)
+    sp_eval.add_argument('--batch', type=int)
+    sp_eval.add_argument('--prefill_len', type=int)
+    sp_eval.add_argument('--decode_len', type=int)
+    sp_eval.add_argument('--decode_sample_stride', type=int)
+    sp_eval.add_argument('--result_dir', type=str)
+    sp_eval.add_argument('--algo', type=str,
+                         help='Algo list, e.g. "heft,sa,ga" or single name')
+    sp_eval.add_argument('--baselines', type=str,
+                         help='Baseline list, e.g. "pd,weights_on_pim,attn_on_pim"')
+
+    # weight-suggest mode: multi-pass SA to suggest weight formats
+    sp_ws = sub.add_parser('weight-suggest', help='Run multi-pass SA to suggest weight formats; no baselines.')
+    sp_ws.add_argument('--config', required=True, type=str, help='Path to a JSON config with run parameters.')
+    sp_ws.add_argument('--debug', action='store_true', help='Enable verbose logging.')
+    sp_ws.add_argument('--model_family', type=str)
+    sp_ws.add_argument('--model_variant', type=str)
+    sp_ws.add_argument('--dtype', type=str)
+    sp_ws.add_argument('--batch', type=int)
+    sp_ws.add_argument('--prefill_len', type=int)
+    sp_ws.add_argument('--decode_len', type=int)
+    sp_ws.add_argument('--decode_sample_stride', type=int)
+    sp_ws.add_argument('--result_dir', type=str)
+    sp_ws.add_argument('--algo', type=str,
+                       help='Algo list, e.g. "heft,sa,ga"')
+
+    args, unknown = parser.parse_known_args()
+    if args.mode is None:
+        parser.error("Please specify a mode: 'eval' or 'weight-suggest'.")
+    
+    return args
+
+
+def _normalize_list_field(val) -> list[str]:
+    if isinstance(val, list):
+        return [str(t).strip() for t in val if str(t).strip()]
+    if isinstance(val, str):
+        return [t for t in val.replace(',', ' ').split() if t]
+    return []
+
+def _load_cfg_from_json(path: str) -> Dict:
+    with open(path, 'r', encoding='utf-8') as f:
+        raw = json.load(f)
+    cfg = dict(DEFAULT_CONFIG)
+    if isinstance(raw, dict):
+        cfg.update(raw)
+    return cfg
+
 
 def main():
     args = parse_args()
 
-    # Top-level driver logger to a separate file (avoid mixing with per-policy logs)
-    driver_log_dir = Path(args.result_dir or "./output")
-    driver_log_dir.mkdir(parents=True, exist_ok=True)
-    setup_logging(args.debug, log_file=str(driver_log_dir / "driver_debug.txt"))
-    cfg = {
-        'model_family': args.model_family, 'model_variant': args.model_variant, 'dtype': args.dtype,
-        'batch': args.batch, 'prefill_len': args.prefill_len, 'decode_len': args.decode_len,
-        'pim_config_path': args.pim_config_path, 'gb_config_path': args.gb_config_path, 'ramulator_config_path': args.ramulator_config_path,
-        'simulation_log_file': args.simulation_log_file, 'all_passes_json': args.all_passes_json, 'best_summary_json': args.best_summary_json,
-        'debug': bool(args.debug)
-    }
-    if args.decode_sample_stride is not None:
-        try: cfg['decode_sample_stride'] = int(args.decode_sample_stride)
-        except Exception: pass
-    if args.result_dir:
-        tag = f"{args.prefill_len}x{args.decode_len}"
-        d = Path(args.result_dir); d.mkdir(parents=True, exist_ok=True)
-        cfg['all_passes_json']  = str(d / f"all_passes_{tag}.json")
-        cfg['best_summary_json'] = str(d / f"best_summary_{tag}.json")
-        args.baseline_out = str(d / f"baseline_compare_{tag}.json")
-    # compare-only path: DON'T run pipeline
-    if args.compare_only:
-        evaluate_suite(cfg, algos=_parse_algos(args.algo), baselines=[b for b in (args.baselines or '').split(',') if b.strip()], result_dir=args.result_dir, debug=args.debug, combined_out=args.baseline_out)
-        return
-    
-    run(cfg)
+    if getattr(args, 'mode', None) in ('evaluate', 'weight-suggest'):
+        cfg = _load_cfg_from_json(getattr(args, 'config'))
+        cfg['debug'] = bool(getattr(args, 'debug', False)) or cfg.get('debug', False)
+        
+        override_fields = [
+            'model_family',
+            'model_variant',
+            'dtype',
+            'batch',
+            'prefill_len',
+            'decode_len',
+            'decode_sample_stride',
+            'result_dir',
+            'algo',
+            'baselines',
+        ]
+        for key in override_fields:
+            val = getattr(args, key, None)
+            if val is not None:
+                cfg[key] = val
 
-    if args.once:
-        evaluate_suite(cfg, algos=_parse_algos(args.algo), baselines=[b for b in (args.baselines or '').split(',') if b.strip()], result_dir=args.result_dir, debug=args.debug, combined_out=args.baseline_out)
-        return
+        # result_dir always encodes batch: <base>/<family>_<variant>_<dtype>_b<batch>
+        result_dir = str(_build_result_dir(cfg, cfg.get('result_dir') or './output'))
+        cfg['result_dir'] = result_dir
+        
+        tag = f"{int(cfg.get('prefill_len', 0))}x{int(cfg.get('decode_len', 0))}"
+        Path(result_dir).mkdir(parents=True, exist_ok=True)
+
+        # Top-level driver logger
+        setup_logging(cfg['debug'], log_file=str(Path(result_dir) / "driver_debug.txt"))
+
+        # Normalize stride if provided
+        if cfg.get('decode_sample_stride', None) is not None:
+            try:
+                cfg['decode_sample_stride'] = int(cfg['decode_sample_stride'])
+            except Exception:
+                pass
+
+        if args.mode == 'weight-suggest':
+            # Choose a single algo label for bookkeeping (run() itself performs SA-based tuning).
+            algo_field = cfg.get('algo', 'heft')
+            if isinstance(algo_field, list):
+                algo_chosen = str(algo_field[0]) if algo_field else 'heft'
+            else:
+                parts = [t for t in str(algo_field).replace(',', ' ').split() if t]
+                algo_chosen = parts[0] if parts else 'heft'
+
+            # Output files are derived from result_dir + tag
+            cfg['all_passes_json'] = str(Path(result_dir) / f"all_passes_{tag}.json")
+            cfg['best_summary_json'] = str(Path(result_dir) / f"best_summary_{tag}.json")
+
+            print(f"[weight-suggest] algo={algo_chosen} result_dir={result_dir} tag={tag}")
+            run(cfg)
+            return
+
+        if args.mode == 'evaluate':
+            # Build lists from JSON (support comma-separated string or list)
+            algos = _normalize_list_field(cfg.get('algo', 'heft'))
+            baselines = _normalize_list_field(cfg.get('baselines', 'pd,weights_on_pim,attn_on_pim'))
+
+            baseline_out = cfg.get('baseline_out') or str(Path(result_dir) / f"baseline_compare_{tag}.json")
+            print(f"[evaluate] algos={algos} baselines={baselines} result_dir={result_dir} tag={tag}")
+            evaluate_suite(cfg, algos=algos, baselines=baselines, result_dir=result_dir, debug=cfg['debug'], combined_out=baseline_out)
+            return
 
 if __name__ == '__main__':
     main()

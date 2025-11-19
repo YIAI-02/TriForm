@@ -269,11 +269,6 @@ class PaLMDef:
             add_palm_block(g, l, shape, dtype_bytes)
         return g
     name = "palm"
-    def build(self, shape: ModelShape, phase: str, dtype_bytes: int) -> TaskGraph:
-        g = TaskGraph()
-        for l in range(shape.layer_num):
-            add_palm_block(g, l, shape, phase, dtype_bytes)
-        return g
 
 def make_model_def(family: str):
     f = family.lower()

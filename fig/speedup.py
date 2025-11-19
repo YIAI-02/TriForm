@@ -1,15 +1,16 @@
 '''
 python speedup.py --grid-best \
-  --dir ../algorithms/output/len_sweep \
-  --algos pd,attn_on_pim,weights_on_pim,neupims,facil,attacc,ianus,heft,ga,astar,rl,sa\
+  --root ../algorithms/output/len_sweep/llama_7b_fp16_b32 \
+  --algos pd,attn_on_pim,weights_on_pim,facil,attacc,ianus,neupims,heft \
   --ncols 2 --sharey \
-  --outfile ./prefill_decode_speedup_grid.pdf
+  --outfile ./prefill_decode_speedup_grid_heft_llama_7b_fp16_b32.pdf
 
-python speedup.py --grid-best \
-    --dir ../algorithms/output/len_sweep \
-    --algos pd,attn_on_pim,weights_on_pim,facil,attacc,ianus,neupims,heft\
-    --ncols 2 --sharey \
-    --outfile ./prefill_decode_speedup_grid_heft.pdf
+  python speedup.py --grid-best \
+  --root ../algorithms/output/len_sweep/palm_8b_INT8_b4 \
+  --algos pd,attn_on_pim,weights_on_pim,facil,attacc,ianus,neupims,heft \
+  --ncols 2 --sharey \
+  --outfile ./prefill_decode_speedup_grid_heft_palm_8b_INT8_b4.pdf
+
 '''
 import json
 import numpy as np
@@ -151,7 +152,7 @@ def main():
             fig.legend((lp, ld, le), ('Prefill','Decode','End-to-End'),
                        ncol=3, loc='upper center', frameon=True, framealpha=0.9)
         plt.tight_layout(rect=[0,0,1,0.95])
-        out = Path(args.outfile) if args.outfile else (root / 'prefill_decode_speedup_grid_from_best.pdf')
+        out = Path(args.outfile) if args.outfile else (root / 'prefill_decode_speedup_grid_from_best_llama_7b_fp16_b32.pdf')
         out.parent.mkdir(parents=True, exist_ok=True)
         plt.savefig(out, dpi=220, bbox_inches='tight')
         print(f"Saved grid(best) to: {out}")
