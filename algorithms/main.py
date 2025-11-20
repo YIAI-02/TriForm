@@ -33,6 +33,26 @@ def _build_result_dir(cfg: Dict, default_root: str = './output') -> Path:
     batch  = int(cfg.get('batch', 1))
     return Path(base) / f"{family}_{variant}_{dtype}_b{batch}"
 
+def _build_tag(cfg: dict) -> str:
+    """Build a safe tag for output files: SxT + optional stride if provided."""
+    try:
+        S = int(cfg.get('prefill_len', 0) or 0)
+    except Exception:
+        S = 0
+    try:
+        T = int(cfg.get('decode_len', 0) or 0)
+    except Exception:
+        T = 0
+    parts = [f"{S}x{T}"]
+    st = cfg.get('decode_sample_stride', None)
+    try:
+        if st is not None:
+            stv = int(st)
+            if stv > 0:
+                parts.append(f"st{stv}")
+    except Exception:
+        pass
+    return "_".join(parts)
 
 def plan_memory_and_label(cfg: Dict, cluster: Cluster) -> PlanLabel:
     g, shape = build_graph(cfg)
@@ -232,8 +252,9 @@ def _sa_make_neighbor_map(base_map: Dict[str, str], weight_ids: List[str], flip_
     return out
 
 def run(cfg: Dict):
-    result_dir = _build_result_dir(cfg, cfg.get('result_dir') or './output/weight_suggestions')
-    weight_format_path = result_dir / 'weight_storage_suggestion.json'
+    result_dir = Path(cfg.get('result_dir') or _build_result_dir(cfg, './output/weight_suggestions'))
+    result_dir.mkdir(parents=True, exist_ok=True)
+    weight_format_path = Path(cfg.get('weight_format_json') or (result_dir / 'weight_storage_suggestion.json'))
 
     cluster = demo_cluster()
     pim_config_path = Path(cfg['pim_config_path'])
@@ -243,7 +264,8 @@ def run(cfg: Dict):
     batch = int(cfg.get('batch', 1))
     graph, shape = build_graph(cfg)
     model_dict = _make_shared_model_dict(dim=int(getattr(shape, 'dim', 128)), n_heads=int(getattr(shape, 'n_heads', 1)), n_kv_heads=int(getattr(shape, 'n_kv_heads', 1)), ffn_dim=int(getattr(shape, 'ffn_dim', 512)), seqlen=prefill_len)
-    cost = CostModel(cluster, dtype=cfg.get('dtype', 'fp16'), pim_config_path=pim_config_path, gb_config_path=gb_config_path, ramulator_config_path=ramulator_config_path,  simulation_log_file='./output/pim_simulation.txt', debug_traces=False, model_dict=model_dict)
+    sim_log_file = cfg.get('simulation_log_file', str(result_dir / 'pim_simulation.txt'))
+    cost = CostModel(cluster, dtype=cfg.get('dtype', 'fp16'), pim_config_path=pim_config_path, gb_config_path=gb_config_path, ramulator_config_path=ramulator_config_path,  simulation_log_file=sim_log_file, debug_traces=False, model_dict=model_dict)
     cost.logger.start_simulation()
     try:
         label = plan_memory_and_label(cfg, cluster)
@@ -879,8 +901,10 @@ def parse_args():
     sp_ws.add_argument('--decode_len', type=int)
     sp_ws.add_argument('--decode_sample_stride', type=int)
     sp_ws.add_argument('--result_dir', type=str)
-    sp_ws.add_argument('--algo', type=str,
-                       help='Algo list, e.g. "heft,sa,ga"')
+    sp_ws.add_argument('--algo', type=str,help='Algo list, e.g. "heft,sa,ga"')
+    sp_ws.add_argument('--all_passes_json', type=str, help='Override path for all passes JSON.')
+    sp_ws.add_argument('--best_summary_json', type=str, help='Override path for best pass summary JSON.')
+    sp_ws.add_argument('--weight_format_json', type=str, help='Override path for accepted weight format JSON.')
 
     args, unknown = parser.parse_known_args()
     if args.mode is None:
@@ -923,6 +947,9 @@ def main():
             'result_dir',
             'algo',
             'baselines',
+            'all_passes_json',
+            'best_summary_json',
+            'weight_format_json',
         ]
         for key in override_fields:
             val = getattr(args, key, None)
@@ -956,10 +983,22 @@ def main():
                 algo_chosen = parts[0] if parts else 'heft'
 
             # Output files are derived from result_dir + tag
-            cfg['all_passes_json'] = str(Path(result_dir) / f"all_passes_{tag}.json")
-            cfg['best_summary_json'] = str(Path(result_dir) / f"best_summary_{tag}.json")
-
-            print(f"[weight-suggest] algo={algo_chosen} result_dir={result_dir} tag={tag}")
+            tag = _build_tag(cfg)
+            if isinstance(cfg.get('tag'), str) and cfg['tag'].strip():
+                tag = f"{tag}_{cfg['tag'].strip()}"
+            
+            # Derive per-run file paths (can be overridden by CLI)
+            if not cfg.get('all_passes_json'):
+                cfg['all_passes_json'] = str(Path(result_dir) / f"all_passes_{tag}.json")
+            if not cfg.get('best_summary_json'):
+                cfg['best_summary_json'] = str(Path(result_dir) / f"best_summary_{tag}.json")
+            if not cfg.get('weight_format_json'):
+                cfg['weight_format_json'] = str(Path(result_dir) / f"weight_storage_suggestion_{tag}.json")
+            
+            # Put simulation log inside the same result_dir and tag to avoid overwrite
+            cfg['simulation_log_file'] = str(Path(result_dir) / f"pim_sim_{tag}.txt")
+            
+            print(f"[weight-suggest] result_dir={result_dir} tag={tag}")
             run(cfg)
             return
 
