@@ -7,14 +7,13 @@
 #   "palm:8b 62b 540b"
 # )
 
-MODEL_FAMILY_VARIANTS=(
-  "palm:8b"
-)
-
-
 # MODEL_FAMILY_VARIANTS=(
-#   "llama:7b"
+#   "palm:8b"
 # )
+
+MODEL_FAMILY_VARIANTS=(
+  "llama:7b"
+)
 
 PREFILLS=(128 1024)
 DECODES=(128 1024)
@@ -26,7 +25,7 @@ STRIDE=16
 DTYPE="INT8"
 BATCH=1
 CONFIG_FILE="./examples/evaluate_len_sweep_config.json"
-BASE_OUTPUT_DIR="./output/len_sweep"
+BASE_OUTPUT_DIR="./output/baseline_sweep_kv_cache_v2_pcie_64gb"
 
 echo "Starting model evaluation sweep..."
 echo "===================================="

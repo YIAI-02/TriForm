@@ -73,21 +73,29 @@ def plan_memory_and_label(cfg: Dict, cluster: Cluster) -> PlanLabel:
     pim_bytes = sum(int(d.mem_capacity_GB * (1024**3)) for d in cluster.devices_by_type('pim'))
     if pim_bytes < KV_total_bytes:
         label = PlanLabel(
-            pim_mode='small', kv_in_pim=False,
-            kv_total_bytes=0,
-            pim_weight_capacity_bytes=0
+            pim_mode='small',
+            kv_in_pim=False,
+            kv_total_bytes=int(KV_total_bytes),
+            pim_weight_capacity_bytes=0,
+            kv_home='host',
         )
     elif pim_bytes >= KV_total_bytes + FC_total_bytes:
+        # PIM can hold full KV cache and all FC weights.
         label = PlanLabel(
-            pim_mode='large', kv_in_pim=True,
+            pim_mode='large',
+            kv_in_pim=True,
             kv_total_bytes=int(KV_total_bytes),
-            pim_weight_capacity_bytes=int(PIM_WEIGHT_CAPACITY_FACTOR * max(0, pim_bytes - KV_total_bytes))
+            pim_weight_capacity_bytes=int(PIM_WEIGHT_CAPACITY_FACTOR * max(0, pim_bytes - KV_total_bytes)),
+            kv_home='pim',
         )
     else:
+        # PIM can hold full KV cache but not all FC weights.
         label = PlanLabel(
-            pim_mode='medium', kv_in_pim=True,
+            pim_mode='medium',
+            kv_in_pim=True,
             kv_total_bytes=int(KV_total_bytes),
-            pim_weight_capacity_bytes=int(PIM_WEIGHT_CAPACITY_FACTOR * max(0, pim_bytes - KV_total_bytes))
+            pim_weight_capacity_bytes=int(PIM_WEIGHT_CAPACITY_FACTOR * max(0, pim_bytes - KV_total_bytes)),
+            kv_home='pim',
         )
     return label
 
@@ -180,25 +188,6 @@ def simulate_decode_progressive(sched: HEFTScheduler, cfg: Dict, graph: TaskGrap
             last_sample_t = t
             steps_serialized.append({'t': t, 'seq_len': cur_len, 'step_time': float(step_time), 'estimated': False, 'schedule': _serialize_schedule(dec_sched, phase='decode', token_idx=t)})
     return (float(global_end - prefill_end), steps_serialized)
-
-def _parse_algos(raw: str) -> list[str]:
-    """
-    Parse comma/space separated algo names into a unique, ordered list:
-    e.g. "heft,sa, rl ,ga,astar" -> ["heft","sa","rl","ga","astar"]
-    """
-    raw = (raw or 'heft')
-    parts = []
-    for token in raw.replace(',', ' ').split():
-        t = token.strip().lower()
-        if t:
-            parts.append(t)
-    # de-duplicate but keep order
-    seen = set()
-    uniq = []
-    for t in parts:
-        if t not in seen:
-            uniq.append(t); seen.add(t)
-    return uniq
 
 def _make_scheduler(name: str, cluster: Cluster, cost: CostModel, label: PlanLabel, batch: int, seq_len: int, buffer: GlobalMemoryManager):
     from config import (SCHED_SA_ITERS, SCHED_SA_T0, SCHED_SA_ALPHA, SCHED_SA_FLIP_PROB,
@@ -469,6 +458,8 @@ def _apply_policy_on_graph(g: TaskGraph, policy: str, *, phase: str) -> TaskGrap
 from typing import Callable
 
 _BASELINE_REGISTRY: Dict[str, Callable[[TaskGraph], TaskGraph]] = {}
+PD_BASELINES = {'pd','ianus','neupims','attacc','facil',}
+
 
 def register_baseline(name: str):
     name = (name or "").strip().lower()
@@ -488,7 +479,11 @@ def _arith_intensity(n: TaskNode) -> float:
 def _is_kv_rw(n: TaskNode) -> bool:
     nm = (n.name or '').lower()
     op = str(getattr(n, 'attrs', {}).get('op') or '').lower()
-    return any(k in nm or k in op for k in ('kv_read','kv_write','k_cache','v_cache'))
+    return any(k in nm or k in op for k in (
+        'kv_read', 'kv_write',
+        'k_read', 'v_read', 'k_write', 'v_write',
+        'k_cache', 'v_cache',
+    ))
 
 def _is_gemv_like(n: TaskNode, *, phase: str) -> bool:
     op = str(getattr(n, 'attrs', {}).get('op') or n.name or '').upper()
@@ -567,43 +562,6 @@ def _baseline_facil(g: TaskGraph, *, phase: str) -> TaskGraph:
     return g2
 
 
-def _run_phase_once(sched, graph: TaskGraph, *, phase: str, seq_len: int) -> float:
-    sched.set_seq_len(seq_len)
-    schedule = sched.schedule(graph, phase=phase)
-    return sched.makespan(schedule)
-
-def _decode_progressive(sched, graph: TaskGraph, *, prefill_len: int, decode_len: int, cfg=None, policy_name: str = 'baseline') -> float:
-    logger = logging.getLogger(__name__)
-   
-    try:
-        from config import DEFAULT_CONFIG
-        default_stride = int(DEFAULT_CONFIG.get('decode_sample_stride', 16))
-    except Exception:
-        default_stride = 32
-    stride = default_stride
-
-    if stride <= 1:
-        total = 0.0
-        for t in range(decode_len):
-            cur_len = prefill_len + t
-            sched.reset_state()
-            step = _run_phase_once(sched, graph, phase='decode', seq_len=cur_len)
-            total += float(step)
-        return float(total)
-
-    total = 0.0
-    D = int(decode_len); P = int(prefill_len)
-    for t0 in range(0, D, stride):
-        cur_len = P + t0
-        blk = min(stride, D - t0)
-        sched.reset_state()
-        step = _run_phase_once(sched, graph, phase='decode', seq_len=cur_len)
-        add  = float(step) * float(blk)
-        total += add
-    logger.debug(f"[baseline:{policy_name}] decode done (sampled stride={stride}). total={float(total):.6f}s")
-    return float(total)
-
-
 def _eval_one_baseline(cfg: Dict, policy: str) -> Dict:
     """
     Run one baseline policy and return both timing and full schedules
@@ -674,11 +632,26 @@ def _eval_one_baseline(cfg: Dict, policy: str) -> Dict:
     # Prefill (full schedule)
     t_prefill, prefill_sched_ser = simulate_prefill(sched, cfg, g_prefill)
 
+    is_pd = (policy or '').lower() in PD_BASELINES
+    t_kv_migrate = 0.0
+    
+    if is_pd and getattr(label, 'kv_in_pim', False) and getattr(label, 'kv_total_bytes', 0) > 0:
+        host_devs = cluster.devices_by_type('cpu')
+        pim_devs  = cluster.devices_by_type('pim')
+        if host_devs and pim_devs:
+            host = host_devs[0]
+            total_bytes = int(label.kv_total_bytes)
+            per_pim = total_bytes // max(1, len(pim_devs))
+            for pim in pim_devs:
+                # Assume host->PIM transfers can run in parallel; take max.
+                t_kv_migrate = max(t_kv_migrate, cost.comm_cost(host, pim, per_pim))
+
     # Decode (sampled / full schedule depending on stride)
     t_decode, decode_steps_ser = simulate_decode_progressive(sched, cfg, g_decode, prefill_end=t_prefill)
     try:
-        ops_csv   = algo_dir / "ops.csv"
-        comms_csv = algo_dir / "comms.csv"
+        tag = f"{int(cfg.get('prefill_len', 0))}x{int(cfg.get('decode_len', 0))}"
+        ops_csv   = algo_dir / f"{tag}_ops.csv"
+        comms_csv = algo_dir / f"{tag}_comms.csv"
         if getattr(sched, 'stats', None):
             sched.stats.dump_csv(ops_csv, comms_csv)
     except Exception as e:
@@ -692,12 +665,13 @@ def _eval_one_baseline(cfg: Dict, policy: str) -> Dict:
     except Exception:
         pass
 
+    decode_time_report = float(t_decode + (t_kv_migrate if is_pd else 0.0))
     # Return a rich result; the caller (evaluate_suite) will persist via _save_best_json
     return {
         'policy': policy,
         'prefill_time_s': float(t_prefill),
-        'decode_time_s': float(t_decode),
-        'total_time_s': float(t_prefill + t_decode),
+        'decode_time_s': decode_time_report,
+        'total_time_s': float(t_prefill + decode_time_report),
         'batch': batch,
         'prefill_len': prefill_len,
         'decode_len': decode_len,

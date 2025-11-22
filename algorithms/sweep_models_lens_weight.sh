@@ -9,19 +9,19 @@
 set -e
 
 MODEL_FAMILY_VARIANTS=(
-  "palm:8b"
-  # "llama:7b"
-  "mpt:7b"
+  # "palm:8b"
+  "llama:7b"
+  # "mpt:7b"
 )
 
 PREFILLS=(128 1024)
 DECODES=(128 1024)
 STRIDE=16
 
-DTYPE="fp16"
-BATCH=32
+DTYPE="INT8"
+BATCH=1
 CONFIG_FILE="./examples/weight_suggest_config.json"
-BASE_OUTPUT_DIR="./output/weight_sweep"
+BASE_OUTPUT_DIR="./output/weight_sweep_kv_cache_v2_pcie_64gb"
 
 # 可选：给一组实验附加一个短 tag，方便与其它 sweep 区分（会拼到文件名后缀）
 TAG_SUFFIX=""  # 比如 TAG_SUFFIX="g128_w8"

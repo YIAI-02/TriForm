@@ -26,11 +26,11 @@ class Cluster:
     def get_link_bw(self, a: str, b: str) -> float:
         if a == b:
             return max(self.devices[a].onchip_bw_GBs, self.devices[a].mem_bw_GBs)
-        return self.links.get((a,b), (12.0, "PCIe"))[0]
+        return self.links.get((a,b), (64.0, "PCIe"))[0]
 
     def get_link_type(self, a: str, b: str) -> str:
         if a == b: return "LOCAL"
-        return self.links.get((a,b), (12.0, "PCIe"))[1]
+        return self.links.get((a,b), (64.0, "PCIe"))[1]
 
     def devices_by_type(self, t: str) -> List[DeviceSpec]: #传进来t是cpu/npu/pim，筛选出是这个dev的所有设备
         return [d for d in self.devices.values() if d.type == t]
@@ -43,8 +43,8 @@ def demo_cluster() -> Cluster:
     c.add_device(DeviceSpec("PIM0","pim", tflops=1.0,  mem_bw_GBs=32.0, onchip_bw_GBs=512, mem_capacity_GB=1))
     # c.add_device(DeviceSpec("PIM1","pim", tflops=1.0,  mem_bw_GBs=32.0, onchip_bw_GBs=512, mem_capacity_GB=1))
     # Links
-    # c.connect("CPU0","NPU0", 12.0, "PCIe")
-    # c.connect("CPU0","PIM0", 12.0, "PCIe")
+    c.connect("CPU0","NPU0", 64.0, "PCIe")
+    c.connect("CPU0","PIM0", 64.0, "PCIe")
     # c.connect("CPU0","PIM1", 12.0, "PCIe")
     # c.connect("NPU0","PIM0", 24.0, "NVLink")
     # c.connect("NPU0","PIM1", 24.0, "NVLink")

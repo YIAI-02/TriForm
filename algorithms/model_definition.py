@@ -90,9 +90,12 @@ def add_llama_block(g: TaskGraph, l: int, shape: ModelShape, dtype_bytes: int):
     g.add_node(TaskNode(nid_Add2, "Add", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("Add")))
 
     # KV explicit ops (used during decode, no cost in prefill)
-    nid_KVr=f"L{l}_KV_read"; nid_KVw=f"L{l}_KV_write"
-    g.add_node(TaskNode(nid_KVr, "KV_read", attrs=dict(base_attr), allowed=get_op_allowed("KV_read")))
-    g.add_node(TaskNode(nid_KVw, "KV_write", attrs=dict(base_attr), allowed=get_op_allowed("KV_write")))
+    nid_KR = f"L{l}_K_read"; nid_VR = f"L{l}_V_read"
+    nid_KW = f"L{l}_K_write"; nid_VW = f"L{l}_V_write"
+    g.add_node(TaskNode(nid_KR, "K_read", attrs=dict(base_attr), allowed=get_op_allowed("KV_read")))
+    g.add_node(TaskNode(nid_VR, "V_read", attrs=dict(base_attr), allowed=get_op_allowed("KV_read")))
+    g.add_node(TaskNode(nid_KW, "K_write", attrs=dict(base_attr), allowed=get_op_allowed("KV_write")))
+    g.add_node(TaskNode(nid_VW, "V_write", attrs=dict(base_attr), allowed=get_op_allowed("KV_write")))
 
     # Wire connections (pre-norm, sequential)
     x_in = f"L{l-1}_Add2" if l>0 else None
@@ -102,11 +105,11 @@ def add_llama_block(g: TaskGraph, l: int, shape: ModelShape, dtype_bytes: int):
 
     g.add_edge(nid_LN1, nid_Q); g.add_edge(nid_LN1, nid_K); g.add_edge(nid_LN1, nid_V)
     g.add_edge(nid_Q, nid_QK); g.add_edge(nid_K, nid_QK)
-    g.add_edge(nid_KVr, nid_QK)
+    g.add_edge(nid_KR, nid_QK)
     g.add_edge(nid_QK, nid_SO); g.add_edge(nid_SO, nid_SV)
-    g.add_edge(nid_V, nid_SV); g.add_edge(nid_KVr, nid_SV)
+    g.add_edge(nid_V, nid_SV); g.add_edge(nid_VR, nid_SV)
     g.add_edge(nid_SV, nid_O)
-    g.add_edge(nid_K, nid_KVw); g.add_edge(nid_V, nid_KVw)
+    g.add_edge(nid_K, nid_KW); g.add_edge(nid_V, nid_VW)
     g.add_edge(nid_O, nid_Add1);
     if x_in: g.add_edge(x_in, nid_Add1)
 
@@ -154,9 +157,11 @@ def add_mpt_block(g: TaskGraph, l: int, shape: ModelShape, dtype_bytes: int):
     g.add_node(TaskNode(nid_W2,"FFN_W2",flops=0.0,weight_id=f"L{l}_W2",weight_size=ffn*dim*dtype_bytes,attrs=dict(base_attr),allowed=get_op_allowed("FFN_W2")))
     g.add_node(TaskNode(nid_Add2,"Add",flops=0.0,attrs=dict(base_attr),allowed=get_op_allowed("Add")))
 
-    nid_KVr=f"L{l}_KV_read"; nid_KVw=f"L{l}_KV_write"
-    g.add_node(TaskNode(nid_KVr,"KV_read",attrs=dict(base_attr),allowed=get_op_allowed("KV_read")))
-    g.add_node(TaskNode(nid_KVw,"KV_write",attrs=dict(base_attr),allowed=get_op_allowed("KV_write")))
+    nid_KR=f"L{l}_K_read"; nid_VR=f"L{l}_V_read"; nid_KW=f"L{l}_K_write"; nid_VW=f"L{l}_V_write"
+    g.add_node(TaskNode(nid_KR,"K_read",attrs=dict(base_attr),allowed=get_op_allowed("KV_read")))
+    g.add_node(TaskNode(nid_VR,"V_read",attrs=dict(base_attr),allowed=get_op_allowed("KV_read")))
+    g.add_node(TaskNode(nid_KW,"K_write",attrs=dict(base_attr),allowed=get_op_allowed("KV_write")))
+    g.add_node(TaskNode(nid_VW,"V_write",attrs=dict(base_attr),allowed=get_op_allowed("KV_write")))
 
     x_in=f"L{l-1}_Add2" if l>0 else None
     if x_in:
@@ -165,15 +170,15 @@ def add_mpt_block(g: TaskGraph, l: int, shape: ModelShape, dtype_bytes: int):
 
     g.add_edge(nid_LN1,nid_Q); g.add_edge(nid_LN1,nid_K); g.add_edge(nid_LN1,nid_V)
     g.add_edge(nid_Q,nid_QK); g.add_edge(nid_K,nid_QK)
-    g.add_edge(nid_KVr,nid_QK)
+    g.add_edge(nid_KR,nid_QK)
     g.add_edge(nid_QK,nid_SO); g.add_edge(nid_SO,nid_SV)
-    g.add_edge(nid_V,nid_SV); g.add_edge(nid_KVr,nid_SV)
+    g.add_edge(nid_V,nid_SV); g.add_edge(nid_VR,nid_SV)
     g.add_edge(nid_SV,nid_O)
-    g.add_edge(nid_K,nid_KVw); g.add_edge(nid_V,nid_KVw)
+    g.add_edge(nid_K,nid_KW); g.add_edge(nid_V,nid_VW)
     g.add_edge(nid_O,nid_Add1);
     if x_in: g.add_edge(x_in,nid_Add1)
 
-    g.add_edge(nid_Add1,nid_LN2); g.add_edge(nid_LN2,nid_W1); g.add_edge(nid_W1,nid_G); g.add_edge(nid_G,nid_W2); g.add_edge(nid_W2,nid_Add2); g.add_edge(nid_Add1,nid_Add2)
+    g.add_edge(nid_Add1,nid_LN2); g.add_edge(nid_LN2,nid_W1); g.add_edge(nid_LN2,nid_G); g.add_edge(nid_G,nid_W2); g.add_edge(nid_W2,nid_Add2); g.add_edge(nid_Add1,nid_Add2)
 
 def add_palm_block(g: TaskGraph, l: int, shape: ModelShape, dtype_bytes: int):
     # PaLM uses pre-LN and PARALLEL residual: x + Attn(LN(x)) + MLP(LN(x))
@@ -221,9 +226,11 @@ def add_palm_block(g: TaskGraph, l: int, shape: ModelShape, dtype_bytes: int):
     nid_Add2=f"L{l}_Add2"; g.add_node(TaskNode(nid_Add2,"Add",flops=0.0,attrs=dict(base_attr),allowed=get_op_allowed("Add")))
 
     # KV ops on decode
-    nid_KVr=f"L{l}_KV_read"; nid_KVw=f"L{l}_KV_write"
-    g.add_node(TaskNode(nid_KVr,"KV_read",attrs=dict(base_attr),allowed=get_op_allowed("KV_read")))
-    g.add_node(TaskNode(nid_KVw,"KV_write",attrs=dict(base_attr),allowed=get_op_allowed("KV_write")))
+    nid_KR=f"L{l}_K_read"; nid_VR=f"L{l}_V_read"; nid_KW=f"L{l}_K_write"; nid_VW=f"L{l}_V_write"
+    g.add_node(TaskNode(nid_KR,"K_read",attrs=dict(base_attr),allowed=get_op_allowed("KV_read")))
+    g.add_node(TaskNode(nid_VR,"V_read",attrs=dict(base_attr),allowed=get_op_allowed("KV_read")))
+    g.add_node(TaskNode(nid_KW,"K_write",attrs=dict(base_attr),allowed=get_op_allowed("KV_write")))
+    g.add_node(TaskNode(nid_VW,"V_write",attrs=dict(base_attr),allowed=get_op_allowed("KV_write")))
 
     # Wire
     x_in=f"L{l-1}_Add2" if l>0 else None
@@ -231,14 +238,13 @@ def add_palm_block(g: TaskGraph, l: int, shape: ModelShape, dtype_bytes: int):
         nid_X=f"L{l}_X"; g.add_node(TaskNode(nid_X,"Identity",flops=0.0,attrs=dict(base_attr),allowed=get_op_allowed("Identity")))
         g.add_edge(x_in,nid_X); g.add_edge(nid_X,nid_LN)
 
-    # Both branches from same LN
     g.add_edge(nid_LN,nid_Q); g.add_edge(nid_LN,nid_K); g.add_edge(nid_LN,nid_V)
     g.add_edge(nid_Q,nid_QK); g.add_edge(nid_K,nid_QK)
-    g.add_edge(nid_KVr,nid_QK)
+    g.add_edge(nid_KR,nid_QK)
     g.add_edge(nid_QK,nid_SO); g.add_edge(nid_SO,nid_SV)
-    g.add_edge(nid_V,nid_SV); g.add_edge(nid_KVr,nid_SV)
+    g.add_edge(nid_V,nid_SV); g.add_edge(nid_VR,nid_SV)
     g.add_edge(nid_SV,nid_O)
-    g.add_edge(nid_K,nid_KVw); g.add_edge(nid_V,nid_KVw)
+    g.add_edge(nid_K,nid_KW); g.add_edge(nid_V,nid_VW)
     # MLP branch
     g.add_edge(nid_LN,nid_W1); g.add_edge(nid_W1,nid_G); g.add_edge(nid_G,nid_W2)
     # Merge both outputs plus residual X

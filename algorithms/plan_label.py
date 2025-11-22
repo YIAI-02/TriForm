@@ -13,7 +13,12 @@ class PlanLabel:
     kv_in_pim: bool
     kv_total_bytes: int = 0
     pim_weight_capacity_bytes: int = 0
+    kv_home: str = "host"
     pinned_fc_on_pim: Set[str] = field(default_factory=set)
+
+    def __post_init__(self) -> None:
+        if self.kv_in_pim and self.kv_home == "host":
+            self.kv_home = "pim"
 
     def print_debug(self) -> None:
         """Print all PlanLabel settings for debugging."""
@@ -22,6 +27,7 @@ class PlanLabel:
         logger.debug(str('=' * 50))
         logger.debug(str(f'PIM Mode: {self.pim_mode}'))
         logger.debug(str(f'KV Cache in PIM: {self.kv_in_pim}'))
+        logger.debug(str(f'KV Home: {self.kv_home}'))
         logger.debug(str(f'KV Total Bytes: {self.kv_total_bytes:,}'))
         logger.debug(str(f'Number of Pinned FC Weights: {len(self.pinned_fc_on_pim)}'))
         if self.pinned_fc_on_pim:

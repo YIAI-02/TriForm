@@ -1,4 +1,5 @@
 from __future__ import annotations
+from cProfile import label
 from config import attach_local_debug_filter
 import json, os, time
 from dataclasses import dataclass
@@ -813,6 +814,7 @@ class CostModel:
         self.logger = _sim_logger
         self.pim_cache_enabled = True
         self._shared_model_dict: Optional[Dict] = model_dict
+        self.kv_pd_separation: bool = False
         if pim_config_path:
             if not pim_config_path.exists():
                 raise ValueError(f'PIM config not found: {pim_config_path}')
@@ -1042,7 +1044,7 @@ class CostModel:
             return float(b * q_len * D)
         if name in ('IDENTITY', 'RESIDUAL', 'DROPOUT') and D > 0:
             return float(b * q_len * D)
-        if name in ('KV_READ', 'KV_WRITE', 'ROPE', 'ALIBI'):
+        if name in ('K_READ', 'K_WRITE', 'V_READ', 'V_WRITE', 'KV_READ' ,'KV_WRITE', 'ROPE', 'ALIBI'):
             return 0.0
         return default
 
@@ -1106,21 +1108,26 @@ class CostModel:
             return (to_bytes(elems), to_bytes(elems))
         if name in 'QK' and qh > 0 and (hd > 0):
             q_read = b * active_tokens * q_dim
-            k_read = b * (T if phase == 'prefill' else kv_len) * kv_dim
             write_elems = b * qh * attn_pairs
-            return (to_bytes(q_read + k_read), to_bytes(write_elems))
+            return (to_bytes(q_read), to_bytes(write_elems))
         if name in ('SOFTMAX', 'ATTN_SOFTMAX') and qh > 0:
             elems = b * qh * attn_pairs
             return (to_bytes(elems), to_bytes(elems))
         if name in 'SV' and qh > 0 and (hd > 0):
             attn_read = b * qh * attn_pairs
-            v_read = b * (T if phase == 'prefill' else kv_len) * kv_dim
             out_elems = b * qh * active_tokens * hd
-            return (to_bytes(attn_read + v_read), to_bytes(out_elems))
-        if name in ('KV_READ', 'KV_WRITE'):
-            read = 2 * b * kvh * hd * kv_len
-            write = 2 * b * kvh * hd * active_tokens
-            return (to_bytes(read), to_bytes(write))
+            return (to_bytes(attn_read), to_bytes(out_elems))
+        if name in ('K_READ', 'V_READ'):
+            # Historical KV cache read during decode; no-op during prefill
+            if phase == "prefill":
+                return (0, 0)
+            read = b * kvh * hd * kv_len
+            return (to_bytes(read), 0)
+        if name in ('K_WRITE', 'V_WRITE'):
+            # New K/V for current tokens written into KV cache
+            write_tokens = active_tokens
+            elems = b * kvh * hd * write_tokens
+            return (0, to_bytes(elems))
         if D > 0:
             elems = b * active_tokens * D
             return (to_bytes(elems), to_bytes(elems))
@@ -1133,6 +1140,8 @@ class CostModel:
         n_kv_heads = int(attrs.get('n_kv_heads', attrs.get('kv_heads', n_heads)) or n_heads)
         ffn_dim = int(attrs.get('ffn_dim', 0) or 0)
         ffn_dim_mul = float(attrs.get('ffn_dim_mul', 4.0))
+        kv_in_pim = getattr(label, 'kv_in_pim', False)
+
         if dev.type == 'npu':
             if not self._op_allowed_on(node, 'npu'):
                 logger.debug(str(f"[DISPATCH] {node.name} not allowed on NPU, fallback to CPU"))
@@ -1235,7 +1244,7 @@ class CostModel:
             compute_time = 0.0
             keys = self._resolve_pim_key(node)
             op_key = keys[0] if keys else None
-            if node.name.upper() in ('KV_READ', 'KV_WRITE'):
+            if node.name.upper() in ('K_READ', 'V_READ', 'K_WRITE', 'V_WRITE','KV_READ','KV_WRITE'):
                 compute_time = 0.0
             elif op_key and dim > 0 and (n_heads > 0):
                 try:
@@ -1246,8 +1255,8 @@ class CostModel:
                     raise RuntimeError(f'PIM latency computation failed for {node.name}: {e}')
             else:
                 logger.debug(str(f'[PIM] Warning: Insufficient parameters for {node.name} (op={op_key}, dim={dim}, heads={n_heads})'))
-            kv_in_pim = getattr(label, 'kv_in_pim', False)
-            ATTENTION_DATAFLOW = {'QK', 'SV', 'SOFTMAX', 'KV_READ', 'KV_WRITE'}
+            
+            ATTENTION_DATAFLOW = {'QK', 'SV', 'SOFTMAX', 'K_READ', 'V_READ', 'K_WRITE', 'V_WRITE', 'KV_READ', 'KV_WRITE'}
             if kv_in_pim and ((node.name or '').upper() in ATTENTION_DATAFLOW):
                 mem_time = 0.0
             else:

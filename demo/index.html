@@ -263,23 +263,16 @@
   }
   function opType(label) {
     const L = (label||"").toUpperCase();
-    if (L.startsWith("KV_READ") || L==="K_READ" || L==="V_READ") return "io";
+    if (L.startsWith("K_read") || L==="V_READ" || L==="K_WRITE" || L==="V_WRITE") return "io";
     if (L === "LN" || L === "LN1" || L === "LN2" || L.includes("LAYERNORM")) return "norm";
     if (L === "Q" || L === "K" || L === "V" || L === "O" || L.startsWith("FFN_W") || L==="GEMM" || L==="MATMUL" || L==="PROJ") return "matmul";
     if (L.includes("QK") || L==="SV" || L==="ATTN" || L==="ATTENTION") return "attention";
     if (L.includes("SOFTMAX")) return "softmax";
     if (L==="ACT" || L.includes("GELU") || L.includes("SILU") || L.includes("RELU")) return "activation";
     if (L.startsWith("ADD") || L.includes("RES") || L.includes("BIAS") || L==="MUL") return "elementwise";
-    if (L.includes("KV_") || L.endsWith("_READ") || L.endsWith("_WRITE")) return "io";
+    if (L.includes("K_read") || L.includes("V_READ") || L.includes("K_WRITE") || L.includes("V_WRITE")) return "io";
     if (L==="X") return "norm";
     return "other";
-  }
-  function shortLabel(opOrId) {
-    const s = (opOrId || "").toString();
-    const u = s.toUpperCase();
-    if (u === "KV_READ_K") return "K_read";
-    if (u === "KV_READ_V") return "V_read";
-    return s;
   }
 
   // ========= 颜色与映射（设备 & 权重） =========
@@ -312,39 +305,58 @@
   }
   const weight2op = { WQ:"Q", WK:"K", WV:"V", WO:"O", W1:"FFN_W1", W2:"FFN_W2", W3:"FFN_W3" };
 
-  // ========= Edges: 把 KV 拆两次读取，插入两条链 =========
   function buildLayerEdges(nodesById, L) {
     const N = (name) => `L${L}_${name}`;
     const exists = (name) => !!nodesById[N(name)];
     const E = [];
     const add = (u, v) => { if (exists(u) && exists(v)) E.push([N(u), N(v)]); };
 
-    add("LN1","Q"); add("LN1","K"); add("LN1","V");
+    // 注意力前半段
+    add("LN1", "Q");
+    add("LN1", "K");
+    add("LN1", "V");
 
-    let kReadName = null;
-    if (exists("K_read")) kReadName = "K_read";
-    else if (exists("KV_read_K")) kReadName = "KV_read_K";
-    else if (exists("KV_read")) kReadName = "KV_read";
-    add("Q","QK");
-    if (kReadName) { add("K", kReadName); add(kReadName, "QK"); } else { add("K","QK"); }
+    
 
-    add("QK","Softmax");
+    // QK：K → K_read → QK（没有 K_read 就直接 K→QK）
+    add("Q", "QK");
+    if (exists("K_read")) {
+      add("K", "K_read");
+      add("K_read", "QK");
+    } else {
+      add("K", "QK");
+    }
 
-    let vReadName = null;
-    if (exists("V_read")) vReadName = "V_read";
-    else if (exists("KV_read_V")) vReadName = "KV_read_V";
-    else if (exists("KV_read")) vReadName = "KV_read";
-    add("Softmax","SV");
-    if (vReadName) { add("V", vReadName); add(vReadName, "SV"); } else { add("V","SV"); }
+    // Softmax + SV：V → V_read → SV（没有 V_read 就直接 V→SV）
+    add("QK", "Softmax");
+    add("Softmax", "SV");
+    if (exists("V_read")) {
+      add("V", "V_read");
+      add("V_read", "SV");
+    } else {
+      add("V", "SV");
+    }
 
-    add("SV","O");
-    add("X","Add1"); add("O","Add1"); add("Add1","LN2");
-    add("LN2","FFN_W1"); add("LN2","FFN_W3");
-    add("FFN_W1","Act"); add("Act","FFN_W2"); add("FFN_W3","FFN_W2");
-    add("FFN_W2","Add2");
-    add("K","KV_write"); add("V","KV_write");
+    // 输出 + 残差 + FFN
+    add("SV", "O");
+    add("X", "Add1");
+    add("O", "Add1");
+    add("Add1", "LN2");
+
+    add("LN2", "FFN_W1");
+    add("LN2", "FFN_W3");
+    add("FFN_W1", "Act");
+    add("Act", "FFN_W2");
+    add("FFN_W3", "FFN_W2");
+    add("FFN_W2", "Add2");
+
+    // KV 写：只支持 K_write / V_write
+    add("K", "K_write");
+    add("V", "V_write");
+
     return E;
   }
+
 
   // ========= 数据读取 =========
   let rawData = null;
@@ -373,20 +385,6 @@
       for (const it of sch) out.push({ ...it, phase: 'decode', token_idx: t });
     }
     return out;
-  }
-
-  // -------- 把单一 KV_read 拆成 K_read / V_read --------
-  function splitKvReadNodesIfNeeded(nodesById, layer) {
-    const idBase = `L${layer}_KV_read`;
-    const hasBase = !!nodesById[idBase];
-    const hasK = !!nodesById[`L${layer}_K_read`] || !!nodesById[`L${layer}_KV_read_K`];
-    const hasV = !!nodesById[`L${layer}_V_read`] || !!nodesById[`L${layer}_KV_read_V`];
-    if (hasBase && (!hasK || !hasV)) {
-      const base = nodesById[idBase];
-      if (!hasK) nodesById[`L${layer}_K_read`] = { ...base, node_id: `L${layer}_K_read`, op: 'K_read' };
-      if (!hasV) nodesById[`L${layer}_V_read`] = { ...base, node_id: `L${layer}_V_read`, op: 'V_read' };
-      delete nodesById[idBase];
-    }
   }
 
   // -------- 权重列表：来自文件；若无则从图中推断并回退为 ND --------
@@ -443,9 +441,6 @@
       const layer = Number(layerStr);
       const token = Number(tokStr);
       const nodesById = nodeByKey[key];
-
-      splitKvReadNodesIfNeeded(nodesById, layer);
-
       const elements = [];
 
       // 主图节点
@@ -459,9 +454,9 @@
           data: {
             id,
             label: id,
-            labelShort: shortLabel(n.op || id),
             op: n.op,
             type: typ,
+            labelShort: n.op,
             dev,
             weightFmt: wVal || null,
             start: n.start, finish: n.finish, duration: n.duration
