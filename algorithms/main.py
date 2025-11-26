@@ -503,28 +503,23 @@ def _baseline_ianus(g: TaskGraph, *, phase: str) -> TaskGraph:
 
     # decode：按规则划分
     for _, n in g2.nodes.items():
-        if _is_op(n, 'QK', 'SV', 'FFN_W1', 'GELU', 'FFN_W2'):
-            on_pim = True
-        elif _is_op(n, 'Q', 'K', 'SOFTMAX', 'NORM', 'ADD'):
+        on_pim = True
+        if _is_op(n, 'Q', 'K', 'SOFTMAX', 'NORM', 'ADD'):
             on_pim = False
-        else:
-            on_pim = (_arith_intensity(n) < 4.0)  # 兜底：AI<4 走 PIM
         n.allowed['pim'] = on_pim
-        n.allowed['npu'] = not on_pim
+        n.allowed['npu'] = n.allowed.get('npu', True)
         n.allowed['cpu'] = n.allowed.get('cpu', True)
-    return g2
+    return g2 
 
 @register_baseline('neupims')
 def _baseline_neupims(g: TaskGraph, *, phase: str) -> TaskGraph:
     g2 = _clone_graph(g)
+    if phase == 'prefill':
+        for _, n in g2.nodes.items():
+            n.allowed['npu'] = True; n.allowed['pim'] = False; n.allowed['cpu'] = n.allowed.get('cpu', True)
+        return g2
     for _, n in g2.nodes.items():
-        if _is_op(n, 'SOFTMAX', 'NORM', 'ADD'):
-            on_pim = False
-        elif _is_kv_rw(n):
-            on_pim = True
-        else:
-            inten = _arith_intensity(n)
-            on_pim = (inten < 4.0) or _is_gemv_like(n, phase=phase)
+        on_pim = _is_op(n, 'QK', 'SV') or _is_kv_rw(n)
         n.allowed['pim'] = on_pim
         n.allowed['npu'] = not on_pim
         n.allowed['cpu'] = n.allowed.get('cpu', True)
@@ -538,7 +533,7 @@ def _baseline_attacc(g: TaskGraph, *, phase: str) -> TaskGraph:
             n.allowed['npu'] = True; n.allowed['pim'] = False; n.allowed['cpu'] = n.allowed.get('cpu', True)
         return g2
     for _, n in g2.nodes.items():
-        on_pim = _is_op(n, 'QK', 'SV') or _is_kv_rw(n)
+        on_pim = _is_op(n, 'QK', 'SV','SOFTMAX') or _is_kv_rw(n)
         n.allowed['pim'] = on_pim
         n.allowed['npu'] = not on_pim
         n.allowed['cpu'] = n.allowed.get('cpu', True)
@@ -552,10 +547,7 @@ def _baseline_facil(g: TaskGraph, *, phase: str) -> TaskGraph:
             n.allowed['npu'] = True; n.allowed['pim'] = False; n.allowed['cpu'] = n.allowed.get('cpu', True)
         return g2
     for _, n in g2.nodes.items():
-        if _is_op(n, 'SOFTMAX', 'NORM', 'ADD'):
-            on_pim = False
-        else:
-            on_pim = _is_gemv_like(n, phase='decode') or _is_op(n, 'QK', 'SV')
+        on_pim = _is_gemv_like(n, phase='decode') or _is_op(n, 'QK', 'SV')
         n.allowed['pim'] = on_pim
         n.allowed['npu'] = not on_pim
         n.allowed['cpu'] = n.allowed.get('cpu', True)

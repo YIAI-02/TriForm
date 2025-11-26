@@ -3,7 +3,7 @@
 
 """
 python perform_analysis.py \
-  --algo_dir ../algorithms/output/len_sweep/llama_7b_fp16_b32/algo_heft
+  --algo_dir ../algorithms/output/baseline_sweep_kv_cache_v2_pcie_32gb_hybrid_false/llama_7b_INT8_b1/algo_heft
 
 """
 

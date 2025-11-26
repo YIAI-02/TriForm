@@ -19,7 +19,7 @@ DEFAULT_CONFIG = {
 # =========================
 # Hybrid scheduling params
 # =========================
-ALLOW_HYBRID: bool = True
+ALLOW_HYBRID: bool = False
 # =========================
 # Rank-U weight load option
 # =========================

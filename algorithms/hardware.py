@@ -43,8 +43,8 @@ def demo_cluster() -> Cluster:
     c.add_device(DeviceSpec("PIM0","pim", tflops=1.0,  mem_bw_GBs=32.0, onchip_bw_GBs=512, mem_capacity_GB=1))
     # c.add_device(DeviceSpec("PIM1","pim", tflops=1.0,  mem_bw_GBs=32.0, onchip_bw_GBs=512, mem_capacity_GB=1))
     # Links
-    c.connect("CPU0","NPU0", 64.0, "PCIe")
-    c.connect("CPU0","PIM0", 64.0, "PCIe")
+    c.connect("CPU0","NPU0", 32.0, "PCIe")
+    c.connect("CPU0","PIM0", 32.0, "PCIe")
     # c.connect("CPU0","PIM1", 12.0, "PCIe")
     # c.connect("NPU0","PIM0", 24.0, "NVLink")
     # c.connect("NPU0","PIM1", 24.0, "NVLink")

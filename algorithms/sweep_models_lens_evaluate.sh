@@ -25,7 +25,7 @@ STRIDE=16
 DTYPE="INT8"
 BATCH=1
 CONFIG_FILE="./examples/evaluate_len_sweep_config.json"
-BASE_OUTPUT_DIR="./output/baseline_sweep_kv_cache_v2_pcie_64gb"
+BASE_OUTPUT_DIR="./output/baseline_sweep_kv_cache_v2_pcie_32gb_hybrid_false"
 
 echo "Starting model evaluation sweep..."
 echo "===================================="

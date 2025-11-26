@@ -1,16 +1,9 @@
 '''
 python speedup.py --grid-best \
-  --root ../algorithms/output/kv_cache_v2/llama_7b_INT8_b1 \
+  --root /Users/yangjiaqi/WW/project_1/python/TriForm/algorithms/output/baseline_sweep_kv_cache_v2_pcie_32gb_hybrid_false/llama_7b_INT8_b1 \
   --algos pd,attn_on_pim,weights_on_pim,facil,attacc,ianus,neupims,heft \
   --ncols 2 --sharey \
-  --outfile ./prefill_decode_speedup_grid_heft_llama_7b_int8_b1.pdf
-
-  python speedup.py --grid-best \
-  --root ../algorithms/output/len_sweep/palm_8b_INT8_b4 \
-  --algos pd,attn_on_pim,weights_on_pim,facil,attacc,ianus,neupims,heft \
-  --ncols 2 --sharey \
-  --outfile ./prefill_decode_speedup_grid_heft_palm_8b_INT8_b4.pdf
-
+  --outfile ./prefill_decode_speedup_grid_heft_hybrid_false_llama_7b_int8_b1_32gb.pdf
 '''
 import json
 import numpy as np
