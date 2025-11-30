@@ -4,9 +4,9 @@ set -e
 # Evaluate mode: run multiple algos + baselines, derive outputs from result_dir
 python main.py evaluate --config ./examples/evaluate_len_sweep_config.json --debug
 
-echo "Evaluate mode done. See ./output/len_sweep/"
+echo "Evaluate mode done."
 
 # Weight-suggest mode: multi-pass SA to propose weight formats
-python main.py weight-suggest --config ./examples/weight_suggest_config.json --debug
+# python main.py weight-suggest --config ./examples/weight_suggest_config.json --debug
 
-echo "Weight-suggest mode done. See ./output/weight_suggestion_30/"
+# echo "Weight-suggest mode done. See ./output/weight_suggestion_30/"

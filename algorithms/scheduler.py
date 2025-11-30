@@ -1,8 +1,10 @@
 from __future__ import annotations
+import os
 from config import attach_local_debug_filter
 from dataclasses import dataclass
 from typing import Dict, List, Tuple, Optional, Any, Iterable
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from plan_label import PlanLabel
 from hardware import Cluster, DeviceSpec
 from task_graph import TaskGraph, TaskNode
@@ -15,7 +17,7 @@ import random
 import copy
 from stats_recorder import StatsRecorder
 
-DEBUG_SCHEDULER = False
+DEBUG_SCHEDULER = True
 logger = logging.getLogger(__name__)
 attach_local_debug_filter(logger, lambda: DEBUG_SCHEDULER)
 
@@ -36,20 +38,39 @@ class CommManager:
         self.timeline_end: Dict[Tuple[str, str], float] = {}
         self.stats = stats
 
-    def reserve(self, src: str, dst: str, bytes_amount: int, earliest: float, commit: bool=True, tag: str | None = None) -> Tuple[float, float]:
+    def reserve(self, src: str, dst: str, bytes_amount: int, earliest: float, commit: bool=True, tag: str | None = None):
         key = (src, dst)
-        bw = self.cluster.get_link_bw(src, dst) * 1000000000.0
+        bw = self.cluster.get_link_bw(src, dst) * 1e9
         ch_end = self.timeline_end.get(key, 0.0)
         start = max(ch_end, earliest)
         dt = 0.0 if bw <= 0 else bytes_amount / bw
         end = start + dt
         if commit:
             self.timeline_end[key] = end
-            logger.debug(
-                f"[COMM] {src}->{dst} bytes={bytes_amount} bw={bw/1e9:.2f}GB/s start={start:.6f} end={end:.6f} dt={end-start:.6f} commit={commit}"
-            )
-            assert not ((src.startswith('NPU') and dst.startswith('PIM')) or
-            (src.startswith('PIM') and dst.startswith('NPU'))), f'Forbidden direct NPU<->PIM transfer: {src}->{dst}'
+            # logger = logging.getLogger(__name__)
+            # logger.debug(
+            #     f"[COMM] {src}->{dst} bytes={bytes_amount} bw={bw/1e9:.2f}GB/s "
+            #     f"start={start:.6f} end={end:.6f} dt={end-start:.6f} commit={commit}"
+            # )
+
+            src_dev = self.cluster.devices.get(src)
+            dst_dev = self.cluster.devices.get(dst)
+
+            def _is_pim_accel(dev: Optional[DeviceSpec]) -> bool:
+                if dev is None:
+                    return False
+                if dev.type != 'pim':
+                    return False
+                # None 或 未知类型都按 accelerator 处理
+                ptype = (dev.pim_type or 'accel').lower()
+                return ptype not in ('dram', 'hbm')
+
+            # 只禁止 NPU <-> PIM-Accelerator 直连
+            if src_dev and dst_dev:
+                if ((src_dev.type == 'npu' and _is_pim_accel(dst_dev)) or
+                    (dst_dev.type == 'npu' and _is_pim_accel(src_dev))):
+                    raise AssertionError(f'Forbidden direct NPU<->PIM-Accelerator transfer: {src}->{dst}')
+
             if self.stats is not None:
                 try:
                     self.stats.log_comm(
@@ -60,6 +81,7 @@ class CommManager:
                 except AttributeError:
                     pass
         return (start, end)
+
 
 class HEFTScheduler:
 
@@ -78,6 +100,8 @@ class HEFTScheduler:
         self._act_refcnt: Dict[str, int] = {}              # node_id -> 还剩多少个下游消费者未消费
         self._max_util: float = 0.90                       # 最多只能占满 90%
         self._kv_reserved_per_dev: Dict[str, int] = {}     # PIM 每块设备为 KV 预留的容量（字节）
+        self._rank_cache: Dict[Tuple[int, str], List[str]] = {} #parallel 新增
+        self._topo_cache: Dict[int, List[str]] = {} #parallel 新增
         self.stats = StatsRecorder()
         self.comm = CommManager(cluster, stats=self.stats)
         self.avail: Dict[str, float] = {name: 0.0 for name in self.cluster.devices}
@@ -125,7 +149,7 @@ class HEFTScheduler:
                 alloc[order[i % len(order)]] += 1
             for i, d in enumerate(pim_devs):
                 self._kv_reserved_per_dev[d.name] = alloc[i]
-                logger.debug(f"[INIT] KV_RESERVE dev={d.name} = {alloc[i]}")
+                # logger.debug(f"[INIT] KV_RESERVE dev={d.name} = {alloc[i]}")
         else:
             for d in pim_devs:
                 self._kv_reserved_per_dev[d.name] = 0
@@ -137,7 +161,12 @@ class HEFTScheduler:
             weight_budget = int(self._pim_cache_capacity.get(name, 0)) if d.type == 'pim' else 0
             cap = max(0, int(self._max_util * max(0, phy - kv_reserve - weight_budget)))
             self._act_cap[name] = cap
-            logger.debug(f"[INIT] ACT_CAP dev={name} phy={phy} kv={kv_reserve} weight_budget={weight_budget} act_cap(90%)={cap}")
+            # logger.debug(f"[INIT] ACT_CAP dev={name} phy={phy} kv={kv_reserve} weight_budget={weight_budget} act_cap(90%)={cap}")
+    
+    def clear_order_cache(self) -> None: #parallel 新增
+        """如果 TaskGraph 结构改变，可以手动清掉 rank / topo 缓存。"""
+        self._rank_cache.clear()
+        self._topo_cache.clear()
 
     def _kv_reserved_for(self, dev: DeviceSpec) -> int:
         return int(self._kv_reserved_per_dev.get(dev.name, 0))
@@ -207,7 +236,15 @@ class HEFTScheduler:
                 k += 1
         return total / k if k else 0.0
 
-    def _upward_rank(self, g: TaskGraph, phase: str) -> List[str]:
+    def _upward_rank(self, g: TaskGraph, phase: str) -> List[str]: #parallel 新增
+        """Compute HEFT-style upward rank; cached per (graph, phase)."""
+        key = (id(g), phase)
+        cache = getattr(self, "_rank_cache", None)
+        if cache is not None:
+            cached = cache.get(key)
+            if cached is not None:
+                return cached
+
         succ = {nid: list(g.successors(nid)) for nid in g.nodes}
         order = list(reversed(g.topological()))
         rank_u: Dict[str, float] = {}
@@ -226,6 +263,8 @@ class HEFTScheduler:
                         best = path_cost
                 rank_u[nid] = compute_cost + best
         sorted_nodes = sorted(g.nodes.keys(), key=lambda x: -rank_u[x])
+        if cache is not None:
+            cache[key] = sorted_nodes
         return sorted_nodes
 
     def _weight_load_time(self, node: TaskNode, dev: DeviceSpec, t0: float, commit: bool) -> float:
@@ -234,12 +273,12 @@ class HEFTScheduler:
             return 0.0
         wid = node.weight_id
         if dev.type == 'pim' and self.buffer.is_cached(dev.name, wid):
-            logger.debug(f"[WEIGHT] cache-hit wid={wid} dev={dev.name}")
+            # logger.debug(f"[WEIGHT] cache-hit wid={wid} dev={dev.name}")
             if commit:
                 self.buffer.device_cache[dev.name].touch(wid)
             return 0.0
         if dev.type == 'pim':
-            logger.debug(f"[WEIGHT] host->pim load wid={wid} size={node.weight_size}")
+            # logger.debug(f"[WEIGHT] host->pim load wid={wid} size={node.weight_size}")
             load_time = self.cost.weight_load_time_pim(node.weight_size)
             if commit:
                 self._weight_load_count[wid, dev.type] += 1
@@ -253,7 +292,7 @@ class HEFTScheduler:
         host = self.cost.get_host_device().name
         stored_fmt = self.storage_fmt_map.get(wid, self.buffer.get_host_fmt(wid) or 'ND')
         size_src = self.cost.format_size(node.weight_size, stored_fmt)
-        logger.debug(f"[WEIGHT] host->{dev.name} load wid={wid} stored_fmt={stored_fmt} size={node.weight_size}")
+        # logger.debug(f"[WEIGHT] host->{dev.name} load wid={wid} stored_fmt={stored_fmt} size={node.weight_size}")
         _, link_end = self.comm.reserve(host, dev.name, size_src, earliest=t0, commit=commit)
         conv_t = self.cost.format_conversion_time(size_src, stored_fmt, self.cost.device_preferred_fmt(dev), dev)
         end = link_end + conv_t
@@ -288,10 +327,10 @@ class HEFTScheduler:
             if used + out_nd <= cap:
                 self._act_used[dev.name] = used + out_nd
                 self._act_resident[(dev.name, nid)] = out_nd
-                logger.debug(f"[LOCAL] retain out nid={nid}@{dev.name} bytes_nd={out_nd} used={self._act_used[dev.name]}/{cap}")
+                # logger.debug(f"[LOCAL] retain out nid={nid}@{dev.name} bytes_nd={out_nd} used={self._act_used[dev.name]}/{cap}")
             else:
                 # 空间不足：立即把该输出写回 Host（供后续消费者复用）
-                logger.debug(f"[LOCAL->HOST] evict out nid={nid}@{dev.name} need={out_nd} used={used}/{cap}")
+                # logger.debug(f"[LOCAL->HOST] evict out nid={nid}@{dev.name} need={out_nd} used={used}/{cap}")
                 src_fmt = self.cost.device_preferred_fmt(dev)
                 self._ensure_host_store(nid, dev, out_nd, src_fmt, finish, commit=True)
 
@@ -347,18 +386,18 @@ class HEFTScheduler:
                     if avail >= payload_nd:
                         if commit:
                             self._act_used[pred_dev.name] = self._act_used.get(pred_dev.name, 0) + payload_nd
-                        logger.debug(f"[LOCAL] PIM in-place u={u}@{pred_dev.name} -> {nid}@{dev.name} bytes_nd={payload_nd} (use_inplace, avail={avail})")
+                        # logger.debug(f"[LOCAL] PIM in-place u={u}@{pred_dev.name} -> {nid}@{dev.name} bytes_nd={payload_nd} (use_inplace, avail={avail})")
                         inbound_start_times.append(pred_finish)
                         inbound_end_times.append(pred_finish)
                     else:
-                        logger.debug(f"[LOCAL->HOST] PIM fallback (no space) u={u}@{pred_dev.name} -> {nid}@{dev.name} need={payload_nd} avail={avail}")
+                        # logger.debug(f"[LOCAL->HOST] PIM fallback (no space) u={u}@{pred_dev.name} -> {nid}@{dev.name} need={payload_nd} avail={avail}")
                         host_ready = self._ensure_host_store(u, pred_dev, payload_nd, src_fmt, pred_finish, commit)
                         l2s, l2e = self.comm.reserve(self.cost.get_host_device().name, dev.name, size_nd, earliest=host_ready, commit=commit)
                         conv2 = self.cost.format_conversion_time(size_nd, 'ND', self.cost.device_preferred_fmt(dev), dev)
                         inbound_start_times.append(l2s)
                         inbound_end_times.append(l2e + conv2)
                 else:
-                    logger.debug(f"[LOCAL] NPU reuse u={u}@{pred_dev.name} -> {nid}@{dev.name} (no xfer) pred_finish={pred_finish:.6f}")
+                    # logger.debug(f"[LOCAL] NPU reuse u={u}@{pred_dev.name} -> {nid}@{dev.name} (no xfer) pred_finish={pred_finish:.6f}")
                     inbound_start_times.append(pred_finish)
                     inbound_end_times.append(pred_finish)
                 continue
@@ -389,7 +428,7 @@ class HEFTScheduler:
                     size_nd = self.cost.format_size(payload_nd, 'ND')
                     l2s, l2e = self.comm.reserve(host.name, dev.name, size_nd, earliest=host_ready, commit=commit)
                     conv2 = self.cost.format_conversion_time(size_nd, 'ND', dst_fmt, dev)
-                    logger.debug(f"[CROSS] HOST->NPU u={u}@{pred_dev.name} -> {nid}@{dev.name} bytes_nd={payload_nd}")
+                    # logger.debug(f"[CROSS] HOST->NPU u={u}@{pred_dev.name} -> {nid}@{dev.name} bytes_nd={payload_nd}")
                     inbound_start_times.append(l2s)
                     inbound_end_times.append(l2e + conv2)
                     continue
@@ -400,7 +439,7 @@ class HEFTScheduler:
                         # (a) PIM->PIM 就地：容量足够且允许就地，直接复用；不走 Host
                         if commit:
                             self._act_used[pred_dev.name] = self._act_used.get(pred_dev.name, 0) + payload_nd
-                        logger.debug(f"[LOCAL] PIM in-place (cross device branch) u={u}@{pred_dev.name} -> {nid}@{dev.name} bytes_nd={payload_nd}")
+                        # logger.debug(f"[LOCAL] PIM in-place (cross device branch) u={u}@{pred_dev.name} -> {nid}@{dev.name} bytes_nd={payload_nd}")
                         inbound_start_times.append(pred_finish)
                         inbound_end_times.append(pred_finish)
                     else:
@@ -409,7 +448,7 @@ class HEFTScheduler:
                             host_ready = self._ensure_host_store(u, pred_dev, payload_nd, src_fmt, pred_finish, commit)
                         size_nd = self.cost.format_size(payload_nd, 'ND')
                         l2s, l2e = self.comm.reserve(host.name, dev.name, size_nd, earliest=host_ready, commit=commit)
-                        logger.debug(f"[CROSS] HOST->PIM u={u}@{pred_dev.name} -> {nid}@{dev.name} bytes_nd={payload_nd}")
+                        # logger.debug(f"[CROSS] HOST->PIM u={u}@{pred_dev.name} -> {nid}@{dev.name} bytes_nd={payload_nd}")
                         conv2 = self.cost.format_conversion_time(size_nd, 'ND', dst_fmt, dev)
                         inbound_start_times.append(l2s)
                         inbound_end_times.append(l2e + conv2)
@@ -443,13 +482,22 @@ class HEFTScheduler:
         batch = int(getattr(self, 'batch', 0) or 0)
         seq_len = int(getattr(self, 'seq_len', 0) or 0)
 
-        # 设备选取：默认取第一块 NPU 与第一块 PIM
-        npu_list = getattr(self.cluster, 'devices_by_type')('npu')
-        pim_list = getattr(self.cluster, 'devices_by_type')('pim')
-        assert npu_list and pim_list, "HYBRID 需要至少一块 NPU 和一块 PIM"
-
+        npu_list = self.cluster.devices_by_type('npu')
+        pim_list_all = self.cluster.devices_by_type('pim')
+        if not npu_list or not pim_list_all:
+            return None
         npu_dev = npu_list[0]
-        pim_dev = pim_list[0]
+
+        # HYBRID 优先使用 PIM-Accelerator；若没有，再退化用任意 PIM
+        pim_dev = None
+        for d in pim_list_all:
+            ptype = (getattr(d, 'pim_type', None) or 'accel').lower()
+            if ptype not in ('dram', 'hbm'):
+                pim_dev = d
+                break
+        if pim_dev is None:
+            pim_dev = pim_list_all[0]
+
         host = self.cost.get_host_device()
 
         # HYBRID 切分比例（0~1）：alpha 给 NPU，其余给 PIM
@@ -564,9 +612,9 @@ class HEFTScheduler:
             self._node_host_store_end[nid] = finish   # 供后续消费者复用 Host 版本，避免重复写回
 
 
-        logger.debug(f"[HYBRID] nid={nid} alpha={alpha} "
-                     f"start_npu={start_npu:.6f} finish_npu={finish_npu:.6f} "
-                     f"start_pim={start_pim:.6f} finish_pim={finish_pim:.6f} finish={finish:.6f}")
+        # logger.debug(f"[HYBRID] nid={nid} alpha={alpha} "
+        #              f"start_npu={start_npu:.6f} finish_npu={finish_npu:.6f} "
+        #              f"start_pim={start_pim:.6f} finish_pim={finish_pim:.6f} finish={finish:.6f}")
         return {
             'device': 'HYBRID',
             'start': start,
@@ -732,7 +780,7 @@ class HEFTScheduler:
                         )
                     except Exception:
                         pass
-            logger.debug(str(f'[Schedule] Node {nid} on {self._node_placement[nid]} from {start:.3f} to {finish:.3f} ({chosen_mode})'))
+            # logger.debug(str(f'[Schedule] Node {nid} on {self._node_placement[nid]} from {start:.3f} to {finish:.3f} ({chosen_mode})'))
         return schedule
 
     def makespan(self, schedule: List[ScheduledTask]) -> float:
@@ -768,7 +816,7 @@ class HEFTScheduler:
             if udev and (udev, u) in self._act_resident and self._act_refcnt[u] == 0:
                 bytes_kept = self._act_resident.pop((udev, u), 0)
                 self._act_used[udev] = max(0, self._act_used[udev] - bytes_kept)
-                logger.debug(f"[ACT] release u={u}@{udev} freed={bytes_kept} used={self._act_used[udev]}/{self._act_cap.get(udev,0)}")
+                # logger.debug(f"[ACT] release u={u}@{udev} freed={bytes_kept} used={self._act_used[udev]}/{self._act_cap.get(udev,0)}")
 
     def suggest_weight_storage_formats(self) -> Dict[str, str]:
         """
@@ -860,8 +908,20 @@ class _SearchSchedulerMixin(HEFTScheduler):
     Mixin that provides helpers to build schedules from a fixed per-node action map.
     Each action is one of: 'npu' | 'pim' | 'cpu' | 'hybrid' (if both 'npu' and 'pim' allowed).
     """
-    def _topo_order(self, g: TaskGraph) -> List[str]:
-        return self._upward_rank(g, phase="prefill")
+    
+    def _topo_order(self, g: TaskGraph, phase: str) -> List[str]: #parallel
+        key = (id(g),phase)
+        cache = getattr(self, "_topo_cache", None)
+        if cache is not None:
+            cached = cache.get(key)
+            if cached is not None:
+                return cached
+
+        order = self._upward_rank(g, phase=phase)
+        if cache is not None:
+            cache[key] = order
+        return order
+
 
     def _allowed_actions(self, node: TaskNode) -> List[str]:
         acts = []
@@ -905,55 +965,155 @@ class _SearchSchedulerMixin(HEFTScheduler):
         """
         if getattr(self, "_heft_seed_device", None) is not None and getattr(self, "_heft_seed_actions", None) is not None:
             return
-        snap = self._snapshot()
+        snap = self._snapshot() #记录当前状态
         try:
             self.reset_state()
-            base_sched = super().schedule(g, phase=phase)
-            self._heft_seed_device = {t.node_id: str(t.device) for t in base_sched}
+            base_sched = super().schedule(g, phase=phase) #调用最基本的heftscheduler
+            self._heft_seed_device = {t.node_id: str(t.device) for t in base_sched} #得到heft算法中每个节点的设备
             actions: Dict[str, str] = {}
             for t in base_sched:
                 devs = str(t.device)
                 actions[t.node_id] = 'hybrid' if 'HYBRID' in devs else _dev_type(devs)
             self._heft_seed_actions = actions
         finally:
-            self._restore(snap)
-
-    def _snapshot(self):
-        return {
-            'avail': copy.deepcopy(self.avail),
-            'comm': copy.deepcopy(self.comm.timeline_end),
-            'node_finish': copy.deepcopy(self._node_finish_time),
-            'node_place': copy.deepcopy(self._node_placement),
-            'node_fmt': copy.deepcopy(self._node_out_fmt),
-            'weight_cached': copy.deepcopy(self.weight_cached),
-            'weight_load_count': copy.deepcopy(self._weight_load_count),
-            'weight_sizes': copy.deepcopy(self._weight_sizes),
-            'mode_mem': copy.deepcopy(self.mode_mem),
-            'act_used': copy.deepcopy(self._act_used),
-            'act_resident': copy.deepcopy(self._act_resident),
-            'act_refcnt': copy.deepcopy(self._act_refcnt),
-            'host_store_end': copy.deepcopy(self._node_host_store_end),
-            'buffer_device_cache': copy.deepcopy(self.buffer.device_cache),
-            'buffer_host_fmt': copy.deepcopy(self.buffer.host_format),
-        }
+            self._restore(snap) #不管try是否执行成功，都会恢复之前的状态
 
     def _restore(self, snap):
-        self.avail = copy.deepcopy(snap['avail'])
-        self.comm.timeline_end = copy.deepcopy(snap['comm'])
-        self._node_finish_time = copy.deepcopy(snap['node_finish'])
-        self._node_placement = copy.deepcopy(snap['node_place'])
-        self._node_out_fmt = copy.deepcopy(snap['node_fmt'])
-        self.weight_cached = copy.deepcopy(snap['weight_cached'])
-        self._weight_load_count = copy.deepcopy(snap['weight_load_count'])
-        self._weight_sizes = copy.deepcopy(snap['weight_sizes'])
-        self.mode_mem = copy.deepcopy(snap['mode_mem'])
-        self._act_used = copy.deepcopy(snap['act_used'])
-        self._act_resident = copy.deepcopy(snap['act_resident'])
-        self._act_refcnt = copy.deepcopy(snap['act_refcnt'])
-        self._node_host_store_end = copy.deepcopy(snap['host_store_end'])
-        self.buffer.device_cache = copy.deepcopy(snap['buffer_device_cache'])
-        self.buffer.host_format = copy.deepcopy(snap['buffer_host_fmt'])
+        """Restore state from a snapshot produced by _snapshot."""
+        # 一律用 .copy()，既避免 alias，又保持原来的 dict/defaultdict 类型
+        self.avail = snap['avail'].copy()
+        self.comm.timeline_end = snap['comm'].copy()
+        self._node_finish_time = snap['node_finish'].copy()
+        self._node_placement = snap['node_place'].copy()
+        self._node_out_fmt = snap['node_fmt'].copy()
+        self.weight_cached = snap['weight_cached'].copy()
+        self._weight_load_count = snap['weight_load_count'].copy()
+        self._weight_sizes = snap['weight_sizes'].copy()
+        self.mode_mem = snap['mode_mem'].copy()
+        self._act_used = snap['act_used'].copy()
+        self._act_resident = snap['act_resident'].copy()
+        self._act_refcnt = snap['act_refcnt'].copy()
+        self._node_host_store_end = snap['host_store_end'].copy()
 
+        # buffer_device_cache 本身在 snapshot 阶段 deep copy 过一次，
+        # 这里直接复用就行；如果你担心 alias，也可以再 .copy() / deepcopy 一层。
+        self.buffer.device_cache = snap['buffer_device_cache']
+        self.buffer.host_format = snap['buffer_host_fmt'].copy()
+    
+    def _snapshot(self):
+        """Lightweight snapshot of mutable scheduling state for search algorithms.
+
+        大部分字段都是 {key -> 标量} 的 dict / defaultdict，用浅拷贝就够了。
+        只有 GlobalMemoryManager.device_cache 里是嵌套结构，继续用 deepcopy。
+        """
+        return {
+            # 普通 dict / defaultdict 都有 copy()，能保持原类型（包括 default_factory）
+            'avail': self.avail.copy(),
+            'comm': self.comm.timeline_end.copy(),
+            'node_finish': self._node_finish_time.copy(),
+            'node_place': self._node_placement.copy(),
+            'node_fmt': self._node_out_fmt.copy(),
+            'weight_cached': self.weight_cached.copy(),
+            'weight_load_count': self._weight_load_count.copy(),   # 保留 defaultdict(int)
+            'weight_sizes': self._weight_sizes.copy(),
+            'mode_mem': self.mode_mem.copy(),
+            'act_used': self._act_used.copy(),
+            'act_resident': self._act_resident.copy(),
+            'act_refcnt': self._act_refcnt.copy(),
+            'host_store_end': self._node_host_store_end.copy(),
+            'buffer_device_cache': copy.deepcopy(self.buffer.device_cache),
+            'buffer_host_fmt': self.buffer.host_format.copy(),
+        }
+
+
+    def _step_node(self, g: TaskGraph, nid: str, action: str, phase: str) -> None:
+        """
+        Execute a single node with a specific action and update the scheduler state.
+        Used for incremental scheduling in Lookahead/MCTS.
+        """
+        node = g.nodes[nid]
+        mode = action
+        
+        if mode == 'hybrid':
+            hy = self._earliest_finish_hybrid(g, nid, phase, commit=True)
+            start = min(hy['start_npu'], hy['start_pim'])
+            finish = hy['finish']
+            self.avail[hy['npu'].name] = finish #更新设备可用时间（在此之前被占用）
+            self.avail[hy['pim'].name] = finish
+            self._node_finish_time[nid] = finish
+            self._node_placement[nid] = hy['out_dev'].name
+            self._node_out_fmt[nid] = 'ND'
+            
+            op_name = node.attrs.get('op') or node.name
+            self.mode_mem[op_name] = 'HYBRID'
+            self._after_commit_consume_predecessors(g, nid) #检查前驱节点，如果前驱节点数据不再被需要，则释放其占用的内存
+            
+            if getattr(self, 'stats', None):
+                try:
+                    self.stats.log_op_device(
+                        nid=nid, op=op_name,
+                        device=hy['npu'].name, device_type=hy['npu'].type,
+                        start=float(hy['start_npu']),
+                        end=float(hy['npu_detail']['finish_compute']),
+                        mode='HYBRID'
+                    )
+                    self.stats.log_op_device(
+                        nid=nid, op=op_name,
+                        device=hy['pim'].name, device_type=hy['pim'].type,
+                        start=float(hy['start_pim']),
+                        end=float(hy['pim_detail']['finish_compute']),
+                        mode='HYBRID'
+                    )
+                except Exception:
+                    pass
+        else:
+            devs = self.cluster.devices_by_type(mode)
+            if not devs:
+                return
+
+            best = None
+            for d in devs:
+                st, ft = self._earliest_finish_on_device(g, nid, d, self.label, phase, commit=False)
+                if (best is None) or (ft < best[0]):
+                    best = (ft, st, d)
+            
+            try:
+                seed_name = getattr(self, '_heft_seed_device', {}).get(nid)
+                if seed_name and (_dev_type(seed_name) == mode):
+                    for dd in devs:
+                        if dd.name == seed_name:
+                            st0, ft0 = self._earliest_finish_on_device(g, nid, dd, self.label, phase, commit=False)
+                            if best and (ft0 <= best[0] * 1.01): #如果 HEFT 选的设备时间差不多，就用 HEFT 的设备
+                                best = (ft0, st0, dd)
+                            break
+            except Exception:
+                pass
+
+            if best is None:
+                return
+
+            f, s, dev = best
+            
+            start, finish = self._earliest_finish_on_device(g, nid, dev, self.label, phase, commit=True)
+            self.avail[dev.name] = finish
+            self._node_finish_time[nid] = finish
+            self._node_placement[nid] = dev.name
+            self._node_out_fmt[nid] = self.cost.device_preferred_fmt(dev)
+            
+            op_name = node.attrs.get('op') or node.name
+            self.mode_mem[op_name] = dev.type
+            self._after_commit_consume_predecessors(g, nid)
+            
+            if getattr(self, 'stats', None):
+                try:
+                    self.stats.log_op_device(
+                        nid=nid, op=op_name,
+                        device=dev.name, device_type=dev.type,
+                        start=float(start), end=float(finish),
+                        mode=mode
+                    )
+                except Exception:
+                    pass
 
     def _evaluate_action_map(self, g: TaskGraph, phase: str, actions: Dict[str, str], dry_run: bool) -> Tuple[float, List[ScheduledTask]]:
         """
@@ -973,11 +1133,22 @@ class _SearchSchedulerMixin(HEFTScheduler):
             if snap is not None:
                 self._restore(snap)
             return cost, sched
-        order = self._topo_order(g)
-        ready_pred = {nid: set(g.predecessors(nid)) for nid in g.nodes}
-        ready = [nid for nid in order if not ready_pred[nid]]
+        order = self._topo_order(g, phase)
+        
+        done_nodes = set(self._node_finish_time.keys())#记录已经调度完成的节点
+        done_nodes -= set(order) #prefill阶段遗留，先强制全部清空
+
+        ready_pred = {}
+        for nid in g.nodes:
+            if nid in done_nodes:
+                continue
+            preds = set(g.predecessors(nid))
+            preds -= done_nodes
+            ready_pred[nid] = preds
+            
+        ready = [nid for nid in order if nid not in done_nodes and not ready_pred[nid]]
         scheduled = []
-        placed: set[str] = set()
+        placed: set[str] = set(done_nodes)
 
         while ready:
             best_tuple = None  # (finish, start, nid, mode, dev)
@@ -1003,17 +1174,7 @@ class _SearchSchedulerMixin(HEFTScheduler):
                             cands.append( (hy['finish'], min(hy['start_npu'], hy['start_pim']), 'hybrid', None) )
                     if not cands:
                         continue
-                    # Hybrid gating: keep 'hybrid' only if it clearly wins vs best single-device
-                    try:
-                        hy_idx = next((i for i, c in enumerate(cands) if c[2] == 'hybrid'), None)
-                        if hy_idx is not None:
-                            best_nonhy = min((c for c in cands if c[2] != 'hybrid'), default=None, key=lambda x: x[0])
-                            if best_nonhy is not None:
-                                hy_finish = cands[hy_idx][0]
-                                if hy_finish > best_nonhy[0] * 0.98:  # require >=2% better to keep hybrid
-                                    cands = [c for c in cands if c[2] != 'hybrid']
-                    except Exception:
-                        pass
+                    
                     f, s, mode, dev = min(cands, key=lambda x: x[0])
                 else:
                     mode = act
@@ -1078,6 +1239,24 @@ class _SearchSchedulerMixin(HEFTScheduler):
                 op_name = node.attrs.get('op') or node.name
                 self.mode_mem[op_name] = 'HYBRID'
                 self._after_commit_consume_predecessors(g, nid)
+                if not dry_run and getattr(self, 'stats', None):
+                    try:
+                        self.stats.log_op_device(
+                            nid=nid, op=op_name,
+                            device=hy['npu'].name, device_type=hy['npu'].type,
+                            start=float(hy['start_npu']),
+                            end=float(hy['npu_detail']['finish_compute']),
+                            mode='HYBRID'
+                        )
+                        self.stats.log_op_device(
+                            nid=nid, op=op_name,
+                            device=hy['pim'].name, device_type=hy['pim'].type,
+                            start=float(hy['start_pim']),
+                            end=float(hy['pim_detail']['finish_compute']),
+                            mode='HYBRID'
+                        )
+                    except Exception:
+                        pass
             else:
                 start, finish = self._earliest_finish_on_device(g, nid, dev, self.label, phase, commit=True)
                 self.avail[dev.name] = finish
@@ -1088,6 +1267,16 @@ class _SearchSchedulerMixin(HEFTScheduler):
                 op_name = node.attrs.get('op') or node.name
                 self.mode_mem[op_name] = dev.type
                 self._after_commit_consume_predecessors(g, nid)
+                if not dry_run and getattr(self, 'stats', None):
+                    try:
+                        self.stats.log_op_device(
+                            nid=nid, op=op_name,
+                            device=dev.name, device_type=dev.type,
+                            start=float(start), end=float(finish),
+                            mode=mode
+                        )
+                    except Exception:
+                        pass
 
             placed.add(nid)
             ready.remove(nid)
@@ -1100,9 +1289,12 @@ class _SearchSchedulerMixin(HEFTScheduler):
                 if not deps and (v not in ready):
                     ready.append(v)
 
-            cost = self.makespan(scheduled)
-            if snap is not None:
-                self._restore(snap)
+        cost = self.makespan(scheduled)
+        # If we did incremental scheduling, the true makespan is max(new_tasks, old_tasks)
+        if self._node_finish_time:
+            cost = max(cost, max(self._node_finish_time.values()))
+        if snap is not None:
+            self._restore(snap)
         return cost, scheduled
 
 
@@ -1482,7 +1674,7 @@ class AStarBeamScheduler(_SearchSchedulerMixin):
     def schedule(self, g: TaskGraph, phase: str) -> List[ScheduledTask]:
         if getattr(self, 'stats', None):
             self.stats.set_phase(phase)
-        order = self._topo_order(g)
+        order = self._topo_order(g, phase)
         init = AStarBeamScheduler._State(
             idx=0,
             order=order,
@@ -1564,3 +1756,442 @@ class AStarBeamScheduler(_SearchSchedulerMixin):
             actions.setdefault(nid, 'auto')
         _, sched = self._evaluate_action_map(g, phase, actions, dry_run=False)
         return sched
+
+class HeftLookaheadScheduler(_SearchSchedulerMixin):
+    """
+    确定性的 HEFT 多步前瞻调度器（不使用 Monte Carlo）。
+
+    Debug 日志关键点：
+      - 调度开始时打印 phase / 节点数 / lookahead_depth
+      - 每个节点打印: index, nid, op, allowed actions
+      - 对当前节点每个 action 打印『在 lookahead 下评估出的 cost』
+      - 最终选定的动作和对应 best_cost
+    """
+
+    def __init__(self, *args, lookahead_depth: int = 3, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.lookahead_depth = max(1, int(lookahead_depth))
+
+    def _lookahead_value(
+        self,
+        g: TaskGraph,
+        phase: str,
+        base_actions: Dict[str, str],
+        order: List[str],
+        start_idx: int,
+        depth: int,
+    ) -> float:
+        """
+        从 order[start_idx] 开始，最多往前看 depth 个“可决策节点”，
+        返回在这些节点上最优动作组合下的整体 makespan。
+        """
+        if depth <= 0 or start_idx >= len(order):
+            cost, _ = self._evaluate_action_map(g, phase, base_actions, dry_run=True)
+            return float(cost)
+
+        # 跳过那些没有可选动作的节点
+        idx = start_idx
+        while idx < len(order):
+            nid = order[idx]
+            node = g.nodes[nid]
+            acts = self._allowed_actions(node)
+            if acts:
+                break
+            idx += 1
+
+        if idx >= len(order):
+            cost, _ = self._evaluate_action_map(g, phase, base_actions, dry_run=True)
+            return float(cost)
+
+        nid = order[idx]
+        node = g.nodes[nid]
+        acts = self._allowed_actions(node)
+
+        best_cost = float("inf")
+
+        for a in acts:
+            new_actions = dict(base_actions)
+            new_actions[nid] = a
+            cost = self._lookahead_value(
+                g=g,
+                phase=phase,
+                base_actions=new_actions,
+                order=order,
+                start_idx=idx + 1,
+                depth=depth - 1,
+            )
+            if cost < best_cost:
+                best_cost = cost
+
+        return best_cost
+
+    def schedule(self, g: TaskGraph, phase: str) -> List[ScheduledTask]:
+        if getattr(self, "stats", None): self.stats.set_phase(phase)
+
+        order = self._upward_rank(g, phase=phase)
+        logger.debug(f"[HEFT-LA] schedule start phase={phase} " f"nodes={len(order)} lookahead_depth={self.lookahead_depth}")
+        fixed_actions: Dict[str, str] = {}
+        
+        # Capture state at start of phase (e.g. prefill results) to pass to workers
+        start_snap = self._snapshot()
+        current_snap = self._snapshot()
+
+        for idx, nid in enumerate(order):
+            node = g.nodes[nid]
+            acts = self._allowed_actions(node)
+            if not acts:
+                continue
+
+            op_name = node.attrs.get("op") or node.name
+            logger.debug(f"[HEFT-LA] Node {idx+1}/{len(order)} nid={nid} op={op_name} " f"allowed={acts}")
+
+            best_a: Optional[str] = None
+            best_cost: float = float("inf")
+
+            if len(acts) == 1 or (os.cpu_count() or 1) <= 1:
+                # 只有一个 action 或者 CPU 核太少就退化成原来的串行逻辑
+                for a in acts:
+                    tmp_actions = dict(fixed_actions)
+                    tmp_actions[nid] = a
+
+                    cost = self._lookahead_value(g=g, phase=phase, base_actions=tmp_actions, order=order, start_idx=idx + 1, depth=self.lookahead_depth - 1,)
+
+                    logger.debug(f"[HEFT-LA] try action={a!r} " f"lookahead_cost={cost:.6f}"
+                    )
+                    if cost < best_cost:
+                        best_cost = cost
+                        best_a = a
+            else:
+                def _eval_one_action(a: str, snap_state: Any) -> tuple[str, float]:
+                    # 为每个线程构造一个独立的 Scheduler + Buffer，避免共享内部状态
+                    worker = HeftLookaheadScheduler(
+                        self.cluster,
+                        self.cost,
+                        self.label,
+                        batch=self.batch,
+                        seq_len=self.seq_len,
+                        buffer=GlobalMemoryManager(),
+                        lookahead_depth=self.lookahead_depth,
+                    )
+                    # Restore worker to the state at start of phase (including prefill cache/avail)
+                    worker._restore(copy.deepcopy(snap_state))
+                    
+                    tmp_actions = dict(fixed_actions)
+                    tmp_actions[nid] = a
+                    cost = worker._lookahead_value(g=g, phase=phase, base_actions=tmp_actions, order=order, start_idx=idx + 1, depth=self.lookahead_depth - 1,)
+                    logger.debug(
+                        f"[HEFT-LA]   try action={a!r} "
+                        f"lookahead_cost={cost:.6f}"
+                    )
+                    return a, float(cost)
+
+                max_workers = min(len(acts), os.cpu_count() or 16)
+                print(f"Using {max_workers} threads for HEFT-LA lookahead evaluation.")
+                if max_workers < 1:
+                    max_workers = 1
+
+                with ThreadPoolExecutor(max_workers=max_workers) as ex:
+                    futures = {ex.submit(_eval_one_action, a, current_snap): a for a in acts}
+                    for fut in as_completed(futures):
+                        a, cost = fut.result()
+                        if cost < best_cost:
+                            best_cost = cost
+                            best_a = a
+
+            logger.debug(
+                f"[HEFT-LA] Node nid={nid} choose action={best_a!r} " f"best_cost={best_cost:.6f}"
+            )
+            chosen_action = best_a or acts[0]
+            fixed_actions[nid] = chosen_action
+            
+            # Incrementally update self and current_snap
+            self._step_node(g, nid, chosen_action, phase)
+            current_snap = self._snapshot()
+
+        logger.debug(
+            "[HEFT-LA] 前瞻决策完成，调用 _evaluate_action_map(dry_run=False) 生成最终调度表"
+        )
+        self._restore(start_snap)
+        _, sched = self._evaluate_action_map(g, phase, fixed_actions, dry_run=False)
+        logger.debug(f"[HEFT-LA] schedule done phase={phase} tasks={len(sched)}")
+        return sched
+
+class MonteCarloHeftScheduler(_SearchSchedulerMixin):
+    def __init__(
+        self,
+        *args,
+        rollouts_per_action: int = 8,
+        lookahead_depth: int = 4,
+        heft_bias: float = 0.7,
+        mcmc_iters: int = 0,
+        mcmc_temp: float = 0.1,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        self.rollouts_per_action = int(max(1, rollouts_per_action))
+        self.lookahead_depth = int(max(1, lookahead_depth))
+        self.heft_bias = float(heft_bias)
+
+        # MCMC 参数
+        self.mcmc_iters = int(max(0, mcmc_iters))
+        self.mcmc_temp = float(mcmc_temp)
+
+        # 固定随机种子，保证可复现
+        self._rng = random.Random(0)
+
+        # debug 计数器：记录前若干次 rollout 的调用
+        self._debug_rollout_calls = 0
+
+    def _rollout_once(
+        self,
+        g: TaskGraph,
+        phase: str,
+        base_actions: Dict[str, str],
+        order: List[str],
+        cur_idx: int,
+        cur_action: str,
+    ) -> float:
+        """
+        单次 rollout：
+          - 固定当前节点的 action
+          - 对后续 lookahead_depth 个节点随机补全
+          - 再用 _evaluate_action_map(dry_run=True) 估整体 cost
+        """
+        actions: Dict[str, str] = dict(base_actions)
+        nid_cur = order[cur_idx]
+        actions[nid_cur] = cur_action
+
+        # 只在后面若干个节点上随机前瞻
+        end_idx = min(len(order), cur_idx + 1 + self.lookahead_depth)
+        seed_map: Dict[str, str] = getattr(self, "_heft_seed_actions", {})
+
+        for j in range(cur_idx + 1, end_idx):
+            nid = order[j]
+            if nid in actions:
+                continue
+            node = g.nodes[nid]
+            acts = self._allowed_actions(node)
+            if not acts:
+                continue
+
+            seed = seed_map.get(nid)
+            if seed in acts and self._rng.random() < self.heft_bias:
+                a = seed
+            else:
+                a = self._rng.choice(acts)
+            actions[nid] = a
+
+        # debug：前几次 rollout 打印一下信息，确认逻辑没问题
+        self._debug_rollout_calls += 1
+        if self._debug_rollout_calls <= 10:
+            logger.debug(
+                f"[MCTS] rollout#{self._debug_rollout_calls} "
+                f"phase={phase} cur_idx={cur_idx} nid={nid_cur} action={cur_action} "
+                f"lookahead_nodes={[order[k] for k in range(cur_idx+1, end_idx)]}"
+            )
+
+        cost, _ = self._evaluate_action_map(g, phase, actions, dry_run=True)
+        return float(cost)
+
+    def _mcmc_refine(
+        self,
+        g: TaskGraph,
+        phase: str,
+        init_actions: Dict[str, str],
+        order: List[str],
+    ) -> Dict[str, str]:
+        """
+        在整个 action_map 空间上做 MCMC refine。
+        """
+        if self.mcmc_iters <= 0 or self.mcmc_temp <= 0:
+            logger.debug("[MCTS-MCMC] mcmc_iters<=0 or temp<=0, 跳过 refine")
+            return init_actions
+
+        cur_actions: Dict[str, str] = dict(init_actions)
+        cur_cost, _ = self._evaluate_action_map(g, phase, cur_actions, dry_run=True)
+
+        best_actions: Dict[str, str] = dict(cur_actions)
+        best_cost: float = cur_cost
+
+        logger.debug(
+            f"[MCTS-MCMC] start refine phase={phase} "
+            f"iters={self.mcmc_iters} temp={self.mcmc_temp:.4f} "
+            f"init_cost={cur_cost:.6f}"
+        )
+
+        # 每多少步打印一次进度
+        log_interval = max(1, self.mcmc_iters // 10)
+
+        for it in range(self.mcmc_iters):
+            # 1) 随机选一个可翻转节点
+            for _ in range(8):
+                nid = self._rng.choice(order)
+                node = g.nodes[nid]
+                acts = self._allowed_actions(node)
+                if len(acts) <= 1:
+                    continue
+                cur_a = cur_actions.get(nid, acts[0])
+                cand = [a for a in acts if a != cur_a]
+                if not cand:
+                    continue
+                new_a = self._rng.choice(cand)
+                break
+            else:
+                # 实在选不到可翻转节点
+                if (it + 1) % log_interval == 0:
+                    logger.debug(
+                        f"[MCTS-MCMC] iter={it+1}/{self.mcmc_iters} "
+                        f"skip(no movable node) cur_cost={cur_cost:.6f} best_cost={best_cost:.6f}"
+                    )
+                continue
+
+            new_actions = dict(cur_actions)
+            new_actions[nid] = new_a
+
+            new_cost, _ = self._evaluate_action_map(g, phase, new_actions, dry_run=True)
+            delta = new_cost - cur_cost
+
+            if delta <= 0:
+                accept = True
+            else:
+                prob = math.exp(-delta / self.mcmc_temp)
+                accept = (self._rng.random() < prob)
+
+            if accept:
+                logger.debug(
+                    f"[MCTS-MCMC] iter={it+1}/{self.mcmc_iters} ACCEPT "
+                    f"nid={nid} {cur_actions.get(nid)!r}->{new_a!r} "
+                    f"delta={delta:+.6f} "
+                    f"cost {cur_cost:.6f}->{new_cost:.6f}"
+                )
+                cur_actions = new_actions
+                cur_cost = new_cost
+
+                if cur_cost < best_cost:
+                    best_cost = cur_cost
+                    best_actions = dict(cur_actions)
+            else:
+                if (it + 1) % log_interval == 0:
+                    logger.debug(
+                        f"[MCTS-MCMC] iter={it+1}/{self.mcmc_iters} REJECT "
+                        f"nid={nid} cand_action={new_a!r} delta={delta:+.6f} "
+                        f"cur_cost={cur_cost:.6f} best_cost={best_cost:.6f}"
+                    )
+
+        logger.debug(
+            f"[MCTS-MCMC] done refine phase={phase} "
+            f"final_cur_cost={cur_cost:.6f} best_cost={best_cost:.6f}"
+        )
+        return best_actions
+
+    def schedule(self, g: TaskGraph, phase: str) -> List[ScheduledTask]:
+        if getattr(self, "stats", None):
+            self.stats.set_phase(phase)
+
+        order = self._upward_rank(g, phase=phase)
+        logger.debug(
+            f"[MCTS] schedule start phase={phase} "
+            f"nodes={len(order)} rollouts_per_action={self.rollouts_per_action} "
+            f"lookahead_depth={self.lookahead_depth} "
+            f"mcmc_iters={self.mcmc_iters} temp={self.mcmc_temp}"
+        )
+
+        # 准备 HEFT 的 seed action，用于 rollout 中的 HEFT-bias
+        try:
+            self._ensure_heft_seed(g, phase)
+            logger.debug("[MCTS] HEFT seed actions 已准备好，用于 rollout bias")
+        except Exception as e:
+            logger.debug(f"[MCTS] _ensure_heft_seed 失败，退化为纯随机补全: {e}")
+            self._heft_seed_actions = {}
+
+        fixed_actions: Dict[str, str] = {}
+        
+        # Capture state at start of phase (e.g. prefill results) to pass to workers
+        start_snap = self._snapshot()
+        current_snap = self._snapshot()
+
+        # === 第一阶段：HEFT 顺序 + 蒙卡前瞻 ===
+        for idx, nid in enumerate(order):
+            node = g.nodes[nid]
+            acts = self._allowed_actions(node)
+            if not acts:
+                continue
+
+            op_name = node.attrs.get("op") or node.name
+            logger.debug(
+                f"[MCTS] Node {idx+1}/{len(order)} nid={nid} op={op_name} "
+                f"allowed={acts}"
+            )
+
+            best_a: Optional[str] = None
+            best_cost: float = float("inf")
+
+            # 只有一个 action 或 CPU 核太少，退回原来的串行逻辑
+            if len(acts) == 1 or (os.cpu_count() or 1) <= 1:
+                for a in acts:
+                    total = 0.0
+                    for _ in range(self.rollouts_per_action):
+                        total += self._rollout_once(g, phase, fixed_actions, order, idx, a,)
+                    avg_cost = total / float(self.rollouts_per_action)
+                    logger.debug(
+                        f"[MCTS]   try action={a!r} "
+                        f"avg_cost={avg_cost:.6f} over {self.rollouts_per_action} rollouts"
+                    )
+                    if avg_cost < best_cost:
+                        best_cost = avg_cost
+                        best_a = a
+            else:
+                # 多线程并行评估各个 action 的 rollouts
+                def _eval_one_action(a: str, snap_state: Any) -> tuple[str, float]:
+                    # 为每个线程构造一个独立的 Scheduler + Buffer，避免共享内部状态
+                    worker = MonteCarloHeftScheduler(self.cluster, self.cost, self.label, batch=self.batch, seq_len=self.seq_len,buffer=GlobalMemoryManager(),
+                        rollouts_per_action=self.rollouts_per_action, lookahead_depth=self.lookahead_depth, heft_bias=self.heft_bias, mcmc_iters=self.mcmc_iters, mcmc_temp=self.mcmc_temp,
+                    )
+                    # Restore worker to the state at start of phase (including prefill cache/avail)
+                    worker._restore(copy.deepcopy(snap_state))
+                    
+                    # 让 worker 也用上 HEFT seed bias
+                    worker._heft_seed_actions = dict(getattr(self, "_heft_seed_actions", {}))
+
+                    total = 0.0
+                    for _ in range(self.rollouts_per_action):
+                        total += worker._rollout_once(g, phase, fixed_actions, order, idx, a)
+                    avg_cost = total / float(self.rollouts_per_action)
+                    logger.debug(f"[MCTS]   try action={a!r} " f"avg_cost={avg_cost:.6f} over {self.rollouts_per_action} rollouts")
+                    return a, float(avg_cost)
+
+                max_workers = min(len(acts), os.cpu_count() or 1)
+                if max_workers < 1:
+                    max_workers = 1
+
+                with ThreadPoolExecutor(max_workers=max_workers) as ex:
+                    futures = {ex.submit(_eval_one_action, a, current_snap): a for a in acts}
+                    for fut in as_completed(futures):
+                        a, avg_cost = fut.result()
+                        if avg_cost < best_cost:
+                            best_cost = avg_cost
+                            best_a = a
+
+            logger.debug(
+                f"[MCTS] Node nid={nid} choose action={best_a!r} "
+                f"est_cost={best_cost:.6f}"
+            )
+            chosen_action = best_a or acts[0]
+            fixed_actions[nid] = chosen_action
+            
+            # Incrementally update self and current_snap
+            self._step_node(g, nid, chosen_action, phase)
+            current_snap = self._snapshot()
+
+        logger.debug("[MCTS] 第一阶段(HEFT+蒙卡前瞻)结束，进入 MCMC refine 阶段")
+
+        # === 第二阶段：MCMC refine（保持原来的串行实现） ===
+        self._restore(start_snap)
+        refined_actions = self._mcmc_refine(g, phase, fixed_actions, order)
+
+        logger.debug("[MCTS] refine 完成，调用 _evaluate_action_map(dry_run=False) 生成最终调度表")
+        _, sched = self._evaluate_action_map(g, phase, refined_actions, dry_run=False)
+        logger.debug(f"[MCTS] schedule done phase={phase} tasks={len(sched)}")
+        return sched
+
+

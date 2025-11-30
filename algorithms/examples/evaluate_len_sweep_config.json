@@ -1,18 +1,18 @@
 {
   "model_family": "llama",
   "model_variant": "7b",
-  "dtype": "fp16",
+  "dtype": "int8",
   "batch": 1,
   "prefill_len": 128,
   "decode_len": 1024,
-  "decode_sample_stride": 16,
+  "decode_sample_stride": 64,
   "pim_config_path": "./aim_simulator/pim.json",
   "gb_config_path": "./aim_simulator/gb.json",
   "ramulator_config_path": "./aim_simulator/example.yaml",
-  "simulation_log_file": "./output/pim_simulation.txt",
-  "result_dir": "./output/len_sweep",
+  "simulation_log_file": "./output/test_2/pim_simulation.txt",
+  "result_dir": "./output/test_2/",
   "algo": [
-    "heft"
+    "heft, heft_la,mcts"
   ],
   "baselines": [
     "ianus",

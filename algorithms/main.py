@@ -13,7 +13,15 @@ from buffer_manager import GlobalMemoryManager
 from model_parser import build_graph
 from config import DEFAULT_CONFIG, WEIGHT_FORMAT_JSON_PATH, FORMAT_TUNING_MAX_PASSES, FORMAT_TUNING_TIME_EPS, FORMAT_TUNING_MAP_EPS, SA_ENABLE, SA_T0, SA_ALPHA, SA_FLIP_PROB, ALL_PASSES_RESULT_PATH, BEST_PASS_SUMMARY_PATH, PIM_WEIGHT_CAPACITY_FACTOR,setup_logging
 from plan_label import PlanLabel
-from scheduler import HEFTScheduler, ScheduledTask, SimulatedAnnealingScheduler, GeneticScheduler, RLScheduler, AStarBeamScheduler
+from scheduler import (
+    HEFTScheduler,
+    SimulatedAnnealingScheduler,
+    GeneticScheduler,
+    RLScheduler,
+    AStarBeamScheduler,
+    MonteCarloHeftScheduler,
+    HeftLookaheadScheduler,
+)
 from pathlib import Path
 import logging
 from task_graph import TaskGraph, TaskNode
@@ -190,25 +198,51 @@ def simulate_decode_progressive(sched: HEFTScheduler, cfg: Dict, graph: TaskGrap
     return (float(global_end - prefill_end), steps_serialized)
 
 def _make_scheduler(name: str, cluster: Cluster, cost: CostModel, label: PlanLabel, batch: int, seq_len: int, buffer: GlobalMemoryManager):
-    from config import (SCHED_SA_ITERS, SCHED_SA_T0, SCHED_SA_ALPHA, SCHED_SA_FLIP_PROB,
-                        SCHED_GA_POP, SCHED_GA_GENS, SCHED_GA_ELITE, SCHED_GA_MUT_PROB, SCHED_GA_CROSS_PROB,
-                        SCHED_RL_EPISODES, SCHED_RL_EPS0, SCHED_RL_EPSE, SCHED_RL_ALPHA, SCHED_RL_GAMMA,
-                        SCHED_ASTAR_BEAM, SCHED_ASTAR_MAX_EXPANSIONS)
+    from config import (
+        SCHED_SA_ITERS, SCHED_SA_T0, SCHED_SA_ALPHA, SCHED_SA_FLIP_PROB,
+        SCHED_GA_POP, SCHED_GA_GENS, SCHED_GA_ELITE, SCHED_GA_MUT_PROB, SCHED_GA_CROSS_PROB,
+        SCHED_RL_EPISODES, SCHED_RL_EPS0, SCHED_RL_EPSE, SCHED_RL_ALPHA, SCHED_RL_GAMMA,
+        SCHED_ASTAR_BEAM, SCHED_ASTAR_MAX_EXPANSIONS,
+        SCHED_MCTS_ROLLOUTS, SCHED_MCTS_DEPTH, SCHED_MCTS_HEFT_BIAS,
+        SCHED_HEFT_LK_DEPTH,
+    )
     name = (name or 'heft').strip().lower()
     if name in ('heft','heft+greedy','greedy'):
         return HEFTScheduler(cluster, cost, label, batch=batch, seq_len=seq_len, buffer=buffer)
+    if name in ('heft_la','lookahead','heft_lookahead'):
+        return HeftLookaheadScheduler(
+            cluster, cost, label, batch=batch, seq_len=seq_len, buffer=buffer,
+            lookahead_depth=SCHED_HEFT_LK_DEPTH,
+        )
     if name in ('sa','anneal','simulated_annealing'):
-        return SimulatedAnnealingScheduler(cluster, cost, label, batch=batch, seq_len=seq_len, buffer=buffer,
-                                           sa_iters=SCHED_SA_ITERS, T0=SCHED_SA_T0, alpha=SCHED_SA_ALPHA, flip_prob=SCHED_SA_FLIP_PROB)
+        return SimulatedAnnealingScheduler(
+            cluster, cost, label, batch=batch, seq_len=seq_len, buffer=buffer,
+            sa_iters=SCHED_SA_ITERS, T0=SCHED_SA_T0, alpha=SCHED_SA_ALPHA, flip_prob=SCHED_SA_FLIP_PROB
+        )
     if name in ('ga','genetic'):
-        return GeneticScheduler(cluster, cost, label, batch=batch, seq_len=seq_len, buffer=buffer,
-                                pop=SCHED_GA_POP, gens=SCHED_GA_GENS, elite=SCHED_GA_ELITE, mut_prob=SCHED_GA_MUT_PROB, cross_prob=SCHED_GA_CROSS_PROB)
+        return GeneticScheduler(
+            cluster, cost, label, batch=batch, seq_len=seq_len, buffer=buffer,
+            pop=SCHED_GA_POP, gens=SCHED_GA_GENS, elite=SCHED_GA_ELITE,
+            mut_prob=SCHED_GA_MUT_PROB, cross_prob=SCHED_GA_CROSS_PROB
+        )
     if name in ('rl','bandit'):
-        return RLScheduler(cluster, cost, label, batch=batch, seq_len=seq_len, buffer=buffer,
-                           episodes=SCHED_RL_EPISODES, epsilon_start=SCHED_RL_EPS0, epsilon_end=SCHED_RL_EPSE, alpha=SCHED_RL_ALPHA, gamma=SCHED_RL_GAMMA)
+        return RLScheduler(
+            cluster, cost, label, batch=batch, seq_len=seq_len, buffer=buffer,
+            episodes=SCHED_RL_EPISODES, epsilon_start=SCHED_RL_EPS0,
+            epsilon_end=SCHED_RL_EPSE, alpha=SCHED_RL_ALPHA, gamma=SCHED_RL_GAMMA
+        )
     if name in ('astar','a*','a_star'):
-        return AStarBeamScheduler(cluster, cost, label, batch=batch, seq_len=seq_len, buffer=buffer,
-                                  beam=SCHED_ASTAR_BEAM, max_expansions=SCHED_ASTAR_MAX_EXPANSIONS)
+        return AStarBeamScheduler(
+            cluster, cost, label, batch=batch, seq_len=seq_len, buffer=buffer,
+            beam=SCHED_ASTAR_BEAM, max_expansions=SCHED_ASTAR_MAX_EXPANSIONS
+        )
+    if name in ('mcts', 'mc', 'heft_mcts', 'mc_heft'):
+        return MonteCarloHeftScheduler(
+            cluster, cost, label, batch=batch, seq_len=seq_len, buffer=buffer,
+            rollouts_per_action=SCHED_MCTS_ROLLOUTS,
+            lookahead_depth=SCHED_MCTS_DEPTH,
+            heft_bias=SCHED_MCTS_HEFT_BIAS,
+        )
     raise ValueError(f"Unknown scheduler strategy: {name}")
 
 def mapping_diff_ratio(a: Dict[str, str], b: Dict[str, str]) -> float:
@@ -880,11 +914,19 @@ def parse_args():
 
 
 def _normalize_list_field(val) -> list[str]:
+    items: list[str] = []
     if isinstance(val, list):
-        return [str(t).strip() for t in val if str(t).strip()]
-    if isinstance(val, str):
-        return [t for t in val.replace(',', ' ').split() if t]
-    return []
+        seq = val
+    else:
+        seq = [val]
+    for item in seq:
+        if item is None:
+            continue
+        for tok in str(item).replace(',', ' ').split():
+            tok = tok.strip()
+            if tok:
+                items.append(tok)
+    return items
 
 def _load_cfg_from_json(path: str) -> Dict:
     with open(path, 'r', encoding='utf-8') as f:

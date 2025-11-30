@@ -1,0 +1,11 @@
+{
+  "type": "qwen_14b",
+  "hidden_dim": 5120,
+  "layer_num": 40,
+  "intermediate_dim": 13824,
+  "q_head_num": 40,
+  "kv_head_num": 40,
+  "vocab_size": 151851,
+  "rotary_embedding_dim": 64,
+  "max_position_embeddings": 8192
+}

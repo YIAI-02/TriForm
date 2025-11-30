@@ -1,6 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Dict, Tuple, List
+from typing import Dict, Tuple, List, Optional
 
 @dataclass
 class DeviceSpec:
