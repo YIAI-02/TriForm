@@ -1,6 +1,8 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, Tuple, List, Optional
+from pathlib import Path
+import json
 
 @dataclass
 class DeviceSpec:
@@ -10,6 +12,8 @@ class DeviceSpec:
     mem_bw_GBs: float  # memory bandwidth GB/s (HBM/DRAM/near-memory)
     onchip_bw_GBs: float  # on-chip SRAM/shared mem BW GB/s
     mem_capacity_GB: float
+    pim_type: Optional[str] = None
+    attached_npu: Optional[str] = None # 若 pim_type 为 'dram'/'hbm'，表明这个 PIM-DRAM 绑定到哪一个 NPU
 
 class Cluster:
     def __init__(self):
@@ -35,17 +39,31 @@ class Cluster:
     def devices_by_type(self, t: str) -> List[DeviceSpec]: #传进来t是cpu/npu/pim，筛选出是这个dev的所有设备
         return [d for d in self.devices.values() if d.type == t]
 
-def demo_cluster() -> Cluster:
+def demo_cluster(cfg: Dict | None = None) -> Cluster:
     c = Cluster()
-    c.add_device(DeviceSpec("CPU0","cpu", tflops=2.0,  mem_bw_GBs=51.2, onchip_bw_GBs=128.0, mem_capacity_GB=0.009))
-    c.add_device(DeviceSpec("NPU0","npu", tflops=10.0, mem_bw_GBs=51.2, onchip_bw_GBs=128.0, mem_capacity_GB=0.003))
+    hw_cfg = None
+    if isinstance(cfg, dict):
+        hw_json_path = cfg.get('hardware_json')
+        if isinstance(hw_json_path, str) and hw_json_path.strip():
+            try:
+                p = Path(hw_json_path)
+                raw = json.loads(p.read_text(encoding='utf-8'))
+                if isinstance(raw, dict):
+                    hw_cfg = raw.get('hardware') or raw.get('cluster') or raw
+            except Exception:
+                hw_cfg = None
+        if hw_cfg is None:
+            hw_cfg = cfg.get('hardware') or cfg.get('cluster')
+    if not hw_cfg:
+        c.add_device(DeviceSpec("CPU0","cpu",tflops=2.0,mem_bw_GBs=51.2,onchip_bw_GBs=128.0,mem_capacity_GB=0.009,))
+        c.add_device(DeviceSpec("NPU0","npu",tflops=10.0,mem_bw_GBs=51.2,onchip_bw_GBs=128.0,mem_capacity_GB=0.003,))
     # Two PIM stacks as example
-    c.add_device(DeviceSpec("PIM0","pim", tflops=1.0,  mem_bw_GBs=32.0, onchip_bw_GBs=512, mem_capacity_GB=1))
+        c.add_device(DeviceSpec("PIM0","pim",tflops=1.0,mem_bw_GBs=32.0,onchip_bw_GBs=512.0,mem_capacity_GB=1.0,pim_type='accel'))
     # c.add_device(DeviceSpec("PIM1","pim", tflops=1.0,  mem_bw_GBs=32.0, onchip_bw_GBs=512, mem_capacity_GB=1))
     # Links
-    c.connect("CPU0","NPU0", 32.0, "PCIe")
-    c.connect("CPU0","PIM0", 32.0, "PCIe")
-    # c.connect("CPU0","PIM1", 12.0, "PCIe")
+        c.connect("CPU0","NPU0", 32.0, "PCIe")
+        c.connect("CPU0","PIM0", 32.0, "PCIe")
+        return c
     # c.connect("NPU0","PIM0", 24.0, "NVLink")
     # c.connect("NPU0","PIM1", 24.0, "NVLink")
     return c

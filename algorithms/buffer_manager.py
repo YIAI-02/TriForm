@@ -100,7 +100,7 @@ class GlobalMemoryManager:
             # conservative: 10 GB/s default
             bw = 10.0
         self.stats_convert_bytes[(from_fmt, to_fmt)] = self.stats_convert_bytes.get((from_fmt, to_fmt), 0) + size_bytes #get用法，如果这个key已经存在就返回原来的value，如果不存在就默认返回0
-        return size_bytes / (bw * 1e9)
+        return size_bytes / (bw * 1024**3)
 
     def avg_weight_load_time(self, wid: str, size_bytes: int, dev_type: str) -> float:
         # Estimate conversion (host -> device-native) + DMA (host->device) on first touch

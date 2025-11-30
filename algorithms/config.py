@@ -70,8 +70,8 @@ PIM_FREQ_GHZ: float = 1.0
 GB_FREQ_GHZ: float = 1.0
 
 # PIM 容量分配系数
-PIM_WEIGHT_CAPACITY_FACTOR: float = 0.5 #去除kvcache之后，权重和激活值怎么分配
-
+PIM_STATIC_ALLOC_RATIO: float = 0.5
+PIM_RUNTIME_LRU_THRESHOLD: float = 0.9
 # =========================
 # Operator device constraints
 # =========================
@@ -215,4 +215,4 @@ SCHED_ASTAR_MAX_EXPANSIONS: int = 200
 SCHED_MCTS_ROLLOUTS: int = 10    # 每个 action 做多少次随机 rollout
 SCHED_MCTS_DEPTH: int = 3       # 每次 rollout 向前看的节点个数
 SCHED_MCTS_HEFT_BIAS: float = 0.5  # 随机填充时，有多大概率跟随 HEFT 的 seed action
-SCHED_HEFT_LK_DEPTH: int = 2
+SCHED_HEFT_LK_DEPTH: int = 3

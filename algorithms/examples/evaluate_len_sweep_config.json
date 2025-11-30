@@ -9,10 +9,10 @@
   "pim_config_path": "./aim_simulator/pim.json",
   "gb_config_path": "./aim_simulator/gb.json",
   "ramulator_config_path": "./aim_simulator/example.yaml",
-  "simulation_log_file": "./output/test_2/pim_simulation.txt",
-  "result_dir": "./output/test_2/",
+  "simulation_log_file": "./output/algorithm_test/pim_simulation.txt",
+  "result_dir": "./output/algorithm_test",
   "algo": [
-    "heft, heft_la,mcts"
+    "heft,heft_la,mc"
   ],
   "baselines": [
     "ianus",

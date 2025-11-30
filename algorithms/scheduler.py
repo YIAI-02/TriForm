@@ -2,7 +2,7 @@ from __future__ import annotations
 import os
 from config import attach_local_debug_filter
 from dataclasses import dataclass
-from typing import Dict, List, Tuple, Optional, Any, Iterable
+from typing import Dict, List, Tuple, Optional, Any, Iterable, OrderedDict, Hashable
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from plan_label import PlanLabel
@@ -10,14 +10,14 @@ from hardware import Cluster, DeviceSpec
 from task_graph import TaskGraph, TaskNode
 from cost_model import CostModel
 from buffer_manager import GlobalMemoryManager, LRUCache
-from config import ALLOW_HYBRID, RANKU_INCLUDE_AVG_WEIGHT_LOAD
+from config import ALLOW_HYBRID, RANKU_INCLUDE_AVG_WEIGHT_LOAD, PIM_RUNTIME_LRU_THRESHOLD
 import logging
 import math
 import random
 import copy
 from stats_recorder import StatsRecorder
 
-DEBUG_SCHEDULER = True
+DEBUG_SCHEDULER = False
 logger = logging.getLogger(__name__)
 attach_local_debug_filter(logger, lambda: DEBUG_SCHEDULER)
 
@@ -40,7 +40,7 @@ class CommManager:
 
     def reserve(self, src: str, dst: str, bytes_amount: int, earliest: float, commit: bool=True, tag: str | None = None):
         key = (src, dst)
-        bw = self.cluster.get_link_bw(src, dst) * 1e9
+        bw = self.cluster.get_link_bw(src, dst) * 1024**3
         ch_end = self.timeline_end.get(key, 0.0)
         start = max(ch_end, earliest)
         dt = 0.0 if bw <= 0 else bytes_amount / bw
@@ -93,6 +93,7 @@ class HEFTScheduler:
         self.seq_len = seq_len
         self.buffer = buffer or GlobalMemoryManager()
         self._pim_cache_capacity: Dict[str, int] = {}
+        self._pim_lru_threshold_bytes: Dict[str, int] = {}
         self._node_host_store_end: Dict[str, float] = {}  #节点输出在host上的可用时间
         self._act_cap: Dict[str, int] = {}                 # 每个设备用于激活的容量上限（字节），约 90% 可用
         self._act_used: Dict[str, int] = defaultdict(int)  # 当前每个设备已被激活占用的字节数
@@ -114,7 +115,9 @@ class HEFTScheduler:
         self._weight_sizes: Dict[str, int] = {}
         self.mode_mem: Dict[str, str] = {}
         self._kv_reserved_per_dev: Dict[str, int] = {}
-
+        self._kv_blocks_lru: Dict[str, "OrderedDict[Hashable, int]"] = defaultdict(OrderedDict) # 每个 PIM device 上的 KV 块 LRU：dev_name -> OrderedDict[block_key, bytes]
+        self._kv_used_bytes: Dict[str, int] = defaultdict(int) # 每个 PIM device 上 KV 块总占用字节数
+        self._pim_trace: List[Dict[str, Any]] = []
         total_budget = int(getattr(self.label, 'pim_weight_capacity_bytes', 0) or 0)
         pim_devs = self.cluster.devices_by_type('pim')
 
@@ -125,7 +128,13 @@ class HEFTScheduler:
             for idx, d in enumerate(pim_devs):
                 cap = share + (1 if idx < remainder else 0)
                 max_dev_bytes = int(d.mem_capacity_GB * 1000000000.0)
-                self._pim_cache_capacity[d.name] = min(max_dev_bytes, cap)
+                cap_bytes = min(max_dev_bytes, cap)
+                self._pim_cache_capacity[d.name] = cap_bytes
+                self._pim_lru_threshold_bytes[d.name] = int(cap_bytes * float(PIM_RUNTIME_LRU_THRESHOLD))
+                logger.debug(
+                    "[PIM-INIT] dev=%s weight_cache_cap=%dB lru_threshold=%dB",
+                    d.name, cap_bytes, self._pim_lru_threshold_bytes[d.name],
+                )
             for d in pim_devs:
                 desired = max(0, self._pim_cache_capacity.get(d.name, int(d.mem_capacity_GB * 1000000000.0)))
                 cache = self.buffer.device_cache.get(d.name)
@@ -140,7 +149,7 @@ class HEFTScheduler:
 
         if pim_devs and getattr(self.label, 'kv_in_pim', False):
             kv_total_bytes = int(getattr(self.label, 'kv_total_bytes', 0) or 0)
-            caps = [int(d.mem_capacity_GB * 1e9) for d in pim_devs]
+            caps = [int(d.mem_capacity_GB * 1024**3) for d in pim_devs]
             cap_sum = max(1, sum(caps))
             alloc = [ (caps[i] * kv_total_bytes) // cap_sum for i in range(len(pim_devs)) ]
             remainder = kv_total_bytes - sum(alloc)
@@ -156,17 +165,16 @@ class HEFTScheduler:
 
         # --- Compute activation residency budget for ALL devices (90%) ---
         for name, d in self.cluster.devices.items():
-            phy = int(d.mem_capacity_GB * 1e9)
+            phy = int(d.mem_capacity_GB * 1024**3)
             kv_reserve = int(self._kv_reserved_per_dev.get(name, 0)) if d.type == 'pim' else 0
             weight_budget = int(self._pim_cache_capacity.get(name, 0)) if d.type == 'pim' else 0
             cap = max(0, int(self._max_util * max(0, phy - kv_reserve - weight_budget)))
             self._act_cap[name] = cap
             # logger.debug(f"[INIT] ACT_CAP dev={name} phy={phy} kv={kv_reserve} weight_budget={weight_budget} act_cap(90%)={cap}")
     
-    def clear_order_cache(self) -> None: #parallel 新增
-        """如果 TaskGraph 结构改变，可以手动清掉 rank / topo 缓存。"""
-        self._rank_cache.clear()
-        self._topo_cache.clear()
+    @property
+    def pim_trace(self) -> List[Dict[str, Any]]:
+        return self._pim_trace
 
     def _kv_reserved_for(self, dev: DeviceSpec) -> int:
         return int(self._kv_reserved_per_dev.get(dev.name, 0))
@@ -266,12 +274,155 @@ class HEFTScheduler:
         if cache is not None:
             cache[key] = sorted_nodes
         return sorted_nodes
+    def _pim_used_bytes(self, dev: DeviceSpec):
+        """返回 (phy_bytes, kv_used, act_used, weight_used, total_used)."""
+        dev_name = dev.name
+        phy_bytes = int(getattr(dev, "mem_capacity_GB", 0.0) * 1024**3)
 
+        kv_used = int(self._kv_used_bytes.get(dev_name, 0))
+        act_used = int(self._act_used.get(dev_name, 0))
+
+        cache = self.buffer.device_cache.get(dev_name)
+        weight_used = int(cache.used) if cache is not None else 0
+
+        total_used = kv_used + act_used + weight_used
+        return phy_bytes, kv_used, act_used, weight_used, total_used
+    
+    def _record_pim_trace(self, dev:DeviceSpec, *, phase:str, finish: float, event:str, node: Optional[TaskNode]=None, extra: Optional[Dict[str,Any]]=None):
+        if dev.type != 'pim':
+            return
+        phy, kv_used, act_used, weight_used, total_used = self._pim_used_bytes(dev)
+        seq_len = int(getattr(self, "seq_len", 0) or 0)
+        rec: Dict[str, Any] = {
+            "device": dev.name,
+            "phase": phase,
+            "finish": float(finish),
+            "seq_len": seq_len,
+            "kv_used_bytes": int(kv_used),
+            "act_used_bytes": int(act_used),
+            "weight_used_bytes": int(weight_used),
+            "total_used_bytes": int(total_used),
+            "event": str(event),
+        }
+        if node is not None:
+            nid = getattr(node, "id", None) or getattr(node, "name", None)
+            if nid is not None:
+                rec["node_id"] = str(nid)
+
+        self._pim_trace.append(rec)
+
+
+    def _kv_block_lru_touch(
+        self,
+        dev: DeviceSpec,
+        block_key: Hashable,
+        block_bytes: int,
+        *,
+        touch_only: bool = False,
+    ) -> None:
+        """
+        在 PIM 上按块管理 KV cache：
+        - touch_only=True 只更新 LRU 顺序，不改变占用大小；
+        - 否则视为写入一个大小为 block_bytes 的新块，
+          如有需要并且总占用超过 PIM_RUNTIME_LRU_THRESHOLD，则淘汰最老的 KV 块。
+        """
+        if dev.type != 'pim':
+            return
+
+        dev_name = dev.name
+        lru = self._kv_blocks_lru[dev_name]
+        kv_used = int(self._kv_used_bytes.get(dev_name, 0))
+
+        if block_key in lru:
+            size0 = lru.pop(block_key)
+            lru[block_key] = size0  # 挪到队尾代表最近使用
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug("[KV-LRU] dev=%s block=%r hit size=%d kv_used=%dB",dev_name, block_key, size0, kv_used)
+            return
+
+        if touch_only:
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    "[KV-LRU] dev=%s block=%r touch_only(no_write) kv_used=%dB",
+                    dev_name, block_key, kv_used
+                )
+            return
+
+        if block_bytes <= 0:
+            return
+
+        phy_bytes, _, act_used, weight_used, total_used = self._pim_used_bytes(dev)
+        if phy_bytes > 0 and PIM_RUNTIME_LRU_THRESHOLD > 0.0:
+            threshold = int(PIM_RUNTIME_LRU_THRESHOLD * phy_bytes)
+            # 目标：写入之后，总占用不超过 threshold
+            target_total = max(0, threshold - block_bytes)
+            # 在该目标下，KV 最多还能占多少字节（只淘汰 KV，自身 act / weight 不动）
+            max_kv_after = max(0, target_total - act_used - weight_used)
+            while lru and kv_used > max_kv_after:
+                victim, v_size = lru.popitem(last=False)
+                kv_used -= int(v_size)
+
+        lru[block_key] = int(block_bytes)
+        self._kv_used_bytes[dev_name] = kv_used + int(block_bytes)
+
+    def _update_kv_cache_for_node(self, node: TaskNode, dev: DeviceSpec, phase: str, commit: bool, finish: float | None = None) -> None:
+        if (not commit) or dev.type != 'pim':
+            return
+
+        name = (getattr(node, 'name', '') or '').upper()
+        if name not in ('K_READ', 'V_READ', 'K_WRITE', 'V_WRITE', 'KV_READ', 'KV_WRITE'):
+            return
+
+        attrs = getattr(node, 'attrs', {}) or {}
+        if 'kv_block_id' in attrs:
+            block_key: Hashable = attrs['kv_block_id']
+        else:
+            layer = attrs.get('layer', None)
+            # decode 阶段用当前 seq_len 作为一个近似的 block index；
+            # prefill 阶段统一记为 0。
+            step_idx = self.seq_len if phase == 'decode' else 0
+            block_key = (layer, step_idx, name)
+        
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "[KV-BLOCK] phase=%s node=%s dev=%s op=%s block_key=%r seq_len=%d",
+                phase, getattr(node, 'name', '?'), dev.name, name, block_key, self.seq_len
+            )
+
+        # 当前算子的 KV 读写字节，用于估算块大小
+        rd_bytes, wr_bytes = self.cost.estimate_activation_bytes(
+            node,
+            batch=int(getattr(self, 'batch', 1) or 1),
+            seq_len=int(getattr(self, 'seq_len', 1) or 1),
+            phase=phase,
+        )
+        if name in ('K_WRITE', 'V_WRITE', 'KV_WRITE'):
+            block_bytes = max(int(wr_bytes), 0)
+            self._kv_block_lru_touch(dev, block_key, block_bytes, touch_only=False)
+        else:  # READ 类
+            self._kv_block_lru_touch(dev, block_key, 0, touch_only=True)
+
+        if finish is not None:
+            if name in ('K_WRITE', 'V_WRITE', 'KV_WRITE'):
+                event = 'KV_BLOCK_WRITE'
+            else:
+                event = 'KV_BLOCK_READ'
+            try:
+                self._record_pim_trace(
+                    dev,
+                    phase=phase,
+                    finish=float(finish),
+                    event=event,
+                    node=node)
+            except Exception:
+                pass
     def _weight_load_time(self, node: TaskNode, dev: DeviceSpec, t0: float, commit: bool) -> float:
         """Host->dev load + format conversion; overlappable with compute."""
         if not node.weight_id or node.weight_size <= 0:
             return 0.0
         wid = node.weight_id
+        lru_threshold = int(self._pim_lru_threshold_bytes.get(dev.name, 0))
+        cache_cap     = int(self._pim_cache_capacity.get(dev.name, 0))
         if dev.type == 'pim' and self.buffer.is_cached(dev.name, wid):
             # logger.debug(f"[WEIGHT] cache-hit wid={wid} dev={dev.name}")
             if commit:
@@ -285,7 +436,14 @@ class HEFTScheduler:
                 self._weight_sizes[wid] = node.weight_size
                 self.weight_cached[dev.name, wid] = True
                 pinned_flag = bool(getattr(self.label, 'pinned_fc_on_pim', set()) and (wid in self.label.pinned_fc_on_pim))
-                self.buffer.mark_cached(dev.name, wid, node.weight_size, pinned=pinned_flag)                
+                if cache_cap <= 0:
+                    pass
+                else:
+                    used_bytes = int(self.buffer.device_cache[dev.name].used)
+                    if lru_threshold <= 0 or used_bytes > lru_threshold: #当前权重存入，触发驱逐
+                        self.buffer.mark_cached(dev.name, wid, node.weight_size, pinned=pinned_flag)
+                    else:
+                        self.buffer.mark_cached(dev.name, wid, node.weight_size, pinned=pinned_flag)                
                 if wid not in self.buffer.host_format and wid in self.storage_fmt_map:
                     self.buffer.set_host_fmt(wid, self.storage_fmt_map[wid])
             return load_time
@@ -319,7 +477,23 @@ class HEFTScheduler:
             finish = cursor
         if commit:
             self._node_out_fmt[nid] = self.cost.device_preferred_fmt(dev)
-            # ——尝试为当前结点输出做“就地驻留”，否则立即回写 Host（只写一次的早触发）——
+            self._update_kv_cache_for_node(node, dev, phase, commit=True, finish=finish)
+            if dev.type == 'pim':
+                phy_bytes, kv_used, act_used, weight_used, total_used = self._pim_used_bytes(dev)
+                self._pim_trace.append({
+                    "phase": phase,
+                    "node_id": nid,
+                    "op": getattr(node, "name", "") or "",
+                    "device": dev.name,
+                    "start": float(t0),
+                    "finish": float(finish),
+                    "seq_len": int(self.seq_len),
+                    "kv_used_bytes": int(kv_used),
+                    "act_used_bytes": int(act_used),
+                    "weight_used_bytes": int(weight_used),
+                    "total_used_bytes": int(total_used),
+                    "phy_bytes": int(phy_bytes),
+                })            
             out_read_nd, out_write_nd = self.cost.estimate_activation_bytes(node, self.batch, self.seq_len, phase)
             out_nd = max(out_write_nd, out_read_nd)
             cap = int(self._act_cap.get(dev.name, 0))
@@ -435,23 +609,17 @@ class HEFTScheduler:
 
                 if dev.type == 'pim':
                     # 3) 目标是 PIM：
-                    if pred_dev.type == 'pim' and (self._pim_avail_for_activation(pred_dev) >= payload_nd):
                         # (a) PIM->PIM 就地：容量足够且允许就地，直接复用；不走 Host
-                        if commit:
-                            self._act_used[pred_dev.name] = self._act_used.get(pred_dev.name, 0) + payload_nd
                         # logger.debug(f"[LOCAL] PIM in-place (cross device branch) u={u}@{pred_dev.name} -> {nid}@{dev.name} bytes_nd={payload_nd}")
-                        inbound_start_times.append(pred_finish)
-                        inbound_end_times.append(pred_finish)
-                    else:
                         # (b) 其他情况：一律 pred->Host，再 Host->PIM
-                        if host_ready is None:
-                            host_ready = self._ensure_host_store(u, pred_dev, payload_nd, src_fmt, pred_finish, commit)
-                        size_nd = self.cost.format_size(payload_nd, 'ND')
-                        l2s, l2e = self.comm.reserve(host.name, dev.name, size_nd, earliest=host_ready, commit=commit)
+                    if host_ready is None:
+                        host_ready = self._ensure_host_store(u, pred_dev, payload_nd, src_fmt, pred_finish, commit)
+                    size_nd = self.cost.format_size(payload_nd, 'ND')
+                    l2s, l2e = self.comm.reserve(host.name, dev.name, size_nd, earliest=host_ready, commit=commit)
                         # logger.debug(f"[CROSS] HOST->PIM u={u}@{pred_dev.name} -> {nid}@{dev.name} bytes_nd={payload_nd}")
-                        conv2 = self.cost.format_conversion_time(size_nd, 'ND', dst_fmt, dev)
-                        inbound_start_times.append(l2s)
-                        inbound_end_times.append(l2e + conv2)
+                    conv2 = self.cost.format_conversion_time(size_nd, 'ND', dst_fmt, dev)
+                    inbound_start_times.append(l2s)
+                    inbound_end_times.append(l2e + conv2)
                     continue
 
                 # 4) 目标是 CPU/其他：一律确保回写 Host 即可
@@ -673,7 +841,7 @@ class HEFTScheduler:
         return t_done
 
     def _pim_avail_for_activation(self, dev: DeviceSpec) -> int:
-        total = int(dev.mem_capacity_GB * 1e9)
+        total = int(dev.mem_capacity_GB * 1024**3)
 
         # 1) KV 预留（若 kv_in_pim=True）
         kv_reserved = self._kv_reserved_for(dev) if getattr(self.label, 'kv_in_pim', False) else 0
@@ -889,6 +1057,9 @@ class HEFTScheduler:
         self._act_resident.clear()
         self._act_refcnt.clear()
         self._node_host_store_end.clear()
+        self._kv_blocks_lru.clear()
+        self._kv_used_bytes.clear()
+        self._pim_trace.clear()
 
 # =====================
 # Additional Schedulers
@@ -999,12 +1170,12 @@ class _SearchSchedulerMixin(HEFTScheduler):
         # 这里直接复用就行；如果你担心 alias，也可以再 .copy() / deepcopy 一层。
         self.buffer.device_cache = snap['buffer_device_cache']
         self.buffer.host_format = snap['buffer_host_fmt'].copy()
+        self._kv_blocks_lru = copy.deepcopy(snap['kv_blocks_lru'])
+        self._kv_used_bytes = snap['kv_used_bytes'].copy()
     
     def _snapshot(self):
         """Lightweight snapshot of mutable scheduling state for search algorithms.
 
-        大部分字段都是 {key -> 标量} 的 dict / defaultdict，用浅拷贝就够了。
-        只有 GlobalMemoryManager.device_cache 里是嵌套结构，继续用 deepcopy。
         """
         return {
             # 普通 dict / defaultdict 都有 copy()，能保持原类型（包括 default_factory）
@@ -1023,6 +1194,8 @@ class _SearchSchedulerMixin(HEFTScheduler):
             'host_store_end': self._node_host_store_end.copy(),
             'buffer_device_cache': copy.deepcopy(self.buffer.device_cache),
             'buffer_host_fmt': self.buffer.host_format.copy(),
+            'kv_blocks_lru': copy.deepcopy(self._kv_blocks_lru),
+            'kv_used_bytes': self._kv_used_bytes.copy(),
         }
 
 
@@ -1886,7 +2059,6 @@ class HeftLookaheadScheduler(_SearchSchedulerMixin):
                     return a, float(cost)
 
                 max_workers = min(len(acts), os.cpu_count() or 16)
-                print(f"Using {max_workers} threads for HEFT-LA lookahead evaluation.")
                 if max_workers < 1:
                     max_workers = 1
 
