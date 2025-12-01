@@ -1,0 +1,48 @@
+{
+  "model_family": "llama",
+  "model_variant": "7b",
+  "...": "...",
+
+  "hardware": {
+    "devices": [
+      {
+        "name": "CPU0",
+        "type": "cpu",
+        "tflops": 2.0,
+        "mem_bw_GBs": 200.0,
+        "onchip_bw_GBs": 200.0,
+        "mem_capacity_GB": 256.0
+      },
+      {
+        "name": "NPU0",
+        "type": "npu",
+        "tflops": 80.0,
+        "mem_bw_GBs": 200.0,
+        "onchip_bw_GBs": 200.0,
+        "mem_capacity_GB": 0.5
+      },
+      {
+        "name": "NPU1",
+        "type": "npu",
+        "tflops": 80.0,
+        "mem_bw_GBs": 200.0,
+        "onchip_bw_GBs": 200.0,
+        "mem_capacity_GB": 0.5
+      },
+      {
+        "name": "PIMA0",
+        "type": "pim",
+        "pim_type": "accel",
+        "tflops": 10.0,
+        "mem_bw_GBs": 400.0,
+        "onchip_bw_GBs": 800.0,
+        "mem_capacity_GB": 2.0
+      }
+    ],
+    "links": [
+      { "a": "CPU0", "b": "NPU0", "bw_GBs": 32.0, "type": "PCIe" },
+      { "a": "CPU0", "b": "NPU1", "bw_GBs": 32.0, "type": "PCIe" },
+      { "a": "CPU0", "b": "PIMA0", "bw_GBs": 32.0, "type": "PCIe" }
+    ]
+  }
+}

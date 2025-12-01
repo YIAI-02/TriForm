@@ -78,32 +78,33 @@ PIM_RUNTIME_LRU_THRESHOLD: float = 0.9
 # 定义哪些算子类型可以在哪些设备上运行
 # True 表示允许，False 表示禁止
 OPERATOR_DEVICE_ALLOWED = {
-    # Linear/GEMM 类算子 - NPU和PIM都支持
-    "Q": {"cpu": True, "npu": True, "pim": True},
-    "K": {"cpu": True, "npu": True, "pim": True},
-    "V": {"cpu": True, "npu": True, "pim": True},
-    "O": {"cpu": True, "npu": True, "pim": True},
-    "FFN_W1": {"cpu": True, "npu": True, "pim": True},
-    "FFN_W2": {"cpu": True, "npu": True, "pim": True},
-    "FFN_W3": {"cpu": True, "npu": True, "pim": True},
-    
-    # Attention 相关算子 - PIM支持QK/SV matmul
-    "QK": {"cpu": True, "npu": True, "pim": True},
-    "SV": {"cpu": True, "npu": True, "pim": True},
-    "Softmax": {"cpu": True, "npu": True, "pim": True},
-    
-    # 逐元素操作
-    "Add": {"cpu": True, "npu": True, "pim": True},
-    "LN": {"cpu": True, "npu": True, "pim": True},
-    "SwiGLU": {"cpu": True, "npu": True, "pim": True},
-    "GELU": {"cpu": True, "npu": True, "pim": True},
-    "Act": {"cpu": True, "npu": True, "pim": True}, 
-    
-    # 其他
-    "Identity": {"cpu": True, "npu": True, "pim": True},
-    "KV_read": {"cpu": True, "npu": True, "pim": True},
-    "KV_write": {"cpu": True, "npu": True, "pim": True},
+    # 1) 线性 / GEMM：PIMA / PIMD 都支持
+    "Q":       {"cpu": True, "npu": True, "pima": True, "pimd": True},
+    "K":       {"cpu": True, "npu": True, "pima": True, "pimd": True},
+    "V":       {"cpu": True, "npu": True, "pima": True, "pimd": True},
+    "O":       {"cpu": True, "npu": True, "pima": True, "pimd": True},
+    "FFN_W1":  {"cpu": True, "npu": True, "pima": True, "pimd": True},
+    "FFN_W2":  {"cpu": True, "npu": True, "pima": True, "pimd": True},
+    "FFN_W3":  {"cpu": True, "npu": True, "pima": True, "pimd": True},
+
+    # 2) Attention 里的 matmul：PIMD 也允许；Softmax 不允许在 PIMD
+    "QK":      {"cpu": True, "npu": True, "pima": True, "pimd": True},
+    "SV":      {"cpu": True, "npu": True, "pima": True, "pimd": True},
+    "Softmax": {"cpu": True, "npu": True, "pima": True, "pimd": False},
+
+    # 3) 逐元素：这里我按“**只把激活**”放到 PIMD，你可以按需要调
+    "Add":     {"cpu": True, "npu": True, "pima": True, "pimd": False},
+    "LN":      {"cpu": True, "npu": True, "pima": True, "pimd": False},
+    "SwiGLU":  {"cpu": True, "npu": True, "pima": True, "pimd": True},
+    "GELU":    {"cpu": True, "npu": True, "pima": True, "pimd": True},
+    "Act":     {"cpu": True, "npu": True, "pima": True, "pimd": True},
+
+    # 4) 其它
+    "Identity": {"cpu": True, "npu": True, "pima": True, "pimd": False},
+    "KV_read":  {"cpu": True, "npu": True, "pima": True, "pimd": True},
+    "KV_write": {"cpu": True, "npu": True, "pima": True, "pimd": True},
 }
+
 
 # 默认策略：如果算子不在上面的列表中，使用这个
 DEFAULT_OPERATOR_ALLOWED = {"cpu": True, "npu": True, "pim": False}

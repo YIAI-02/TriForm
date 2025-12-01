@@ -276,9 +276,100 @@ class PaLMDef:
         return g
     name = "palm"
 
+class QwenDef:
+    name = "qwen"
+    def build(self, shape: ModelShape, dtype_bytes: int) -> TaskGraph:
+        g = TaskGraph()
+        for l in range(shape.layer_num):
+            # 利用与LLaMA类似的层结构（RMSNorm -> Self-Attn -> MLP）
+            add_llama_block(g, l, shape, dtype_bytes)
+        return g
+
+class MixtralDef:
+    name = "mixtral"     
+    def build(self, shape: ModelShape, dtype_bytes: int) -> TaskGraph:
+        g = TaskGraph()
+        E = getattr(shape, "experts_per_layer", 8)    # 每层专家数
+        K = getattr(shape, "experts_top_k", 2)        # 每token选用的专家数
+        dim = shape.hidden_dim
+        q_dim = shape.q_head_num * shape.head_dim
+        kv_dim = shape.kv_head_num * shape.head_dim
+        o_in_dim = q_dim
+        ffn = shape.intermediate_dim  # 用于 MoE 是所有专家之和
+
+        for l in range(shape.layer_num):
+            base_attr = {"layer": l, "q_heads": shape.q_head_num, "kv_heads": shape.kv_head_num,
+                        "head_dim": shape.head_dim, "dim": dim}
+
+            # LN1, Attention: Q, K, V, QK, Softmax, SV, O
+            nid_LN1=f"L{l}_LN1"; g.add_node(TaskNode(nid_LN1,"LN",flops=0.0,attrs=dict(base_attr),allowed=get_op_allowed("LN")))
+            nid_Q=f"L{l}_Q"; nid_K=f"L{l}_K"; nid_V=f"L{l}_V"
+            g.add_node(TaskNode(nid_Q,"Q",flops=0.0,weight_id=f"L{l}_WQ",weight_size=dim*q_dim*dtype_bytes,attrs=dict(base_attr),allowed=get_op_allowed("Q")))
+            g.add_node(TaskNode(nid_K,"K",flops=0.0,weight_id=f"L{l}_WK",weight_size=dim*kv_dim*dtype_bytes,attrs=dict(base_attr),allowed=get_op_allowed("K")))
+            g.add_node(TaskNode(nid_V,"V",flops=0.0,weight_id=f"L{l}_WV",weight_size=dim*kv_dim*dtype_bytes,attrs=dict(base_attr),allowed=get_op_allowed("V")))
+
+            nid_QK=f"L{l}_QK"; nid_SO=f"L{l}_Softmax"; nid_SV=f"L{l}_SV"
+            g.add_node(TaskNode(nid_QK,"QK",flops=0.0,attrs=dict(base_attr),allowed=get_op_allowed("QK")))
+            g.add_node(TaskNode(nid_SO,"Softmax",flops=0.0,attrs=dict(base_attr),allowed=get_op_allowed("Softmax")))
+            g.add_node(TaskNode(nid_SV,"SV",flops=0.0,attrs=dict(base_attr),allowed=get_op_allowed("SV")))
+
+            nid_O=f"L{l}_O"; g.add_node(TaskNode(nid_O,"O",flops=0.0,weight_id=f"L{l}_WO",weight_size=o_in_dim*dim*dtype_bytes,attrs=dict(base_attr),allowed=get_op_allowed("O")))
+            nid_Add1=f"L{l}_Add1"; g.add_node(TaskNode(nid_Add1,"Add",flops=0.0,attrs=dict(base_attr),allowed=get_op_allowed("Add")))    
+            # LN2 for FFN
+            nid_LN2 = f"L{l}_LN2"
+            g.add_node(TaskNode(nid_LN2, "LN", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("LN")))
+            g.add_edge(f"L{l}_Add1", nid_LN2)
+
+            # MoE FFN experts: FFN_W1/W3/W2
+            expert_outputs = []
+            for e in range(E):
+                w1 = f"L{l}_FFN_W1_{e}"
+                w3 = f"L{l}_FFN_W3_{e}"
+                act = f"L{l}_Act_{e}"
+                w2 = f"L{l}_FFN_W2_{e}"
+
+                g.add_node(TaskNode(w1, "FFN_W1", flops=0.0,
+                                    weight_id=f"{w1}_w", weight_size=dim * (ffn // 2) * dtype_bytes,
+                                    attrs={**base_attr, "expert": e}, allowed=get_op_allowed("FFN_W1")))
+                g.add_node(TaskNode(w3, "FFN_W3", flops=0.0,
+                                    weight_id=f"{w3}_w", weight_size=dim * (ffn // 2) * dtype_bytes,
+                                    attrs={**base_attr, "expert": e}, allowed=get_op_allowed("FFN_W3")))
+                g.add_node(TaskNode(act, "SwiGLU", flops=0.0,
+                                    attrs={**base_attr, "expert": e}, allowed=get_op_allowed("SwiGLU")))
+                g.add_node(TaskNode(w2, "FFN_W2", flops=0.0,
+                                    weight_id=f"{w2}_w", weight_size=(ffn // 2) * dim * dtype_bytes,
+                                    attrs={**base_attr, "expert": e}, allowed=get_op_allowed("FFN_W2")))
+
+                # connect FFN
+                g.add_edge(nid_LN2, w1)
+                g.add_edge(nid_LN2, w3)
+                g.add_edge(w1, act)
+                g.add_edge(w3, act)
+                g.add_edge(act, w2)
+                expert_outputs.append(w2)
+
+            # Router
+            nid_router = f"L{l}_Router"
+            g.add_node(TaskNode(nid_router, "MoE_Router",
+                                flops=0.0,
+                                attrs={**base_attr, "experts": E, "top_k": K},
+                                allowed=get_op_allowed("MoE_Router")))
+            g.add_edge(nid_LN2, nid_router)
+            for out in expert_outputs:
+                g.add_edge(out, nid_router)
+
+            # Residual Add2
+            nid_add2 = f"L{l}_Add2"
+            g.add_node(TaskNode(nid_add2, "Add", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("Add")))
+            g.add_edge(nid_router, nid_add2)
+            g.add_edge(f"L{l}_Add1", nid_add2)
+
+        return g
 def make_model_def(family: str):
     f = family.lower()
     if f == "llama": return LLaMADef()
     if f == "mpt":   return MPTDef()
     if f == "palm":  return PaLMDef()
+    if f == "mixtral": return MixtralDef()
+    if f == "qwen": return QwenDef()
     raise ValueError(f"Unknown model family: {family}")

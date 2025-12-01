@@ -49,21 +49,35 @@ def demo_cluster(cfg: Dict | None = None) -> Cluster:
                 p = Path(hw_json_path)
                 raw = json.loads(p.read_text(encoding='utf-8'))
                 if isinstance(raw, dict):
+                    print(f"DEBUG: Loaded hardware config from {hw_json_path}")
                     hw_cfg = raw.get('hardware') or raw.get('cluster') or raw
             except Exception:
                 hw_cfg = None
         if hw_cfg is None:
             hw_cfg = cfg.get('hardware') or cfg.get('cluster')
     if not hw_cfg:
+        print("DEBUG: Using built-in demo hardware config")
         c.add_device(DeviceSpec("CPU0","cpu",tflops=2.0,mem_bw_GBs=51.2,onchip_bw_GBs=128.0,mem_capacity_GB=0.009,))
         c.add_device(DeviceSpec("NPU0","npu",tflops=10.0,mem_bw_GBs=51.2,onchip_bw_GBs=128.0,mem_capacity_GB=0.003,))
     # Two PIM stacks as example
         c.add_device(DeviceSpec("PIM0","pim",tflops=1.0,mem_bw_GBs=32.0,onchip_bw_GBs=512.0,mem_capacity_GB=1.0,pim_type='accel'))
-    # c.add_device(DeviceSpec("PIM1","pim", tflops=1.0,  mem_bw_GBs=32.0, onchip_bw_GBs=512, mem_capacity_GB=1))
     # Links
         c.connect("CPU0","NPU0", 32.0, "PCIe")
         c.connect("CPU0","PIM0", 32.0, "PCIe")
         return c
-    # c.connect("NPU0","PIM0", 24.0, "NVLink")
-    # c.connect("NPU0","PIM1", 24.0, "NVLink")
+
+    # Parse loaded hw_cfg
+    for d in hw_cfg.get('devices', []):
+        c.add_device(DeviceSpec(
+            name=d['name'],
+            type=d['type'],
+            tflops=float(d.get('tflops', 0)),
+            mem_bw_GBs=float(d.get('mem_bw_GBs', 0)),
+            onchip_bw_GBs=float(d.get('onchip_bw_GBs', 0)),
+            mem_capacity_GB=float(d.get('mem_capacity_GB', 0)),
+            pim_type=d.get('pim_type'),
+            attached_npu=d.get('attached_npu')
+        ))
+    for l in hw_cfg.get('links', []):
+        c.connect(l['a'], l['b'], float(l['bw_GBs']), l.get('type', 'PCIe'))
     return c

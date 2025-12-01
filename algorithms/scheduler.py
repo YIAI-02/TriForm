@@ -17,7 +17,7 @@ import random
 import copy
 from stats_recorder import StatsRecorder
 
-DEBUG_SCHEDULER = False
+DEBUG_SCHEDULER = True
 logger = logging.getLogger(__name__)
 attach_local_debug_filter(logger, lambda: DEBUG_SCHEDULER)
 
@@ -117,6 +117,7 @@ class HEFTScheduler:
         self._kv_reserved_per_dev: Dict[str, int] = {}
         self._kv_blocks_lru: Dict[str, "OrderedDict[Hashable, int]"] = defaultdict(OrderedDict) # 每个 PIM device 上的 KV 块 LRU：dev_name -> OrderedDict[block_key, bytes]
         self._kv_used_bytes: Dict[str, int] = defaultdict(int) # 每个 PIM device 上 KV 块总占用字节数
+        self._npu_attached_pimds: Dict[str, List[DeviceSpec]] = defaultdict(list)
         self._pim_trace: List[Dict[str, Any]] = []
         total_budget = int(getattr(self.label, 'pim_weight_capacity_bytes', 0) or 0)
         pim_devs = self.cluster.devices_by_type('pim')
@@ -131,10 +132,10 @@ class HEFTScheduler:
                 cap_bytes = min(max_dev_bytes, cap)
                 self._pim_cache_capacity[d.name] = cap_bytes
                 self._pim_lru_threshold_bytes[d.name] = int(cap_bytes * float(PIM_RUNTIME_LRU_THRESHOLD))
-                logger.debug(
-                    "[PIM-INIT] dev=%s weight_cache_cap=%dB lru_threshold=%dB",
-                    d.name, cap_bytes, self._pim_lru_threshold_bytes[d.name],
-                )
+                # logger.debug(
+                #     "[PIM-INIT] dev=%s weight_cache_cap=%dB lru_threshold=%dB",
+                #     d.name, cap_bytes, self._pim_lru_threshold_bytes[d.name],
+                # )
             for d in pim_devs:
                 desired = max(0, self._pim_cache_capacity.get(d.name, int(d.mem_capacity_GB * 1000000000.0)))
                 cache = self.buffer.device_cache.get(d.name)
@@ -171,7 +172,13 @@ class HEFTScheduler:
             cap = max(0, int(self._max_util * max(0, phy - kv_reserve - weight_budget)))
             self._act_cap[name] = cap
             # logger.debug(f"[INIT] ACT_CAP dev={name} phy={phy} kv={kv_reserve} weight_budget={weight_budget} act_cap(90%)={cap}")
-    
+
+        for d in self.cluster.devices_by_type('pim'):
+            ptype = (getattr(d, 'pim_type', None) or 'accel').lower()
+            attached = getattr(d, 'attached_npu', None)
+            if ptype in ('dram', 'hbm') and attached:
+                self._npu_attached_pimds[attached].append(d)
+                
     @property
     def pim_trace(self) -> List[Dict[str, Any]]:
         return self._pim_trace
@@ -336,16 +343,16 @@ class HEFTScheduler:
         if block_key in lru:
             size0 = lru.pop(block_key)
             lru[block_key] = size0  # 挪到队尾代表最近使用
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug("[KV-LRU] dev=%s block=%r hit size=%d kv_used=%dB",dev_name, block_key, size0, kv_used)
-            return
+            # if logger.isEnabledFor(logging.DEBUG):
+            #     logger.debug("[KV-LRU] dev=%s block=%r hit size=%d kv_used=%dB",dev_name, block_key, size0, kv_used)
+            # return
 
         if touch_only:
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(
-                    "[KV-LRU] dev=%s block=%r touch_only(no_write) kv_used=%dB",
-                    dev_name, block_key, kv_used
-                )
+            # if logger.isEnabledFor(logging.DEBUG):
+            #     logger.debug(
+            #         "[KV-LRU] dev=%s block=%r touch_only(no_write) kv_used=%dB",
+            #         dev_name, block_key, kv_used
+            #     )
             return
 
         if block_bytes <= 0:
@@ -383,11 +390,11 @@ class HEFTScheduler:
             step_idx = self.seq_len if phase == 'decode' else 0
             block_key = (layer, step_idx, name)
         
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(
-                "[KV-BLOCK] phase=%s node=%s dev=%s op=%s block_key=%r seq_len=%d",
-                phase, getattr(node, 'name', '?'), dev.name, name, block_key, self.seq_len
-            )
+        # if logger.isEnabledFor(logging.DEBUG):
+        #     logger.debug(
+        #         "[KV-BLOCK] phase=%s node=%s dev=%s op=%s block_key=%r seq_len=%d",
+        #         phase, getattr(node, 'name', '?'), dev.name, name, block_key, self.seq_len
+        #     )
 
         # 当前算子的 KV 读写字节，用于估算块大小
         rd_bytes, wr_bytes = self.cost.estimate_activation_bytes(
@@ -460,6 +467,139 @@ class HEFTScheduler:
             if wid not in self.buffer.host_format and wid in self.storage_fmt_map:
                 self.buffer.set_host_fmt(wid, self.storage_fmt_map[wid])
         return max(0.0, end - t0)
+    
+    def _kv_load_time(self, node: TaskNode, dev: DeviceSpec, t0: float, phase: str, commit: bool) -> float:
+        name = (getattr(node, 'name', '') or '').upper()
+        if name not in ("K_READ","V_READ","KV_READ"):
+            return 0.0
+        
+        kv_home = getattr(self.label, 'kv_home', 'host').lower()
+        dst_dev = dev
+        src_dev: Optional[DeviceSpec] = None
+        src_name: Optional[str] = None
+        
+        # ========= Case 1: KV in PIM =========
+        if kv_home == 'pim':
+            pim_devs = self.cluster.devices_by_type('pim')
+            if not pim_devs:
+                return 0.0
+            
+            if dev.type == 'pim':
+                return 0.0
+            
+            if dev.type == 'npu':
+                attached_list: List[DeviceSpec] = []
+                if hasattr(self, 'npu_attached_pimds'):
+                    attached_list = self._npu_attached_pimds.get(dev.name, [])
+
+                    if not attached_list:
+                        for pd in pim_devs:
+                            ptype = (getattr(pd, 'pim_type', None) or 'accel').lower()
+                            if ptype in ('dram', 'hbm') and getattr(pd, 'attached_npu', None) == dev.name:
+                                attached_list.append(pd)
+                        
+                        if attached_list and hasattr(self, '_npu_attached_pimds'):
+                            self._npu_attached_pimds[dev.name].extend(attached_list)
+
+                    if attached_list:
+                        src_dev = attached_list[0]
+                if src_dev is None:
+                   src_dev = pim_devs[0]
+                
+                src_name = src_dev.name
+
+        # ========= Case 2: KV in Host =========
+        else:
+            host_dev = self.cost.get_host_device()
+
+            if dev.type == 'pim':
+                # 在 PIM 上做KV 相关计算：先查 LRU 是否命中
+                attrs = getattr(node, 'attrs', {}) or {}
+                if 'kv_block_id' in attrs:
+                    block_key = attrs['kv_block_id']
+                else:
+                    layer = attrs.get('layer', None)
+                    step_idx = self.seq_len if phase == 'decode' else 0
+                    block_key = (layer, step_idx, name)
+
+                lru = self._kv_blocks_lru[dev.name]
+                if block_key in lru:
+                    return 0.0  # cache hit
+
+                # miss：从 Host 读到 PIM
+                src_dev = host_dev
+                src_name = host_dev.name
+            else:
+                # NPU / CPU 做KV 相关计算：直接从 Host 读
+                src_dev = host_dev
+                src_name = host_dev.name
+
+        if not src_name:
+            return 0.0
+        
+        
+        # 估算需要搬运的字节数（按 activation 大小）
+        rd_bytes, _ = self.cost.estimate_activation_bytes(
+            node,
+            batch=int(getattr(self, 'batch', 1) or 1),
+            seq_len=int(getattr(self, 'seq_len', 1) or 1),
+            phase=phase,
+        )
+        if rd_bytes <= 0:
+            return 0.0
+
+        size_nd = self.cost.format_size(rd_bytes, 'ND')
+        src_dev = src_dev or self.cluster.devices.get(src_name)
+        
+        def _is_pim_accel(d: DeviceSpec) -> bool:
+            if d.type != 'pim':
+                return False
+            ptype = (getattr(d, 'pim_type', None) or 'accel').lower()
+            return ptype not in ('dram', 'hbm')
+        
+        need_hop = False
+        if src_dev and dst_dev:
+            # 「NPU <-> PIM-Accelerator 不允许直连」
+            if ((src_dev.type == 'npu' and _is_pim_accel(dst_dev)) or
+                (dst_dev.type == 'npu' and _is_pim_accel(src_dev))):
+                need_hop = True
+
+        if need_hop:
+            host_name = self.cost.get_host_device().name
+            # Hop 1: src -> Host
+            _, t1 = self.comm.reserve(src_name, host_name, size_nd,earliest=t0, commit=commit, tag='kv_load_hop1')
+            # Hop 2: Host -> dst
+            _, link_end = self.comm.reserve(host_name, dst_dev.name, size_nd, earliest=t1, commit=commit, tag='kv_load_hop2')
+        else:
+            _, link_end = self.comm.reserve(src_name, dst_dev.name, size_nd,earliest=t0, commit=commit, tag='kv_load')
+        
+        # 目的设备上的格式转换时间
+        conv_t = self.cost.format_conversion_time(size_nd, 'ND', self.cost.device_preferred_fmt(dst_dev), dst_dev,)
+        finish = link_end + conv_t
+
+        # Host 模式下，PIM 侧要更新 KV LRU（作为 KV cache）
+        if commit and dev.type == 'pim' and kv_home == 'host':
+            attrs = getattr(node, 'attrs', {}) or {}
+            if 'kv_block_id' in attrs:
+                block_key = attrs['kv_block_id']
+            else:
+                layer = attrs.get('layer', None)
+                step_idx = self.seq_len if phase == 'decode' else 0
+                block_key = (layer, step_idx, name)
+            self._kv_block_lru_touch(dev, block_key, rd_bytes, touch_only=False)
+
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "[KV] home=%s phase=%s node=%s dst=%s src=%s bytes=%d",
+                kv_home,
+                phase,
+                getattr(node, "name", ""),
+                dst_dev.name,
+                src_dev.name if src_dev else None,
+                rd_bytes,
+            )
+
+        return max(0.0, finish - t0)
 
     def _earliest_finish_on_device(self, g: TaskGraph, nid: str, dev: DeviceSpec, label: PlanLabel, phase: str, commit: bool) -> Tuple[float, float]:
         node = g.nodes[nid]
@@ -467,14 +607,10 @@ class HEFTScheduler:
         t0 = max(self.avail[dev.name], ready_time)
         compute_t = self.cost.node_device_cost(node, dev, label, self.batch, self.seq_len, phase)
         wload_t = self._weight_load_time(node, dev, t0, commit)
-        if dev.type == 'npu':
-            total = max(compute_t, wload_t)
-            finish = t0 + total
-        else:
-            cursor = t0
-            cursor += wload_t
-            cursor += compute_t
-            finish = cursor
+        kvload_t = self._kv_load_time(node, dev, t0, phase, commit)
+        start_exec = t0 + max(wload_t, kvload_t)
+        finish = start_exec + compute_t
+
         if commit:
             self._node_out_fmt[nid] = self.cost.device_preferred_fmt(dev)
             self._update_kv_cache_for_node(node, dev, phase, commit=True, finish=finish)
@@ -1096,12 +1232,21 @@ class _SearchSchedulerMixin(HEFTScheduler):
 
     def _allowed_actions(self, node: TaskNode) -> List[str]:
         acts = []
-        for t in ['npu','pim']:
-            if node.allowed.get(t, False):
-                acts.append(t)
-        if ALLOW_HYBRID and node.allowed.get('npu', False) and node.allowed.get('pim', False):
+        if node.allowed.get('npu', False):
+            npu_devs = self.cluster.devices_by_type('npu')
+            if npu_devs and any(self.cost._op_allowed_on(node, d) for d in npu_devs):
+                acts.append('npu')
+        
+        if node.allowed.get('pim', False):
+            pim_devs = self.cluster.devices_by_type('pim')
+            if pim_devs and any(self.cost._op_allowed_on(node, d) for d in pim_devs):
+                acts.append('pim')
+        
+        if ALLOW_HYBRID and ('npu' in acts) and ('pim' in acts):
             acts.append('hybrid')
+
         return acts or ['cpu']
+
 
     def _make_initial_action_map(self, g: TaskGraph, phase: str) -> Dict[str, str]:
         """
@@ -2002,7 +2147,7 @@ class HeftLookaheadScheduler(_SearchSchedulerMixin):
         if getattr(self, "stats", None): self.stats.set_phase(phase)
 
         order = self._upward_rank(g, phase=phase)
-        logger.debug(f"[HEFT-LA] schedule start phase={phase} " f"nodes={len(order)} lookahead_depth={self.lookahead_depth}")
+        # logger.debug(f"[HEFT-LA] schedule start phase={phase} " f"nodes={len(order)} lookahead_depth={self.lookahead_depth}")
         fixed_actions: Dict[str, str] = {}
         
         # Capture state at start of phase (e.g. prefill results) to pass to workers
@@ -2016,7 +2161,7 @@ class HeftLookaheadScheduler(_SearchSchedulerMixin):
                 continue
 
             op_name = node.attrs.get("op") or node.name
-            logger.debug(f"[HEFT-LA] Node {idx+1}/{len(order)} nid={nid} op={op_name} " f"allowed={acts}")
+            # logger.debug(f"[HEFT-LA] Node {idx+1}/{len(order)} nid={nid} op={op_name} " f"allowed={acts}")
 
             best_a: Optional[str] = None
             best_cost: float = float("inf")
@@ -2029,8 +2174,7 @@ class HeftLookaheadScheduler(_SearchSchedulerMixin):
 
                     cost = self._lookahead_value(g=g, phase=phase, base_actions=tmp_actions, order=order, start_idx=idx + 1, depth=self.lookahead_depth - 1,)
 
-                    logger.debug(f"[HEFT-LA] try action={a!r} " f"lookahead_cost={cost:.6f}"
-                    )
+                    # logger.debug(f"[HEFT-LA] try action={a!r} " f"lookahead_cost={cost:.6f}"
                     if cost < best_cost:
                         best_cost = cost
                         best_a = a
@@ -2052,10 +2196,6 @@ class HeftLookaheadScheduler(_SearchSchedulerMixin):
                     tmp_actions = dict(fixed_actions)
                     tmp_actions[nid] = a
                     cost = worker._lookahead_value(g=g, phase=phase, base_actions=tmp_actions, order=order, start_idx=idx + 1, depth=self.lookahead_depth - 1,)
-                    logger.debug(
-                        f"[HEFT-LA]   try action={a!r} "
-                        f"lookahead_cost={cost:.6f}"
-                    )
                     return a, float(cost)
 
                 max_workers = min(len(acts), os.cpu_count() or 16)
@@ -2070,9 +2210,9 @@ class HeftLookaheadScheduler(_SearchSchedulerMixin):
                             best_cost = cost
                             best_a = a
 
-            logger.debug(
-                f"[HEFT-LA] Node nid={nid} choose action={best_a!r} " f"best_cost={best_cost:.6f}"
-            )
+            # logger.debug(
+            #     f"[HEFT-LA] Node nid={nid} choose action={best_a!r} " f"best_cost={best_cost:.6f}"
+            # )
             chosen_action = best_a or acts[0]
             fixed_actions[nid] = chosen_action
             
@@ -2080,12 +2220,9 @@ class HeftLookaheadScheduler(_SearchSchedulerMixin):
             self._step_node(g, nid, chosen_action, phase)
             current_snap = self._snapshot()
 
-        logger.debug(
-            "[HEFT-LA] 前瞻决策完成，调用 _evaluate_action_map(dry_run=False) 生成最终调度表"
-        )
         self._restore(start_snap)
         _, sched = self._evaluate_action_map(g, phase, fixed_actions, dry_run=False)
-        logger.debug(f"[HEFT-LA] schedule done phase={phase} tasks={len(sched)}")
+        # logger.debug(f"[HEFT-LA] schedule done phase={phase} tasks={len(sched)}")
         return sched
 
 class MonteCarloHeftScheduler(_SearchSchedulerMixin):
@@ -2153,15 +2290,6 @@ class MonteCarloHeftScheduler(_SearchSchedulerMixin):
                 a = self._rng.choice(acts)
             actions[nid] = a
 
-        # debug：前几次 rollout 打印一下信息，确认逻辑没问题
-        self._debug_rollout_calls += 1
-        if self._debug_rollout_calls <= 10:
-            logger.debug(
-                f"[MCTS] rollout#{self._debug_rollout_calls} "
-                f"phase={phase} cur_idx={cur_idx} nid={nid_cur} action={cur_action} "
-                f"lookahead_nodes={[order[k] for k in range(cur_idx+1, end_idx)]}"
-            )
-
         cost, _ = self._evaluate_action_map(g, phase, actions, dry_run=True)
         return float(cost)
 
@@ -2176,7 +2304,7 @@ class MonteCarloHeftScheduler(_SearchSchedulerMixin):
         在整个 action_map 空间上做 MCMC refine。
         """
         if self.mcmc_iters <= 0 or self.mcmc_temp <= 0:
-            logger.debug("[MCTS-MCMC] mcmc_iters<=0 or temp<=0, 跳过 refine")
+            # logger.debug("[MCTS-MCMC] mcmc_iters<=0 or temp<=0, 跳过 refine")
             return init_actions
 
         cur_actions: Dict[str, str] = dict(init_actions)
@@ -2185,11 +2313,11 @@ class MonteCarloHeftScheduler(_SearchSchedulerMixin):
         best_actions: Dict[str, str] = dict(cur_actions)
         best_cost: float = cur_cost
 
-        logger.debug(
-            f"[MCTS-MCMC] start refine phase={phase} "
-            f"iters={self.mcmc_iters} temp={self.mcmc_temp:.4f} "
-            f"init_cost={cur_cost:.6f}"
-        )
+        # logger.debug(
+        #     f"[MCTS-MCMC] start refine phase={phase} "
+        #     f"iters={self.mcmc_iters} temp={self.mcmc_temp:.4f} "
+        #     f"init_cost={cur_cost:.6f}"
+        # )
 
         # 每多少步打印一次进度
         log_interval = max(1, self.mcmc_iters // 10)
@@ -2210,11 +2338,6 @@ class MonteCarloHeftScheduler(_SearchSchedulerMixin):
                 break
             else:
                 # 实在选不到可翻转节点
-                if (it + 1) % log_interval == 0:
-                    logger.debug(
-                        f"[MCTS-MCMC] iter={it+1}/{self.mcmc_iters} "
-                        f"skip(no movable node) cur_cost={cur_cost:.6f} best_cost={best_cost:.6f}"
-                    )
                 continue
 
             new_actions = dict(cur_actions)
@@ -2230,30 +2353,19 @@ class MonteCarloHeftScheduler(_SearchSchedulerMixin):
                 accept = (self._rng.random() < prob)
 
             if accept:
-                logger.debug(
-                    f"[MCTS-MCMC] iter={it+1}/{self.mcmc_iters} ACCEPT "
-                    f"nid={nid} {cur_actions.get(nid)!r}->{new_a!r} "
-                    f"delta={delta:+.6f} "
-                    f"cost {cur_cost:.6f}->{new_cost:.6f}"
-                )
+                # logger.debug(
+                #     f"[MCTS-MCMC] iter={it+1}/{self.mcmc_iters} ACCEPT "
+                #     f"nid={nid} {cur_actions.get(nid)!r}->{new_a!r} "
+                #     f"delta={delta:+.6f} "
+                #     f"cost {cur_cost:.6f}->{new_cost:.6f}"
+                # )
                 cur_actions = new_actions
                 cur_cost = new_cost
 
                 if cur_cost < best_cost:
                     best_cost = cur_cost
                     best_actions = dict(cur_actions)
-            else:
-                if (it + 1) % log_interval == 0:
-                    logger.debug(
-                        f"[MCTS-MCMC] iter={it+1}/{self.mcmc_iters} REJECT "
-                        f"nid={nid} cand_action={new_a!r} delta={delta:+.6f} "
-                        f"cur_cost={cur_cost:.6f} best_cost={best_cost:.6f}"
-                    )
 
-        logger.debug(
-            f"[MCTS-MCMC] done refine phase={phase} "
-            f"final_cur_cost={cur_cost:.6f} best_cost={best_cost:.6f}"
-        )
         return best_actions
 
     def schedule(self, g: TaskGraph, phase: str) -> List[ScheduledTask]:
@@ -2261,19 +2373,19 @@ class MonteCarloHeftScheduler(_SearchSchedulerMixin):
             self.stats.set_phase(phase)
 
         order = self._upward_rank(g, phase=phase)
-        logger.debug(
-            f"[MCTS] schedule start phase={phase} "
-            f"nodes={len(order)} rollouts_per_action={self.rollouts_per_action} "
-            f"lookahead_depth={self.lookahead_depth} "
-            f"mcmc_iters={self.mcmc_iters} temp={self.mcmc_temp}"
-        )
+        # logger.debug(
+        #     f"[MCTS] schedule start phase={phase} "
+        #     f"nodes={len(order)} rollouts_per_action={self.rollouts_per_action} "
+        #     f"lookahead_depth={self.lookahead_depth} "
+        #     f"mcmc_iters={self.mcmc_iters} temp={self.mcmc_temp}"
+        # )
 
         # 准备 HEFT 的 seed action，用于 rollout 中的 HEFT-bias
         try:
             self._ensure_heft_seed(g, phase)
-            logger.debug("[MCTS] HEFT seed actions 已准备好，用于 rollout bias")
+            # logger.debug("[MCTS] HEFT seed actions 已准备好，用于 rollout bias")
         except Exception as e:
-            logger.debug(f"[MCTS] _ensure_heft_seed 失败，退化为纯随机补全: {e}")
+            # logger.debug(f"[MCTS] _ensure_heft_seed 失败，退化为纯随机补全: {e}")
             self._heft_seed_actions = {}
 
         fixed_actions: Dict[str, str] = {}
@@ -2290,10 +2402,10 @@ class MonteCarloHeftScheduler(_SearchSchedulerMixin):
                 continue
 
             op_name = node.attrs.get("op") or node.name
-            logger.debug(
-                f"[MCTS] Node {idx+1}/{len(order)} nid={nid} op={op_name} "
-                f"allowed={acts}"
-            )
+            # logger.debug(
+            #     f"[MCTS] Node {idx+1}/{len(order)} nid={nid} op={op_name} "
+            #     f"allowed={acts}"
+            # )
 
             best_a: Optional[str] = None
             best_cost: float = float("inf")
@@ -2305,10 +2417,10 @@ class MonteCarloHeftScheduler(_SearchSchedulerMixin):
                     for _ in range(self.rollouts_per_action):
                         total += self._rollout_once(g, phase, fixed_actions, order, idx, a,)
                     avg_cost = total / float(self.rollouts_per_action)
-                    logger.debug(
-                        f"[MCTS]   try action={a!r} "
-                        f"avg_cost={avg_cost:.6f} over {self.rollouts_per_action} rollouts"
-                    )
+                    # logger.debug(
+                    #     f"[MCTS]   try action={a!r} "
+                    #     f"avg_cost={avg_cost:.6f} over {self.rollouts_per_action} rollouts"
+                    # )
                     if avg_cost < best_cost:
                         best_cost = avg_cost
                         best_a = a
@@ -2329,7 +2441,7 @@ class MonteCarloHeftScheduler(_SearchSchedulerMixin):
                     for _ in range(self.rollouts_per_action):
                         total += worker._rollout_once(g, phase, fixed_actions, order, idx, a)
                     avg_cost = total / float(self.rollouts_per_action)
-                    logger.debug(f"[MCTS]   try action={a!r} " f"avg_cost={avg_cost:.6f} over {self.rollouts_per_action} rollouts")
+                    # logger.debug(f"[MCTS]   try action={a!r} " f"avg_cost={avg_cost:.6f} over {self.rollouts_per_action} rollouts")
                     return a, float(avg_cost)
 
                 max_workers = min(len(acts), os.cpu_count() or 1)
@@ -2344,10 +2456,10 @@ class MonteCarloHeftScheduler(_SearchSchedulerMixin):
                             best_cost = avg_cost
                             best_a = a
 
-            logger.debug(
-                f"[MCTS] Node nid={nid} choose action={best_a!r} "
-                f"est_cost={best_cost:.6f}"
-            )
+            # logger.debug(
+            #     f"[MCTS] Node nid={nid} choose action={best_a!r} "
+            #     f"est_cost={best_cost:.6f}"
+            # )
             chosen_action = best_a or acts[0]
             fixed_actions[nid] = chosen_action
             
@@ -2355,15 +2467,15 @@ class MonteCarloHeftScheduler(_SearchSchedulerMixin):
             self._step_node(g, nid, chosen_action, phase)
             current_snap = self._snapshot()
 
-        logger.debug("[MCTS] 第一阶段(HEFT+蒙卡前瞻)结束，进入 MCMC refine 阶段")
+        # logger.debug("[MCTS] 第一阶段(HEFT+蒙卡前瞻)结束，进入 MCMC refine 阶段")
 
         # === 第二阶段：MCMC refine（保持原来的串行实现） ===
         self._restore(start_snap)
         refined_actions = self._mcmc_refine(g, phase, fixed_actions, order)
 
-        logger.debug("[MCTS] refine 完成，调用 _evaluate_action_map(dry_run=False) 生成最终调度表")
+        # logger.debug("[MCTS] refine 完成，调用 _evaluate_action_map(dry_run=False) 生成最终调度表")
         _, sched = self._evaluate_action_map(g, phase, refined_actions, dry_run=False)
-        logger.debug(f"[MCTS] schedule done phase={phase} tasks={len(sched)}")
+        # logger.debug(f"[MCTS] schedule done phase={phase} tasks={len(sched)}")
         return sched
 
 

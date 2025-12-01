@@ -20,7 +20,7 @@ from collections import defaultdict
 from task_graph import TaskGraph, TaskNode
 from hardware import Cluster, DeviceSpec
 from plan_label import PlanLabel
-from config import HOST_NAME, DEVICE_PREFERRED_FORMAT, FORMAT_SIZE_MULTIPLIER, FORMAT_CONV_BW_GBs, PIM_FREQ_GHZ, GB_FREQ_GHZ, OPERATOR_DEVICE_ALLOWED, NONOVERLAP_TIME
+from config import HOST_NAME, DEVICE_PREFERRED_FORMAT, FORMAT_SIZE_MULTIPLIER, FORMAT_CONV_BW_GBs, PIM_FREQ_GHZ, GB_FREQ_GHZ, OPERATOR_DEVICE_ALLOWED, NONOVERLAP_TIME, PIM_RUNTIME_LRU_THRESHOLD
 import logging
 logger = logging.getLogger(__name__)
 attach_local_debug_filter(logger, lambda: False)
@@ -899,12 +899,22 @@ class CostModel:
             return 'Act'
         return None
 
-    def _op_allowed_on(self, node: TaskNode, dev_type: str) -> bool:
+    def _op_allowed_on(self, node: TaskNode, dev: DeviceSpec) -> bool:
         key = self._canonical_conf_key(node)
         if not key:
             return True
+        logical_dev = dev.type
+        if dev.type == 'pim':
+            ptype = (getattr(dev,'pim_type','') or '').lower()
+            if ptype in ('dram','hbm'):
+                logical_dev = 'pimd'
+            else:
+                logical_dev = 'pima'
         allow = OPERATOR_DEVICE_ALLOWED.get(key, {})
-        val = allow.get(dev_type, True)
+        val = allow.get(
+            logical_dev,
+            allow.get('pim', allow.get(dev.type, True))
+        )
         return bool(val)
 
     def _cpu_fallback_cost(self, node: TaskNode, batch: int, seq_len: int, phase: str) -> float:
@@ -1005,6 +1015,14 @@ class CostModel:
         C_GELU = 6.0
         C_SILU = 5.0
         name = (getattr(node, 'name', '') or '').upper()
+        moe_experts = int(attrs.get('experts', attrs.get('experts_per_layer', 0)) or 0)
+        moe_top_k = int(attrs.get('top_k', attrs.get('experts_top_k', 0)) or 0)
+        def moe_token_fraction() -> float:
+            if 'expert' not in attrs or moe_experts <= 0 or moe_top_k <= 0:
+                return 1.0
+            imbalance = float(attrs.get('moe_imbalance',attrs.get('moe_imbalance_factor', 1.0)) or 1.0)
+            base = moe_top_k / float(moe_experts)
+            return min(1.0, base * imbalance)
         if name in 'LN' and D > 0:
             return float(b * q_len * D * C_LN)
         if name in ('Q', 'K', 'V') and D > 0:
@@ -1033,9 +1051,13 @@ class CostModel:
         if name in 'O' and D > 0 and (o_dim > 0):
             return float(C_MATMUL * o_dim * D * b * q_len)
         if name in ('FFN_W1', 'FFN_W3', 'FFN_UP', 'FFN_GATE') and D > 0 and (Hf > 0):
-            return float(C_MATMUL * D * Hf * b * q_len)
+            frac = moe_token_fraction()
+            eff_b = b * frac
+            return float(C_MATMUL * D * Hf * eff_b * q_len)
         if name in ('FFN_W2', 'FFN_DOWN') and D > 0 and (Hf > 0):
-            return float(C_MATMUL * Hf * D * b * q_len)
+            frac = moe_token_fraction()
+            eff_b = b * frac
+            return float(C_MATMUL * Hf * D * eff_b * q_len)
         if name in ('SWIGLU', 'SILU_GLU') and Hf > 0:
             return float(b * q_len * Hf * (C_SILU + 1.0))
         if name in ('GELU',) and Hf > 0:
@@ -1044,6 +1066,18 @@ class CostModel:
             return float(b * q_len * D)
         if name in ('IDENTITY', 'RESIDUAL', 'DROPOUT') and D > 0:
             return float(b * q_len * D)
+        if 'ROUTER' in name and D > 0 and moe_experts > 0:
+            active_tokens = q_len
+            # 1) gating linear: [B*T, D] x [D, E]
+            gate_linear = C_MATMUL * D * moe_experts * b * active_tokens
+            # 2) softmax over experts
+            gate_softmax = b * active_tokens * moe_experts * C_SOFTMAX
+            # 3) top-k selection （线性近似）
+            C_TOPK = 2.0
+            gate_topk = b * active_tokens * moe_experts * C_TOPK
+            # 4) combine K expert outputs: sum_{i=1..K} p_i * y_i
+            combine = C_MATMUL * D * max(1, moe_top_k) * b * active_tokens / 2.0
+            return float(gate_linear + gate_softmax + gate_topk + combine)
         if name in ('K_READ', 'K_WRITE', 'V_READ', 'V_WRITE', 'KV_READ' ,'KV_WRITE', 'ROPE', 'ALIBI'):
             return 0.0
         return default
@@ -1077,6 +1111,15 @@ class CostModel:
             attn_pairs = tri(T) if causal else T * T
         else:
             attn_pairs = kv_len
+        moe_experts = int(attrs.get('experts', attrs.get('experts_per_layer', 0)) or 0)
+        moe_top_k = int(attrs.get('top_k', attrs.get('experts_top_k', 0)) or 0)
+        def moe_token_fraction() -> float:
+            if 'expert' not in attrs or moe_experts <= 0 or moe_top_k <= 0:
+                return 1.0
+            imbalance = float(attrs.get('moe_imbalance',
+                                        attrs.get('moe_imbalance_factor', 1.0)) or 1.0)
+            base = moe_top_k / float(moe_experts)
+            return min(1.0, base * imbalance)
         if name in 'LN' and D > 0:
             elems = b * active_tokens * D
             return (to_bytes(elems), to_bytes(elems))
@@ -1091,9 +1134,13 @@ class CostModel:
             inp_dim = o_dim if o_dim > 0 else D
             return (to_bytes(b * active_tokens * inp_dim), to_bytes(b * active_tokens * D))
         if name in ('FFN_W1', 'FFN_W3') and D > 0 and (Hf > 0):
-            return (to_bytes(b * active_tokens * D), to_bytes(b * active_tokens * Hf))
+            frac = moe_token_fraction()
+            eff_tokens = b * active_tokens * frac
+            return (to_bytes(eff_tokens * D), to_bytes(eff_tokens * Hf))
         if name in ('FFN_W2',) and D > 0 and (Hf > 0):
-            return (to_bytes(b * active_tokens * Hf), to_bytes(b * active_tokens * D))
+            frac = moe_token_fraction()
+            eff_tokens = b * active_tokens * frac
+            return (to_bytes(eff_tokens * Hf), to_bytes(eff_tokens * D))
         if name in ('SWIGLU', 'SILU_GLU') and Hf > 0:
             return (to_bytes(b * active_tokens * (2 * Hf)), to_bytes(b * active_tokens * Hf))
         if name in ('GELU', 'RELU'):
@@ -1128,6 +1175,13 @@ class CostModel:
             write_tokens = active_tokens
             elems = b * kvh * hd * write_tokens
             return (0, to_bytes(elems))
+        if 'ROUTER' in name and D > 0:
+            tokens = float(b * active_tokens)
+            read_elems = tokens * D
+            if moe_top_k > 0:
+                read_elems += tokens * moe_top_k * D
+            write_elems = tokens * D
+            return (to_bytes(read_elems), to_bytes(write_elems))
         if D > 0:
             elems = b * active_tokens * D
             return (to_bytes(elems), to_bytes(elems))
@@ -1143,7 +1197,7 @@ class CostModel:
         kv_in_pim = getattr(label, 'kv_in_pim', False)
 
         if dev.type == 'npu':
-            if not self._op_allowed_on(node, 'npu'):
+            if not self._op_allowed_on(node, dev):
                 logger.debug(str(f"[DISPATCH] {node.name} not allowed on NPU, fallback to CPU"))
                 return self._cpu_fallback_cost(node, batch, seq_len, phase)
             if ffn_dim == 0 and dim > 0:
@@ -1233,7 +1287,7 @@ class CostModel:
  
         if dev.type == 'pim':
             # Device allowance check from config.py
-            if not self._op_allowed_on(node, 'pim'):
+            if not self._op_allowed_on(node, dev):
                 logger.debug(str(f"[DISPATCH] {node.name} not allowed on PIM, fallback to CPU"))
                 return self._cpu_fallback_cost(node, batch, seq_len, phase)
             if not self.pim_config_path or not self.ramulator_config_path:
