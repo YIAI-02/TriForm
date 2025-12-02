@@ -12,24 +12,24 @@
       {
         "name": "NPU0",
         "type": "npu",
-        "tflops": 10.0,
-        "mem_bw_GBs": 51.2,
-        "onchip_bw_GBs": 128.0,
-        "mem_capacity_GB": 0.003
+        "tflops": 20.0,
+        "mem_bw_GBs": 200,
+        "onchip_bw_GBs": 400,
+        "mem_capacity_GB": 0.03
       },
       {
         "name": "PIMA0",
         "type": "pim",
         "pim_type": "accel",
-        "tflops": 1.0,
-        "mem_bw_GBs": 32.0,
-        "onchip_bw_GBs": 512,
-        "mem_capacity_GB": 1
+        "tflops": 2.0,
+        "mem_bw_GBs": 200,
+        "onchip_bw_GBs": 1024,
+        "mem_capacity_GB": 20
       }
     ],
     "links": [
-      { "a": "CPU0", "b": "NPU0", "bw_GBs": 32.0, "type": "PCIe" },
-      { "a": "CPU0", "b": "PIMA0", "bw_GBs": 32.0, "type": "PCIe" }
+      { "a": "CPU0", "b": "NPU0", "bw_GBs": 64.0, "type": "PCIe" },
+      { "a": "CPU0", "b": "PIMA0", "bw_GBs": 64.0, "type": "PCIe" }
     ]
   }
 }

@@ -804,8 +804,6 @@ def _eval_one_baseline(cfg: Dict, policy: str) -> Dict:
 
 
 def _run_strategy_once(strategy: str, cfg: Dict, *, shared_graph=None, shared_shape=None) -> Dict:
-    logger.info(f"\n[Strategy] run '{strategy}' once (dual PIM strategy)")
-
     cluster = demo_cluster(cfg)
     if shared_graph is not None and shared_shape is not None:
         graph, shape = shared_graph, shared_shape
@@ -1017,7 +1015,6 @@ def parse_args():
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest='mode')
 
-    # evaluate mode: run all algos + baselines
     # evaluate mode: run all algos + baselines
     sp_eval = sub.add_parser('evaluate', help='Run selected algos and baselines; outputs go under result_dir.')
     sp_eval.add_argument('--config', required=True, type=str, help='Path to a JSON config with run parameters.')

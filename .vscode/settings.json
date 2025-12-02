@@ -3,5 +3,6 @@
         "__split_buffer": "cpp",
         "deque": "cpp",
         "vector": "cpp"
-    }
+    },
+    "python.languageServer": "None"
 }

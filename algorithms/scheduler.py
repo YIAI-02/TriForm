@@ -117,6 +117,7 @@ class HEFTScheduler:
         self._kv_reserved_per_dev: Dict[str, int] = {}
         self._kv_blocks_lru: Dict[str, "OrderedDict[Hashable, int]"] = defaultdict(OrderedDict) # 每个 PIM device 上的 KV 块 LRU：dev_name -> OrderedDict[block_key, bytes]
         self._kv_used_bytes: Dict[str, int] = defaultdict(int) # 每个 PIM device 上 KV 块总占用字节数
+        self._last_weight_cache_event: Dict[str, Dict[str, Any]] = {}  # dev_name -> event dict
         self._npu_attached_pimds: Dict[str, List[DeviceSpec]] = defaultdict(list)
         self._pim_trace: List[Dict[str, Any]] = []
         total_budget = int(getattr(self.label, 'pim_weight_capacity_bytes', 0) or 0)
@@ -226,8 +227,33 @@ class HEFTScheduler:
         total_avg = avg_compute + avg_w
         return total_avg
 
+    # def _avg_comm_cost(self, u: TaskNode, v: TaskNode, phase: str) -> float:
+    #     devs = list(self.cluster.devices.values())
+    #     total = 0.0
+    #     k = 0
+    #     batch = int(getattr(self, 'batch', 0) or 0)
+    #     seq_len = int(getattr(self, 'seq_len', 0) or 0)
+    #     u_read, u_write = self.cost.estimate_activation_bytes(u, batch, seq_len, phase)
+    #     v_read, _ = self.cost.estimate_activation_bytes(v, batch, seq_len, phase)
+    #     payload_bytes = max(u_write, v_read, 16 * 1024)
+    #     for i in range(len(devs)):
+    #         for j in range(len(devs)):
+    #             di, dj = (devs[i], devs[j])
+    #             if not (u.allowed.get(di.type, True) and v.allowed.get(dj.type, True)):
+    #                 continue
+    #             src_fmt = self.cost.device_preferred_fmt(di)
+    #             dst_fmt = self.cost.device_preferred_fmt(dj)
+    #             payload_src = self.cost.format_size(int(payload_bytes), src_fmt)
+    #             t_link = self.cost.comm_cost(di, dj, payload_src)
+    #             t_conv = 0.0
+    #             if di.type != dj.type:
+    #                 t_conv = self.cost.format_conversion_time(payload_src, src_fmt, dst_fmt, dj)
+    #             total += max(t_link, t_conv)
+    #             k += 1
+    #     return total / k if k else 0.0
+    
     def _avg_comm_cost(self, u: TaskNode, v: TaskNode, phase: str) -> float:
-        devs = list(self.cluster.devices.values())
+        devs = [d for d in self.cluster.devices.values() if d.type in ('npu', 'pim')]  # 只考虑真正会运行算子的设备
         total = 0.0
         k = 0
         batch = int(getattr(self, 'batch', 0) or 0)
@@ -243,7 +269,18 @@ class HEFTScheduler:
                 src_fmt = self.cost.device_preferred_fmt(di)
                 dst_fmt = self.cost.device_preferred_fmt(dj)
                 payload_src = self.cost.format_size(int(payload_bytes), src_fmt)
-                t_link = self.cost.comm_cost(di, dj, payload_src)
+                
+                if di.type == dj.type:
+                    # 同类型设备（比如两个 NPU 或两个 PIM），你可以用直接 comm_cost 或者 0（视情况）
+                    t_link = self.cost.comm_cost(di, dj, payload_src)
+                else:
+                    # 不同类型，强制走 Host 两跳近似
+                    host = self.cost.get_host_device()
+                    t_link = (
+                        self.cost.comm_cost(di, host, payload_src) +
+                        self.cost.comm_cost(host, dj, payload_src)
+                    )                
+
                 t_conv = 0.0
                 if di.type != dj.type:
                     t_conv = self.cost.format_conversion_time(payload_src, src_fmt, dst_fmt, dj)
@@ -278,6 +315,12 @@ class HEFTScheduler:
                         best = path_cost
                 rank_u[nid] = compute_cost + best
         sorted_nodes = sorted(g.nodes.keys(), key=lambda x: -rank_u[x])
+        
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"[HEFT-RANK] Phase={phase} Ranks:")
+            for nid in sorted_nodes:
+                logger.debug(f"  Node {nid}: rank={rank_u[nid]:.6f}")
+
         if cache is not None:
             cache[key] = sorted_nodes
         return sorted_nodes
@@ -316,6 +359,13 @@ class HEFTScheduler:
             if nid is not None:
                 rec["node_id"] = str(nid)
 
+        if extra:
+            for k, v in extra.items():
+                if isinstance(v, (str, int, float, bool)) or v is None:
+                    rec[k] = v
+                else:
+                    rec[k] = v  # 比如 list / tuple，json 也能直接吃
+
         self._pim_trace.append(rec)
 
 
@@ -326,7 +376,7 @@ class HEFTScheduler:
         block_bytes: int,
         *,
         touch_only: bool = False,
-    ) -> None:
+    )  -> Dict[str, Any]:
         """
         在 PIM 上按块管理 KV cache：
         - touch_only=True 只更新 LRU 顺序，不改变占用大小；
@@ -339,42 +389,106 @@ class HEFTScheduler:
         dev_name = dev.name
         lru = self._kv_blocks_lru[dev_name]
         kv_used = int(self._kv_used_bytes.get(dev_name, 0))
+        info: Dict[str, Any] = {
+            "kv_block_key": block_key,
+            "kv_block_bytes": int(block_bytes),
+            "kv_before_bytes": kv_used,
+            "kv_evicted": [],
+        }
 
+        #case 1: kv cache hit 
         if block_key in lru:
             size0 = lru.pop(block_key)
             lru[block_key] = size0  # 挪到队尾代表最近使用
             # if logger.isEnabledFor(logging.DEBUG):
             #     logger.debug("[KV-LRU] dev=%s block=%r hit size=%d kv_used=%dB",dev_name, block_key, size0, kv_used)
-            # return
-
-        if touch_only:
+            info["kind"] = "hit"
+            info["kv_after_bytes"] = kv_used
+            info["kv_delta_bytes"] = 0
+            return info
+        
+        #case 2: touch 不分配也不驱逐
+        if touch_only:   
             # if logger.isEnabledFor(logging.DEBUG):
-            #     logger.debug(
-            #         "[KV-LRU] dev=%s block=%r touch_only(no_write) kv_used=%dB",
-            #         dev_name, block_key, kv_used
-            #     )
-            return
+            #     logger.debug("[KV-LRU] dev=%s block=%r touch_only(no_write) kv_used=%dB",
+            #                 dev_name, block_key, kv_used)
+            info["kind"] = "touch_only"
+            info["kv_block_bytes"] = 0
+            info["kv_after_bytes"] = kv_used
+            info["kv_delta_bytes"] = 0
+            return info
 
+        #case 3: 写miss 但size<=0
         if block_bytes <= 0:
-            return
-
+            info["kind"] = "skip"
+            info["kv_after_bytes"] = kv_used
+            info["kv_delta_bytes"] = 0
+            return info        
+        
+        # case 4:写miss 可能触发驱逐
+        victims: List[Tuple[Hashable, int]] = []
         phy_bytes, _, act_used, weight_used, total_used = self._pim_used_bytes(dev)
         if phy_bytes > 0 and PIM_RUNTIME_LRU_THRESHOLD > 0.0:
             threshold = int(PIM_RUNTIME_LRU_THRESHOLD * phy_bytes)
-            # 目标：写入之后，总占用不超过 threshold
             target_total = max(0, threshold - block_bytes)
-            # 在该目标下，KV 最多还能占多少字节（只淘汰 KV，自身 act / weight 不动）
             max_kv_after = max(0, target_total - act_used - weight_used)
             while lru and kv_used > max_kv_after:
                 victim, v_size = lru.popitem(last=False)
                 kv_used -= int(v_size)
+                victims.append((victim, int(v_size)))
+                # if logger.isEnabledFor(logging.DEBUG):
+                #     logger.debug("[KV-LRU] dev=%s evict block=%r size=%d new_kv_used=%dB",
+                #                 dev_name, victim, v_size, kv_used)
 
         lru[block_key] = int(block_bytes)
-        self._kv_used_bytes[dev_name] = kv_used + int(block_bytes)
+        new_used = kv_used + int(block_bytes)
+        self._kv_used_bytes[dev_name] = new_used
+        info["kind"] = "insert"
+        info["kv_evicted"] = victims
+        info["kv_after_bytes"] = new_used
+        info["kv_delta_bytes"] = new_used - info["kv_before_bytes"]
+        return info        
+
+
 
     def _update_kv_cache_for_node(self, node: TaskNode, dev: DeviceSpec, phase: str, commit: bool, finish: float | None = None) -> None:
-        if (not commit) or dev.type != 'pim':
+        if not commit:
             return
+
+        # Determine target PIM device
+        target_dev = dev
+        if dev.type != 'pim':
+            kv_home = getattr(self.label, 'kv_home', 'host').lower()
+            if kv_home == 'pim':
+                pim_devs = self.cluster.devices_by_type('pim')
+                if not pim_devs:
+                    return
+                
+                found_pim = None
+                if dev.type == 'npu':
+                    attached_list = self._npu_attached_pimds.get(dev.name, [])
+                    if not attached_list:
+                        for pd in pim_devs:
+                            ptype = (getattr(pd, 'pim_type', None) or 'accel').lower()
+                            if ptype in ('dram', 'hbm') and getattr(pd, 'attached_npu', None) == dev.name:
+                                attached_list.append(pd)
+                        if attached_list:
+                            self._npu_attached_pimds[dev.name].extend(attached_list)
+                    
+                    if attached_list:
+                        found_pim = attached_list[0]
+                
+                if found_pim is None:
+                    found_pim = pim_devs[0]
+                target_dev = found_pim
+            else:
+                return
+
+        if target_dev.type != 'pim':
+            return
+        
+        # Use target_dev as the PIM device to update
+        dev = target_dev
 
         name = (getattr(node, 'name', '') or '').upper()
         if name not in ('K_READ', 'V_READ', 'K_WRITE', 'V_WRITE', 'KV_READ', 'KV_WRITE'):
@@ -405,24 +519,24 @@ class HEFTScheduler:
         )
         if name in ('K_WRITE', 'V_WRITE', 'KV_WRITE'):
             block_bytes = max(int(wr_bytes), 0)
-            self._kv_block_lru_touch(dev, block_key, block_bytes, touch_only=False)
+            kv_info = self._kv_block_lru_touch(dev, block_key, block_bytes, touch_only=False)
         else:  # READ 类
-            self._kv_block_lru_touch(dev, block_key, 0, touch_only=True)
+            kv_info = self._kv_block_lru_touch(dev, block_key, 0, touch_only=True)
 
         if finish is not None:
             if name in ('K_WRITE', 'V_WRITE', 'KV_WRITE'):
                 event = 'KV_BLOCK_WRITE'
             else:
                 event = 'KV_BLOCK_READ'
-            try:
-                self._record_pim_trace(
-                    dev,
-                    phase=phase,
-                    finish=float(finish),
-                    event=event,
-                    node=node)
-            except Exception:
-                pass
+            extra = dict(kv_info or {})
+            if "kv_block_key" in extra:
+                extra["kv_block_key"] = repr(extra["kv_block_key"]) #repr把tuple变成str
+            if "kv_evicted" in extra:
+                extra["kv_evicted"] = [
+                    (repr(k), int(sz)) for (k, sz) in extra["kv_evicted"]
+                ]
+            self._record_pim_trace(dev, phase=phase, finish=float(finish), event=event, node=node, extra=extra)
+
     def _weight_load_time(self, node: TaskNode, dev: DeviceSpec, t0: float, commit: bool) -> float:
         """Host->dev load + format conversion; overlappable with compute."""
         if not node.weight_id or node.weight_size <= 0:
@@ -436,24 +550,48 @@ class HEFTScheduler:
                 self.buffer.device_cache[dev.name].touch(wid)
             return 0.0
         if dev.type == 'pim':
-            # logger.debug(f"[WEIGHT] host->pim load wid={wid} size={node.weight_size}")
             load_time = self.cost.weight_load_time_pim(node.weight_size)
             if commit:
                 self._weight_load_count[wid, dev.type] += 1
                 self._weight_sizes[wid] = node.weight_size
                 self.weight_cached[dev.name, wid] = True
-                pinned_flag = bool(getattr(self.label, 'pinned_fc_on_pim', set()) and (wid in self.label.pinned_fc_on_pim))
-                if cache_cap <= 0:
-                    pass
-                else:
+                pinned_flag = bool(getattr(self.label, 'pinned_fc_on_pim', set())
+                                and (wid in self.label.pinned_fc_on_pim))
+
+                cache = self.buffer.device_cache.get(dev.name, None)
+                before_used = int(getattr(cache, "used", 0))
+                before_items = set(getattr(cache, "items", {}).keys()) if cache is not None else set()
+
+                if cache_cap > 0:
                     used_bytes = int(self.buffer.device_cache[dev.name].used)
-                    if lru_threshold <= 0 or used_bytes > lru_threshold: #当前权重存入，触发驱逐
+                    if lru_threshold <= 0 or used_bytes > lru_threshold:
+                        # 当前权重存入，触发驱逐逻辑
                         self.buffer.mark_cached(dev.name, wid, node.weight_size, pinned=pinned_flag)
                     else:
-                        self.buffer.mark_cached(dev.name, wid, node.weight_size, pinned=pinned_flag)                
+                        # 未超过阈值，只占用空间
+                        self.buffer.mark_cached(dev.name, wid, node.weight_size, pinned=pinned_flag)
+
+                cache = self.buffer.device_cache.get(dev.name, None)
+                after_used = int(getattr(cache, "used", 0))
+                after_items = set(getattr(cache, "items", {}).keys()) if cache is not None else set()
+
+                evicted = list(before_items - after_items)
+                inserted = list(after_items - before_items)
+
+                self._last_weight_cache_event[dev.name] = {
+                    "weight_id": wid,
+                    "weight_bytes": int(node.weight_size),
+                    "weight_cache_before": before_used,
+                    "weight_cache_after": after_used,
+                    "weight_cache_delta": after_used - before_used,
+                    "weight_evicted": [str(x) for x in evicted],
+                    "weight_inserted": [str(x) for x in inserted],
+                }
+
                 if wid not in self.buffer.host_format and wid in self.storage_fmt_map:
                     self.buffer.set_host_fmt(wid, self.storage_fmt_map[wid])
             return load_time
+
         host = self.cost.get_host_device().name
         stored_fmt = self.storage_fmt_map.get(wid, self.buffer.get_host_fmt(wid) or 'ND')
         size_src = self.cost.format_size(node.weight_size, stored_fmt)
@@ -616,6 +754,19 @@ class HEFTScheduler:
             self._update_kv_cache_for_node(node, dev, phase, commit=True, finish=finish)
             if dev.type == 'pim':
                 phy_bytes, kv_used, act_used, weight_used, total_used = self._pim_used_bytes(dev)
+                extra = getattr(self, "_last_weight_cache_event", {}).get(dev.name)
+                if extra:
+                    try:
+                        self._record_pim_trace(
+                            dev,
+                            phase=phase,
+                            finish=float(finish),
+                            event='WEIGHT_CACHE_UPDATE',
+                            node=node,
+                            extra=extra)
+                    except Exception:
+                        pass
+                
                 self._pim_trace.append({
                     "phase": phase,
                     "node_id": nid,
@@ -1000,8 +1151,8 @@ class HEFTScheduler:
         schedule: List[ScheduledTask] = []
         for nid in order:
             node = g.nodes[nid]
-            allow_npu = node.allowed.get('npu', False)
-            allow_pim = node.allowed.get('pim', False)
+            allow_npu = node.allowed.get('npu', True)
+            allow_pim = node.allowed.get('pim', True)
             candidates = []
             if allow_npu:
                 best_npu_dev = None
@@ -1017,16 +1168,25 @@ class HEFTScheduler:
                 best_pim_dev = None
                 best_pim_finish = float('inf')
                 for dev in self.cluster.devices_by_type('pim'):
+                    # Check if node is allowed on this specific PIM device (pima/pimd) according to config
+                    if not self.cost._op_allowed_on(node, dev):
+                        continue
                     _, finish = self._earliest_finish_on_device(g, nid, dev, self.label, phase, commit=False)
                     if finish < best_pim_finish:
                         best_pim_finish = finish
                         best_pim_dev = dev
                 if best_pim_dev is not None:
                     candidates.append(('PIM', best_pim_finish, best_pim_dev))
+            
             if ALLOW_HYBRID and allow_npu and allow_pim:
                 best_result = self._earliest_finish_hybrid(g, nid, phase, commit=False)
                 if best_result is not None:
                     candidates.append(('HYBRID', best_result['finish'], None))
+            
+            if logger.isEnabledFor(logging.DEBUG):
+                cand_str = ", ".join([f"{m}={f:.6f}" for m, f, _ in candidates])
+                logger.debug(f"[HEFT-DECISION] Node {nid} Candidates: {cand_str}")
+
             chosen_mode, chosen_finish, chosen_data = min(candidates, key=lambda x: x[1])
             if chosen_mode == 'HYBRID':
                 hy = self._earliest_finish_hybrid(g, nid, phase, commit=True)
@@ -1084,7 +1244,7 @@ class HEFTScheduler:
                         )
                     except Exception:
                         pass
-            # logger.debug(str(f'[Schedule] Node {nid} on {self._node_placement[nid]} from {start:.3f} to {finish:.3f} ({chosen_mode})'))
+            logger.debug(str(f'[Schedule] Node {nid} on {self._node_placement[nid]} from {start:.3f} to {finish:.3f} ({chosen_mode})'))
         return schedule
 
     def makespan(self, schedule: List[ScheduledTask]) -> float:
@@ -1481,8 +1641,12 @@ class _SearchSchedulerMixin(HEFTScheduler):
                         for dev in self.cluster.devices_by_type('npu'):
                             start, finish = self._earliest_finish_on_device(g, nid, dev, self.label, phase, commit=False)
                             cands.append( (finish, start, 'npu', dev) )
+                    # Check PIM devices if baseline allows it, then filter by config (pima/pimd settings)
                     if node.allowed.get('pim', False):
                         for dev in self.cluster.devices_by_type('pim'):
+                            # Check if node is allowed on this specific PIM device (pima/pimd) according to config
+                            if not self.cost._op_allowed_on(node, dev):
+                                continue
                             start, finish = self._earliest_finish_on_device(g, nid, dev, self.label, phase, commit=False)
                             cands.append( (finish, start, 'pim', dev) )
                     # CPU candidates intentionally disabled to align with HEFT baseline

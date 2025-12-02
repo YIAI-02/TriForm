@@ -18,6 +18,7 @@ FILE_MAP = {
     ("palm","8b"):   "palm_8b_shape.json",
     ("palm","62b"):  "palm_62b_shape.json",
     ("palm","540b"): "palm_540b_shape.json",
+    ("mixtral", "8x7b"):  "mixtral_8x7b_shape.json",
 }
 
 def load_shape_json(path: Path) -> Dict[str, Any]:
@@ -40,7 +41,7 @@ def parse_model_shape_from_file(family: str, variant: str, batch: int, max_seq_l
     q_head_num = data.get("q_head_num")
     kv_head_num = data.get("kv_head_num")
 
-    return ModelShape(
+    shape =  ModelShape(
         layer_num=layer_num,
         dim=hidden_dim,
         ffn_dim=intermediate_dim,
@@ -49,6 +50,16 @@ def parse_model_shape_from_file(family: str, variant: str, batch: int, max_seq_l
         batch=batch,
         max_seq_len=max_seq_len,
     )
+    experts_per_layer = data.get("experts_per_layer")
+    if experts_per_layer is not None:
+        setattr(shape, "experts_per_layer", experts_per_layer)
+    experts_top_k = data.get("experts_top_k")
+    if experts_top_k is not None:
+        setattr(shape, "experts_top_k", experts_top_k)
+    moe_imbalance_factor = data.get("moe_imbalance_factor")
+    if moe_imbalance_factor is not None:
+        setattr(shape, "moe_imbalance_factor", moe_imbalance_factor)
+    return shape
 
 def build_graph(cfg: Dict[str, Any]):
     """
