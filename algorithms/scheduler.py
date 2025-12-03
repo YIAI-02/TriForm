@@ -17,7 +17,7 @@ import random
 import copy
 from stats_recorder import StatsRecorder
 
-DEBUG_SCHEDULER = True
+DEBUG_SCHEDULER = False
 logger = logging.getLogger(__name__)
 attach_local_debug_filter(logger, lambda: DEBUG_SCHEDULER)
 
@@ -316,10 +316,10 @@ class HEFTScheduler:
                 rank_u[nid] = compute_cost + best
         sorted_nodes = sorted(g.nodes.keys(), key=lambda x: -rank_u[x])
         
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(f"[HEFT-RANK] Phase={phase} Ranks:")
-            for nid in sorted_nodes:
-                logger.debug(f"  Node {nid}: rank={rank_u[nid]:.6f}")
+        # if logger.isEnabledFor(logging.DEBUG):
+        #     logger.debug(f"[HEFT-RANK] Phase={phase} Ranks:")
+        #     for nid in sorted_nodes:
+        #         logger.debug(f"  Node {nid}: rank={rank_u[nid]:.6f}")
 
         if cache is not None:
             cache[key] = sorted_nodes

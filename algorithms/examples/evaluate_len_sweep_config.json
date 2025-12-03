@@ -1,21 +1,7 @@
 {
-  "model_family": "llama",
-  "model_variant": "7b",
-  "dtype": "int8",
-  "batch": 1,
-  "prefill_len": 128,
-  "decode_len": 1024,
-  "decode_sample_stride": 16,
   "pim_config_path": "./aim_simulator/pim.json",
   "gb_config_path": "./aim_simulator/gb.json",
   "ramulator_config_path": "./aim_simulator/example.yaml",
-  "simulation_log_file": "./output/kv_cache_v4_questions/pim_simulation.txt",
-  "result_dir": "./output/kv_cache_v4_questions",
-  "hardware_json": "./examples/hardware_config_pima.json",
-  "algo": [
-    "heft"
-  ],
-  "baselines": [
-    "weights_on_pim"
-  ]
+  "algo": ["heft"],
+  "baselines": ["ianus","neupims","attacc","facil","pd","weights_on_pim","attn_on_pim"]
 }

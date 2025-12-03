@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
-"""
-python perform_analysis.py \
-  --algo_dir ../algorithms/output/baseline_sweep_kv_cache_v2_pcie_32gb_hybrid_false/llama_7b_INT8_b1/algo_heft
-
-"""
-
 from __future__ import annotations
 import argparse
 import os
@@ -17,356 +10,329 @@ from typing import Dict, List, Tuple
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib.patches import Wedge
+from dataclasses import dataclass
 
+"""
+python perform_analysis.py \
+  --paths ../algorithms/output/baseline_sweep_pima/llama_7b_int8_b1/algo_heft --stride 16 
 
-PALETTE_BLUES: List[str] = [
-    "#e6eefb", "#ccddf8", "#b3ccf4", "#99bbf0", "#80abed", "#679ae9",
-    "#4d89e5", "#3478e1", "#1a67de", "#0156da", "#014dc4", "#0145ae",
-    "#013c99", "#013483", "#012b6d", "#002257", "#001a41", "#00112c",
-    "#000916",
+"""
+COLOR_NPU_TOTAL  = "#1d2e53"
+COLOR_NPU_PIM    = "#013483"
+COLOR_PIM_TOTAL  = "#0145ae"
+COLOR_PIM_COMM   = "#80abed"
+COLOR_COMM_TOTAL = "#ccddf8"
+COLOR_NPU_COMM   = "#1a67de"
+
+LABELS_6 = [
+    "NPU",
+    "PIM",
+    "DATA_Trans",
+    "NPU_PIM_overlap",
+    "NPU_DATA_Trans_overlap",
+    "PIM_DATA_Trans_overlap",
 ]
 
-COLOR_NPU_TOTAL  = "#1d2e53"
-COLOR_PIM_TOTAL  = "#395aad"
-COLOR_COMM_TOTAL = "#84b4fc"
+COLORS_6 = [
+    COLOR_NPU_TOTAL,     # NPU
+    COLOR_PIM_TOTAL,     # PIM
+    COLOR_COMM_TOTAL,    # DATA_Trans
+    COLOR_NPU_PIM,       # NPU_PIM_overlap
+    COLOR_NPU_COMM,      # NPU_DATA_Trans_overlap
+    COLOR_PIM_COMM,      # PIM_DATA_Trans_overlap
+]
 
-COLOR_GROUP_NPU = "#00112c"
-COLOR_GROUP_PIM = "#4d89e5"
-
-
-def find_output_anchor_dir(path: Path) -> Tuple[Path, Path]:
-    parts = path.resolve().parts
-    low   = [p.lower() for p in parts]
-    if "output" not in low:
-        return path.resolve(), Path(".")
-    idx = max(i for i, s in enumerate(low) if s == "output")
-    root = Path(*parts[:idx]) if idx > 0 else Path("/")
-    tail = Path(*parts[idx+1:]) if idx+1 < len(parts) else Path(".")
-    return root, tail
+TITLE_COLORS = [
+    "#0d3b66",
+    "#007f5f",
+    "#ff7b00",
+    "#6a4c93",
+]
 
 
-def discover_pairs(algo_dir: Path) -> List[str]:
-    """发现 <lenpair>（去掉后缀），取 ops 与 comms 交集。"""
-    ops = {p.stem[:-4] for p in algo_dir.glob("*_ops.csv") if p.name.endswith("_ops.csv")}
-    cms = {p.stem[:-6] for p in algo_dir.glob("*_comms.csv") if p.name.endswith("_comms.csv")}
-    pairs = sorted(list(ops & cms), key=lambda s: (
-        int(re.match(r"(\d+)", s).group(1)) if re.match(r"(\d+)", s) else 10**9,
-        int(re.search(r"x(\d+)", s).group(1)) if re.search(r"x(\d+)", s) else 10**9
-    ))
-    return pairs
+@dataclass(frozen=True)
+class PairFiles:
+    key: str
+    ops_path: Path
+    comms_path: Path
+    prefill_len: int
+    decode_len: int
 
 
-def meta_from_algo_dir(algo_dir: Path) -> Dict[str, str]:
-    """解析 sweep / model_pack / algo。"""
-    s = str(algo_dir.resolve()).lower()
-    sweep = "len_sweep" if "len_sweep" in s else "sweep_unknown"
-    m = re.search(r"([\w\-.]+_(?:fp\d+|fp8|fp16|fp32|bf16|int\d+)_b\d+)", s)
-    model_pack = m.group(1) if m else "unknown_model_pack"
-    m = re.search(r"(algo[_-]?[a-z0-9]+)", s)
-    algo = m.group(1) if m else "algo_unknown"
-    return {"sweep": sweep, "model_pack": model_pack, "algo": algo}
+def parse_lenpair_from_stem(stem: str) -> Tuple[int, int]:
+    """从 stem 中抓 prefill/decode 长度，例如 xxx_128x1024 -> (128, 1024)。抓不到就返回 (0,0)。"""
+    m = re.search(r"(\d+)x(\d+)", stem)
+    if not m:
+        return 0, 0
+    return int(m.group(1)), int(m.group(2))
 
 
-def fig_dir_for_pair(algo_dir: Path, lenpair: str) -> Path:
-    """fig 根与层级复刻（包含 <lenpair> 子目录）。"""
-    root, tail = find_output_anchor_dir(algo_dir)
-    fig_root   = root / "fig"
-    outdir     = fig_root / tail / lenpair
-    outdir.mkdir(parents=True, exist_ok=True)
-    return outdir
+def discover_pairs_in_dir(d: Path) -> Dict[str, Tuple[Path, Path]]:
+    """在目录 d 里找 lenpair -> (ops_path, comms_path)。"""
+    ops_files = list(d.glob("*_ops.csv"))
+    comms_files = list(d.glob("*_comms.csv"))
+
+    ops_map = {p.stem[:-4]: p for p in ops_files if p.name.endswith("_ops.csv")}         # remove "_ops"
+    comms_map = {p.stem[:-6]: p for p in comms_files if p.name.endswith("_comms.csv")}  # remove "_comms"
+
+    out: Dict[str, Tuple[Path, Path]] = {}
+    for k in sorted(set(ops_map.keys()) & set(comms_map.keys())):
+        out[k] = (ops_map[k], comms_map[k])
+    return out
 
 
-def fig_root_for_algo(algo_dir: Path) -> Path:
-    """该 algo 的 fig 根目录（不含 <lenpair>），用于汇总图。"""
-    root, tail = find_output_anchor_dir(algo_dir)
-    outdir = root / "fig" / tail
-    outdir.mkdir(parents=True, exist_ok=True)
-    return outdir
+def collect_pairs_from_paths(paths: List[Path]) -> List[PairFiles]:
+    """
+    输入可以是：
+    - 目录：扫描 *_ops.csv / *_comms.csv
+    - 文件：如果是 *_ops.csv 或 *_comms.csv，就补齐同目录下的另一个
+
+    返回 PairFiles 列表（去重后）。
+    """
+    pairs: Dict[str, Tuple[Path, Path]] = {}
+
+    for p in paths:
+        p = p.expanduser().resolve()
+        if p.is_dir():
+            pairs.update(discover_pairs_in_dir(p))
+            continue
+
+        if not p.exists():
+            raise FileNotFoundError(f"路径不存在: {p}")
+
+        name = p.name
+        if name.endswith("_ops.csv"):
+            key = p.stem[:-4]
+            ops_path = p
+            comms_path = p.with_name(f"{key}_comms.csv")
+            if not comms_path.exists():
+                raise FileNotFoundError(f"需要匹配的 comms 文件不存在: {comms_path}")
+            pairs[key] = (ops_path, comms_path)
+        elif name.endswith("_comms.csv"):
+            key = p.stem[:-6]
+            comms_path = p
+            ops_path = p.with_name(f"{key}_ops.csv")
+            if not ops_path.exists():
+                raise FileNotFoundError(f"需要匹配的 ops 文件不存在: {ops_path}")
+            pairs[key] = (ops_path, comms_path)
+        else:
+            raise ValueError(f"不支持的文件名（需要 *_ops.csv 或 *_comms.csv）: {p}")
+
+    out: List[PairFiles] = []
+    for key, (ops_path, comms_path) in pairs.items():
+        prefill_len, decode_len = parse_lenpair_from_stem(key)
+        out.append(PairFiles(
+            key=key,
+            ops_path=ops_path,
+            comms_path=comms_path,
+            prefill_len=prefill_len,
+            decode_len=decode_len,
+        ))
+
+    out.sort(key=lambda x: (x.prefill_len, x.decode_len, x.key))
+    return out
 
 
-# ========== 数据读取与标准化 ==========
-def normalize_phase(val) -> str:
-    s = str(val).strip().lower()
-    if s in {"prefill", "pre", "pre-fill", "pre_fill", "prompt", "encode", "encoding"}:
-        return "prefill"
-    if s in {"decode", "decoding", "gen", "generate", "generation"}:
-        return "decode"
-    return "unknown"
+def load_pair_files(pair: PairFiles) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    ops = pd.read_csv(pair.ops_path)
+    comms = pd.read_csv(pair.comms_path)
 
+    for df, name in ((ops, "ops"), (comms, "comms")):
+        for col in ("start", "end", "duration"):
+            if col not in df.columns:
+                raise ValueError(f"{name} 文件缺少 '{col}' 列：{pair.key}")
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
 
-def load_pair(algo_dir: Path, lenpair: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    ops   = pd.read_csv(algo_dir / f"{lenpair}_ops.csv")
-    comms = pd.read_csv(algo_dir / f"{lenpair}_comms.csv")
-
-    # 关键列
-    for df, name in [(ops, "ops"), (comms, "comms")]:
-        if "duration" not in df.columns:
-            raise ValueError(f"{name}.csv 缺少 'duration' 列")
-        df["duration"] = pd.to_numeric(df["duration"], errors="coerce").fillna(0.0)
-
-    # 设备类型
     if "device_type" not in ops.columns:
         if "mode" in ops.columns:
             ops["device_type"] = ops["mode"].astype(str).str.lower()
         else:
-            raise ValueError(f"{lenpair}_ops.csv 缺少 'device_type'（或 'mode'）列")
+            raise ValueError(f"{pair.ops_path.name} 缺少 device_type（或 mode）列")
     else:
         ops["device_type"] = ops["device_type"].astype(str).str.lower()
 
-    # phase
-    if "phase" not in ops.columns:
-        raise ValueError(f"{lenpair}_ops.csv 缺少 'phase' 列（需要区分 prefill / decode）")
-    ops["phase"] = ops["phase"].map(normalize_phase)
-
-    # 其它列
-    if "op" not in ops.columns:
-        raise ValueError(f"{lenpair}_ops.csv 缺少 'op' 列")
-    if "node_id" not in ops.columns:
-        ops["node_id"] = "unknown_node"
+    if "phase" not in ops.columns or "phase" not in comms.columns:
+        raise ValueError(f"{pair.key}: ops/comms 缺少 phase 列（需要区分 prefill/decode）")
 
     return ops, comms
 
 
-# ========== 绘图基础 ==========
-def cap_and_group_others(df: pd.DataFrame, key_col: str, val_col: str, topk: int) -> pd.DataFrame:
-    d = df.sort_values(val_col, ascending=False)
-    if topk and len(d) > topk:
-        head = d.iloc[:topk].copy()
-        rest = d.iloc[topk:][val_col].sum()
-        head.loc[len(head)] = {key_col: "Others", val_col: rest}
-        return head
-    return d
-
-
-def save_totals_ratio(ops: pd.DataFrame, comms: pd.DataFrame, out_csv: Path, out_png: Path):
-    npu = ops.loc[ops["device_type"] == "npu", "duration"].sum()
-    pim = ops.loc[ops["device_type"] == "pim", "duration"].sum()
-    com = comms["duration"].sum()
-    df  = pd.DataFrame({"category": ["NPU Compute", "PIM Compute", "Communication"],
-                        "seconds":  [npu,             pim,             com]})
-    df["percent"] = df["seconds"] / max(df["seconds"].sum(), 1e-9) * 100.0
-    df.to_csv(out_csv, index=False)
-
-    vals = df["seconds"].to_numpy(dtype=float)
-    total = float(vals.sum()) if float(vals.sum()) > 0 else 1.0
-    colors = [COLOR_NPU_TOTAL, COLOR_PIM_TOTAL, COLOR_COMM_TOTAL]
-    labels = df["category"].tolist()
-
-    fig = plt.figure(figsize=(6, 5))
-    bottom = 0.0
-    for i, v in enumerate(vals):
-        p = v / total
-        plt.bar([0], [p], bottom=bottom, color=colors[i], label=f"{labels[i]} ({p*100:.1f}%)")
-        plt.text(0, bottom + p/2, f"{p*100:.1f}%\n{v:.2f}s",
-                 ha="center", va="center", fontsize=9, color="white")
-        bottom += p
-    plt.ylim(0, 1)
-    plt.xticks([0], ["Time Ratio"])
-    plt.ylabel("Share of total time")
-    plt.title("NPU vs PIM vs Communication (ratio)")
-    plt.legend(loc="upper right", bbox_to_anchor=(1.35, 1.0))
-    plt.tight_layout()
-    plt.savefig(out_png, dpi=160)
-    plt.close(fig)
-
-    return float(npu), float(pim), float(com)
-
-
-def plot_03_pie(ops: pd.DataFrame, device: str, phase: str, out_png: Path, topk: int = 25):
+def classify_time_slices(ops_phase: pd.DataFrame, comms_phase: pd.DataFrame) -> Dict[frozenset, float]:
     """
-    03：单设备×单阶段，按 op 类型聚合（先对节点求和），饼图展示占比。
+    扫时间线，统计每个“活跃集合”（n,p,c）的持续时间：
+      n = NPU 任意 op 活跃
+      p = PIM 任意 op 活跃
+      c = 任意 comm 活跃
     """
-    d = (
-        ops[(ops["device_type"] == device) & (ops["phase"] == phase)]
-        .groupby(["op"], as_index=False)["duration"].sum()
-    )
-    if d.empty:
-        fig = plt.figure(figsize=(5, 5))
-        plt.title(f"{device.upper()} - {phase} (no data)")
-        plt.savefig(out_png, dpi=160)
-        plt.close(fig)
-        return
+    events: List[Tuple[float, int, str]] = []
 
-    d = cap_and_group_others(d, "op", "duration", topk)
-    values = d["duration"].to_numpy(dtype=float)
-    labels = d["op"].tolist()
-    colors = [PALETTE_BLUES[i % len(PALETTE_BLUES)] for i in range(len(labels))]
+    for _, row in ops_phase.iterrows():
+        dev = str(row["device_type"]).lower()
+        if dev not in ("npu", "pim"):
+            continue
+        cat = "n" if dev == "npu" else "p"
+        s, e = float(row["start"]), float(row["end"])
+        events.append((s, 1, cat))
+        events.append((e, -1, cat))
 
-    fig = plt.figure(figsize=(7, 7))
-    plt.pie(values, labels=labels, autopct="%1.1f%%", startangle=90, colors=colors)
-    plt.title(f"{device.upper()} — {phase.capitalize()} — op-type share (sum over nodes)")
-    plt.tight_layout()
-    plt.savefig(out_png, dpi=160)
-    plt.close(fig)
+    for _, row in comms_phase.iterrows():
+        s, e = float(row["start"]), float(row["end"])
+        events.append((s, 1, "c"))
+        events.append((e, -1, "c"))
+
+    if not events:
+        return {}
+
+    events.sort(key=lambda x: (x[0], -x[1]))  # 同一时刻：先处理 end 再处理 start
+
+    active: set[str] = set()
+    totals: Dict[frozenset, float] = {}
+    prev_t = events[0][0]
+
+    for t, typ, cat in events:
+        if t > prev_t and active:
+            key = frozenset(active)
+            totals[key] = totals.get(key, 0.0) + (t - prev_t)
+
+        if typ == 1:
+            active.add(cat)
+        else:
+            active.discard(cat)
+
+        prev_t = t
+
+    return totals
 
 
-def plot_04_phase_compare(ops: pd.DataFrame, phase: str, out_png: Path, topk: int = 20):
+def compute_overlap_6bins(ops: pd.DataFrame, comms: pd.DataFrame, stride: int) -> Dict[str, float]:
     """
-    04：同一阶段内对比 NPU vs PIM（分组柱状，Top-K 算子）。
+    返回 6 个扇区的“加权时间”，decode 段会乘 stride。
     """
-    sub = ops[ops["phase"] == phase]
-    if sub.empty:
-        fig = plt.figure(figsize=(6, 4))
-        plt.title(f"{phase} (no data)")
-        plt.savefig(out_png, dpi=160)
-        plt.close(fig)
-        return
+    bins = {k: 0.0 for k in LABELS_6}
 
-    # 先对节点求和，再对 op×device 聚合
-    d = sub.groupby(["device_type", "op"], as_index=False)["duration"].sum()
-    piv = d.pivot(index="op", columns="device_type", values="duration").fillna(0.0)
-    for col in ("npu", "pim"):
-        if col not in piv.columns:
-            piv[col] = 0.0
-    piv = piv[["npu", "pim"]]
+    def add_to_bin(active_set: set[str], dur: float):
+        if active_set == {"n"}:
+            bins["NPU"] += dur
+        elif active_set == {"p"}:
+            bins["PIM"] += dur
+        elif active_set == {"c"}:
+            bins["DATA_Trans"] += dur
+        elif active_set == {"n", "p"}:
+            bins["NPU_PIM_overlap"] += dur
+        elif active_set == {"n", "c"}:
+            bins["NPU_DATA_Trans_overlap"] += dur
+        elif active_set == {"p", "c"}:
+            bins["PIM_DATA_Trans_overlap"] += dur
+        elif active_set == {"n", "p", "c"}:
+            # 三者同时活跃：为了仍然只有 6 块，这里平均拆到 3 个 overlap
+            share = dur / 3.0
+            bins["NPU_PIM_overlap"] += share
+            bins["NPU_DATA_Trans_overlap"] += share
+            bins["PIM_DATA_Trans_overlap"] += share
 
-    keep = piv.sum(axis=1).sort_values(ascending=False).head(topk).index
-    piv  = piv.loc[keep]
+    for phase in ("prefill", "decode"):
+        scale = 1.0 if phase == "prefill" else float(stride)
+        ops_ph = ops[ops["phase"] == phase]
+        comms_ph = comms[comms["phase"] == phase]
+        totals = classify_time_slices(ops_ph, comms_ph)
 
-    xs = np.arange(len(piv))
-    width = 0.44
-    fig = plt.figure(figsize=(max(10.0, 0.6 * len(piv)), 6))
-    plt.bar(xs - width/2, piv["npu"].to_numpy(), width=width, color=COLOR_GROUP_NPU, label="NPU")
-    plt.bar(xs + width/2, piv["pim"].to_numpy(), width=width, color=COLOR_GROUP_PIM, label="PIM")
-    plt.xticks(xs, piv.index.tolist(), rotation=55, ha="right")
-    plt.ylabel("Total compute time (s)")
-    plt.title(f"{phase.capitalize()} — NPU vs PIM by op type (sum over nodes)")
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(out_png, dpi=160)
-    plt.close(fig)
+        for k, v in totals.items():
+            add_to_bin(set(k), v * scale)
 
+    return bins
 
-def plot_00_all_pairs_mix_ratio(summary: pd.DataFrame, out_png: Path):
-    """
-    汇总所有长度对的 00 比例图：每个长度对一个堆叠条。
-    X 轴标签：P<prefill>/D<decode>（例如 P128/D1024）。
-    """
-    if summary.empty:
-        return
-    vals = summary[["npu", "pim", "comm"]].to_numpy(dtype=float)
-    totals = vals.sum(axis=1)
-    totals[totals == 0] = 1.0
-    parts = (vals.T / totals).T  # 比例
+def plot_2x2(pairs: List[PairFiles], stride: int, out_png: Path):
+    fig, axes = plt.subplots(2, 2, figsize=(10, 10))
+    axes = axes.flatten()
+    legend_handles = None
 
-    x = np.arange(len(summary))
-    fig = plt.figure(figsize=(max(10.0, 1.2 * len(summary)), 6))
-    bottom = np.zeros(len(summary), dtype=float)
-    labels = ["NPU", "PIM", "COMM"]
-    colors = [COLOR_NPU_TOTAL, COLOR_PIM_TOTAL, COLOR_COMM_TOTAL]
+    for i, ax in enumerate(axes):
+        if i >= len(pairs):
+            ax.axis("off")
+            continue
 
-    for i in range(3):
-        plt.bar(x, parts[:, i], bottom=bottom, color=colors[i], label=labels[i])
-        bottom += parts[:, i]
+        pair = pairs[i]
+        ops, comms = load_pair_files(pair)
+        bins = compute_overlap_6bins(ops, comms, stride=stride)
 
-    # 标注具体百分比
-    for xi in range(len(summary)):
-        y0 = 0.0
-        for i in range(3):
-            h = parts[xi, i]
-            if h > 0.05:
-                plt.text(xi, y0 + h/2, f"{h*100:.1f}%", ha="center", va="center", fontsize=8, color="white")
-            y0 += h
+        sizes = [bins[k] for k in LABELS_6]
+        total = sum(sizes)
+        if total <= 0:
+            ax.text(0.5, 0.5, "无有效数据", ha="center", va="center")
+            ax.axis("off")
+            continue
 
-    # 轴与标题
-    xticks = [f"P{row['prefill']}/D{row['decode']}" for _, row in summary.iterrows()]
-    plt.xticks(x, xticks, rotation=30, ha="right")
-    plt.ylim(0, 1)
-    plt.ylabel("Share of total time")
-    plt.title("All length pairs — NPU vs PIM vs Communication (ratio)")
-    plt.legend(loc="upper right", bbox_to_anchor=(1.18, 1.0))
-    plt.tight_layout()
-    plt.savefig(out_png, dpi=170)
+        ratios = [v / total for v in sizes]  # 只展示比例，不展示绝对时间
+
+        wedges, _, _ = ax.pie(
+            ratios,
+            labels=LABELS_6,
+            colors=COLORS_6,
+            autopct=lambda x: f"{x:.1f}%",
+            startangle=90,
+            radius=0.5,
+            textprops={"fontsize":16},
+        )
+        if legend_handles is None:
+            legend_handles = wedges
+        ax.axis("equal")
+
+        title_color = TITLE_COLORS[i % len(TITLE_COLORS)]
+        if pair.prefill_len and pair.decode_len:
+            ax.set_title(
+                f"{pair.key}\n(prefill={pair.prefill_len}, decode={pair.decode_len}, stride={stride})",
+                fontsize=18,
+                color=title_color,
+            )
+        else:
+            ax.set_title(
+                f"{pair.key}\n(stride={stride})",
+                fontsize=18,
+                color=title_color,
+            )
+
+    if legend_handles is not None:
+        fig.legend(
+            legend_handles,
+            LABELS_6,
+            loc="lower center",
+            bbox_to_anchor=(0.5, 0.02),
+            ncol=3,
+            fontsize=14,
+            frameon=False,
+        )
+
+    plt.tight_layout(rect=(0, 0.08, 1, 1))
+    fig.savefig(out_png, dpi=220)
     plt.close(fig)
 
 
-# ========== 单个长度对处理 ==========
-def process_one_lenpair(algo_dir: Path, lenpair: str, topk_device_phase: int, topk_phase_compare: int) -> Dict[str, float]:
-    """
-    处理一个长度对：生成 per-pair 图表及表格；返回供汇总 00 图使用的 npu/pim/comm。
-    """
-    ops, comms = load_pair(algo_dir, lenpair)
-    outdir = fig_dir_for_pair(algo_dir, lenpair)
-
-    # 00：比例图 + totals
-    npu, pim, com = save_totals_ratio(
-        ops, comms,
-        out_csv=outdir / "00_totals.csv",
-        out_png=outdir / "00_mix_ratio.png"
-    )
-
-    # 03：四张饼图（设备×阶段）
-    plot_03_pie(ops, "pim", "prefill", outdir / "03_pim_prefill_pie.png", topk=topk_device_phase)
-    plot_03_pie(ops, "pim", "decode",  outdir / "03_pim_decode_pie.png",  topk=topk_device_phase)
-    plot_03_pie(ops, "npu", "prefill", outdir / "03_npu_prefill_pie.png", topk=topk_device_phase)
-    plot_03_pie(ops, "npu", "decode",  outdir / "03_npu_decode_pie.png",  topk=topk_device_phase)
-
-    # 03：导出聚合表（确认“所有 layer/节点均已累加”）
-    agg = (
-        ops.groupby(["device_type", "phase", "op", "node_id"], as_index=False)["duration"].sum()
-        .groupby(["device_type", "phase", "op"], as_index=False)["duration"].sum()
-        .sort_values(["device_type", "phase", "duration"], ascending=[True, True, False])
-    )
-    agg.to_csv(outdir / "03_ops_by_type_phase_device.csv", index=False)
-
-    # 04：阶段内 NPU vs PIM 对比（两张）
-    plot_04_phase_compare(ops, "prefill", outdir / "04_prefill_pim_vs_npu_by_optype.png", topk=topk_phase_compare)
-    plot_04_phase_compare(ops, "decode",  outdir / "04_decode_pim_vs_npu_by_optype.png",  topk=topk_phase_compare)
-
-    # 返回汇总用
-    try:
-        prefill, decode = lenpair.split("x")
-        prefill_i = int(prefill)
-        decode_i  = int(decode)
-    except Exception:
-        prefill_i, decode_i = -1, -1
-
-    return {
-        "lenpair": lenpair,
-        "prefill": prefill_i,
-        "decode": decode_i,
-        "npu": npu, "pim": pim, "comm": com
-    }
-
-
-# ========== 主入口 ==========
 def main():
-    parser = argparse.ArgumentParser(description="len_sweep figures and analysis")
-    parser.add_argument("--algo_dir", required=True, help=".../output/len_sweep/<model_pack>/<algo_xxx>")
-    parser.add_argument("--pair", default=None, help="only process one length pair (e.g., 128x1024)")
-    parser.add_argument("--topk-device-phase", type=int, default=25, help="03 pie charts: top-k number of ops per device per phase (others merged as Others)")
-    parser.add_argument("--topk-phase-compare", type=int, default=20, help="04 top-k number of ops to show")
+    parser = argparse.ArgumentParser(
+        description="指定路径（文件或目录），自动解析 prefill x decode，并画 2x2 六扇区重叠饼图"
+    )
+    parser.add_argument(
+        "--paths",
+        nargs="+",
+        required=True,
+        help="一个或多个路径：可以是目录（扫描 *_ops/_comms.csv），也可以是 *_ops.csv / *_comms.csv 文件",
+    )
+    parser.add_argument("--stride", type=int, default=16, help="decode 采样 stride（decode 时间 * stride）")
+    parser.add_argument("--out", type=str, default="overlap_6bins_pies.png", help="输出图片文件名")
+    parser.add_argument("--max_pairs", type=int, default=4, help="最多画几组（默认 4 -> 2x2）")
     args = parser.parse_args()
 
-    algo_dir = Path(args.algo_dir).resolve()
-    if not algo_dir.exists():
-        raise FileNotFoundError(f"algo_dir does not exist: {algo_dir}")
-
-    # 发现所有长度对
-    pairs = [args.pair] if args.pair else discover_pairs(algo_dir)
+    paths = [Path(p) for p in args.paths]
+    pairs = collect_pairs_from_paths(paths)
     if not pairs:
-        raise RuntimeError(f"No matching *_ops.csv and *_comms.csv pairs found in {algo_dir}.")
+        raise SystemExit("没有发现任何可用的 *_ops.csv / *_comms.csv 对")
 
-    print("[Discovered length pairs] ", ", ".join(pairs))
+    pairs = pairs[: args.max_pairs]  # 默认取前 4 组
+    out_png = Path(args.out).expanduser().resolve()
 
-    # Process each pair individually, while collecting summary data for 00
-    summary_rows: List[Dict[str, float]] = []
-    for lp in pairs:
-        print(f"\n==> 处理：{lp}")
-        row = process_one_lenpair(
-            algo_dir, lp,
-            topk_device_phase=args.topk_device_phase,
-            topk_phase_compare=args.topk_phase_compare
-        )
-        summary_rows.append(row)
-
-    # 00 合并图（放在该 algo 的 fig 根）
-    fig_root = fig_root_for_algo(algo_dir)
-    summary_df = pd.DataFrame(summary_rows).sort_values(["prefill", "decode"]).reset_index(drop=True)
-    summary_df.to_csv(fig_root / "00_all_pairs_totals.csv", index=False)
-    plot_00_all_pairs_mix_ratio(summary_df, fig_root / "00_all_pairs_mix_ratio.png")
-
-    print("\n✅ 完成。单对图表写入各自子目录；合并图：", fig_root / "00_all_pairs_mix_ratio.png")
+    plot_2x2(pairs, stride=args.stride, out_png=out_png)
+    print(f"✅ 已输出：{out_png}")
 
 
 if __name__ == "__main__":

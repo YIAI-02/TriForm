@@ -17,6 +17,12 @@ DEFAULT_CONFIG = {
 }
 
 # =========================
+# Fast mode (disable trace simulations)
+# =========================
+# When FAST_MODE is True, all trace simulations are disabled and only estimated costs are used
+FAST_MODE: bool = True
+
+# =========================
 # Hybrid scheduling params
 # =========================
 ALLOW_HYBRID: bool = True

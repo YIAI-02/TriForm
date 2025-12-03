@@ -1,5 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
+import math
 from typing import List, Dict, Tuple
 from task_graph import TaskGraph, TaskNode
 from config import OPERATOR_DEVICE_ALLOWED, DEFAULT_OPERATOR_ALLOWED
@@ -286,12 +287,26 @@ class QwenDef:
         return g
 
 class MixtralDef:
-    name = "mixtral"     
+    name = "mixtral"    
+
+    @staticmethod
+    def _active_expert_count(total: int, top_k: int, imbalance: float) -> int:
+        if total <= 0:
+            return 0
+        guard = max(1.0, float(imbalance or 1.0))
+        baseline = max(1, top_k)
+        return max(1, min(total, int(math.ceil(baseline * guard))))
+
     def build(self, shape: ModelShape, dtype_bytes: int) -> TaskGraph:
         g = TaskGraph()
         experts = int(getattr(shape, "experts_per_layer", 1))
         top_k = int(getattr(shape, "experts_top_k", 1))
         moe_imbalance = float(getattr(shape, "moe_imbalance_factor", 1.0))
+        active_experts = int(getattr(shape, "active_experts_per_layer", 0) or 0)
+        if active_experts <= 0 or active_experts > experts:
+            active_experts = self._active_expert_count(experts, top_k, moe_imbalance)
+        setattr(shape, "active_experts_per_layer", active_experts)
+        setattr(shape, "moe_pruned_experts_per_layer", max(0, experts - active_experts))
         b = shape.batch
         dim, ffn = shape.dim, shape.ffn_dim
         qh, kvh, hd = shape.n_heads, shape.n_kv_heads, shape.head_dim
@@ -372,8 +387,9 @@ class MixtralDef:
 
             # MoE FFN experts: FFN_W1/W3/W2
             expert_outputs = []
-            for e in range(experts):
-                expert_attr = {**base_attr, "expert": e, "experts": experts,"top_k": top_k,"moe_imbalance": moe_imbalance,}
+            for e in range(active_experts):
+                expert_attr = {**base_attr, "expert": e, "experts": experts, "active_experts": active_experts,
+                               "top_k": top_k, "moe_imbalance": moe_imbalance,}
                 nid_W1 = f"L{l}_FFN_W1_E{e}"
                 nid_W3 = f"L{l}_FFN_W3_E{e}"
                 nid_ACT = f"L{l}_Act_E{e}"
@@ -416,8 +432,8 @@ class MixtralDef:
             # Router
             nid_router = f"L{l}_Router"
             g.add_node(TaskNode(nid_router, "MoE_Router", flops=0.0,
-                attrs={**base_attr, "experts": experts, "top_k": top_k,
-                       "moe_imbalance": moe_imbalance}, allowed=get_op_allowed("MoE_Router"),
+                attrs={**base_attr, "experts": experts, "active_experts": active_experts,
+                       "top_k": top_k, "moe_imbalance": moe_imbalance}, allowed=get_op_allowed("MoE_Router"),
             ))
             g.add_edge(nid_LN2, nid_router)
             for out in expert_outputs:

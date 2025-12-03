@@ -84,9 +84,7 @@ def plan_memory_and_label(cfg: Dict, cluster: Cluster, *, pim_strategy: str = "k
     # 统计所有 FC 权重字节
     FC_total_bytes = 0
     for n in g.nodes.values():
-        wid = getattr(n, "weight_id", None)
-        if isinstance(wid, str) and wid.endswith(("W1", "W2", "W3", "WQ", "WK", "WV", "WO")):
-            FC_total_bytes += int(getattr(n, "weight_size", 0) or 0)
+        FC_total_bytes += int(getattr(n, "weight_size", 0) or 0)
 
     pim_bytes = sum(int(d.mem_capacity_GB * (1024**3)) for d in cluster.devices_by_type("pim"))
     if pim_bytes <= 0:
@@ -349,7 +347,8 @@ def run(cfg: Dict):
     graph, shape = build_graph(cfg)
     model_dict = _make_shared_model_dict(dim=int(getattr(shape, 'dim', 128)), n_heads=int(getattr(shape, 'n_heads', 1)), n_kv_heads=int(getattr(shape, 'n_kv_heads', 1)), ffn_dim=int(getattr(shape, 'ffn_dim', 512)), seqlen=prefill_len)
     sim_log_file = cfg.get('simulation_log_file', str(result_dir / 'pim_simulation.txt'))
-    cost = CostModel(cluster, dtype=cfg.get('dtype', 'fp16'), pim_config_path=pim_config_path, gb_config_path=gb_config_path, ramulator_config_path=ramulator_config_path,  simulation_log_file=sim_log_file, debug_traces=False, model_dict=model_dict)
+    fast_mode = bool(cfg.get('fast_mode', False))
+    cost = CostModel(cluster, dtype=cfg.get('dtype', 'fp16'), pim_config_path=pim_config_path, gb_config_path=gb_config_path, ramulator_config_path=ramulator_config_path,  simulation_log_file=sim_log_file, debug_traces=False, model_dict=model_dict, fast_mode=fast_mode)
     cost.logger.start_simulation()
     try:
         label = plan_memory_and_label(cfg, cluster)
@@ -690,6 +689,7 @@ def _eval_one_baseline(cfg: Dict, policy: str) -> Dict:
         algo_dir / "pim_simulation.txt",
     ))
 
+    fast_mode = bool(cfg.get('fast_mode', False))
     cost = CostModel(
         cluster=cluster,
         dtype=cfg.get("dtype", "fp16"),
@@ -698,6 +698,7 @@ def _eval_one_baseline(cfg: Dict, policy: str) -> Dict:
         ramulator_config_path=Path(cfg.get("ramulator_config_path")),
         simulation_log_file=sim_log_path,
         model_dict=model_dict,
+        fast_mode=fast_mode,
     )
 
     try:
@@ -769,8 +770,10 @@ def _eval_one_baseline(cfg: Dict, policy: str) -> Dict:
         if best_sched is not None and hasattr(best_sched, "stats"):
             tag = f"{prefill_len}x{decode_len}"
             best_sched.stats.dump_csv(
-                algo_dir / f"{tag}_ops.csv",
-                algo_dir / f"{tag}_comms.csv",
+                algo_dir / f"{tag}_overlap_segments.csv",
+                algo_dir / f"{tag}_overlap_summary.csv",
+                include_idle=True,      
+                include_all_phase=True
             )
     except Exception:
         pass
@@ -830,6 +833,7 @@ def _run_strategy_once(strategy: str, cfg: Dict, *, shared_graph=None, shared_sh
         "./output/pim_simulation.txt",
     ))
 
+    fast_mode = bool(cfg.get('fast_mode', False))
     cost = CostModel(
         cluster=cluster,
         dtype=cfg.get("dtype", "fp16"),
@@ -838,6 +842,7 @@ def _run_strategy_once(strategy: str, cfg: Dict, *, shared_graph=None, shared_sh
         ramulator_config_path=Path(cfg.get("ramulator_config_path")),
         simulation_log_file=sim_log_path,
         model_dict=model_dict,
+        fast_mode=fast_mode,
     )
 
     try:
@@ -1033,6 +1038,8 @@ def parse_args():
                          help='Algo list, e.g. "heft,sa,ga" or single name')
     sp_eval.add_argument('--baselines', type=str,
                          help='Baseline list, e.g. "pd,weights_on_pim,attn_on_pim"')
+    sp_eval.add_argument('--fast_mode', action='store_true',
+                         help='Disable all trace simulations (AIM simulator, NPU JSON models). Use only estimated FLOPs/bandwidth costs.')
 
     # weight-suggest mode: multi-pass SA to suggest weight formats
     sp_ws = sub.add_parser('weight-suggest', help='Run multi-pass SA to suggest weight formats; no baselines.')
@@ -1052,6 +1059,8 @@ def parse_args():
     sp_ws.add_argument('--all_passes_json', type=str, help='Override path for all passes JSON.')
     sp_ws.add_argument('--best_summary_json', type=str, help='Override path for best pass summary JSON.')
     sp_ws.add_argument('--weight_format_json', type=str, help='Override path for accepted weight format JSON.')
+    sp_ws.add_argument('--fast_mode', action='store_true',
+                       help='Disable all trace simulations (AIM simulator, NPU JSON models). Use only estimated FLOPs/bandwidth costs.')
 
     args, unknown = parser.parse_known_args()
     if args.mode is None:
@@ -1107,6 +1116,7 @@ def main():
             'all_passes_json',
             'best_summary_json',
             'weight_format_json',
+            'fast_mode',
         ]
         for key in override_fields:
             val = getattr(args, key, None)

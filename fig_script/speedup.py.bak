@@ -1,9 +1,9 @@
 '''
 python speedup.py --grid-best \
-  --root /Users/yangjiaqi/WW/project_1/python/TriForm_bak/TriForm/algorithms/output/baseline_sweep_pima/llama_7b_INT8_b1\
+  --root /Users/yangjiaqi/WW/project_1/python/TriForm/algorithms/output/baseline_sweep_kv_cache_v2_pcie_32gb_hybrid_false/llama_7b_INT8_b1 \
   --algos pd,attn_on_pim,weights_on_pim,facil,attacc,ianus,neupims,heft \
   --ncols 2 --sharey \
-  --outfile ./pima_heft_llama_7b_int8_b1.pdf
+  --outfile ./prefill_decode_speedup_grid_heft_hybrid_false_llama_7b_int8_b1_32gb.pdf
 '''
 import json
 import numpy as np
@@ -18,12 +18,11 @@ def _order_policies(policies: List[str]) -> List[str]:
     algos  = [p for p in policies if p.startswith("algo:")]
     ordered = [p for p in group1 if p in policies] + [p for p in group2 if p in policies] + algos
     leftovers = [p for p in policies if p not in ordered]
-    combined = ordered + leftovers
-    if "algo:heft" in combined:
-        combined = [p for p in combined if p != "algo:heft"] + ["algo:heft"]
-    return combined
+    return ordered + leftovers
 
 def _compute_multiples(time_map: Dict[str, Tuple[float,float,float]], ordered: List[str]):
+    # time_map: policy -> (prefill, decode, total)
+    # Use algo:pd's prefill time as baseline (unit 1)
     pd_prefill = None
     for policy, times in time_map.items():
         if policy == "algo:pd":
@@ -31,6 +30,7 @@ def _compute_multiples(time_map: Dict[str, Tuple[float,float,float]], ordered: L
             break
 
     if pd_prefill is None or pd_prefill == 0:
+        # Fallback to 1.0 if algo:pd not found or zero
         pd_prefill = 1.0
 
     prefill = [time_map[p][0] for p in ordered]
@@ -44,37 +44,17 @@ COL_PREFILL = "#1d2e53"
 COL_DECODE  = "#395aad"
 COL_E2E     = "#84b4fc"
 
-def _annotate(ax, bars, values, ymax, is_prefill=False):
+def _annotate(ax, bars, values, ymax):
     for b, v in zip(bars, values):
         if v is None or (not np.isfinite(v)):  # nan/inf 不标
             continue
-        height = b.get_height()
-        if height <= 0:
-            continue
-        if is_prefill:
-            y = height + 0.02 * ymax
-            va = "bottom"
-            color = "black"
-        else:
-            pad = max(0.05 * height, 0.02 * ymax)
-            y = max(height - pad, height * 0.35)
-            va = "top"
-            color = "white"  # For visibility inside bar
-        ax.text(
-            b.get_x() + b.get_width() / 2,
-            y,
-            f"{v:.2f}×",
-            ha="center",
-            va=va,
-            fontsize=9,
-            rotation=90,
-            color=color,
-        )
+        ax.text(b.get_x() + b.get_width()/2, b.get_height() + 0.02 * ymax,
+                f"{v:.2f}×", ha="center", va="bottom", fontsize=9, rotation=90)
 
 def _plot_one(ax, time_map: Dict[str, Tuple[float,float,float]], *, title: str):
     policies = list(time_map.keys())
     ordered  = _order_policies(policies)
-    ps, ds, es = _compute_multiples(time_map, ordered)
+    ps, ds, es = _compute_speeds(time_map, ordered)
     x = np.arange(len(ordered))
     group_width = 0.85
     bar_w = group_width / 3.0
@@ -86,31 +66,16 @@ def _plot_one(ax, time_map: Dict[str, Tuple[float,float,float]], *, title: str):
     bars_e = ax.bar(x + offs[2], [np.nan if np.isinf(v) else v for v in es], width=bar_w, label="End-to-End",
                     color=COL_E2E,     edgecolor="black", linewidth=0.8, zorder=3)
     ax.axhline(1.0, linestyle="--", color="gray", linewidth=1.1, alpha=0.9, zorder=2)
-
-    # Draw lighter gray dashed horizontal line at heft's decode multiple to indicate minimum decode latency
-    if "algo:heft" in ordered:
-        heft_idx = ordered.index("algo:heft")
-        ax.axhline(ds[heft_idx], linestyle="--", color="black", linewidth=1.0, alpha=0.7, zorder=4)
-
     ax.grid(axis="y", linestyle=":", linewidth=1.0, alpha=0.9, zorder=1)
-    labels = [p.replace("algo:", "") for p in ordered]
-    ax.set_xticks(x); ax.set_xticklabels(labels, rotation=30, ha="right")
+    ax.set_xticks(x); ax.set_xticklabels(ordered, rotation=30, ha="right")
     ax.set_title(title, pad=12)
-    finite_vals = [v for v in (ps+ds+es) if np.isfinite(v) and v > 0]
-    if finite_vals:
-        ymax = max(finite_vals) * 1.2
-        if ymax <= 0:
-            ymax = 1.0
-        ax.set_ylim(0.0, ymax)
-    else:
-        ymax = 1.0
-        ax.set_ylim(0.0, ymax)
-    _annotate(ax, bars_p, ps, ymax, is_prefill=True)
-    _annotate(ax, bars_d, ds, ymax)
-    _annotate(ax, bars_e, es, ymax)
+    finite_vals = [v for v in (ps+ds+es) if np.isfinite(v)]
+    ymax = (max(finite_vals) if finite_vals else 1.0) * 1.35
+    ax.set_ylim(0, ymax)
+    _annotate(ax, bars_p, ps, ymax); _annotate(ax, bars_d, ds, ymax); _annotate(ax, bars_e, es, ymax)
     return bars_p, bars_d, bars_e, ymax
 
-# ===== 从 algo_* 目录读取 best_summary_*.json，按 (S,T) 画子图 =====
+# ===== 新增：从 algo_* 目录读取 best_summary_*.json，按 (S,T) 画子图 =====
 def _load_best_summary(path: Path) -> Tuple[int,int,float,float,float]:
     """返回 (S, T, prefill, decode, total)。S/T 优先从 JSON 的 config 取，否则从文件名 'best_summary_SxT.json' 解析。"""
     obj = json.loads(path.read_text(encoding='utf-8'))
@@ -189,7 +154,7 @@ def main():
             fig.legend((lp, ld, le), ('Prefill','Decode','End-to-End'),
                        ncol=3, loc='upper center', frameon=True, framealpha=0.9)
         plt.tight_layout(rect=[0,0,1,0.95])
-        out = Path(args.outfile) if args.outfile else (root / 'prefill_decode_latency_multiples_vs_pd_prefill_grid_from_best_llama_7b_fp16_b32.pdf')
+        out = Path(args.outfile) if args.outfile else (root / 'prefill_decode_speedup_grid_from_best_llama_7b_fp16_b32.pdf')
         out.parent.mkdir(parents=True, exist_ok=True)
         plt.savefig(out, dpi=220, bbox_inches='tight')
         print(f"Saved grid(best) to: {out}")
@@ -208,7 +173,7 @@ def main():
             # policy -> (prefill, decode, total)
             tm = {r['policy']: (float(r['prefill_time_s']), float(r['decode_time_s']), float(r['total_time_s'])) for r in results}
             ords = _order_policies(list(tm.keys()))
-            ps, ds, es = _compute_multiples(tm, ords)
+            ps, ds, es = _compute_speeds(tm, ords)
             finite = [v for v in (ps+ds+es) if np.isfinite(v)]
             gmax = max(gmax, max(finite) if finite else 1.0)
             cache.append((fp, tm, data.get('config', {})))
@@ -229,7 +194,7 @@ def main():
             fig.legend((lp, ld, le), ('Prefill','Decode','End-to-End'),
                        ncol=3, loc='upper center', frameon=True, framealpha=0.9)
         plt.tight_layout(rect=[0,0,1,0.95])
-        out = Path(args.outfile) if args.outfile else (Path(args.dir) / 'prefill_decode_latency_multiples_vs_pd_prefill_grid.pdf')
+        out = Path(args.outfile) if args.outfile else (Path(args.dir) / 'prefill_decode_speedup_grid.pdf')
         out.parent.mkdir(parents=True, exist_ok=True)
         plt.savefig(out, dpi=220, bbox_inches='tight')
         print(f"Saved grid to: {out}")
@@ -243,8 +208,8 @@ def main():
     ordered = _order_policies(policies)
     time_map = {r["policy"]: (float(r["prefill_time_s"]), float(r["decode_time_s"]), float(r["total_time_s"])) for r in results}
     fig, ax = plt.subplots(figsize=(12, 5.6))
-    _plot_one(ax, time_map, title="Prefill & Decode Latency Multiples (vs PD Prefill)")
-    out_path = Path(args.outfile) if args.outfile else Path("./prefill_decode_latency_multiples_vs_pd_prefill.pdf")
+    _plot_one(ax, time_map, title="Prefill & Decode Speedup")
+    out_path = Path(args.outfile) if args.outfile else Path("./prefill_decode_speedup.pdf")
     plt.savefig(out_path, dpi=220, bbox_inches="tight")
     print(f"Saved to: {out_path}")
 

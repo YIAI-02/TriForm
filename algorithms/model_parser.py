@@ -19,6 +19,9 @@ FILE_MAP = {
     ("palm","62b"):  "palm_62b_shape.json",
     ("palm","540b"): "palm_540b_shape.json",
     ("mixtral", "8x7b"):  "mixtral_8x7b_shape.json",
+    ("qwen", "1.8b"): "qwen_1.8b_shape.json",
+    ("qwen", "7b"):   "qwen_7b_shape.json",
+    ("qwen", "14b"):  "qwen_14b_shape.json",
 }
 
 def load_shape_json(path: Path) -> Dict[str, Any]:

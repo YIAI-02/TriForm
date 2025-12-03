@@ -801,13 +801,14 @@ def _get_pim_latency_via_trace(op: str, pim_config: Path, ramulator_config: Path
 
 class CostModel:
 
-    def __init__(self, cluster: Cluster, dtype: str='fp16', pim_config_path: Optional[Path]=None, gb_config_path: Optional[Path]=None, ramulator_config_path: Optional[Path]=None, simulation_log_file: Optional[Path]=None, debug_traces: bool=False, model_dict: Optional[Dict]=None):
+    def __init__(self, cluster: Cluster, dtype: str='fp16', pim_config_path: Optional[Path]=None, gb_config_path: Optional[Path]=None, ramulator_config_path: Optional[Path]=None, simulation_log_file: Optional[Path]=None, debug_traces: bool=False, model_dict: Optional[Dict]=None, fast_mode: bool=False):
         self.cluster = cluster
         self.dtype = dtype
         self.pim_config_path = pim_config_path
         self.gb_config_path = gb_config_path
         self.ramulator_config_path = ramulator_config_path
         self.debug_traces = debug_traces
+        self.fast_mode = fast_mode  # When True, skip all trace simulations
         global _sim_logger
         if _sim_logger is None:
             _sim_logger = get_simulation_logger(simulation_log_file)
@@ -1016,12 +1017,15 @@ class CostModel:
         C_SILU = 5.0
         name = (getattr(node, 'name', '') or '').upper()
         moe_experts = int(attrs.get('experts', attrs.get('experts_per_layer', 0)) or 0)
+        moe_active = int(attrs.get('active_experts', attrs.get('active_experts_per_layer', moe_experts)) or moe_experts)
+        moe_active = max(1, min(moe_experts if moe_experts > 0 else moe_active, moe_active))
         moe_top_k = int(attrs.get('top_k', attrs.get('experts_top_k', 0)) or 0)
         def moe_token_fraction() -> float:
             if 'expert' not in attrs or moe_experts <= 0 or moe_top_k <= 0:
                 return 1.0
             imbalance = float(attrs.get('moe_imbalance',attrs.get('moe_imbalance_factor', 1.0)) or 1.0)
-            base = moe_top_k / float(moe_experts)
+            active = max(1.0, float(moe_active))
+            base = moe_top_k / active
             return min(1.0, base * imbalance)
         if name in 'LN' and D > 0:
             return float(b * q_len * D * C_LN)
@@ -1112,13 +1116,16 @@ class CostModel:
         else:
             attn_pairs = kv_len
         moe_experts = int(attrs.get('experts', attrs.get('experts_per_layer', 0)) or 0)
+        moe_active = int(attrs.get('active_experts', attrs.get('active_experts_per_layer', moe_experts)) or moe_experts)
+        moe_active = max(1, min(moe_experts if moe_experts > 0 else moe_active, moe_active))
         moe_top_k = int(attrs.get('top_k', attrs.get('experts_top_k', 0)) or 0)
         def moe_token_fraction() -> float:
             if 'expert' not in attrs or moe_experts <= 0 or moe_top_k <= 0:
                 return 1.0
             imbalance = float(attrs.get('moe_imbalance',
                                         attrs.get('moe_imbalance_factor', 1.0)) or 1.0)
-            base = moe_top_k / float(moe_experts)
+            active = max(1.0, float(moe_active))
+            base = moe_top_k / active
             return min(1.0, base * imbalance)
         if name in 'LN' and D > 0:
             elems = b * active_tokens * D
@@ -1202,6 +1209,15 @@ class CostModel:
                 return self._cpu_fallback_cost(node, batch, seq_len, phase)
             if ffn_dim == 0 and dim > 0:
                 ffn_dim = int(ffn_dim_mul * dim)
+            
+            # Fast mode: skip all JSON model lookups, use FLOPs only
+            if self.fast_mode:
+                logger.debug(str(f"[FAST MODE] Skipping NPU JSON model for node {getattr(node,'name','?')}"))
+                rd, wr = self.estimate_activation_bytes(node, batch, seq_len, phase)
+                mem_t = self.mem_time(rd + wr, dev)
+                flops = self.estimate_flops(node, batch, seq_len, phase)
+                return max(self.flop_time(flops, dev), mem_t)
+            
             keys = self._resolve_pim_key(node)
             op_key = (keys[0].lower() if keys else None)
             rd, wr = self.estimate_activation_bytes(node, batch, seq_len, phase)
@@ -1290,11 +1306,20 @@ class CostModel:
             if not self._op_allowed_on(node, dev):
                 logger.debug(str(f"[DISPATCH] {node.name} not allowed on PIM, fallback to CPU"))
                 return self._cpu_fallback_cost(node, batch, seq_len, phase)
+            if ffn_dim == 0 and dim > 0:
+                ffn_dim = int(ffn_dim_mul * dim)
+            
+            # Fast mode: skip all trace simulations, use FLOPs estimation only
+            if self.fast_mode:
+                logger.debug(str(f"[FAST MODE] Skipping PIM trace simulation for node {getattr(node,'name','?')}"))
+                rd, wr = self.estimate_activation_bytes(node, batch, seq_len, phase)
+                mem_t = self.mem_time(rd + wr, dev)
+                flops = self.estimate_flops(node, batch, seq_len, phase)
+                return max(self.flop_time(flops, dev), mem_t)
+            
             if not self.pim_config_path or not self.ramulator_config_path:
                 logger.debug(str(f'[PIM] Warning: PIM configs not set, returning 0 for {node.name}'))
                 return 0.0
-            if ffn_dim == 0 and dim > 0:
-                ffn_dim = int(ffn_dim_mul * dim)
             compute_time = 0.0
             keys = self._resolve_pim_key(node)
             op_key = keys[0] if keys else None
@@ -1324,6 +1349,14 @@ class CostModel:
         使用trace仿真计算PIM的weight加载时间
         返回总延迟（读取+写入）
         """
+        # Fast mode: use bandwidth estimation only
+        if self.fast_mode:
+            logger.debug(str(f"[FAST MODE] Skipping PIM weight load trace simulation for weight size {weight_bytes}"))
+            pim_devs = self.cluster.devices_by_type('pim')
+            if pim_devs:
+                return self.mem_time(weight_bytes, pim_devs[0])
+            return 0.0
+        
         if not self.pim_config_path or not self.gb_config_path or (not self.ramulator_config_path):
             raise ValueError('PIM config, GB config, and Ramulator config must be set for weight loading simulation')
         dtype_bytes = DTYPE_BYTES.get(self.dtype, 2)
@@ -1339,6 +1372,14 @@ class CostModel:
             return 0.0
         
     def activation_read_time_pim(self, activation_bytes_nd: int) -> float:
+        # Fast mode: use bandwidth estimation only
+        if self.fast_mode:
+            logger.debug(str(f"[FAST MODE] Skipping PIM activation read trace simulation for activation size {activation_bytes_nd}"))
+            pim_devs = getattr(self.cluster, 'devices_by_type', lambda *_: [])('pim')
+            if pim_devs:
+                return self.mem_time(activation_bytes_nd, pim_devs[0])
+            return 0.0
+        
         try:
             read_lat, _ = _simulate_weight_loading_latency(
                 activation_bytes_nd,
