@@ -13,6 +13,7 @@ MODEL_FAMILY_VARIANTS=(
   "mixtral:8x7b"
   "palm:8b"
   "qwen:1.8b"
+  # llama:7b
 )
 
 PREFILLS=(128 1024)
@@ -22,10 +23,12 @@ DECODES=(128 1024)
 HARDWARE_CONFIGS=(
   ./examples/hardware_config_scale_down_pima_double.json
   ./examples/hardware_config_scale_down_pima.json
+  # ./examples/hardware_config_pimd.json
+  # ./examples/hardware_config_pima.json
 )
 
 # Run knobs
-STRIDE="${STRIDE:-16}"
+STRIDE="${STRIDE:-64}"
 DTYPE="${DTYPE:-int8}"
 BATCH="${BATCH:-1}"
 
@@ -99,12 +102,6 @@ GREEN=$'\033[1;32m'
 YELLOW=$'\033[1;33m'
 CYAN=$'\033[1;36m'
 
-FAST_ARGS=()
-if (( FAST )); then FAST_ARGS=(--fast_mode); fi
-
-DEBUG_ARGS=()
-if (( DEBUG )); then DEBUG_ARGS=(--debug); fi
-
 if (( FAST )); then
   printf "%s\n" "${YELLOW}${BOLD}███████  FAST MODE: ON  ███████${RESET}"
   printf "%s\n" "${YELLOW}${BOLD}Trace simulations disabled (FLOPs/bw estimates only)${RESET}"
@@ -144,20 +141,24 @@ run_one() {
   fi
   echo "Expected result_dir: ${expected_dir}"
 
-  if ! python main.py evaluate \
-      --config "${CONFIG_FILE}" \
-      --result_dir "${base_out}" \
-      --hardware_json "${hw_json}" \
-      --model_family "${family}" \
-      --model_variant "${variant}" \
-      --dtype "${DTYPE}" \
-      --batch "${BATCH}" \
-      --prefill_len "${S}" \
-      --decode_len "${T}" \
-      --decode_sample_stride "${STRIDE}" \
-      "${DEBUG_ARGS[@]}" \
-      "${FAST_ARGS[@]}"
-  then
+  cmd=(
+    python main.py evaluate
+    --config "${CONFIG_FILE}"
+    --result_dir "${base_out}"
+    --hardware_json "${hw_json}"
+    --model_family "${family}"
+    --model_variant "${variant}"
+    --dtype "${DTYPE}"
+    --batch "${BATCH}"
+    --prefill_len "${S}"
+    --decode_len "${T}"
+    --decode_sample_stride "${STRIDE}"
+  )
+
+  if (( DEBUG )); then cmd+=(--debug); fi
+  if (( FAST )); then cmd+=(--fast_mode); fi
+
+  if ! "${cmd[@]}"; then
     printf "%s\n" "${RED}${BOLD}!!!!!! ERROR: Failed on HW=${hw_stem} ${family}-${variant} S=${S} T=${T} !!!!!!${RESET}"
     exit 1
   fi

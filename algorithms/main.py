@@ -415,7 +415,16 @@ def run(cfg: Dict):
             try:
                 ops_csv = Path(result_dir) / f"pass_{p:02d}_ops.csv"
                 comms_csv = Path(result_dir) / f"pass_{p:02d}_comms.csv"
-                getattr(sched, 'stats', None) and sched.stats.dump_csv(ops_csv, comms_csv)
+                getattr(sched, 'stats', None) and sched.stats.dump_overlap_csv(
+                    result_dir / f"pass_{p:02d}_overlap_segments.csv",
+                    result_dir / f"pass_{p:02d}_overlap_summary.csv",
+                    include_idle=True,
+                    include_all_phase=True,
+                )
+                getattr(sched, 'stats', None) and sched.stats.dump_trace_csv(
+                    ops_csv,
+                    comms_csv,
+                )
             except Exception:
                 pass
             # <<< end stats dump
@@ -769,11 +778,21 @@ def _eval_one_baseline(cfg: Dict, policy: str) -> Dict:
     try:
         if best_sched is not None and hasattr(best_sched, "stats"):
             tag = f"{prefill_len}x{decode_len}"
+            decode_stride = int(cfg.get("decode_sample_stride", 1) or 16)
+            trace_ops = algo_dir / f"{tag}_ops_trace.csv"
+            trace_comms = algo_dir / f"{tag}_comms_trace.csv"
+            trace_ops.parent.mkdir(parents=True, exist_ok=True)
             best_sched.stats.dump_csv(
                 algo_dir / f"{tag}_overlap_segments.csv",
                 algo_dir / f"{tag}_overlap_summary.csv",
-                include_idle=True,      
-                include_all_phase=True
+                include_idle=False,
+                include_all_phase=False,
+                decode_stride=decode_stride,
+                decode_len=decode_len,
+            )
+            best_sched.stats.dump_trace_csv(
+                trace_ops,
+                trace_comms,
             )
     except Exception:
         pass
@@ -895,10 +914,22 @@ def _run_strategy_once(strategy: str, cfg: Dict, *, shared_graph=None, shared_sh
             tag = f"{prefill_len}x{decode_len}"
             result_dir = Path(cfg.get("result_dir", "./output/strategy_results"))
             result_dir.mkdir(parents=True, exist_ok=True)
+            decode_stride = int(cfg.get("decode_sample_stride", 1) or 16)
+            trace_ops = result_dir / f"{strategy}_{best_pim_strategy}_{tag}_ops_trace.csv"
+            trace_comms = result_dir / f"{strategy}_{best_pim_strategy}_{tag}_comms_trace.csv"
             best_sched.stats.dump_csv(
-                result_dir / f"{strategy}_{best_pim_strategy}_{tag}_ops.csv",
-                result_dir / f"{strategy}_{best_pim_strategy}_{tag}_comms.csv",
+                result_dir / f"{strategy}_{best_pim_strategy}_{tag}_overlap_segments.csv",
+                result_dir / f"{strategy}_{best_pim_strategy}_{tag}_overlap_summary.csv",
+                include_idle=False,
+                include_all_phase=False,
+                decode_stride=decode_stride,
+                decode_len=decode_len,
             )
+            best_sched.stats.dump_trace_csv(
+                trace_ops,
+                trace_comms,
+            )
+
     except Exception:
         pass
 

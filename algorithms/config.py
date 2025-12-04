@@ -93,20 +93,20 @@ OPERATOR_DEVICE_ALLOWED = {
     "FFN_W2":  {"cpu": True, "npu": True, "pima": True, "pimd": True},
     "FFN_W3":  {"cpu": True, "npu": True, "pima": True, "pimd": True},
 
-    # 2) Attention 里的 matmul：PIMD 也允许；Softmax 不允许在 PIMD
+    # 2) Attention 里的 matmul：
     "QK":      {"cpu": True, "npu": True, "pima": True, "pimd": True},
     "SV":      {"cpu": True, "npu": True, "pima": True, "pimd": True},
-    "Softmax": {"cpu": True, "npu": True, "pima": True, "pimd": False},
+    "Softmax": {"cpu": True, "npu": True, "pima": True, "pimd": True},
 
-    # 3) 逐元素：这里我按“**只把激活**”放到 PIMD，你可以按需要调
-    "Add":     {"cpu": True, "npu": True, "pima": True, "pimd": False},
-    "LN":      {"cpu": True, "npu": True, "pima": True, "pimd": False},
+    # 3) 逐元素：
+    "Add":     {"cpu": True, "npu": True, "pima": True, "pimd": True},
+    "LN":      {"cpu": True, "npu": True, "pima": True, "pimd": True},
     "SwiGLU":  {"cpu": True, "npu": True, "pima": True, "pimd": True},
     "GELU":    {"cpu": True, "npu": True, "pima": True, "pimd": True},
     "Act":     {"cpu": True, "npu": True, "pima": True, "pimd": True},
 
     # 4) 其它
-    "Identity": {"cpu": True, "npu": True, "pima": True, "pimd": False},
+    "Identity": {"cpu": True, "npu": True, "pima": True, "pimd": True},
     "KV_read":  {"cpu": True, "npu": True, "pima": True, "pimd": True},
     "KV_write": {"cpu": True, "npu": True, "pima": True, "pimd": True},
 }

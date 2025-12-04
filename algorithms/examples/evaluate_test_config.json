@@ -9,11 +9,11 @@
   "pim_config_path": "./aim_simulator/pim.json",
   "gb_config_path": "./aim_simulator/gb.json",
   "ramulator_config_path": "./aim_simulator/example.yaml",
-  "simulation_log_file": "./output/kv_cache_v4_debug/pim_simulation.txt",
-  "result_dir": "./output/kv_cache_v4_debug",
+  "simulation_log_file": "./output/evaluate_single_test/pim_simulation.txt",
+  "result_dir": "./output/evaluate_single_test",
   "hardware_json": "./examples/hardware_config_pima.json",
   "algo": [
-    "heft,heft_lookahead,mc"
+    "heft"
   ],
   "baselines": [
     "ianus",
