@@ -12,7 +12,7 @@ from cost_model import CostModel, DTYPE_BYTES, _make_shared_model_dict, reset_si
 from buffer_manager import GlobalMemoryManager
 from model_parser import build_graph
 
-from config import DEFAULT_CONFIG, WEIGHT_FORMAT_JSON_PATH, FORMAT_TUNING_MAX_PASSES, FORMAT_TUNING_TIME_EPS, FORMAT_TUNING_MAP_EPS, SA_ENABLE, SA_T0, SA_ALPHA, SA_FLIP_PROB, ALL_PASSES_RESULT_PATH, BEST_PASS_SUMMARY_PATH, PIM_STATIC_ALLOC_RATIO,setup_logging
+from config import DEFAULT_CONFIG, FORMAT_TUNING_MAX_PASSES, FORMAT_TUNING_TIME_EPS, FORMAT_TUNING_MAP_EPS, SA_ENABLE, SA_T0, SA_ALPHA, SA_FLIP_PROB, PIM_STATIC_ALLOC_RATIO,setup_logging
 from plan_label import PlanLabel
 from scheduler import (
     HEFTScheduler,
@@ -20,7 +20,6 @@ from scheduler import (
     GeneticScheduler,
     RLScheduler,
     AStarBeamScheduler,
-    MonteCarloHeftScheduler,
     HeftLookaheadScheduler,
 )
 from pathlib import Path
@@ -262,7 +261,6 @@ def _make_scheduler(name: str, cluster: Cluster, cost: CostModel, label: PlanLab
         SCHED_GA_POP, SCHED_GA_GENS, SCHED_GA_ELITE, SCHED_GA_MUT_PROB, SCHED_GA_CROSS_PROB,
         SCHED_RL_EPISODES, SCHED_RL_EPS0, SCHED_RL_EPSE, SCHED_RL_ALPHA, SCHED_RL_GAMMA,
         SCHED_ASTAR_BEAM, SCHED_ASTAR_MAX_EXPANSIONS,
-        SCHED_MCTS_ROLLOUTS, SCHED_MCTS_DEPTH, SCHED_MCTS_HEFT_BIAS,
         SCHED_HEFT_LK_DEPTH,
     )
     name = (name or 'heft').strip().lower()
@@ -294,13 +292,6 @@ def _make_scheduler(name: str, cluster: Cluster, cost: CostModel, label: PlanLab
         return AStarBeamScheduler(
             cluster, cost, label, batch=batch, seq_len=seq_len, buffer=buffer,
             beam=SCHED_ASTAR_BEAM, max_expansions=SCHED_ASTAR_MAX_EXPANSIONS
-        )
-    if name in ('mcts', 'mc', 'heft_mcts', 'mc_heft'):
-        return MonteCarloHeftScheduler(
-            cluster, cost, label, batch=batch, seq_len=seq_len, buffer=buffer,
-            rollouts_per_action=SCHED_MCTS_ROLLOUTS,
-            lookahead_depth=SCHED_MCTS_DEPTH,
-            heft_bias=SCHED_MCTS_HEFT_BIAS,
         )
     raise ValueError(f"Unknown scheduler strategy: {name}")
 
@@ -420,10 +411,6 @@ def run(cfg: Dict):
                     result_dir / f"pass_{p:02d}_overlap_summary.csv",
                     include_idle=True,
                     include_all_phase=True,
-                )
-                getattr(sched, 'stats', None) and sched.stats.dump_trace_csv(
-                    ops_csv,
-                    comms_csv,
                 )
             except Exception:
                 pass

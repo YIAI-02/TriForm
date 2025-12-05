@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -uo pipefail
 shopt -s nullglob
 
 # =========================
@@ -22,9 +22,9 @@ DECODES=(128 1024)
 # Hardware sweep (edit here, or use --hardware_glob)
 HARDWARE_CONFIGS=(
   ./examples/hardware_config_scale_down_pima_double.json
-  ./examples/hardware_config_scale_down_pima.json
+  # ./examples/hardware_config_scale_down_pima.json
   # ./examples/hardware_config_pimd.json
-  # ./examples/hardware_config_pima.json
+  ./examples/hardware_config_pima.json
 )
 
 # Run knobs
@@ -32,9 +32,57 @@ STRIDE="${STRIDE:-64}"
 DTYPE="${DTYPE:-int8}"
 BATCH="${BATCH:-1}"
 
-FAST=1
+FAST=0
 DEBUG=1
 HARDWARE_GLOB=""
+JOBS="${JOBS:-}"
+
+FAILURES=()
+SUCCESSES=()
+RUN_PIDS=()
+RUN_LABELS=()
+
+detect_cpu_count() {
+  local count
+  if command -v sysctl >/dev/null 2>&1; then
+    count="$(sysctl -n hw.ncpu 2>/dev/null || printf '1')"
+  elif command -v nproc >/dev/null 2>&1; then
+    count="$(nproc 2>/dev/null || printf '1')"
+  else
+    count="1"
+  fi
+  printf '%s' "${count:-1}"
+}
+
+reap_pid() {
+  local idx="$1"
+  local pid="${RUN_PIDS[idx]}"
+  local label="${RUN_LABELS[idx]}"
+
+  if wait "$pid"; then
+    SUCCESSES+=("$label")
+  else
+    FAILURES+=("$label")
+    printf "%s\n" "${RED}${BOLD}!!!!!! ERROR: Failed on ${label} !!!!!!${RESET}"
+  fi
+
+  unset 'RUN_PIDS[idx]'
+  unset 'RUN_LABELS[idx]'
+  RUN_PIDS=("${RUN_PIDS[@]}")
+  RUN_LABELS=("${RUN_LABELS[@]}")
+}
+
+wait_for_slot() {
+  while (( ${#RUN_PIDS[@]} >= JOBS )); do
+    reap_pid 0
+  done
+}
+
+wait_for_all() {
+  while (( ${#RUN_PIDS[@]} )); do
+    reap_pid 0
+  done
+}
 
 usage() {
   cat <<EOF
@@ -47,6 +95,7 @@ Options:
   --stride <int>          decode_sample_stride (default: ${STRIDE})
   --dtype <str>           dtype (default: ${DTYPE})
   --batch <int>           batch (default: ${BATCH})
+  --jobs <int>            Parallel runs (default: auto-detect cores)
   --hardware_glob <glob>  Override HARDWARE_CONFIGS by glob, e.g. "./examples/hardware_*.json"
   --fast                  Enable fast mode (adds --fast_mode)
   --debug                 Enable --debug
@@ -67,6 +116,7 @@ while [[ $# -gt 0 ]]; do
     --stride)       STRIDE="$2"; shift 2 ;;
     --dtype)        DTYPE="$2"; shift 2 ;;
     --batch)        BATCH="$2"; shift 2 ;;
+    --jobs)         JOBS="$2"; shift 2 ;;
     --hardware_glob) HARDWARE_GLOB="$2"; shift 2 ;;
     --fast)         FAST=1; shift ;;
     --debug)        DEBUG=1; shift ;;
@@ -92,6 +142,15 @@ if (( ${#HARDWARE_CONFIGS[@]} == 0 )); then
   exit 2
 fi
 
+if [[ -z "$JOBS" ]]; then
+  JOBS="$(detect_cpu_count)"
+fi
+
+if ! [[ "$JOBS" =~ ^[0-9]+$ ]] || (( JOBS < 1 )); then
+  echo "[FATAL] invalid jobs value: $JOBS" >&2
+  exit 2
+fi
+
 # =========================
 # Pretty banners
 # =========================
@@ -113,11 +172,14 @@ echo "Config      : ${CONFIG_FILE}"
 echo "Output root : ${OUTPUT_ROOT}"
 echo "Stride      : ${STRIDE}"
 echo "DType/Batch : ${DTYPE} / ${BATCH}"
+echo "Parallel jobs : ${JOBS}"
 echo "Hardwares   : ${#HARDWARE_CONFIGS[@]} file(s)"
 echo "Models      : ${#MODEL_FAMILY_VARIANTS[@]} family entry(s)"
 echo "===================================="
 
 run_one() {
+  wait_for_slot
+
   local hw_json="$1"
   local family="$2"
   local variant="$3"
@@ -158,10 +220,13 @@ run_one() {
   if (( DEBUG )); then cmd+=(--debug); fi
   if (( FAST )); then cmd+=(--fast_mode); fi
 
-  if ! "${cmd[@]}"; then
-    printf "%s\n" "${RED}${BOLD}!!!!!! ERROR: Failed on HW=${hw_stem} ${family}-${variant} S=${S} T=${T} !!!!!!${RESET}"
-    exit 1
-  fi
+  (
+    "${cmd[@]}"
+  ) &
+
+  local pid=$!
+  RUN_PIDS+=("$pid")
+  RUN_LABELS+=("HW=${hw_stem} ${family}:${variant} S=${S} T=${T}")
 }
 
 for hw_json in "${HARDWARE_CONFIGS[@]}"; do
@@ -184,5 +249,20 @@ for hw_json in "${HARDWARE_CONFIGS[@]}"; do
   done
 done
 
+wait_for_all
+
 echo "===================================="
+total_runs=$(( ${#SUCCESSES[@]} + ${#FAILURES[@]} ))
+echo "Runs attempted : ${total_runs}"
+echo "Runs succeeded : ${#SUCCESSES[@]}"
+echo "Runs failed    : ${#FAILURES[@]}"
+
+if (( ${#FAILURES[@]} )); then
+  printf "%s\n" "${RED}${BOLD}Failures detected during sweep:${RESET}"
+  for item in "${FAILURES[@]}"; do
+    printf "  - %s\n" "$item"
+  done
+  exit 1
+fi
+
 printf "%s\n" "${GREEN}${BOLD}All sweeps completed successfully.${RESET}"

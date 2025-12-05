@@ -25,7 +25,7 @@ FAST_MODE: bool = True
 # =========================
 # Hybrid scheduling params
 # =========================
-ALLOW_HYBRID: bool = True
+ALLOW_HYBRID: bool = False  # allow hybrid scheduling (some ops on NPU, some on PIM)
 # =========================
 # Rank-U weight load option
 # =========================
@@ -34,9 +34,6 @@ RANKU_INCLUDE_AVG_WEIGHT_LOAD: bool = True
 # =========================
 # Weight storage & formats
 # =========================
-WEIGHT_FORMAT_JSON_PATH: str = "./output/weight_suggestion_30/weight_storage_suggestion.json"
-ALL_PASSES_RESULT_PATH: str = "./output/all_passes_results.json"
-BEST_PASS_SUMMARY_PATH: str = "./output/best_pass_summary.json"
 
 # Progressive multi-pass tuning (iterate until converged or reach max passes)
 ENABLE_TWO_PASS_FORMAT_TUNING: bool = True
@@ -219,7 +216,4 @@ SCHED_RL_GAMMA: float = 0.90
 # A* (beam)
 SCHED_ASTAR_BEAM: int = 6
 SCHED_ASTAR_MAX_EXPANSIONS: int = 200
-SCHED_MCTS_ROLLOUTS: int = 10    # 每个 action 做多少次随机 rollout
-SCHED_MCTS_DEPTH: int = 3       # 每次 rollout 向前看的节点个数
-SCHED_MCTS_HEFT_BIAS: float = 0.5  # 随机填充时，有多大概率跟随 HEFT 的 seed action
 SCHED_HEFT_LK_DEPTH: int = 3
