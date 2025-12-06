@@ -6,7 +6,6 @@
         "type": "cpu",
         "tflops": 2.0,
         "mem_bw_GBs": 200.0,
-        "onchip_bw_GBs": 200.0,
         "mem_capacity_GB": 256.0
       },
       {
@@ -14,7 +13,6 @@
         "type": "npu",
         "tflops": 80.0,
         "mem_bw_GBs": 200.0,
-        "onchip_bw_GBs": 200.0,
         "mem_capacity_GB": 0.5
       },
       {
@@ -22,7 +20,6 @@
         "type": "npu",
         "tflops": 80.0,
         "mem_bw_GBs": 200.0,
-        "onchip_bw_GBs": 200.0,
         "mem_capacity_GB": 0.5
       },
       {
@@ -32,7 +29,6 @@
         "attached_npu": "NPU0",
         "tflops": 5.0,
         "mem_bw_GBs": 2000.0,
-        "onchip_bw_GBs": 2000.0,
         "mem_capacity_GB": 1.0
       },
       {
@@ -42,17 +38,16 @@
         "attached_npu": "NPU1",
         "tflops": 5.0,
         "mem_bw_GBs": 2000.0,
-        "onchip_bw_GBs": 2000.0,
         "mem_capacity_GB": 1.0
       }
     ],
     "links": [
-      { "a": "CPU0", "b": "NPU0", "bw_GBs": 32.0, "type": "PCIe" },
-      { "a": "CPU0", "b": "NPU1", "bw_GBs": 32.0, "type": "PCIe" },
-      { "a": "CPU0", "b": "PIMD0", "bw_GBs": 32.0, "type": "PCIe" },
-      { "a": "CPU0", "b": "PIMD1", "bw_GBs": 32.0, "type": "PCIe" },
-      { "a": "NPU0", "b": "PIMD0", "bw_GBs": 1024.0, "type": "HBM" },
-      { "a": "NPU1", "b": "PIMD1", "bw_GBs": 1024.0, "type": "HBM" }
+      { "a": "CPU0", "b": "NPU0", "bw_GBs": 32.0 },
+      { "a": "CPU0", "b": "NPU1", "bw_GBs": 32.0 },
+      { "a": "CPU0", "b": "PIMD0", "bw_GBs": 32.0 },
+      { "a": "CPU0", "b": "PIMD1", "bw_GBs": 32.0 },
+      { "a": "NPU0", "b": "PIMD0", "bw_GBs": 1024.0 },
+      { "a": "NPU1", "b": "PIMD1", "bw_GBs": 1024.0 }
     ]
   }
 }

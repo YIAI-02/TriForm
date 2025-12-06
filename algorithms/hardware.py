@@ -10,7 +10,6 @@ class DeviceSpec:
     type: str          # 'cpu' | 'npu' | 'pim'
     tflops: float      # peak TFLOPS (FP16-equivalent)
     mem_bw_GBs: float  # memory bandwidth GB/s (HBM/DRAM/near-memory)
-    onchip_bw_GBs: float  # on-chip SRAM/shared mem BW GB/s
     mem_capacity_GB: float
     pim_type: Optional[str] = None
     attached_npu: Optional[str] = None # 若 pim_type 为 'dram'/'hbm'，表明这个 PIM-DRAM 绑定到哪一个 NPU
@@ -18,23 +17,19 @@ class DeviceSpec:
 class Cluster:
     def __init__(self):
         self.devices: Dict[str, DeviceSpec] = {}
-        self.links: Dict[Tuple[str,str], Tuple[float, str]] = {}
+        self.links: Dict[Tuple[str,str], float] = {}
 
     def add_device(self, dev: DeviceSpec):
         self.devices[dev.name] = dev
 
-    def connect(self, a: str, b: str, bw_GBs: float, link_type: str = "PCIe"):
-        self.links[(a,b)] = (bw_GBs, link_type)
-        self.links[(b,a)] = (bw_GBs, link_type)
+    def connect(self, a: str, b: str, bw_GBs: float):
+        self.links[(a,b)] = bw_GBs
+        self.links[(b,a)] = bw_GBs
 
     def get_link_bw(self, a: str, b: str) -> float:
         if a == b:
-            return max(self.devices[a].onchip_bw_GBs, self.devices[a].mem_bw_GBs)
-        return self.links.get((a,b), (64.0, "PCIe"))[0]
-
-    def get_link_type(self, a: str, b: str) -> str:
-        if a == b: return "LOCAL"
-        return self.links.get((a,b), (64.0, "PCIe"))[1]
+            return self.devices[a].mem_bw_GBs
+        return self.links.get((a,b), 64.0)
 
     def devices_by_type(self, t: str) -> List[DeviceSpec]: #传进来t是cpu/npu/pim，筛选出是这个dev的所有设备
         return [d for d in self.devices.values() if d.type == t]
@@ -57,13 +52,13 @@ def demo_cluster(cfg: Dict | None = None) -> Cluster:
             hw_cfg = cfg.get('hardware') or cfg.get('cluster')
     if not hw_cfg:
         print("DEBUG: Using built-in demo hardware config")
-        c.add_device(DeviceSpec("CPU0","cpu",tflops=2.0,mem_bw_GBs=51.2,onchip_bw_GBs=128.0,mem_capacity_GB=0.009,))
-        c.add_device(DeviceSpec("NPU0","npu",tflops=10.0,mem_bw_GBs=51.2,onchip_bw_GBs=128.0,mem_capacity_GB=0.003,))
+        c.add_device(DeviceSpec("CPU0","cpu",tflops=2.0,mem_bw_GBs=51.2,mem_capacity_GB=0.009,))
+        c.add_device(DeviceSpec("NPU0","npu",tflops=10.0,mem_bw_GBs=51.2,mem_capacity_GB=0.003,))
     # Two PIM stacks as example
-        c.add_device(DeviceSpec("PIM0","pim",tflops=1.0,mem_bw_GBs=32.0,onchip_bw_GBs=512.0,mem_capacity_GB=1.0,pim_type='accel'))
+        c.add_device(DeviceSpec("PIM0","pim",tflops=1.0,mem_bw_GBs=32.0,mem_capacity_GB=1.0,pim_type='accel'))
     # Links
-        c.connect("CPU0","NPU0", 32.0, "PCIe")
-        c.connect("CPU0","PIM0", 32.0, "PCIe")
+        c.connect("CPU0","NPU0", 32.0)
+        c.connect("CPU0","PIM0", 32.0)
         return c
 
     # Parse loaded hw_cfg
@@ -73,11 +68,10 @@ def demo_cluster(cfg: Dict | None = None) -> Cluster:
             type=d['type'],
             tflops=float(d.get('tflops', 0)),
             mem_bw_GBs=float(d.get('mem_bw_GBs', 0)),
-            onchip_bw_GBs=float(d.get('onchip_bw_GBs', 0)),
             mem_capacity_GB=float(d.get('mem_capacity_GB', 0)),
             pim_type=d.get('pim_type'),
             attached_npu=d.get('attached_npu')
         ))
     for l in hw_cfg.get('links', []):
-        c.connect(l['a'], l['b'], float(l['bw_GBs']), l.get('type', 'PCIe'))
+        c.connect(l['a'], l['b'], float(l['bw_GBs']))
     return c

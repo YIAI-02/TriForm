@@ -11,9 +11,9 @@
         {
           "name": "NPU0",
           "type": "npu",
-          "tflops": 24.0,
-          "mem_bw_GBs": 45.0,
-          "mem_capacity_GB": 0.008
+          "tflops": 48.0,
+          "mem_bw_GBs": 90.0,
+          "mem_capacity_GB": 0.016
         },
         {
           "name": "PIMA0",
@@ -25,7 +25,7 @@
         }
       ],
       "links": [
-        { "a": "CPU0", "b": "NPU0", "bw_GBs": 45.0 },
+        { "a": "CPU0", "b": "NPU0", "bw_GBs": 90.0 },
         { "a": "CPU0", "b": "PIMA0", "bw_GBs": 300.0 },
         { "a":"NPU0", "b":"PIMA0", "bw_GBs": 16.0 }
       ]

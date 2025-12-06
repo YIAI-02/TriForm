@@ -16,16 +16,11 @@ DEFAULT_CONFIG = {
     "ramulator_config_path":"./aim_simulator/example.yaml"
 }
 
-# =========================
-# Fast mode (disable trace simulations)
-# =========================
-# When FAST_MODE is True, all trace simulations are disabled and only estimated costs are used
-FAST_MODE: bool = True
 
 # =========================
 # Hybrid scheduling params
 # =========================
-ALLOW_HYBRID: bool = False  # allow hybrid scheduling (some ops on NPU, some on PIM)
+ALLOW_HYBRID: bool = True  # allow hybrid scheduling (some ops on NPU, some on PIM)
 # =========================
 # Rank-U weight load option
 # =========================

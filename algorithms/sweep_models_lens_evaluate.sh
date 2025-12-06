@@ -11,36 +11,41 @@ OUTPUT_ROOT="${OUTPUT_ROOT:-./output/lens_eval_sweep}"
 # Sweep dims
 MODEL_FAMILY_VARIANTS=(
   "mixtral:8x7b"
-  "palm:8b"
-  "qwen:1.8b"
+  "palm:8b 62b"
+  "qwen:1.8b 7b"
   # llama:7b
 )
 
-PREFILLS=(128 1024)
-DECODES=(128 1024)
+PREFILLS=(128 512)
+DECODES=(512 2048)
 
 # Hardware sweep (edit here, or use --hardware_glob)
 HARDWARE_CONFIGS=(
-  ./examples/hardware_config_scale_down_pima_double.json
-  # ./examples/hardware_config_scale_down_pima.json
+  ./examples/hardware_config_scale_down_pima_small.json
+  ./examples/hardware_config_scale_down_pima.json
+  ./examples/hardware_config_scale_down_pima_large.json
+  ./examples/hardware_config_scale_down_npu_large.json
   # ./examples/hardware_config_pimd.json
-  ./examples/hardware_config_pima.json
+  # ./examples/hardware_config_pima.json
 )
 
 # Run knobs
-STRIDE="${STRIDE:-64}"
+STRIDE="${STRIDE:-32}"
 DTYPE="${DTYPE:-int8}"
-BATCH="${BATCH:-1}"
+# Keep raw string, then parse once args are handled to avoid space issues
+BATCHES_STR="${BATCHES:-${BATCH:-"1 4 8 16 32"}}"
 
-FAST=0
+declare -a BATCHES
+
+FAST=1
 DEBUG=1
 HARDWARE_GLOB=""
 JOBS="${JOBS:-}"
 
-FAILURES=()
-SUCCESSES=()
-RUN_PIDS=()
-RUN_LABELS=()
+declare -a FAILURES=()
+declare -a SUCCESSES=()
+declare -a RUN_PIDS=()
+declare -a RUN_LABELS=()
 
 detect_cpu_count() {
   local count
@@ -94,7 +99,8 @@ Options:
   --output_root <dir>     Output root (default: ${OUTPUT_ROOT})
   --stride <int>          decode_sample_stride (default: ${STRIDE})
   --dtype <str>           dtype (default: ${DTYPE})
-  --batch <int>           batch (default: ${BATCH})
+  --batch <int>           batch (default: first of BATCHES or 1)
+  --batches "a b c"       override batch list (space separated)
   --jobs <int>            Parallel runs (default: auto-detect cores)
   --hardware_glob <glob>  Override HARDWARE_CONFIGS by glob, e.g. "./examples/hardware_*.json"
   --fast                  Enable fast mode (adds --fast_mode)
@@ -115,7 +121,8 @@ while [[ $# -gt 0 ]]; do
     --output_root)  OUTPUT_ROOT="$2"; shift 2 ;;
     --stride)       STRIDE="$2"; shift 2 ;;
     --dtype)        DTYPE="$2"; shift 2 ;;
-    --batch)        BATCH="$2"; shift 2 ;;
+    --batch)        BATCHES_STR="$2"; shift 2 ;;
+    --batches)      BATCHES_STR="$2"; shift 2 ;;
     --jobs)         JOBS="$2"; shift 2 ;;
     --hardware_glob) HARDWARE_GLOB="$2"; shift 2 ;;
     --fast)         FAST=1; shift ;;
@@ -127,6 +134,8 @@ done
 
 # normalize dtype to lower (safer with internal maps)
 DTYPE="$(printf "%s" "$DTYPE" | tr '[:upper:]' '[:lower:]')"
+# Parse batches string into an array (handles quoted space-separated lists)
+read -r -a BATCHES <<< "$BATCHES_STR"
 
 if [[ -n "$HARDWARE_GLOB" ]]; then
   HARDWARE_CONFIGS=( $HARDWARE_GLOB )
@@ -171,7 +180,7 @@ fi
 echo "Config      : ${CONFIG_FILE}"
 echo "Output root : ${OUTPUT_ROOT}"
 echo "Stride      : ${STRIDE}"
-echo "DType/Batch : ${DTYPE} / ${BATCH}"
+echo "DType/Batch : ${DTYPE} / ${BATCHES[*]}"
 echo "Parallel jobs : ${JOBS}"
 echo "Hardwares   : ${#HARDWARE_CONFIGS[@]} file(s)"
 echo "Models      : ${#MODEL_FAMILY_VARIANTS[@]} family entry(s)"
@@ -185,6 +194,7 @@ run_one() {
   local variant="$3"
   local S="$4"
   local T="$5"
+  local batch="$6"
 
   local hw_stem
   hw_stem="$(basename "$hw_json" .json)"
@@ -193,9 +203,9 @@ run_one() {
 
   # IMPORTANT: keep output separated by hardware + stride to avoid overwrites
   local base_out="${OUTPUT_ROOT}/hw_${hw_stem}/st${STRIDE}"
-  local expected_dir="${base_out}/${family}_${variant}_${DTYPE}_b${BATCH}"
+  local expected_dir="${base_out}/${family}_${variant}_${DTYPE}_b${batch}"
 
-  printf "\n%s\n" "${CYAN}${BOLD}--- HW=${hw_stem} | ${family}:${variant} | S=${S} T=${T} | stride=${STRIDE} | dtype=${DTYPE} b=${BATCH} ---${RESET}"
+  printf "\n%s\n" "${CYAN}${BOLD}--- HW=${hw_stem} | ${family}:${variant} | S=${S} T=${T} | stride=${STRIDE} | dtype=${DTYPE} b=${batch} ---${RESET}"
   if (( FAST )); then
     printf "%s\n" "${YELLOW}${BOLD}[FAST MODE ACTIVE]${RESET}"
   else
@@ -211,7 +221,7 @@ run_one() {
     --model_family "${family}"
     --model_variant "${variant}"
     --dtype "${DTYPE}"
-    --batch "${BATCH}"
+    --batch "${batch}"
     --prefill_len "${S}"
     --decode_len "${T}"
     --decode_sample_stride "${STRIDE}"
@@ -226,7 +236,7 @@ run_one() {
 
   local pid=$!
   RUN_PIDS+=("$pid")
-  RUN_LABELS+=("HW=${hw_stem} ${family}:${variant} S=${S} T=${T}")
+  RUN_LABELS+=("HW=${hw_stem} ${family}:${variant} S=${S} T=${T} b=${batch}")
 }
 
 for hw_json in "${HARDWARE_CONFIGS[@]}"; do
@@ -240,9 +250,11 @@ for hw_json in "${HARDWARE_CONFIGS[@]}"; do
     variants="${entry#*:}"
 
     for variant in ${variants}; do
-      for S in "${PREFILLS[@]}"; do
-        for T in "${DECODES[@]}"; do
-          run_one "$hw_json" "$family" "$variant" "$S" "$T"
+      for batch in "${BATCHES[@]}"; do
+        for S in "${PREFILLS[@]}"; do
+          for T in "${DECODES[@]}"; do
+            run_one "$hw_json" "$family" "$variant" "$S" "$T" "$batch"
+          done
         done
       done
     done

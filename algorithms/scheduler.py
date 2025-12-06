@@ -127,21 +127,6 @@ class CommManager:
             src_dev = self.cluster.devices.get(src)
             dst_dev = self.cluster.devices.get(dst)
 
-            def _is_pim_accel(dev: Optional[DeviceSpec]) -> bool:
-                if dev is None:
-                    return False
-                if dev.type != 'pim':
-                    return False
-                # None 或 未知类型都按 accelerator 处理
-                ptype = (dev.pim_type or 'accel').lower()
-                return ptype not in ('dram', 'hbm')
-
-            # 只禁止 NPU <-> PIM-Accelerator 直连
-            if src_dev and dst_dev:
-                if ((src_dev.type == 'npu' and _is_pim_accel(dst_dev)) or
-                    (dst_dev.type == 'npu' and _is_pim_accel(src_dev))):
-                    raise AssertionError(f'Forbidden direct NPU<->PIM-Accelerator transfer: {src}->{dst}')
-
             if self.stats is not None:
                 try:
                     self.stats.log_comm(
@@ -297,31 +282,6 @@ class HEFTScheduler(SchedulerBase):
         avg_w = total_w / k if k and RANKU_INCLUDE_AVG_WEIGHT_LOAD and node.weight_id else 0.0
         total_avg = avg_compute + avg_w
         return total_avg
-
-    # def _avg_comm_cost(self, u: TaskNode, v: TaskNode, phase: str) -> float:
-    #     devs = list(self.cluster.devices.values())
-    #     total = 0.0
-    #     k = 0
-    #     batch = int(getattr(self, 'batch', 0) or 0)
-    #     seq_len = int(getattr(self, 'seq_len', 0) or 0)
-    #     u_read, u_write = self.cost.estimate_activation_bytes(u, batch, seq_len, phase)
-    #     v_read, _ = self.cost.estimate_activation_bytes(v, batch, seq_len, phase)
-    #     payload_bytes = max(u_write, v_read, 16 * 1024)
-    #     for i in range(len(devs)):
-    #         for j in range(len(devs)):
-    #             di, dj = (devs[i], devs[j])
-    #             if not (u.allowed.get(di.type, True) and v.allowed.get(dj.type, True)):
-    #                 continue
-    #             src_fmt = self.cost.device_preferred_fmt(di)
-    #             dst_fmt = self.cost.device_preferred_fmt(dj)
-    #             payload_src = self.cost.format_size(int(payload_bytes), src_fmt)
-    #             t_link = self.cost.comm_cost(di, dj, payload_src)
-    #             t_conv = 0.0
-    #             if di.type != dj.type:
-    #                 t_conv = self.cost.format_conversion_time(payload_src, src_fmt, dst_fmt, dj)
-    #             total += max(t_link, t_conv)
-    #             k += 1
-    #     return total / k if k else 0.0
     
     def _avg_comm_cost(self, u: TaskNode, v: TaskNode, phase: str) -> float:
         devs = [d for d in self.cluster.devices.values() if d.type in ('npu', 'pim')]  # 只考虑真正会运行算子的设备
@@ -342,15 +302,23 @@ class HEFTScheduler(SchedulerBase):
                 payload_src = self.cost.format_size(int(payload_bytes), src_fmt)
                 
                 if di.type == dj.type:
-                    # 同类型设备（比如两个 NPU 或两个 PIM），你可以用直接 comm_cost 或者 0（视情况）
+                    # 同类型设备（比如两个 NPU 或两个 PIM），直接 comm_cost
                     t_link = self.cost.comm_cost(di, dj, payload_src)
                 else:
-                    # 不同类型，强制走 Host 两跳近似
+                    # 不同类型，允许2种类型传输
                     host = self.cost.get_host_device()
-                    t_link = (
+                    t_host = (
                         self.cost.comm_cost(di, host, payload_src) +
                         self.cost.comm_cost(host, dj, payload_src)
-                    )                
+                    )
+                    try:
+                        t_direct = self.cost.link_time(payload_src, di, dj)
+                        if t_direct <= 0:
+                            t_direct = float('inf')
+                    except Exception:
+                        t_direct = float('inf')
+
+                    t_link = min(t_host, t_direct)
 
                 t_conv = 0.0
                 if di.type != dj.type:
@@ -747,29 +715,7 @@ class HEFTScheduler(SchedulerBase):
             return 0.0
 
         size_nd = self.cost.format_size(rd_bytes, 'ND')
-        src_dev = src_dev or self.cluster.devices.get(src_name)
-        
-        def _is_pim_accel(d: DeviceSpec) -> bool:
-            if d.type != 'pim':
-                return False
-            ptype = (getattr(d, 'pim_type', None) or 'accel').lower()
-            return ptype not in ('dram', 'hbm')
-        
-        need_hop = False
-        if src_dev and dst_dev:
-            # 「NPU <-> PIM-Accelerator 不允许直连」
-            if ((src_dev.type == 'npu' and _is_pim_accel(dst_dev)) or
-                (dst_dev.type == 'npu' and _is_pim_accel(src_dev))):
-                need_hop = True
-
-        if need_hop:
-            host_name = self.cost.get_host_device().name
-            # Hop 1: src -> Host
-            _, t1 = self.comm.reserve(src_name, host_name, size_nd,earliest=t0, commit=commit, tag='kv_load_hop1')
-            # Hop 2: Host -> dst
-            _, link_end = self.comm.reserve(host_name, dst_dev.name, size_nd, earliest=t1, commit=commit, tag='kv_load_hop2')
-        else:
-            _, link_end = self.comm.reserve(src_name, dst_dev.name, size_nd,earliest=t0, commit=commit, tag='kv_load')
+        _, link_end = self.comm.reserve(src_name, dst_dev.name, size_nd, earliest=t0, commit=commit, tag='kv_load')
         
         # 目的设备上的格式转换时间
         conv_t = self.cost.format_conversion_time(size_nd, 'ND', self.cost.device_preferred_fmt(dst_dev), dst_dev,)
@@ -871,18 +817,96 @@ class HEFTScheduler(SchedulerBase):
                 best, best_t = (d, t)
         return (best, best_t)
 
+    def _reserve_activation_transfer_best_path(
+        self,
+        prod_nid: str,
+        src_dev: DeviceSpec,
+        dst_dev: DeviceSpec,
+        bytes_nd: int,
+        src_fmt: str,
+        pred_finish: float,
+        commit: bool,
+    ) -> Tuple[float, float]:
+
+        """
+        Reserve an activation transfer from src_dev -> dst_dev.
+
+        For NPU<->PIM we support two routes:
+          - src -> Host -> dst
+          - src -> dst direct (if topology provides this link)
+
+        During real scheduling, we check the current communication occupancy (per-link timelines)
+        and pick the route that completes earlier.
+
+        Returns:
+          (start_time_on_last_hop, ready_time_on_dst_after_format_conversion)
+        """
+
+        dst_fmt = self.cost.device_preferred_fmt(dst_dev)
+        size_nd = self.cost.format_size(bytes_nd, 'ND')
+        host = self.cost.get_host_device()
+
+        def _via_host(commit_flag:bool) -> Tuple[float, float]:
+            host_ready = self._ensure_host_store(
+                prod_nid, src_dev, bytes_nd, src_fmt, pred_finish, commit_flag)
+            l2s, l2e = self.comm.reserve(host.name, dst_dev.name, size_nd, earliest=host_ready, commit=commit_flag,tag='act_move')
+            conv2 = self.cost.format_conversion_time(size_nd, 'ND', dst_fmt, dst_dev)
+            return (l2s, l2e + conv2)
+        
+        def _direct(commit_flag: bool) -> Tuple[float, float]:
+            # Only consider direct transfer if link exists.
+            try:
+                t_direct = self.cost.link_time(size_nd, src_dev, dst_dev)
+            except Exception:
+                t_direct = 0.0
+            if t_direct <= 0:
+                return (float('inf'), float('inf'))
+
+            # If source is PIM, require activation still resident on that PIM.
+            if src_dev.type == 'pim' and (src_dev.name, prod_nid) not in self._act_resident:
+                return (float('inf'), float('inf'))
+            # Convert src_fmt -> ND on source if needed; then send ND bytes.
+            size_src = self.cost.format_size(int(bytes_nd), src_fmt)
+            t_conv_src = 0.0
+            if src_fmt != 'ND':
+                t_conv_src = self.cost.format_conversion_time(size_src, src_fmt, 'ND', src_dev)
+
+            earliest = pred_finish + t_conv_src
+            if src_dev.type == 'pim':
+                earliest += self.cost.activation_read_time_pim(size_nd)
+            l2s, l2e = self.comm.reserve(
+                src_dev.name, dst_dev.name, size_nd,
+                earliest=earliest, commit=commit_flag, tag='act_move'
+            )
+            conv2 = self.cost.format_conversion_time(size_nd, 'ND', dst_fmt, dst_dev)
+            return l2s, l2e + conv2
+
+        # Decide best route by completion time.
+        s_direct, e_direct = _direct(False)
+        s_host, e_host = _via_host(False)
+
+        use_direct = e_direct < e_host
+        if commit:
+            return _direct(True) if use_direct else _via_host(True)
+        else:
+            return (s_direct, e_direct) if use_direct else (s_host, e_host)
+
     def _ready_time_for_device(self, g: TaskGraph, nid: str, dev: DeviceSpec, phase: str, commit: bool) -> float:
+        '''
+        calculate the earliest time on `dev` for node `nid`
+        '''
         node = g.nodes[nid]
         inbound_start_times: List[float] = []
         inbound_end_times: List[float] = []
-        batch = int(getattr(self, 'batch', 0) or 0)
-        seq_len = int(getattr(self, 'seq_len', 0) or 0)
+        batch = int(getattr(self, 'batch', 1) or 1)
+        seq_len = int(getattr(self, 'seq_len', 128) or 128)
         node_read, _ = self.cost.estimate_activation_bytes(node, batch, seq_len, phase)
-        for u in g.predecessors(nid):
+
+        for u in g.predecessors(nid): #对当前节点的所有前驱节点u进行评估
             pred_finish = self._node_finish_time.get(u, 0.0)
             pred_dev_name = self._node_placement.get(u, dev.name)
-            # Fallback for legacy 'HYBRID' marker: treat as host-written ND payload
-            if pred_dev_name == 'HYBRID':
+            
+            if pred_dev_name == 'HYBRID': # Fallback for legacy 'HYBRID' marker: treat as host-written ND payload
                 host = self.cost.get_host_device()
                 pred_finish = self._node_finish_time.get(u, 0.0)
                 pred_node = g.nodes[u]
@@ -896,19 +920,17 @@ class HEFTScheduler(SchedulerBase):
                 continue
 
             pred_dev = self.cluster.devices[pred_dev_name]
-            if pred_dev.name == dev.name:
+            if pred_dev.name == dev.name: #前驱节点和当前节点在同一设备上
                 src_fmt = self._node_out_fmt.get(u, self.cost.device_preferred_fmt(pred_dev))
                 pred_node = g.nodes[u]
                 _, pred_write = self.cost.estimate_activation_bytes(pred_node, batch, seq_len, phase)
                 payload_nd = max(pred_write, node_read)
                 size_nd = self.cost.format_size(payload_nd, 'ND')
-                if dev.type == 'pim':
+                if dev.type == 'pim': #如果是pim，要检查pim的空间是否够存储act
                     avail = self._pim_avail_for_activation(pred_dev)
                     if avail >= payload_nd:
                         if commit:
                             self._act_used[pred_dev.name] = self._act_used.get(pred_dev.name, 0) + payload_nd
-                        # logger.debug(f"[LOCAL] PIM in-place u={u}@{pred_dev.name} -> {nid}@{dev.name} bytes_nd={payload_nd} (use_inplace, avail={avail})")
-                        inbound_start_times.append(pred_finish)
                         inbound_end_times.append(pred_finish)
                     else:
                         # logger.debug(f"[LOCAL->HOST] PIM fallback (no space) u={u}@{pred_dev.name} -> {nid}@{dev.name} need={payload_nd} avail={avail}")
@@ -918,11 +940,10 @@ class HEFTScheduler(SchedulerBase):
                         inbound_start_times.append(l2s)
                         inbound_end_times.append(l2e + conv2)
                 else:
-                    # logger.debug(f"[LOCAL] NPU reuse u={u}@{pred_dev.name} -> {nid}@{dev.name} (no xfer) pred_finish={pred_finish:.6f}")
                     inbound_start_times.append(pred_finish)
                     inbound_end_times.append(pred_finish)
                 continue
-            else:
+            else: #不同设备
                 src_fmt = self._node_out_fmt.get(u, self.cost.device_preferred_fmt(pred_dev))
                 dst_fmt = self.cost.device_preferred_fmt(dev)
                 pred_node = g.nodes[u]
@@ -936,57 +957,27 @@ class HEFTScheduler(SchedulerBase):
                 payload_nd = max(pred_write, node_read)  # 以 ND 为“逻辑尺寸”
                 src_fmt = self._node_out_fmt.get(u, self.cost.device_preferred_fmt(pred_dev))
 
-                # 1) 若源是 NPU：无论目标是谁，都必须把 u 的输出先回写 Host（NPU_OPT->ND->Host）
-                if pred_dev.type == 'npu':
-                    host_ready = self._ensure_host_store(u, pred_dev, payload_nd, src_fmt, pred_finish, commit)
-                else:
-                    host_ready = None
+                # 1) 检查两条传输链，选择最快的路径
+                l2s, ready = self._reserve_activation_transfer_best_path(
+                    prod_nid=u,
+                    src_dev=pred_dev,
+                    dst_dev=dev,
+                    bytes_nd=payload_nd,
+                    src_fmt=src_fmt,
+                    pred_finish=pred_finish,
+                    commit=commit,
+                )
+                inbound_start_times.append(l2s)
+                inbound_end_times.append(ready)
+                continue    
 
-                if dev.type == 'npu':
-                    # 2) 目标是 NPU：一律从 Host 读取（Host->NPU + ND->NPU_OPT）
-                    if host_ready is None:
-                        host_ready = self._ensure_host_store(u, pred_dev, payload_nd, src_fmt, pred_finish, commit)
-                    size_nd = self.cost.format_size(payload_nd, 'ND')
-                    l2s, l2e = self.comm.reserve(host.name, dev.name, size_nd, earliest=host_ready, commit=commit)
-                    conv2 = self.cost.format_conversion_time(size_nd, 'ND', dst_fmt, dev)
-                    # logger.debug(f"[CROSS] HOST->NPU u={u}@{pred_dev.name} -> {nid}@{dev.name} bytes_nd={payload_nd}")
-                    inbound_start_times.append(l2s)
-                    inbound_end_times.append(l2e + conv2)
-                    continue
-
-                if dev.type == 'pim':
-                    # 3) 目标是 PIM：
-                        # (a) PIM->PIM 就地：容量足够且允许就地，直接复用；不走 Host
-                        # logger.debug(f"[LOCAL] PIM in-place (cross device branch) u={u}@{pred_dev.name} -> {nid}@{dev.name} bytes_nd={payload_nd}")
-                        # (b) 其他情况：一律 pred->Host，再 Host->PIM
-                    if host_ready is None:
-                        host_ready = self._ensure_host_store(u, pred_dev, payload_nd, src_fmt, pred_finish, commit)
-                    size_nd = self.cost.format_size(payload_nd, 'ND')
-                    l2s, l2e = self.comm.reserve(host.name, dev.name, size_nd, earliest=host_ready, commit=commit)
-                        # logger.debug(f"[CROSS] HOST->PIM u={u}@{pred_dev.name} -> {nid}@{dev.name} bytes_nd={payload_nd}")
-                    conv2 = self.cost.format_conversion_time(size_nd, 'ND', dst_fmt, dev)
-                    inbound_start_times.append(l2s)
-                    inbound_end_times.append(l2e + conv2)
-                    continue
-
-                # 4) 目标是 CPU/其他：一律确保回写 Host 即可
-                if host_ready is None:
-                    host_ready = self._ensure_host_store(u, pred_dev, payload_nd, src_fmt, pred_finish, commit)
-                inbound_start_times.append(host_ready)
-                inbound_end_times.append(host_ready)
-
-                # NPU 不再“边传边算”，统一用依赖完成时间
-                return max(inbound_end_times, default=0.0)
-
-        if dev.type == 'npu':
-            return max(inbound_start_times, default=0.0)
         return max(inbound_end_times, default=0.0)
 
     def _earliest_finish_hybrid(self, g, nid: str, phase: str, commit: bool):
         """
         计算把结点 nid 以 HYBRID（NPU+PIM 协同）方式执行时的最早完成时间，并在 commit=True 时真正预约链路。
-        约束与行为：
-        - NPU 与 PIM 不直连通信；仅使用 Host 作为交换点。
+        行为说明：
+        - 依赖传输阶段：已允许 NPU<->PIM 直连或经 Host，调用 _ready_time_for_device 时会自动选更快路径。
         - HYBRID：分别把权重加载到 NPU 与 PIM，然后两边各自计算。
         - 结尾阶段：把该算子“整体输出”统一写回 Host（主存），
             其中 NPU 源侧做 NPU_OPT->ND 转换后再写；PIM 源侧用 trace 仿真近存读出 + PIM_OPT->ND 转换，再写 Host。
@@ -1028,7 +1019,6 @@ class HEFTScheduler(SchedulerBase):
         out_total_nd = max(node_write_nd, node_read_nd)  # 以“需要对下游可见”的 ND 逻辑尺寸为准
 
         # —— 1) 依赖就绪时间（分别对 NPU 与 PIM 侧）——
-        # 注意：_ready_time_for_device 内部已确保跨设备走 Host 两跳，不会出现 NPU<->PIM 直连
         t_ready_npu = self._ready_time_for_device(g, nid, npu_dev, phase, commit=False)
         t_ready_pim = self._ready_time_for_device(g, nid, pim_dev, phase, commit=False)
 
@@ -1052,15 +1042,10 @@ class HEFTScheduler(SchedulerBase):
                                                     self.cost.device_preferred_fmt(npu_dev), npu_dev)
             t_w_npu_end = link_end + conv_w
 
-        # 2.2 PIM：PIM 侧从自身内存加载权重（trace/带宽近似）
-        # 若你已有 cost.weight_load_time_pim(bytes)，可直接使用；否则回退到 mem_time。
+        # 2.2 PIM：PIM 侧从自身内存加载权重（统一走 cost.weight_load_time_pim，内部自带带宽回退）
         t_w_pim_end = t_ready_pim
         if weight_pim_nd > 0:
-            try:
-                t_load_pim = self.cost.weight_load_time_pim(weight_pim_nd)
-            except Exception:
-                # 回退：按 PIM 内存带宽估
-                t_load_pim = self.cost.mem_time(self.cost.format_size(weight_pim_nd, 'ND'), pim_dev)
+            t_load_pim = self.cost.weight_load_time_pim(weight_pim_nd)
             t_w_pim_end = t_ready_pim + t_load_pim
 
         # —— 3) 计算（两侧并行），用比例 alpha 拆分算力占用 —— 

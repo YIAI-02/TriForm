@@ -14,4 +14,4 @@ cd "$SLURM_SUBMIT_DIR"
 source ~/.bashrc
 conda activate cent
 
-bash sweep_models_lens_evaluate.sh --jobs 16
+bash sweep_models_lens_evaluate.sh --jobs 8

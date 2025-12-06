@@ -851,11 +851,11 @@ class CostModel:
         return flops / (dev.tflops * 1000000000000.0)
 
     def mem_time(self, bytes_amount: int, dev: DeviceSpec) -> float:
-        bw = dev.mem_bw_GBs * 1000000000.0
+        bw = dev.mem_bw_GBs  * 1024 * 1024 * 1024.0
         return 0.0 if bw <= 0 else bytes_amount / bw
 
     def link_time(self, bytes_amount: int, src: DeviceSpec, dst: DeviceSpec) -> float:
-        bw = self.cluster.get_link_bw(src.name, dst.name) * 1000000000.0
+        bw = self.cluster.get_link_bw(src.name, dst.name) * 1024 * 1024 * 1024.0
         return 0.0 if bw <= 0 else bytes_amount / bw
 
     def comm_cost(self, src: DeviceSpec, dst: DeviceSpec, bytes_amount: int) -> float:
