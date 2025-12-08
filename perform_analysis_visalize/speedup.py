@@ -3,7 +3,7 @@
 """
 
 1) 批量（推荐）：
-   python speedup.py --output-root ../algorithms/output/lens_eval_sweep
+   python speedup.py --output-root ../algorithms/output/lens_eval_sweep --out-dir ../figs/speedup
 
 2) 指定单个模型目录（目录里有 baseline_compare_*.json）：
    python speedup.py --model-dir ../algorithms/output/lens_eval_sweep/hw_xxx/st64/llama_7b_int8_b1
@@ -18,6 +18,7 @@ import argparse
 import json
 import os
 import re
+import math
 from pathlib import Path
 from typing import Dict, Iterable, Iterator, List, Optional, Sequence, Tuple
 
@@ -246,7 +247,7 @@ def _plot_one_case(
 
 
 def plot_compare_grid(files: Sequence[Path], *, outfile: Path, sharey: bool = False) -> None:
-    """把一个 model_dir 下的 baseline_compare_*.json 画成一行子图并保存。"""
+    """把一个 model_dir 下的 baseline_compare_*.json 画成多行子图（每行最多 4 个）并保存。"""
     loaded = []
     for fp in files:
         case, tm, _ = _load_baseline_compare(fp)
@@ -257,38 +258,45 @@ def plot_compare_grid(files: Sequence[Path], *, outfile: Path, sharey: bool = Fa
     if n == 0:
         raise ValueError("No baseline_compare files to plot")
 
-    # 一行 n 列（无间隙）
-    fig_w = max(6.0, 5.2 * n)
-    fig_h = 4.6
+    cols = 4
+    rows = math.ceil(n / cols)
+
+    fig_w = max(6.0, 5.2 * min(n, cols))
+    fig_h = max(4.2, 4.6 * rows)
     fig, axes = plt.subplots(
-        1,
-        n,
+        rows,
+        cols,
         figsize=(fig_w, fig_h),
         sharey=sharey,
         squeeze=False,
-        gridspec_kw={"wspace": 0.0},
+        gridspec_kw={"wspace": 0.2, "hspace": 0.35},
     )
-    axes = axes[0]
+    axes_flat = axes.ravel()
 
     legend_handles = None
     legend_labels = None
 
     for i, (case, _fp, tm) in enumerate(loaded):
+        ax = axes_flat[i]
+        row_idx, col_idx = divmod(i, cols)
+
         S, T = case
         title = f"prefill={S}, decode={T}"
-        bp, bd, line, ax2 = _plot_one_case(axes[i], tm, title=title)
+        bp, bd, line, ax2 = _plot_one_case(ax, tm, title=title)
 
-        # 左轴：只在第一个子图显示刻度与 ylabel（看起来更“无缝”）
-        if i == 0:
-            axes[i].set_ylabel("Latency (s)")
+        # 左轴：每行只在第 1 列保留刻度和标签
+        if col_idx == 0:
+            ax.set_ylabel("Latency (s)")
         else:
-            axes[i].set_ylabel("")
-            axes[i].tick_params(axis="y", which="both", left=False, labelleft=False)
-            axes[i].spines["left"].set_visible(False)
+            ax.set_ylabel("")
+            ax.tick_params(axis="y", which="both", left=False, labelleft=False)
+            ax.spines["left"].set_visible(False)
 
-        # 右轴：只在最后一个子图显示刻度与 ylabel
+        # 右轴：每行只在最右列（或最后一个子图）保留刻度和标签
         if ax2 is not None:
-            if i == n - 1:
+            is_row_last = (col_idx == cols - 1)
+            is_global_last = (i == n - 1)
+            if is_row_last or is_global_last:
                 ax2.set_ylabel("Speedup vs pd")
             else:
                 ax2.set_ylabel("")
@@ -304,6 +312,10 @@ def plot_compare_grid(files: Sequence[Path], *, outfile: Path, sharey: bool = Fa
             legend_handles = handles
             legend_labels = labels
 
+    # 关掉空白子图
+    for j in range(n, rows * cols):
+        axes_flat[j].axis("off")
+
     if legend_handles:
         fig.legend(
             legend_handles,
@@ -314,7 +326,7 @@ def plot_compare_grid(files: Sequence[Path], *, outfile: Path, sharey: bool = Fa
             bbox_to_anchor=(0.5, 1.02),
         )
 
-    fig.subplots_adjust(right=0.99, left=0.06, bottom=0.22, top=0.85, wspace=0.0)
+    fig.subplots_adjust(right=0.99, left=0.06, bottom=0.18, top=0.88, wspace=0.2, hspace=0.3)
 
     outfile.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(outfile, dpi=220, bbox_inches="tight")

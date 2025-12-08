@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+"""
+python analyze_heft_speedup_visualize_csv.py --out ../algorithms/output/analysis_out
+
+"""
+
 import argparse
 from pathlib import Path
 import numpy as np

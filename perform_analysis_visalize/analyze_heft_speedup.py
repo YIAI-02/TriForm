@@ -3,8 +3,8 @@
 
 """
   python analyze_heft_speedup.py \
-  --root ../algorithms/output/lens_eval_sweep \
-  --out ../algorithms/output/analysis_out \
+  --root /lustre/home/2501111916/workspace/TriForm_1207_hybrid_false/TriForm_1207_hybrid_false/algorithms/output/lens_eval_sweep/hw_scale_down_npu_large \
+  --out /lustre/home/2501111916/workspace/TriForm_1207_hybrid_false/TriForm_1207_hybrid_false/algorithms/output/hw_scale_down_npu_large \
   --baseline ALL
 """
 
@@ -508,6 +508,210 @@ def save_basic_plots(df: pd.DataFrame, out_dir: Path, title_prefix: str):
             plt.savefig(out_dir / f"{title_prefix}_heatmap_speedup_prefill_decode.png", dpi=200)
             plt.close()
 
+# --------------------------
+# Best-algorithm (winner) analysis
+# --------------------------
+
+def _get_metric_time(r: Dict[str, Any], metric: str) -> float:
+    """Return time (s) for a given metric key: total/prefill/decode."""
+    key = {"total": "total_time_s", "prefill": "prefill_time_s", "decode": "decode_time_s"}.get(metric, "total_time_s")
+    return _to_float(r.get(key))
+
+
+def pick_best_algo(best_per_algo: Dict[str, Dict[str, Any]], metric: str = "total") -> Dict[str, Any]:
+    """
+    Given best-per-algo dict, pick global best under metric and also second best etc.
+    metric in {total, prefill, decode}
+    """
+    items = []
+    for algo, r in best_per_algo.items():
+        t = _get_metric_time(r, metric)
+        if np.isfinite(t):
+            items.append((algo, t, r))
+    if not items:
+        return {}
+
+    items.sort(key=lambda x: x[1])
+    best_algo, best_time, best_r = items[0]
+    second_algo, second_time, second_r = (items[1] if len(items) > 1 else (None, np.nan, {}))
+
+    # tie detection (very small tolerances)
+    eps_abs = 1e-12
+    eps_rel = 1e-6
+    tol = max(eps_abs, eps_rel * max(1.0, abs(best_time)))
+    tie_algos = [algo for algo, t, _ in items if abs(t - best_time) <= tol]
+
+    return {
+        "best_algo": best_algo,
+        "best_time_s": best_time,
+        "best_r": best_r,
+        "second_algo": second_algo,
+        "second_time_s": second_time,
+        "second_r": second_r,
+        "is_tie": int(len(tie_algos) > 1),
+        "tie_algos": "|".join(sorted(tie_algos)),
+        "n_algos": len(items),
+    }
+
+
+def load_best_algo_row(file_path: str) -> Optional[Dict[str, Any]]:
+    """
+    One row per JSON configuration:
+      - which algo is best (min total_time_s)
+      - second best & margin
+      - workload + model + hardware fields
+    """
+    with open(file_path, "r", encoding="utf-8") as f:
+        j = json.load(f)
+    cfg = j.get("config", {})
+    results = j.get("results", [])
+    if not results:
+        return None
+
+    best_per_algo = pick_best_per_algo(results)
+
+    # pick best for total / prefill / decode
+    p_total = pick_best_algo(best_per_algo, metric="total")
+    p_prefill = pick_best_algo(best_per_algo, metric="prefill")
+    p_decode = pick_best_algo(best_per_algo, metric="decode")
+    if not p_total:
+        return None
+
+    row = {
+        "file_path": file_path,
+        "result_dir": cfg.get("result_dir"),
+
+        "model_family": cfg.get("model_family"),
+        "model_variant": cfg.get("model_variant"),
+        "model_size_b": parse_model_size_b(cfg.get("model_variant")),
+        "dtype": cfg.get("dtype"),
+
+        "batch": cfg.get("batch"),
+        "prefill_len": cfg.get("prefill_len"),
+        "decode_len": cfg.get("decode_len"),
+        "decode_sample_stride": cfg.get("decode_sample_stride"),
+    }
+    row.update(infer_hardware(cfg, file_path))
+
+    # workload shape derived features (independent of times)
+    prefill = _to_float(row.get("prefill_len"))
+    decode = _to_float(row.get("decode_len"))
+    if np.isfinite(prefill) and np.isfinite(decode):
+        tt = prefill + decode
+        row["total_tokens"] = tt
+        row["decode_ratio"] = (decode / tt) if tt else np.nan
+        row["prefill_ratio"] = (prefill / tt) if tt else np.nan
+    else:
+        row["total_tokens"] = np.nan
+        row["decode_ratio"] = np.nan
+        row["prefill_ratio"] = np.nan
+
+    # total winner
+    row["best_algo_total"] = p_total["best_algo"]
+    row["best_total_time_s"] = p_total["best_time_s"]
+    row["second_best_algo_total"] = p_total["second_algo"]
+    row["second_best_total_time_s"] = p_total["second_time_s"]
+    row["best_is_tie_total"] = p_total["is_tie"]
+    row["best_tie_algos_total"] = p_total["tie_algos"]
+    if np.isfinite(row["best_total_time_s"]) and np.isfinite(row["second_best_total_time_s"]):
+        row["best_margin_s_total"] = row["second_best_total_time_s"] - row["best_total_time_s"]
+        row["best_margin_pct_total"] = safe_div(row["best_margin_s_total"], row["second_best_total_time_s"])
+    else:
+        row["best_margin_s_total"] = np.nan
+        row["best_margin_pct_total"] = np.nan
+
+    # prefill winner (optional info)
+    row["best_algo_prefill"] = p_prefill["best_algo"] if p_prefill else None
+    row["best_prefill_time_s"] = p_prefill["best_time_s"] if p_prefill else np.nan
+
+    # decode winner (optional info)
+    row["best_algo_decode"] = p_decode["best_algo"] if p_decode else None
+    row["best_decode_time_s"] = p_decode["best_time_s"] if p_decode else np.nan
+
+    # whether HEFT is best
+    row["heft_is_best_total"] = int(row["best_algo_total"] == "heft")
+    row["heft_is_best_decode"] = int(row.get("best_algo_decode") == "heft")
+    row["heft_is_best_prefill"] = int(row.get("best_algo_prefill") == "heft")
+
+    return row
+
+
+def cramers_v(ct: pd.DataFrame) -> float:
+    """
+    Cramér's V association between two categorical variables.
+    Range: [0, 1] (higher => stronger association)
+    """
+    if ct is None or ct.empty:
+        return np.nan
+    obs = ct.to_numpy(dtype=float)
+    n = obs.sum()
+    if n <= 0:
+        return np.nan
+    r, c = obs.shape
+    if r < 2 or c < 2:
+        return 0.0
+    row_sum = obs.sum(axis=1, keepdims=True)
+    col_sum = obs.sum(axis=0, keepdims=True)
+    expected = row_sum @ col_sum / n
+    mask = expected > 0
+    chi2 = ((obs[mask] - expected[mask]) ** 2 / expected[mask]).sum()
+    k = min(r - 1, c - 1)
+    if k <= 0:
+        return 0.0
+    return float(np.sqrt(chi2 / (n * k)))
+
+
+def best_algo_association(best_df: pd.DataFrame, label_col: str, feature_cols: List[str]) -> pd.DataFrame:
+    """Rank features by association strength (Cramér's V) with the best-algo label."""
+    rows = []
+    for feat in feature_cols:
+        if feat not in best_df.columns:
+            continue
+        tmp = best_df[[label_col, feat]].dropna()
+        if tmp.empty:
+            continue
+        ct = pd.crosstab(tmp[label_col].astype(str), tmp[feat].astype(str))
+        rows.append({
+            "label": label_col,
+            "feature": feat,
+            "cramers_v": cramers_v(ct),
+            "n": int(ct.to_numpy().sum()),
+            "n_label": int(ct.shape[0]),
+            "n_feature": int(ct.shape[1]),
+        })
+    return pd.DataFrame(rows).sort_values("cramers_v", ascending=False)
+
+
+def best_algo_conditional_long(best_df: pd.DataFrame, label_col: str, feature_cols: List[str]) -> pd.DataFrame:
+    """
+    Long-form conditional distribution:
+      feature, feature_value, best_algo, count, frac
+    where frac is P(best_algo | feature_value).
+    """
+    all_rows = []
+    for feat in feature_cols:
+        if feat not in best_df.columns:
+            continue
+        tmp = best_df[[label_col, feat]].dropna()
+        if tmp.empty:
+            continue
+        ct = pd.crosstab(tmp[feat].astype(str), tmp[label_col].astype(str))
+        frac = ct.div(ct.sum(axis=1).replace(0, np.nan), axis=0)
+
+        long_count = ct.stack().rename("count").reset_index()
+        long_frac = frac.stack().rename("frac").reset_index()
+        merged = long_count.merge(long_frac, on=[feat, label_col], how="left")
+
+        merged.insert(0, "feature", feat)
+        merged = merged.rename(columns={feat: "feature_value", label_col: "best_algo"})
+        all_rows.append(merged)
+
+    if not all_rows:
+        return pd.DataFrame(columns=["feature", "feature_value", "best_algo", "count", "frac"])
+    out = pd.concat(all_rows, ignore_index=True)
+    out["count"] = pd.to_numeric(out["count"], errors="coerce")
+    out["frac"] = pd.to_numeric(out["frac"], errors="coerce")
+    return out
 
 
 # --------------------------
@@ -568,6 +772,57 @@ def main():
     ).sort_values("mean", ascending=False)
     summary.to_csv(out_dir / "summary_by_baseline.csv")
     print(f"[OK] wrote: {out_dir/'summary_by_baseline.csv'}")
+
+    # --------------------------
+    # Best-algorithm per config analysis (winner = min total_time_s)
+    # --------------------------
+    best_rows = []
+    for fp in files:
+        try:
+            r = load_best_algo_row(str(fp))
+            if r is not None:
+                best_rows.append(r)
+        except Exception as e:
+            print(f"[WARN] failed best-algo parse {fp}: {e}")
+
+    best_df = pd.DataFrame(best_rows)
+    if not best_df.empty:
+        # Normalize numeric columns
+        for c in ["batch", "prefill_len", "decode_len", "decode_sample_stride",
+                  "st", "npu_double", "model_size_b",
+                  "total_tokens", "decode_ratio", "prefill_ratio",
+                  "best_total_time_s", "second_best_total_time_s",
+                  "best_margin_s_total", "best_margin_pct_total",
+                  "best_prefill_time_s", "best_decode_time_s"]:
+            if c in best_df.columns:
+                best_df[c] = pd.to_numeric(best_df[c], errors="coerce")
+
+        # 1) 每个配置“谁最快”
+        best_df.to_csv(out_dir / "best_algo_per_config.csv", index=False)
+        print(f"[OK] wrote: {out_dir/'best_algo_per_config.csv'} (rows={len(best_df)})")
+
+        # 2) 统计“谁最快”出现次数
+        counts = best_df["best_algo_total"].astype(str).value_counts() \
+            .rename_axis("best_algo_total").reset_index(name="count")
+        counts.to_csv(out_dir / "best_algo_total_counts.csv", index=False)
+        print(f"[OK] wrote: {out_dir/'best_algo_total_counts.csv'}")
+
+        # 3) 赢家算法 vs 各变量的关联强度（Cramér's V）
+        assoc_features = [
+            "batch", "prefill_len", "decode_len",
+            "total_tokens", "decode_ratio",
+            "hardware_tag", "pim_size", "npu_double", "st",
+            "model_family", "model_variant", "model_size_b", "dtype"
+        ]
+        assoc = best_algo_association(best_df, "best_algo_total", assoc_features)
+        assoc.to_csv(out_dir / "best_algo_total_assoc_cramersv.csv", index=False)
+        print(f"[OK] wrote: {out_dir/'best_algo_total_assoc_cramersv.csv'}")
+
+        # 4) 条件分布：P(best_algo | feature_value)
+        cond = best_algo_conditional_long(best_df, "best_algo_total", assoc_features)
+        cond.to_csv(out_dir / "best_algo_total_conditional_long.csv", index=False)
+        print(f"[OK] wrote: {out_dir/'best_algo_total_conditional_long.csv'}")
+
 
     # Filter baselines
     if args.baseline.strip().upper() == "ALL":
