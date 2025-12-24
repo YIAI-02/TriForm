@@ -1,0 +1,16 @@
+# --- generated logs/outputs ---
+algorithms/debug_log.txt
+algorithms/output/
+# Python cache
+__pycache__/
+*.py[cod]
+# OS
+.DS_Store
+*/__pycache__/
+*.o
+*.out
+*.log
+data/
+results/
+./algorithms/output
+./figs/

@@ -1,0 +1,5 @@
+[submodule "CENT"]
+	path = submodules/CENT
+	url = https://github.com/Yufeng98/CENT.git
+	ignore = dirty
+

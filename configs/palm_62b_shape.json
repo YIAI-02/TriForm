@@ -1,0 +1,8 @@
+{
+  "type": "palm_62b",
+  "hidden_dim": 8192,
+  "layer_num": 64,
+  "intermediate_dim": 32768,
+  "kv_head_num": 1,
+  "q_head_num": 32
+}

@@ -1,0 +1,13 @@
+{
+  "copy_in": {
+    "alpha_us_per_byte": 0.00019198868599762283,
+    "beta_us": 30.953419408109607,
+    "R2": 0.9972337925440653
+  },
+  "copy_out": {
+    "alpha_us_per_byte": 0.000360129082654844,
+    "beta_us": 2.054889205662019,
+    "R2": 0.9340663962244844
+  },
+  "notes": "Fitted with y = alpha*bytes + beta using auto-identified lines by correlation thresholds."
+}

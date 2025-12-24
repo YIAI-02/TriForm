@@ -1,0 +1,60 @@
+Performing C++ SOURCE FILE Test CMAKE_HAVE_LIBC_PTHREAD failed with the following output:
+Change Dir: /lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/gmake -f Makefile cmTC_31cd4/fast && /usr/bin/gmake  -f CMakeFiles/cmTC_31cd4.dir/build.make CMakeFiles/cmTC_31cd4.dir/build
+gmake[1]: Entering directory '/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_31cd4.dir/src.cxx.o
+/lustre/software/gcc/12.2.0/bin/g++ -DCMAKE_HAVE_LIBC_PTHREAD  -g  -fPIE -o CMakeFiles/cmTC_31cd4.dir/src.cxx.o -c /lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeTmp/src.cxx
+Linking CXX executable cmTC_31cd4
+/usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_31cd4.dir/link.txt --verbose=1
+/lustre/software/gcc/12.2.0/bin/g++  -g  CMakeFiles/cmTC_31cd4.dir/src.cxx.o -o cmTC_31cd4 
+CMakeFiles/cmTC_31cd4.dir/src.cxx.o: In function `main':
+/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeTmp/src.cxx:11: undefined reference to `pthread_create'
+/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeTmp/src.cxx:12: undefined reference to `pthread_detach'
+/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeTmp/src.cxx:13: undefined reference to `pthread_cancel'
+/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeTmp/src.cxx:14: undefined reference to `pthread_join'
+collect2: error: ld returned 1 exit status
+gmake[1]: *** [CMakeFiles/cmTC_31cd4.dir/build.make:99: cmTC_31cd4] Error 1
+gmake[1]: Leaving directory '/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeTmp'
+gmake: *** [Makefile:127: cmTC_31cd4/fast] Error 2
+
+
+Source file was:
+#include <pthread.h>
+
+static void* test_func(void* data)
+{
+  return data;
+}
+
+int main(void)
+{
+  pthread_t thread;
+  pthread_create(&thread, NULL, test_func, NULL);
+  pthread_detach(thread);
+  pthread_cancel(thread);
+  pthread_join(thread, NULL);
+  pthread_atfork(NULL, NULL, NULL);
+  pthread_exit(NULL);
+
+  return 0;
+}
+
+Determining if the function pthread_create exists in the pthreads failed with the following output:
+Change Dir: /lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/gmake -f Makefile cmTC_804f3/fast && /usr/bin/gmake  -f CMakeFiles/cmTC_804f3.dir/build.make CMakeFiles/cmTC_804f3.dir/build
+gmake[1]: Entering directory '/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_804f3.dir/CheckFunctionExists.cxx.o
+/lustre/software/gcc/12.2.0/bin/g++   -g -DCHECK_FUNCTION_EXISTS=pthread_create -fPIE -std=c++2a -o CMakeFiles/cmTC_804f3.dir/CheckFunctionExists.cxx.o -c /lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CheckLibraryExists/CheckFunctionExists.cxx
+Linking CXX executable cmTC_804f3
+/usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_804f3.dir/link.txt --verbose=1
+/lustre/software/gcc/12.2.0/bin/g++  -g -DCHECK_FUNCTION_EXISTS=pthread_create CMakeFiles/cmTC_804f3.dir/CheckFunctionExists.cxx.o -o cmTC_804f3  -lpthreads 
+/usr/bin/ld: cannot find -lpthreads
+collect2: error: ld returned 1 exit status
+gmake[1]: *** [CMakeFiles/cmTC_804f3.dir/build.make:99: cmTC_804f3] Error 1
+gmake[1]: Leaving directory '/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeTmp'
+gmake: *** [Makefile:127: cmTC_804f3/fast] Error 2
+
+
+

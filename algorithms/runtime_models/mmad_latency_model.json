@@ -1,0 +1,32 @@
+{
+  "version": "v1",
+  "block_size": 16,
+  "features": [
+    "tiles",
+    "mn",
+    "sum_b"
+  ],
+  "coefficients": {
+    "b0": -0.12280391001204695,
+    "b_tiles": 0.0005048025562645411,
+    "b_mn": -0.009522253217383038,
+    "b_sum": 0.04467872449138854
+  },
+  "fit_metrics": {
+    "r2": 0.9995306873889314,
+    "mae_us": 0.10721015344783688,
+    "mape_pct": 29.9857010093441,
+    "loocv_mae_us": 1.2335000687665798,
+    "loocv_mape_pct": 62.4004866990523,
+    "n_samples": 7
+  },
+  "source_files": [
+    "core0.cubecore0_code_exe_1x1024x1024.csv",
+    "core0.cubecore0_code_exe_1x2048x2048.csv",
+    "core0.cubecore0_code_exe_32x32x32.csv",
+    "core0.cubecore0_code_exe_64x64x64.csv",
+    "core0.cubecore0_code_exe_64x128x64.csv",
+    "core0.cubecore0_code_exe_127x113x91.csv",
+    "core0.cubecore0_code_exe_128x128x128.csv"
+  ]
+}

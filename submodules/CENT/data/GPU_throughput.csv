@@ -1,0 +1,4 @@
+Model,prefill,decoding,end2end
+Llama2-7B,12497,960,1085
+Llama2-13B,12913,953,1077
+Llama2-70B,3110,917,1006

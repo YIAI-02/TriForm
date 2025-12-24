@@ -1,0 +1,35 @@
+{
+    "hardware": {
+      "devices": [
+        {
+          "name": "CPU0",
+          "type": "cpu",
+          "tflops": 0.0,
+          "mem_bw_GBs":0.0,
+          "mem_capacity_GB": 128
+        },
+        {
+          "name": "NPU0",
+          "type": "npu",
+          "tflops": 24.0,
+          "mem_bw_GBs": 45.0,
+          "mem_capacity_GB": 0.008
+        },
+        {
+          "name": "PIMA0",
+          "type": "pim",
+          "pim_type": "accel",
+          "tflops": 2.4,
+          "mem_bw_GBs": 600.0,
+          "mem_capacity_GB": 8,
+          "pim_read_latency_ns": 5,
+          "pim_write_latency_ns": 30
+        }
+      ],
+      "links": [
+        { "a": "CPU0", "b": "NPU0", "bw_GBs": 45.0 },
+        { "a": "CPU0", "b": "PIMA0", "bw_GBs": 600.0 },
+        { "a":"NPU0", "b":"PIMA0", "bw_GBs": 32.0 }
+      ]
+    }
+  }

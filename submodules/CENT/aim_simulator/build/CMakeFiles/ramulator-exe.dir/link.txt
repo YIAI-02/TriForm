@@ -1,0 +1,1 @@
+/lustre/software/gcc/12.2.0/bin/g++  -g -O3 -DNDEBUG CMakeFiles/ramulator-exe.dir/src/main.cpp.o -o ramulator2  -Wl,-rpath,/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator ../libramulator.so _deps/yaml-cpp-build/libyaml-cpp.a _deps/spdlog-build/libspdlog.a -lpthread 

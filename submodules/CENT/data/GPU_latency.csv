@@ -1,0 +1,4 @@
+Model,End-to-end Latency (s)
+Llama2-7B,42.969
+Llama2-13B,51.468
+Llama2-70B,127.156
