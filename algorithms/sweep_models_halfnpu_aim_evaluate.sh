@@ -6,7 +6,7 @@ shopt -s nullglob
 # Single source of truth
 # =========================
 CONFIG_FILE="${CONFIG_FILE:-./examples/evaluate_len_sweep_config.json}"
-OUTPUT_ROOT="${OUTPUT_ROOT:-./output/experiment_npu}"
+OUTPUT_ROOT="${OUTPUT_ROOT:-./output/experiment_halfnpu}"
 
 # Sweep dims
 MODEL_FAMILY_VARIANTS=(
@@ -21,12 +21,12 @@ DECODES=(128 512 1024 2048)
 
 # Hardware sweep (edit here, or use --hardware_glob)
 HARDWARE_CONFIGS=(
-  ./examples/hardware_config_npu_aim.json
-  ./examples/hardware_config_npu_2aim.json
-  ./examples/hardware_config_npu_4aim.json
-  ./examples/hardware_config_npu_6aim.json
-  ./examples/hardware_config_npu_8aim.json
-  ./examples/hardware_config_npu_10aim.json
+  ./examples/hardware_config_halfnpu_aim.json
+  ./examples/hardware_config_halfnpu_2aim.json
+  ./examples/hardware_config_halfnpu_4aim.json
+  ./examples/hardware_config_halfnpu_6aim.json
+  ./examples/hardware_config_halfnpu_8aim.json
+  ./examples/hardware_config_halfnpu_10aim.json
 )
 
 # Run knobs

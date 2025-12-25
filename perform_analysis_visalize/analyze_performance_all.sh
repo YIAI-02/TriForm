@@ -6,8 +6,8 @@ conda activate fig
 # python analyze_speedup_comparison.py --output-root ../algorithms/output/experiment_npu --out-dir ../figs/experiment_npu
 
 python analyze_heft_statistics.py \
-    --root ../algorithms/output/experiment_npu/hw_npu_aim \
-    --out  ../algorithms/output/experiment_npu/hw_npu_aim_stat_out \
+    --root ../algorithms/output/experiment_2npu/hw_2npu_4aim \
+    --out  ../algorithms/output/experiment_2npu/hw_2npu_4aim_stat_out \
     --baseline ALL\
     --main-algo heft
 

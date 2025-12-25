@@ -14,4 +14,4 @@ cd "$SLURM_SUBMIT_DIR"
 source ~/.bashrc
 conda activate triform
 
-bash sweep_models_2npu_aim_evaluate.sh --jobs 32
+bash sweep_models_halfnpu_aim_evaluate.sh --jobs 32
