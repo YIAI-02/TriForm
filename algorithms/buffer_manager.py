@@ -351,9 +351,10 @@ class GlobalMemoryManager:
     def pim_cache_weight(self, dev_name: str, wid: str, size: int, *, pinned: bool, commit: bool) -> bool:
         st = self.pim_state.get(dev_name)
         if st is None:
-            # Non-PIM path: just use the per-device cache as-is.
-            self.ensure_device_cache(dev_name, capacity_bytes=size)
-            cache = self.device_cache[dev_name]
+            if cache is None:
+                # Best-effort default: at least large enough to hold this single weight.
+                self.ensure_device_cache(dev_name, capacity_bytes=int(size))
+                cache = self.device_cache[dev_name]
             ok = cache.add(wid, int(size), pinned=pinned)
             if ok:
                 cache.touch(wid)
@@ -413,8 +414,11 @@ class GlobalMemoryManager:
             return
 
         # Non-PIM path
-        self.ensure_device_cache(dev_name, capacity_bytes=max(0, int(size)))
-        cache = self.device_cache[dev_name]
+        cache = self.device_cache.get(dev_name)
+        if cache is None:
+            # Best-effort default: at least large enough to hold this weight.
+            self.ensure_device_cache(dev_name, capacity_bytes=max(0, int(size)))
+            cache = self.device_cache[dev_name]
         cache.add(wid, int(size), pinned=pinned)
         cache.touch(wid)
         if pinned:

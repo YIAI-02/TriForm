@@ -11,7 +11,14 @@
       {
         "name": "NPU0",
         "type": "npu",
-        "tflops": 20.0,
+        "tflops": 10.0,
+        "mem_bw_GBs": 51.2,
+        "mem_capacity_GB": 0.003
+      },
+      {
+        "name": "NPU1",
+        "type": "npu",
+        "tflops": 10.0,
         "mem_bw_GBs": 51.2,
         "mem_capacity_GB": 0.003
       },
@@ -40,6 +47,11 @@
       {
         "a": "CPU0",
         "b": "NPU0",
+        "bw_GBs": 32.0
+      },
+      {
+        "a": "CPU0",
+        "b": "NPU1",
         "bw_GBs": 32.0
       },
       {

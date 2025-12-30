@@ -605,157 +605,157 @@ class SchedulerBase:
                     self._ensure_host_store(nid, dev, out_nd, src_fmt, finish, commit=True)
         return float(start), float(finish)
 
-    def _earliest_finish_hybrid(self, g, nid: str, phase: str, commit: bool):
-        """Estimate (or commit) a HYBRID execution of `nid` on one NPU + one PIM.
+    # def _earliest_finish_hybrid(self, g, nid: str, phase: str, commit: bool):
+    #     """Estimate (or commit) a HYBRID execution of `nid` on one NPU + one PIM.
 
-        - Split weights / compute / output by `label.hybrid_ratio` (alpha).
-        - Inputs are assumed needed on both devices (modeled via `_ready_time_for_device`).
-        - Outputs are written back to host in ND format.
+    #     - Split weights / compute / output by `label.hybrid_ratio` (alpha).
+    #     - Inputs are assumed needed on both devices (modeled via `_ready_time_for_device`).
+    #     - Outputs are written back to host in ND format.
 
-        Return dict contains:
-            npu / pim: chosen devices
-            start_npu / start_pim: start times (after deps + device avail)
-            finish: finish time after write-back to host
-            out_dev: host device spec
-            alpha: split ratio
-            npu_detail / pim_detail: breakdown timings
-        """
-        node = g.nodes[nid]
-        if node.name.upper() in ("K_WRITE", "V_WRITE", "KV_WRITE"):
-            # Hybrid not applicable; fall back to per-device handling by caller.
-            return None
-        npu_list = self.cluster.devices_by_type("npu")
-        pim_list = self.cluster.devices_by_type("pim")
-        if not npu_list or not pim_list:
-            raise RuntimeError("HYBRID requires at least one NPU and one PIM in cluster")
-        # TODO: current heuristic picks the first devices. You can override this method to do smarter pairing.
-        npu_dev = npu_list[0]
-        pim_dev = pim_list[0]
+    #     Return dict contains:
+    #         npu / pim: chosen devices
+    #         start_npu / start_pim: start times (after deps + device avail)
+    #         finish: finish time after write-back to host
+    #         out_dev: host device spec
+    #         alpha: split ratio
+    #         npu_detail / pim_detail: breakdown timings
+    #     """
+    #     node = g.nodes[nid]
+    #     if node.name.upper() in ("K_WRITE", "V_WRITE", "KV_WRITE"):
+    #         # Hybrid not applicable; fall back to per-device handling by caller.
+    #         return None
+    #     npu_list = self.cluster.devices_by_type("npu")
+    #     pim_list = self.cluster.devices_by_type("pim")
+    #     if not npu_list or not pim_list:
+    #         raise RuntimeError("HYBRID requires at least one NPU and one PIM in cluster")
+    #     # TODO: current heuristic picks the first devices. You can override this method to do smarter pairing.
+    #     npu_dev = npu_list[0]
+    #     pim_dev = pim_list[0]
 
-        alpha = float(getattr(self.label, "hybrid_ratio", 0.5) or 0.5)
-        alpha = max(0.0, min(1.0, alpha))
-        phase_eff = self._node_phase(g, nid, phase)
-        batch = self._node_batch(g, nid, phase_eff)
-        seq_len = self._node_seq_len(g, nid, phase_eff)
+    #     alpha = float(getattr(self.label, "hybrid_ratio", 0.5) or 0.5)
+    #     alpha = max(0.0, min(1.0, alpha))
+    #     phase_eff = self._node_phase(g, nid, phase)
+    #     batch = self._node_batch(g, nid, phase_eff)
+    #     seq_len = self._node_seq_len(g, nid, phase_eff)
 
-        # Dependency ready times (may reserve links when commit=True)
-        t_ready_npu = float(self._ready_time_for_device(g, nid, npu_dev, phase_eff, commit))
-        t_ready_pim = float(self._ready_time_for_device(g, nid, pim_dev, phase_eff, commit))
-        # Also wait for local device availability
-        start_npu = max(float(self.avail.get(npu_dev.name, 0.0)), t_ready_npu)
-        start_pim = max(float(self.avail.get(pim_dev.name, 0.0)), t_ready_pim)
+    #     # Dependency ready times (may reserve links when commit=True)
+    #     t_ready_npu = float(self._ready_time_for_device(g, nid, npu_dev, phase_eff, commit))
+    #     t_ready_pim = float(self._ready_time_for_device(g, nid, pim_dev, phase_eff, commit))
+    #     # Also wait for local device availability
+    #     start_npu = max(float(self.avail.get(npu_dev.name, 0.0)), t_ready_npu)
+    #     start_pim = max(float(self.avail.get(pim_dev.name, 0.0)), t_ready_pim)
 
-        # If node consumes cached KV, ensure KV load before compute on both sides.
-        if node.name.upper() in ("QK", "SV"):
-            kv_bytes = int(self.cost.estimate_kv_cache_read_bytes(node, batch, seq_len, phase_eff))
-            if kv_bytes > 0:
-                kv_in_pim = bool(getattr(self.label, "kv_in_pim", False))
-                size_nd = self.cost.format_size(kv_bytes, "ND")
-                if kv_in_pim:
-                    pim_devs = self.cluster.devices_by_type("pim")
-                    if pim_devs:
-                        src = min(pim_devs, key=lambda d: self.avail.get(d.name, 0.0))
-                        earliest_src = float(self.avail.get(src.name, 0.0))
-                        # NPU side: transfer from PIM -> NPU
-                        l2s, l2e = self.comm.reserve(src.name, npu_dev.name, size_nd, earliest=max(start_npu, earliest_src), commit=commit, tag="kv_load")
-                        start_npu = max(start_npu, float(l2e))
-                        # PIM side: local read time
-                        start_pim = max(start_pim, max(start_pim, earliest_src) + float(self.cost.activation_read_time_pim(kv_bytes)))
-                        if commit:
-                            self.avail[src.name] = max(self.avail.get(src.name, 0.0), start_pim)
-                else:
-                    host = self.cost.get_host_device()
-                    l2s_n, l2e_n = self.comm.reserve(host.name, npu_dev.name, size_nd, earliest=start_npu, commit=commit, tag="kv_load")
-                    start_npu = max(start_npu, float(l2e_n))
-                    l2s_p, l2e_p = self.comm.reserve(host.name, pim_dev.name, size_nd, earliest=start_pim, commit=commit, tag="kv_load")
-                    start_pim = max(start_pim, float(l2e_p))
+    #     # If node consumes cached KV, ensure KV load before compute on both sides.
+    #     if node.name.upper() in ("QK", "SV"):
+    #         kv_bytes = int(self.cost.estimate_kv_cache_read_bytes(node, batch, seq_len, phase_eff))
+    #         if kv_bytes > 0:
+    #             kv_in_pim = bool(getattr(self.label, "kv_in_pim", False))
+    #             size_nd = self.cost.format_size(kv_bytes, "ND")
+    #             if kv_in_pim:
+    #                 pim_devs = self.cluster.devices_by_type("pim")
+    #                 if pim_devs:
+    #                     src = min(pim_devs, key=lambda d: self.avail.get(d.name, 0.0))
+    #                     earliest_src = float(self.avail.get(src.name, 0.0))
+    #                     # NPU side: transfer from PIM -> NPU
+    #                     l2s, l2e = self.comm.reserve(src.name, npu_dev.name, size_nd, earliest=max(start_npu, earliest_src), commit=commit, tag="kv_load")
+    #                     start_npu = max(start_npu, float(l2e))
+    #                     # PIM side: local read time
+    #                     start_pim = max(start_pim, max(start_pim, earliest_src) + float(self.cost.activation_read_time_pim(kv_bytes)))
+    #                     if commit:
+    #                         self.avail[src.name] = max(self.avail.get(src.name, 0.0), start_pim)
+    #             else:
+    #                 host = self.cost.get_host_device()
+    #                 l2s_n, l2e_n = self.comm.reserve(host.name, npu_dev.name, size_nd, earliest=start_npu, commit=commit, tag="kv_load")
+    #                 start_npu = max(start_npu, float(l2e_n))
+    #                 l2s_p, l2e_p = self.comm.reserve(host.name, pim_dev.name, size_nd, earliest=start_pim, commit=commit, tag="kv_load")
+    #                 start_pim = max(start_pim, float(l2e_p))
         
-        host = self.cost.get_host_device()
-        wid = self._node_weight_id(node)
-        w_total_nd = self._node_weight_size(node)
+    #     host = self.cost.get_host_device()
+    #     wid = self._node_weight_id(node)
+    #     w_total_nd = self._node_weight_size(node)
         
-        # Split weights (ND bytes)
-        w_npu_nd = int(round(float(w_total_nd) * alpha))
-        w_pim_nd = max(0, int(w_total_nd) - w_npu_nd)
+    #     # Split weights (ND bytes)
+    #     w_npu_nd = int(round(float(w_total_nd) * alpha))
+    #     w_pim_nd = max(0, int(w_total_nd) - w_npu_nd)
 
-        # -------- weight load (NPU side) --------
-        w_npu_t = 0.0
-        if wid and w_npu_nd > 0:
-            stub_npu = SimpleNamespace(weight_id=wid, weight_size=w_npu_nd)
-            w_npu_t = float(self._weight_load_time(stub_npu, npu_dev, start_npu, commit))
+    #     # -------- weight load (NPU side) --------
+    #     w_npu_t = 0.0
+    #     if wid and w_npu_nd > 0:
+    #         stub_npu = SimpleNamespace(weight_id=wid, weight_size=w_npu_nd)
+    #         w_npu_t = float(self._weight_load_time(stub_npu, npu_dev, start_npu, commit))
 
-        # -------- weight load (PIM side) --------
-        w_pim_t = 0.0
-        if wid and w_pim_nd > 0:
-            stub_pim = SimpleNamespace(weight_id=wid, weight_size=w_pim_nd)
-            w_pim_t = float(self._weight_load_time(stub_pim, pim_dev, start_pim, commit))
+    #     # -------- weight load (PIM side) --------
+    #     w_pim_t = 0.0
+    #     if wid and w_pim_nd > 0:
+    #         stub_pim = SimpleNamespace(weight_id=wid, weight_size=w_pim_nd)
+    #         w_pim_t = float(self._weight_load_time(stub_pim, pim_dev, start_pim, commit))
 
-        # -------- compute --------
-        t_full_npu = float(self.cost.node_device_cost(node, npu_dev, self.label, batch, seq_len, phase_eff))
-        t_full_pim = float(self.cost.node_device_cost(node, pim_dev, self.label, batch, seq_len, phase_eff))
-        t_npu_compute = t_full_npu * alpha
-        t_pim_compute = t_full_pim * (1.0 - alpha)
-        finish_compute_npu = start_npu + w_npu_t + t_npu_compute
-        finish_compute_pim = start_pim + w_pim_t + t_pim_compute
+    #     # -------- compute --------
+    #     t_full_npu = float(self.cost.node_device_cost(node, npu_dev, self.label, batch, seq_len, phase_eff))
+    #     t_full_pim = float(self.cost.node_device_cost(node, pim_dev, self.label, batch, seq_len, phase_eff))
+    #     t_npu_compute = t_full_npu * alpha
+    #     t_pim_compute = t_full_pim * (1.0 - alpha)
+    #     finish_compute_npu = start_npu + w_npu_t + t_npu_compute
+    #     finish_compute_pim = start_pim + w_pim_t + t_pim_compute
         
-        # -------- output write-back to host (ND) --------
-        out_read_nd, out_write_nd = self.cost.estimate_activation_bytes(node, batch, seq_len, phase_eff)
-        out_nd = max(int(out_write_nd), int(out_read_nd))
+    #     # -------- output write-back to host (ND) --------
+    #     out_read_nd, out_write_nd = self.cost.estimate_activation_bytes(node, batch, seq_len, phase_eff)
+    #     out_nd = max(int(out_write_nd), int(out_read_nd))
 
-        out_npu_nd = int(round(float(out_nd) * alpha))
-        out_pim_nd = max(0, int(out_nd) - out_npu_nd)
+    #     out_npu_nd = int(round(float(out_nd) * alpha))
+    #     out_pim_nd = max(0, int(out_nd) - out_npu_nd)
 
-        npu_w_end = float(finish_compute_npu)
-        pim_w_end = float(finish_compute_pim)
+    #     npu_w_end = float(finish_compute_npu)
+    #     pim_w_end = float(finish_compute_pim)
 
-        if out_npu_nd > 0 and alpha > 0.0:
-            size_nd = self.cost.format_size(out_npu_nd, "ND")
-            _, l2e = self.comm.reserve(npu_dev.name, host.name, size_nd, earliest=finish_compute_npu, commit=commit)
-            npu_w_end = float(l2e)
+    #     if out_npu_nd > 0 and alpha > 0.0:
+    #         size_nd = self.cost.format_size(out_npu_nd, "ND")
+    #         _, l2e = self.comm.reserve(npu_dev.name, host.name, size_nd, earliest=finish_compute_npu, commit=commit)
+    #         npu_w_end = float(l2e)
 
-        if out_pim_nd > 0 and (1.0 - alpha) > 0.0:
-            size_nd = self.cost.format_size(out_pim_nd, "ND")
-            _, l2e = self.comm.reserve(pim_dev.name, host.name, size_nd, earliest=finish_compute_pim, commit=commit)
-            pim_w_end = float(l2e)
+    #     if out_pim_nd > 0 and (1.0 - alpha) > 0.0:
+    #         size_nd = self.cost.format_size(out_pim_nd, "ND")
+    #         _, l2e = self.comm.reserve(pim_dev.name, host.name, size_nd, earliest=finish_compute_pim, commit=commit)
+    #         pim_w_end = float(l2e)
 
-        finish = float(max(npu_w_end, pim_w_end))
+    #     finish = float(max(npu_w_end, pim_w_end))
 
-        npu_detail = {
-            "start": float(start_npu),
-            "weight_end": float(start_npu + w_npu_t),
-            "compute_end": float(finish_compute_npu),
-            "output_end": float(npu_w_end),
-        }
-        pim_detail = {
-            "start": float(start_pim),
-            "weight_end": float(start_pim + w_pim_t),
-            "compute_end": float(finish_compute_pim),
-            "output_end": float(pim_w_end),
-        }
+    #     npu_detail = {
+    #         "start": float(start_npu),
+    #         "weight_end": float(start_npu + w_npu_t),
+    #         "compute_end": float(finish_compute_npu),
+    #         "output_end": float(npu_w_end),
+    #     }
+    #     pim_detail = {
+    #         "start": float(start_pim),
+    #         "weight_end": float(start_pim + w_pim_t),
+    #         "compute_end": float(finish_compute_pim),
+    #         "output_end": float(pim_w_end),
+    #     }
 
-        if commit:
-            # Only occupy devices that actually do work
-            if alpha > 0.0:
-                self.avail[npu_dev.name] = finish
-            if (1.0 - alpha) > 0.0:
-                self.avail[pim_dev.name] = finish
+    #     if commit:
+    #         # Only occupy devices that actually do work
+    #         if alpha > 0.0:
+    #             self.avail[npu_dev.name] = finish
+    #         if (1.0 - alpha) > 0.0:
+    #             self.avail[pim_dev.name] = finish
 
-            self._node_finish_time[nid] = finish
-            self._node_placement[nid] = host.name #hybrid reduce to host
-            self._node_out_fmt[nid] = "ND"
-            self._node_host_store_end[nid] = finish
+    #         self._node_finish_time[nid] = finish
+    #         self._node_placement[nid] = host.name #hybrid reduce to host
+    #         self._node_out_fmt[nid] = "ND"
+    #         self._node_host_store_end[nid] = finish
         
-        return {
-            "npu": npu_dev,
-            "pim": pim_dev,
-            "alpha": alpha,
-            "start_npu": float(start_npu),
-            "start_pim": float(start_pim),
-            "finish": finish,
-            "out_dev": host,
-            "npu_detail": npu_detail,
-            "pim_detail": pim_detail,
-        }
+    #     return {
+    #         "npu": npu_dev,
+    #         "pim": pim_dev,
+    #         "alpha": alpha,
+    #         "start_npu": float(start_npu),
+    #         "start_pim": float(start_pim),
+    #         "finish": finish,
+    #         "out_dev": host,
+    #         "npu_detail": npu_detail,
+    #         "pim_detail": pim_detail,
+    #     }
 
     def _after_commit_consume_predecessors(self, g: TaskGraph, nid: str) -> None:
         for u in g.predecessors(nid):
@@ -1512,7 +1512,6 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
         super().__init__(cluster, cost, label, batch, seq_len, buffer)
 
         # Near-future plan hints used by the lookahead consistency penalty.
-        # We keep insertion order (Python 3.7+ dict preserves order) and evict
         # the oldest hints when exceeding SCHED_JOINT_LK_PLAN_HINT_MAX.
         self._plan_hint: Dict[str, str] = {}
         self._rng = random.Random(rand_seed)
@@ -1634,7 +1633,7 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
         phase: str,
         H: int,
     ) -> List[str]:
-        """Heaviest-edge successor chain (Eq. 17) with a small rank_u tie-breaker."""
+        """Heaviest-edge successor chain with a small rank_u tie-breaker."""
         H = max(1, int(H))
         chain: List[str] = [start]
         eps = 1e-6
@@ -1798,6 +1797,7 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
         # Enumerate a constant number of patterns (<= 2^(H-1)).
         for types_combo in itertools.product(*type_options):
             devs: List[DeviceSpec] = [first_dev]
+
             valid = True
             for t in types_combo:
                 rep = rep_by_type.get(t)
