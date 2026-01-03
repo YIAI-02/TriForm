@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # sweep_hefthint.py
 '''
- python3 sweep_hefthint.py   --mode grid   --gamma 0 0.2 0.4 0.6   --lambda_ 0 1 1.5 2 2.5 3 4   --eta 0 --objective total   --outdir ./output/sweep_hefthint_manual_comm_16   --resume
+ python3 sweep_hefthint.py   --mode grid   --gamma 0 0.2 0.4 0.6   --lambda_ 0 1 1.5 2 2.5 3 4   --eta 0 --objective total   --outdir ./output/sweep_hefthint_manual_2aim   --resume
 '''
 import argparse
 import csv

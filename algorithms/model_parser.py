@@ -64,7 +64,7 @@ def parse_model_shape_from_file(family: str, variant: str, batch: int, max_seq_l
         setattr(shape, "moe_imbalance_factor", moe_imbalance_factor)
     return shape
 
-def build_graph(cfg: Dict[str, Any], pim_shards: int = None, pim_partition_dim: str = None):
+def build_graph(cfg: Dict[str, Any], pim_shards: int = None, split_by: str = None):
     """
     Build a unified task graph that works for both prefill and decode.
     The graph structure is phase-independent; only runtime costs vary.
@@ -82,17 +82,20 @@ def build_graph(cfg: Dict[str, Any], pim_shards: int = None, pim_partition_dim: 
 
     # Partition controls (optional): used for building head-sharded graphs.
     part_dim = str(
-        pim_partition_dim if pim_partition_dim is not None
-        else cfg.get('pim_partition_dim', cfg.get('kv_partition_dim', 'layer')) or 'layer'
+        split_by if split_by is not None
+        else cfg.get('split_by', 'head') or 'head'
     ).strip().lower()
+
     if pim_shards is None:
         try:
             pim_shards = int(cfg.get('num_pim', cfg.get('pim_count', 1)) or 1)
         except Exception:
             pim_shards = 1
+    try:
+        shape.split_by = part_dim  # 'head_num' 会在 model_definition 里 normalize 成 'head'
+        if "head" in part_dim:
+            shape.split_shards = int(pim_shards or 0)
+    except Exception:
+        pass
 
-    return md.build(
-        shape,
-        dtype_bytes=dtype_bytes
-    ), shape
-
+    return md.build(shape, dtype_bytes=dtype_bytes), shape

@@ -13,7 +13,7 @@ from buffer_manager import GlobalMemoryManager
 from model_parser import build_graph
 from model_definition import split_even
 
-from config import DEFAULT_CONFIG, FORMAT_TUNING_MAX_PASSES, FORMAT_TUNING_TIME_EPS, FORMAT_TUNING_MAP_EPS, SA_ENABLE, SA_T0, SA_ALPHA, SA_FLIP_PROB, PIM_STATIC_ALLOC_RATIO,setup_logging
+from config import FORMAT_TUNING_MAX_PASSES, FORMAT_TUNING_TIME_EPS, FORMAT_TUNING_MAP_EPS, SA_ENABLE, SA_T0, SA_ALPHA, SA_FLIP_PROB, PIM_STATIC_ALLOC_RATIO,setup_logging
 from plan_label import PlanLabel
 from scheduler import (
     HEFTScheduler,
@@ -67,12 +67,32 @@ def _build_tag(cfg: dict) -> str:
         pass
     return "_".join(parts)
 
+def _infer_split_by_from_cfg(cfg: Dict) -> str:
+    v = cfg["split_by"]
+    v = (str(v).strip().lower() if v is not None else "")
+    if v in ("head", "heads", "head_num", "headnum"):
+        return "head"
+    return "layer"
+
+
+def _graph_pim_shards_arg(cfg: Dict, cluster: Cluster) -> int:
+    user_cap = cfg["split_shards"]
+    if user_cap is not None and int(user_cap) > 0:
+        return int(user_cap)
+
+    try:
+        pim_cnt = len(cluster.devices_by_type("pim")) or 1
+    except Exception:
+        pim_cnt = 1
+    return max(1, int(pim_cnt))
+
+
 def plan_memory_and_label(cfg: Dict, cluster: Cluster) -> PlanLabel:
     """
     PIM 内存规划：固定使用 KV 优先策略，
     并保证 KV+静态权重总和不超过 PIM 总容量上限 PIM_STATIC_ALLOC_RATIO。
     """
-    part_dim = str(cfg.get('pim_partition_dim', cfg.get('kv_partition_dim', 'layer')) or 'layer').strip().lower()
+    part_dim = str(cfg.get('split_by', 'head')).strip().lower()
 
     pim_all = cluster.devices_by_type("pim")
     pima_devs = [d for d in pim_all if (getattr(d, "pim_type", "accel") or "accel").lower() == "accel"]
@@ -81,8 +101,7 @@ def plan_memory_and_label(cfg: Dict, cluster: Cluster) -> PlanLabel:
         names = ",".join(d.name for d in pimd_devs)
         raise ValueError(f"PIMD not supported for memory planning; found: {names}. Please switch to PIMA devices.")
 
-    # build graph with actual PIM count to keep head shards consistent
-    g, shape = build_graph(cfg, pim_shards=len(pima_devs) if pima_devs else 1, pim_partition_dim=part_dim)
+    g, shape = build_graph(cfg, pim_shards=_graph_pim_shards_arg(cfg, cluster), split_by=part_dim)
     # if model doesn't implement head sharding, fall back
     requested_head = part_dim in ("head_num","head","heads")
     graph_has_head = any(
@@ -90,7 +109,7 @@ def plan_memory_and_label(cfg: Dict, cluster: Cluster) -> PlanLabel:
         for n in g.nodes.values()
     )
     if requested_head and not graph_has_head:
-        logger.warning("[PIM-PLAN] pim_partition_dim=head_num requested but graph is not head-sharded; falling back to layer partitioning.")
+        logger.warning("[PIM-PLAN] split_by=head_num requested but graph is not head-sharded; falling back to layer partitioning.")
         part_dim = "layer"    
 
     dtype_bytes = int(DTYPE_BYTES.get(cfg.get('dtype', 'fp16'), 2))
@@ -131,7 +150,7 @@ def plan_memory_and_label(cfg: Dict, cluster: Cluster) -> PlanLabel:
     #   - layer    : round-robin by layer (original behavior)
     #   - head_num : round-robin by KV head (enables intra-layer parallelism)
     # ---------------------------------------------------------------------
-    parallel_dim = str(cfg.get('pim_partition_dim', cfg.get('parallel_dim', 'layer')) or 'layer').lower()
+    parallel_dim = str(cfg.get('split_by', 'head')).lower()
     pima_rr = sorted(pima_devs, key=lambda d: str(d.name))
     pim_bytes_by_name = {d.name: int(d.mem_capacity_GB * (1024**3)) for d in pima_rr}
     kv_layer_to_pim: Dict[int, str] = {}
@@ -143,12 +162,18 @@ def plan_memory_and_label(cfg: Dict, cluster: Cluster) -> PlanLabel:
 
     if pima_rr:
         if parallel_dim in ("head", "heads", "head_num", "headnum"):
-            # Map KV heads to PIMs, same mapping reused for all layers.
-            for h in range(max(1, n_kv_heads)):
-                pname = pima_rr[h % len(pima_rr)].name
-                kv_head_to_pim[int(h)] = str(pname)
-                # Each KV head exists in *every* layer.
-                kv_bytes_by_pim[str(pname)] = int(kv_bytes_by_pim.get(str(pname), 0) + kv_bytes_per_head * layers)
+            # Map KV heads to PIMs using *contiguous head ranges*.
+            kv_shards = max(1, min(int(n_kv_heads), len(pima_rr)))
+            kv_sizes = split_even(int(n_kv_heads), int(kv_shards))
+            h0 = 0
+            for sid, sz in enumerate(kv_sizes):
+                if int(sz) <= 0:
+                    continue
+                pname = pima_rr[int(sid) % len(pima_rr)].name
+                for h in range(int(h0), int(h0 + sz)):
+                    kv_head_to_pim[int(h)] = str(pname)
+                kv_bytes_by_pim[str(pname)] = int(kv_bytes_by_pim.get(str(pname), 0) + kv_bytes_per_head * layers * int(sz))
+                h0 += int(sz)
         else:
             # Original: round-robin by layer.
             for l in range(layers):
@@ -260,18 +285,11 @@ def simulate_decode_progressive(sched: SchedulerBase, cfg: Dict, graph: TaskGrap
     global_end  = float(prefill_end)
     steps_serialized: List[Dict] = []
 
-    # 取有效 stride（cfg 优先，其次 DEFAULT_CONFIG，最后 16）
-    try:
-        from config import DEFAULT_CONFIG
-        default_stride = int(DEFAULT_CONFIG.get('decode_sample_stride', 16))
-    except Exception:
-        default_stride = 32
-    stride = default_stride
     if isinstance(cfg, dict):
         try:
             stride = int(cfg.get('decode_sample_stride', default_stride))
         except Exception:
-            stride = default_stride
+            stride = 64
     # 精确仿真
     if stride <= 1:
         for t in range(decode_len):
@@ -387,13 +405,13 @@ def run(cfg: Dict):
     weight_format_path = Path(cfg.get('weight_format_json') or (result_dir / 'weight_storage_suggestion.json'))
 
     cluster = demo_cluster(cfg)
+    _apply_graph_split_env(cfg)
     pim_config_path = Path(cfg['pim_config_path'])
     gb_config_path = Path(cfg['gb_config_path'])
     ramulator_config_path = Path(cfg['ramulator_config_path'])
     prefill_len = int(cfg.get('prefill_len', 128))
     batch = int(cfg.get('batch', 1))
-    graph, shape = build_graph(cfg, pim_shards=len(cluster.devices_by_type('pim')) or 1,
-                               pim_partition_dim=cfg.get('pim_partition_dim', cfg.get('kv_partition_dim')))
+    graph, shape = build_graph(cfg, pim_shards=_graph_pim_shards_arg(cfg, cluster),split_by=cfg.get('split_by', "head"))
     model_dict = _make_shared_model_dict(dim=int(getattr(shape, 'dim', 128)), n_heads=int(getattr(shape, 'n_heads', 1)), n_kv_heads=int(getattr(shape, 'n_kv_heads', 1)), ffn_dim=int(getattr(shape, 'ffn_dim', 512)), seqlen=prefill_len)
     sim_log_file = cfg.get('simulation_log_file', str(result_dir / 'pim_simulation.txt'))
     npu_fast_mode = bool(cfg.get('npu_fast_mode', False))
@@ -741,8 +759,8 @@ def _eval_one_baseline(cfg: Dict, policy: str) -> Dict:
     reset_simulation_logger()
 
     cluster = demo_cluster(cfg)
-    graph, shape = build_graph(cfg, pim_shards=len(cluster.devices_by_type('pim')) or 1,
-                               pim_partition_dim=cfg.get('pim_partition_dim', cfg.get('kv_partition_dim')))
+    graph, shape = build_graph(cfg, pim_shards=_graph_pim_shards_arg(cfg, cluster),
+                               split_by=cfg.get('split_by', "head"))
 
     batch = int(cfg.get("batch", 1))
     prefill_len = int(cfg.get("prefill_len", 128))
@@ -899,7 +917,7 @@ def _run_strategy_once(strategy: str, cfg: Dict, *, shared_graph=None, shared_sh
     if shared_graph is not None and shared_shape is not None:
         graph, shape = shared_graph, shared_shape
     else:
-        graph, shape = build_graph(cfg)
+        graph, shape = build_graph(cfg, pim_shards=_graph_pim_shards_arg(cfg, cluster), split_by=cfg.get('split_by', "head"))
 
     batch = int(cfg.get("batch", 1))
     prefill_len = int(cfg.get("prefill_len", 128))
@@ -1114,7 +1132,8 @@ def evaluate_suite(cfg: Dict, *, algos: List[str], baselines: List[str], result_
         if not a: continue
         if a not in alist: alist.append(a)
     # Build once to share across algos
-    shared_graph, shared_shape = build_graph(cfg)
+    cluster = demo_cluster(cfg)
+    shared_graph, shared_shape = build_graph(cfg, pim_shards=_graph_pim_shards_arg(cfg, cluster), split_by=cfg.get('split_by', "head"))
     for a in alist:
         algo_dir = _ensure_dir(base_dir / f"algo_{a}")
         try: 
@@ -1171,10 +1190,8 @@ def parse_args():
                          help='Algo list, e.g. "heft,sa,ga" or single name')
     sp_eval.add_argument('--baselines', type=str,
                          help='Baseline list, e.g. "pd,weights_on_pim,attn_on_pim"')
-    sp_eval.add_argument('--npu_fast_mode', action='store_true')
-    sp_eval.add_argument('--pim_fast_mode', action='store_true')
-    sp_eval.add_argument('--pim_partition_dim', type=str, choices=['layer','head_num'], default=None,
-                         help='Partition dimension across multiple PIMs: "layer" or "head_num".')
+    sp_eval.add_argument('--npu_fast_mode', action='store_true',default=None)
+    sp_eval.add_argument('--pim_fast_mode', action='store_true',default=None)
 
     # weight-suggest mode: multi-pass SA to suggest weight formats
     sp_ws = sub.add_parser('weight-suggest', help='Run multi-pass SA to suggest weight formats; no baselines.')
@@ -1195,9 +1212,7 @@ def parse_args():
     sp_ws.add_argument('--best_summary_json', type=str, help='Override path for best pass summary JSON.')
     sp_ws.add_argument('--weight_format_json', type=str, help='Override path for accepted weight format JSON.')
     sp_ws.add_argument('--npu_fast_mode', action='store_true')
-    sp_ws.add_argument('--pim_fast_mode', action='store_true')
-    sp_ws.add_argument('--pim_partition_dim', type=str, choices=['layer','head_num'], default=None,
-                       help='Partition dimension across multiple PIMs: "layer" or "head_num".')    
+    sp_ws.add_argument('--pim_fast_mode', action='store_true')   
 
     args, unknown = parser.parse_known_args()
     if args.mode is None:
@@ -1225,11 +1240,10 @@ def _normalize_list_field(val) -> list[str]:
 def _load_cfg_from_json(path: str) -> Dict:
     with open(path, 'r', encoding='utf-8') as f:
         raw = json.load(f)
-    cfg = dict(DEFAULT_CONFIG)
-    if isinstance(raw, dict):
-        cfg.update(raw)
-    return cfg
-
+    if not isinstance(raw, dict):
+        raise ValueError(f"Config JSON must be an object/dict, got: {type(raw).__name__}")
+    # cfg 完全由 JSON 决定
+    return dict(raw)
 
 def main():
     args = parse_args()
@@ -1255,7 +1269,8 @@ def main():
             'weight_format_json',
             'npu_fast_mode',
             'pim_fast_mode',
-            'pim_partition_dim',
+            'split_by',
+            'split_shards',
         ]
         for key in override_fields:
             val = getattr(args, key, None)

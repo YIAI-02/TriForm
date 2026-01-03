@@ -2,6 +2,8 @@
   "pim_config_path": "./aim_simulator/PIM_AiM.json",
   "gb_config_path": "./aim_simulator/gb.json",
   "ramulator_config_path": "./aim_simulator/example.yaml",
-  "algo": ["heft"],
-  "baselines": ["ianus","attacc","facil","pd","weights_on_pim","attn_on_pim"]
+  "algo": ["heft,hefthint"],
+  "baselines": ["ianus","attacc","facil","pd","weights_on_pim","attn_on_pim"],
+  "split_by": "head",
+  "split_shards": 8
 }

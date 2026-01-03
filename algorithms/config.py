@@ -1,22 +1,5 @@
 # config.py
 import logging
-# =========================
-# Default model/run config
-# =========================
-DEFAULT_CONFIG = {
-    "model_family": "qwen",
-    "model_variant": "7b",
-    "dtype": "fp16",
-    "batch": 4,
-    "prefill_len": 128,
-    "decode_len": 1024,
-    "decode_sample_stride": 32,   # decode 采样步长
-    "pim_config_path":"./aim_simulator/pim.json",
-    "gb_config_path":"./aim_simulator/gb.json",
-    "ramulator_config_path":"./aim_simulator/example.yaml",
-    "pim_partition_dim": "layer",
-}
-
 
 # =========================
 # Hybrid scheduling params

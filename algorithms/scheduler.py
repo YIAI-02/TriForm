@@ -71,7 +71,11 @@ class CommManager:
         bw = self.cluster.get_link_bw(src, dst) * 1024**3
         ch_end = self.timeline_end.get(key, 0.0)
         start = max(ch_end, earliest)
-        dt = 0.0 if bw <= 0 else bytes_amount / bw
+        if bw <= 0 and src != dst and bytes_amount > 0:
+            # Invalid direct reservation on a missing link: model as impossible.
+            dt = float("inf")
+        else:
+            dt = 0.0 if bw <= 0 else bytes_amount / bw
         end = start + dt
         if commit:
             self.timeline_end[key] = end
@@ -238,9 +242,11 @@ class SchedulerBase:
             # Fallback: derive from q_head_id if present.
             if "q_head_id" in attrs and attrs.get("q_head_id") is not None:
                 qhid = int(attrs.get("q_head_id"))
-                total_kv = int(attrs.get("n_kv_heads_total", attrs.get("kv_heads", 0)) or 0)
-                if total_kv > 0:
-                    return int(qhid % total_kv)
+                total_q = int(attrs.get("n_heads", attrs.get("q_heads", 0)) or 0)
+                total_kv = int(attrs.get("n_kv_heads", attrs.get("kv_heads", attrs.get("n_kv_heads", 0))) or 0)
+                if total_q > 0 and total_kv > 0:
+                    qhid = max(0, min(qhid, total_q - 1))
+                    return int((qhid * total_kv) // total_q)
         except Exception:
             return None
         return None
@@ -326,10 +332,30 @@ class SchedulerBase:
         part_dim = str(getattr(self.label, "kv_partition_dim", "layer") or "layer").lower()
         name: Optional[str] = None
         if part_dim in ("head", "heads", "head_num", "headnum"):
-            hid = self._node_kv_head_id(node)
-            if hid is None:
-                return None
-            name = self._kv_mapped_pim_name_for_head(int(hid))
+            # Head-partitioned KV cache: a node may depend on *multiple* KV heads (GQA).
+            # If they all map to the same PIM, return that PIM; otherwise return None.
+            try:
+                attrs = getattr(node, "attrs", None)
+            except Exception:
+                attrs = None
+            kv_head_ids = None
+            if isinstance(attrs, Mapping):
+                kv_head_ids = attrs.get("kv_head_ids")
+            if isinstance(kv_head_ids, (list, tuple, set)) and kv_head_ids:
+                pim_names = set()
+                for hid in kv_head_ids:
+                    pn = self._kv_mapped_pim_name_for_head(int(hid))
+                    if pn:
+                        pim_names.add(str(pn))
+                if len(pim_names) == 1:
+                    name = next(iter(pim_names))
+                else:
+                    return None
+            else:
+                hid = self._node_kv_head_id(node)
+                if hid is None:
+                    return None
+                name = self._kv_mapped_pim_name_for_head(int(hid))
         else:
             lid = self._node_layer_id(node)
             if lid is None:
@@ -413,7 +439,36 @@ class SchedulerBase:
                 return str(getattr(dev, "name", "")) == str(getattr(mapped, "name", ""))
             return True
 
-        # ---- 1) operator-level allow-list ----
+        # ---- 1) explicit PIM pinning for head-sharded ops (RR mapping) ----
+        # Model-definition can attach:
+        #   - attrs['pim_target'] or attrs['pim_target_name'] : explicit device name
+        #   - attrs['pim_target_idx']                         : RR index into PIM devices
+        #
+        # If present, we hard-pin the node to that PIM device. This is crucial for
+        # head-parallel graphs; otherwise the scheduler may pack all shards onto one PIM.
+        try:
+            attrs = getattr(node, "attrs", None)
+        except Exception:
+            attrs = None
+
+        if isinstance(attrs, Mapping):
+            tgt_name = attrs.get("pim_target") or attrs.get("pim_target_name")
+            tgt_idx = attrs.get("pim_target_idx")
+            if tgt_name is not None or tgt_idx is not None:
+                if str(getattr(dev, "type", "")).lower() == "pim":
+                    pim_devs = sorted(self.cluster.devices_by_type("pim"), key=lambda d: str(getattr(d, "name", "")))
+                    if not pim_devs:
+                        return False
+                    if tgt_name is not None:
+                        return str(getattr(dev, "name", "")) == str(tgt_name)
+                    try:
+                        idx = int(tgt_idx)
+                    except Exception:
+                        idx = 0
+                    idx = idx % len(pim_devs)
+                    return str(getattr(dev, "name", "")) == str(getattr(pim_devs[idx], "name", ""))
+                    
+        # ---- 2) operator-level allow-list ----
         ok = True
         allowed = getattr(node, "allowed", None)
         if isinstance(allowed, Mapping):
@@ -427,7 +482,7 @@ class SchedulerBase:
         if not ok:
             return False
 
-        # ---- 2) KV mapping restriction (multi-PIM RR) ----
+        # ---- 3) KV mapping restriction (multi-PIM RR) ----
         # We already handled KV_WRITE above.
         try:
             if not kv_in_pim:
@@ -493,9 +548,6 @@ class SchedulerBase:
             )
 
             if kv_in_pim:
-                # Multi-PIM KV cache: KV of each layer is stored on a specific PIM
-                # (round-robin mapping from the memory planner). So the KV_WRITE must
-                # target that mapped PIM (and we do NOT synchronize all PIM devices).
                 pim_devs = self.cluster.devices_by_type("pim")
                 if not pim_devs:
                     raise RuntimeError("kv_in_pim is True but no PIM device exists")
@@ -550,30 +602,99 @@ class SchedulerBase:
                 if kv_in_pim:
                     pim_devs = self.cluster.devices_by_type("pim")
                     if pim_devs:
-                        # Read KV from the mapped PIM for this layer.
-                        src = self._kv_pim_for_node(node) or min(pim_devs, key=lambda d: self.avail.get(d.name, 0.0))
-                        earliest_kv = max(float(self.avail.get(src.name, 0.0)), float(ready))
+                        # Head-partitioned KV (GQA/MQA) may require reading KV from multiple PIMs.
+                        # We group by source PIM and model the slowest transfer/read as the gating time.
+                        part_dim = self._kv_partition_dim()
+                        attrs = getattr(node, "attrs", {}) or {}
 
-                        if str(getattr(dev, "type", "")).lower() == "pim" and str(getattr(dev, "name", "")) == str(src.name):
-                            # Local PIM read.
-                            kv_time = float(self.cost.activation_read_time_pim(kv_bytes))
-                            kv_ready = max(kv_ready, earliest_kv + kv_time)
-                            if commit:
-                                self.avail[src.name] = float(kv_ready)
-                        else:
-                            # Transfer KV from src PIM -> target device (NPU/CPU/or another PIM).
-                            size_src = self.cost.format_size(int(kv_bytes), self.cost.device_preferred_fmt(src))
-                            _, l2e = self.comm.reserve(src.name, dev.name, size_src, earliest=earliest_kv, commit=commit, tag="kv_load")
-                            kv_ready = max(kv_ready, float(l2e))
+                        src_head_counts: Dict[str, int] = {}
+                        if part_dim in ("head", "heads", "head_num", "headnum"):
+                            kv_head_ids = attrs.get("kv_head_ids") #本次attention 要用到的kv head
+                            if isinstance(kv_head_ids, (list, tuple, set)) and kv_head_ids:
+                                for hid in kv_head_ids:
+                                    pn = self._kv_mapped_pim_name_for_head(int(hid))
+                                    if pn:
+                                        src_head_counts[str(pn)] = src_head_counts.get(str(pn), 0) + 1
+
+                        # Fallback to single mapped PIM (layer-partition or missing kv_head_ids)
+                        if not src_head_counts:
+                            src = self._kv_pim_for_node(node) or min(pim_devs, key=lambda d: self.avail.get(d.name, 0.0))
+                            if src is not None:
+                                src_head_counts[str(src.name)] = 1
+
+                        total_heads = int(sum(src_head_counts.values()))
+                        if total_heads <= 0:
+                            total_heads = 1
+
+                        # Split bytes proportionally by head counts (kv_bytes already corresponds to the KV-head subset).
+                        remaining = int(kv_bytes)
+                        items = list(sorted(src_head_counts.items(), key=lambda x: x[0]))
+                        for i, (src_name, hcnt) in enumerate(items):
+                            if i == len(items) - 1:
+                                share = remaining
+                            else:
+                                share = int((int(kv_bytes) * int(hcnt)) // total_heads)
+                                share = max(0, min(share, remaining))
+                            remaining -= share
+                            if share <= 0:
+                                continue
+
+                            src = self.cluster.devices.get(str(src_name))
+                            if src is None:
+                                continue
+                            earliest_kv = max(float(self.avail.get(src.name, 0.0)), float(ready))
+
+                            if str(getattr(dev, "type", "")).lower() == "pim" and str(getattr(dev, "name", "")) == str(src.name):
+                                # Local PIM KV read.
+                                kv_time = float(self.cost.activation_read_time_pim(share))
+                                local_end = earliest_kv + kv_time
+                                kv_ready = max(kv_ready, local_end)
+                                if commit:
+                                    self.avail[src.name] = max(float(self.avail.get(src.name, 0.0)), float(local_end))
+                            else:
+                                # Transfer KV from src PIM -> target device.
+                                t_mem = 0.0
+                                if str(getattr(src, "type", "")).lower() == "pim":
+                                    t_mem = float(self.cost.activation_read_time_pim(int(share)))
+                                send_ready = float(earliest_kv) + float(t_mem) #先从src pim中读出
+                                if commit and str(getattr(src, "type", "")).lower() == "pim":
+                                    self.avail[src.name] = max(float(self.avail.get(src.name, 0.0)), float(send_ready))
+
+                                size_share_nd = int(self.cost.format_size(int(share), "ND"))
+                                dst_fmt = self.cost.device_preferred_fmt(dev)
+                                bw_direct = float(self.cluster.get_link_bw(src.name, dev.name))
+
+                                if bw_direct > 0.0:
+                                    # Direct KV movement
+                                    _, l2e = self.comm.reserve(
+                                        src.name, dev.name, size_share_nd,
+                                        earliest=send_ready, commit=commit, tag="kv_load",
+                                    )
+                                    conv2 = float(self.cost.format_conversion_time(size_share_nd, "ND", dst_fmt, dev))
+                                    kv_ready = max(kv_ready, float(l2e) + conv2)
+                                else:
+                                    # Via-host KV movement
+                                    host = self.cost.get_host_device()
+                                    _, t1 = self.comm.reserve(
+                                        src.name, host.name, size_share_nd,
+                                        earliest=send_ready, commit=commit, tag="kv_load",
+                                    )
+                                    _, t2 = self.comm.reserve(
+                                        host.name, dev.name, size_share_nd,
+                                        earliest=float(t1), commit=commit, tag="kv_load",
+                                    )
+                                    conv2 = float(self.cost.format_conversion_time(size_share_nd, "ND", dst_fmt, dev))
+                                    kv_ready = max(kv_ready, float(t2) + conv2)
                     else:
                         kv_ready = float(ready)
                 else:
                     host = self.cost.get_host_device()
                     l2s, l2e = self.comm.reserve(host.name, dev.name, size_nd, earliest=float(ready), commit=commit, tag="kv_load")
-                    kv_ready = max(kv_ready, float(l2e))
+                    conv2 = float(self.cost.format_conversion_time(size_nd, "ND", self.cost.device_preferred_fmt(dev), dev))
+                    kv_ready = max(kv_ready, float(l2e) + conv2)
                 logger.debug("[kv-load] node=%s target=%s kv_ready=%.4f", nid, dev.name, kv_ready)
 
-        #---------------------2. normal weight load + compute + activation handling
+        #---------------------3. normal weight load + compute + activation handling
         start = max(float(self.avail.get(dev.name, 0.0)), kv_ready)
         compute = self.cost.node_device_cost(node, dev, label, batch, seq_len, phase_eff)
         wload = self._weight_load_time(node, dev, start, commit)
@@ -2054,11 +2175,8 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
         topo_pos = {nid: i for i, nid in enumerate(idx.topo)}
         remaining_preds = {nid: len(idx.preds[nid]) for nid in idx.nodes}
 
-        # Ready queue: pick ready node with highest rank_u (Eq. 14).
-        heap: List[Tuple[float, int, str]] = []
-        for nid in idx.nodes:
-            if remaining_preds[nid] == 0:
-                heapq.heappush(heap, (-float(rank_u.get(nid, 0.0)), topo_pos.get(nid, 0), nid))
+        # Ready set.
+        ready: set[str] = {nid for nid in idx.nodes if remaining_preds[nid] == 0}
 
         schedule: List[ScheduledTask] = []
         scheduled: set[str] = set()
@@ -2068,47 +2186,49 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
         gamma = float(SCHED_JOINT_LK_GAMMA)
         use_lookahead = bool(SCHED_JOINT_LK_ENABLE) and H > 1 and gamma > 0.0
 
-        while heap:
-            _, _, nid = heapq.heappop(heap)
-            if nid in scheduled:
-                continue
+        # Multi-device selection: when there are multiple executors, don't rely on rank ordering.
+        # Instead, pick from the whole READY set by the lookahead chain score.
+        num_exec = len(self.cluster.devices_by_type("npu")) + len(self.cluster.devices_by_type("pim"))
+        use_chain_select = bool(use_lookahead) and num_exec > 1
 
-            node = g.nodes[nid]
-
+        def _candidates_for(nid: str, node: TaskNode) -> Tuple[List[DeviceSpec], bool]:
+            """Return (device_candidates, is_kv_write)."""
             name_up = str(getattr(node, "name", "")).upper()
             is_kv_write = name_up in ("K_WRITE", "V_WRITE", "KV_WRITE")
+
             pinned_dev: Optional[DeviceSpec] = None
             if is_kv_write:
                 pinned_dev = self._preferred_kv_write_device(g, nid)
                 if pinned_dev is not None and (not self._node_allowed_on(node, pinned_dev)):
-                   pinned_dev = None
+                    pinned_dev = None
 
-            kv_in_pim = bool(getattr(self.label, "kv_in_pim", False))
-
-            # Candidate devices: consider concrete endpoints (NPU/PIM) that the node can run on.
-            candidates: List[DeviceSpec] = []
             if pinned_dev is not None:
-                candidates = [pinned_dev]
-            else:
-                for dev_type in ("npu", "pim"):
-                    for dev in self.cluster.devices_by_type(dev_type):
-                        try:
-                            if self._node_allowed_on(node, dev):
-                                candidates.append(dev)
-                        except Exception:
-                            candidates.append(dev)
+                return [pinned_dev], is_kv_write
 
-            if not candidates:
-                raise RuntimeError(f"No available device for node {nid}")
+            cands: List[DeviceSpec] = []
+            for dev_type in ("npu", "pim"):
+                for dev in self.cluster.devices_by_type(dev_type):
+                    try:
+                        if self._node_allowed_on(node, dev):
+                            cands.append(dev)
+                    except Exception:
+                        cands.append(dev)
+            return cands, is_kv_write
 
-            # Lookahead chain for this chosen ready node (computed once).
+        def _best_assignment_for(nid: str) -> Tuple[float, float, str, Optional[DeviceSpec], Optional[dict], Dict[str, str]]:
+            """Return (best_score, best_eft, best_mode, best_dev, best_hy_est, best_hint_assign)."""
+            node = g.nodes[nid]
+            cands, is_kv_write = _candidates_for(nid, node)
+            if not cands:
+                return (float("inf"), float("inf"), "DEV", None, None, {})
+
+            # Lookahead chain for this ready node.
             chain = [nid]
             if use_lookahead:
                 chain = self._build_lookahead_chain(g, nid, idx, rank_u, phase=phase, H=H)
 
-                        # HYBRID candidate (NPU+PIM) — only if allowed & not KV_WRITE.
-            allow_npu = any(d.type == "npu" for d in candidates)
-            allow_pim = any(d.type == "pim" for d in candidates)
+            allow_npu = any(d.type == "npu" for d in cands)
+            allow_pim = any(d.type == "pim" for d in cands)
             allow_hybrid = bool(ALLOW_HYBRID) and allow_npu and allow_pim and (not is_kv_write)
 
             hy_est: Optional[dict] = None
@@ -2120,15 +2240,14 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
                 if hy_est is None:
                     allow_hybrid = False
 
-            best_choice: Optional[DeviceSpec] = None
-            best_hy: Optional[dict] = None
-            best_mode: str = "DEV"
             best_score = float("inf")
             best_eft = float("inf")
-            best_hint_assignments: Dict[str, str] = {}
+            best_mode: str = "DEV"
+            best_dev: Optional[DeviceSpec] = None
+            best_hy: Optional[dict] = None
+            best_hint: Dict[str, str] = {}
 
-            for dev in candidates:
-                # Base timing terms: EFT(v,k).
+            for dev in cands:
                 _, eft = self._earliest_finish_on_device(g, nid, dev, self.label, phase, commit=False)
                 eft = float(eft)
 
@@ -2145,51 +2264,77 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
 
                 score = float((1.0 - gamma) * eft + gamma * float(window_est) + bias)
 
-                # Deterministic-ish tie-breakers: prefer lower EFT, then random.
-                if (score < best_score) or (
-                    abs(score - best_score) < 1e-9 and (eft < best_eft or (abs(eft - best_eft) < 1e-9 and self._rng.random() < 0.5))
-                ):
-                    best_score = score
-                    best_choice = dev
-                    best_mode = "DEV"
-                    best_eft = eft
-                    best_hint_assignments = dict(hint_assign)
-            
-            if allow_hybrid and hy_est is not None:
-                eft = float(hy_est.get("finish", float("inf")))
-                first_dev = hy_est.get("out_dev") or self.cost.get_host_device()  # HYBRID outputs to host(ND)
-
-                window_est = eft
-                hint_assign: Dict[str, str] = {}
-                if use_lookahead and len(chain) > 1:
-                    window_est, hint_assign = self._lookahead_window_estimate(
-                        g, chain=chain, first_dev=first_dev, first_eft=eft, phase=phase
-                    )
-
-                # 简化：HYBRID 本身会在 NPU/PIM 都加载权重，weight gain 不在这里额外加
-                bias = 0.0
-                score = float((1.0 - gamma) * eft + gamma * float(window_est) + bias)
-
+                # Tie-breakers: prefer lower EFT, then random.
                 if (score < best_score) or (
                     abs(score - best_score) < 1e-9
                     and (eft < best_eft or (abs(eft - best_eft) < 1e-9 and self._rng.random() < 0.5))
                 ):
                     best_score = score
                     best_eft = eft
-                    best_mode = "HYBRID"
-                    best_choice = None
-                    best_hy = dict(hy_est)
-                    best_hint_assignments = dict(hint_assign)
+                    best_mode = "DEV"
+                    best_dev = dev
+                    best_hy = None
+                    best_hint = dict(hint_assign)
 
-            if best_mode == "DEV" and best_choice is None:
-                raise RuntimeError(f"No feasible placement found for node {nid}")
-            if best_mode == "HYBRID" and best_hy is None:
-                raise RuntimeError(f"HYBRID selected but estimate missing for node {nid}")
+            if allow_hybrid and hy_est is not None:
+                eft = float(hy_est.get("finish", float("inf")))
+                first_dev = hy_est.get("out_dev") or self.cost.get_host_device()
+
+                window_est = eft
+                hint_assign = {}
+                if use_lookahead and len(chain) > 1:
+                    window_est, hint_assign = self._lookahead_window_estimate(
+                        g, chain=chain, first_dev=first_dev, first_eft=eft, phase=phase
+                    )
+
+                score = float((1.0 - gamma) * eft + gamma * float(window_est))
+                if (score < best_score) or (
+                    abs(score - best_score) < 1e-9 and eft < best_eft
+                ):
+                    best_score = score
+                    best_eft = eft
+                    best_mode = "HYBRID"
+                    best_dev = None
+                    best_hy = dict(hy_est)
+                    best_hint = dict(hint_assign)
+
+            return best_score, best_eft, best_mode, best_dev, best_hy, best_hint
+
+        while ready:
+            # Pick a ready node.
+            if use_chain_select:
+                best_tuple = (float("inf"), float("inf"), float("inf"), float("inf"))
+                pick: Optional[str] = None
+                pick_res: Optional[Tuple[float, float, str, Optional[DeviceSpec], Optional[dict], Dict[str, str]]] = None
+                for nid in list(ready):
+                    score, eft, mode, dev_obj, hy_est, hint = _best_assignment_for(nid)
+                    # Tie-break: prefer higher rank_u when scores equal.
+                    key = (float(score), float(eft), -float(rank_u.get(nid, 0.0)), float(topo_pos.get(nid, 0)))
+                    if key < best_tuple:
+                        best_tuple = key
+                        pick = nid
+                        pick_res = (score, eft, mode, dev_obj, hy_est, hint)
+                if pick is None or pick_res is None:
+                    raise RuntimeError("No schedulable ready node (all placements infeasible)")
+                nid = pick
+                _, _, best_mode, best_choice, best_hy, best_hint_assignments = pick_res
+            else:
+                # Classic HEFT: pick by rank_u.
+                nid = max(ready, key=lambda n: (float(rank_u.get(n, 0.0)), -int(topo_pos.get(n, 0))))
+                node = g.nodes[nid]
+                _, _, best_mode, best_choice, best_hy, best_hint_assignments = _best_assignment_for(nid)
+
+            ready.discard(nid)
+            if nid in scheduled:
+                continue
+
+            node = g.nodes[nid]
 
             # Commit
             scheduled.add(nid)
 
             if best_mode == "HYBRID":
+                # Commit hybrid
                 hy = self._earliest_finish_hybrid(g, nid, phase, commit=True)
                 if hy is None:
                     raise RuntimeError(f"HYBRID candidate selected but commit failed for node {nid}")
@@ -2231,6 +2376,8 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
                     except Exception:
                         pass
             else:
+                if best_choice is None:
+                    raise RuntimeError(f"No feasible placement found for node {nid}")
                 dev = best_choice
                 start, finish = self._earliest_finish_on_device(g, nid, dev, self.label, phase, commit=True)
                 schedule.append(ScheduledTask(nid, dev.name, float(start), float(finish)))
@@ -2265,8 +2412,8 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
             # Unlock successors.
             for v in idx.succs.get(nid, ()):  # type: ignore[assignment]
                 remaining_preds[v] -= 1
-                if remaining_preds[v] == 0:
-                    heapq.heappush(heap, (-float(rank_u.get(v, 0.0)), topo_pos.get(v, 0), v))
+                if remaining_preds[v] == 0 and v not in scheduled:
+                    ready.add(v)
 
         if len(scheduled) != len(idx.nodes):
             missing = [n for n in idx.nodes if n not in scheduled]

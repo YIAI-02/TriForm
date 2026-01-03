@@ -1135,7 +1135,7 @@ class CostModel:
             active = max(1.0, float(moe_active))
             base = moe_top_k / active
             return min(1.0, base * imbalance)
-        if name in 'LN' and D > 0:
+        if name == 'LN' and D > 0:
             elems = b * active_tokens * D
             return (to_bytes(elems), to_bytes(elems))
         if name == 'Q' and D > 0:
@@ -1145,7 +1145,7 @@ class CostModel:
             out_dim = kv_dim if kv_dim > 0 else D
             write_tokens = active_tokens
             return (to_bytes(b * active_tokens * D), to_bytes(b * write_tokens * out_dim))
-        if name in 'O' and D > 0:
+        if name == 'O' and D > 0:
             inp_dim = o_dim if o_dim > 0 else D
             return (to_bytes(b * active_tokens * inp_dim), to_bytes(b * active_tokens * D))
         if name in ('FFN_W1', 'FFN_W3') and D > 0 and (Hf > 0):
@@ -1168,14 +1168,14 @@ class CostModel:
         if name in ('IDENTITY',):
             elems = b * active_tokens * D
             return (to_bytes(elems), to_bytes(elems))
-        if name in 'QK' and qh > 0 and (hd > 0):
+        if name == 'QK' and qh > 0 and (hd > 0):
             q_read = b * active_tokens * q_dim
             write_elems = b * qh * attn_pairs
             return (to_bytes(q_read), to_bytes(write_elems))
         if name in ('SOFTMAX', 'ATTN_SOFTMAX') and qh > 0:
             elems = b * qh * attn_pairs
             return (to_bytes(elems), to_bytes(elems))
-        if name in 'SV' and qh > 0 and (hd > 0):
+        if name == 'SV' and qh > 0 and (hd > 0):
             attn_read = b * qh * attn_pairs
             out_elems = b * qh * active_tokens * hd
             return (to_bytes(attn_read), to_bytes(out_elems))
@@ -1384,7 +1384,7 @@ class CostModel:
                 try:
                     model_dict = self.get_model_dict()
                     ffn_for_trace = int(ffn_dim_total or ffn_dim)
-                    full_time = _get_pim_latency_via_trace(
+                    compute_time = _get_pim_latency_via_trace(
                                     op=op_key, 
                                     pim_config=self.pim_config_path, 
                                     ramulator_config=self.ramulator_config_path, 
@@ -1395,23 +1395,6 @@ class CostModel:
                                     seqlen=seq_len if seq_len > 0 else None, 
                                     model_dict=model_dict, 
                                     use_cache=self.pim_cache_enabled)
-                    if is_shard:
-                        scale = 1.0
-                        try:
-                            if op_key in ('q_proj', 'wo_proj', 'score', 'softmax', 'output'):
-                                if n_heads_total > 0 and q_heads > 0:
-                                    scale = float(q_heads) / float(n_heads_total)
-                            elif op_key in ('k_proj', 'v_proj'):
-                                if n_kv_heads_total > 0 and kv_heads > 0:
-                                    scale = float(kv_heads) / float(n_kv_heads_total)
-                            elif op_key in ('ffn_up', 'ffn_gate', 'ffn_down'):
-                                if ffn_for_trace > 0 and ffn_dim > 0:
-                                    scale = float(ffn_dim) / float(ffn_for_trace)
-                        except Exception:
-                            scale = 1.0
-                        compute_time = float(full_time) * max(0.0, float(scale))
-                    else:
-                        compute_time = float(full_time)
                 except Exception as e:
                     logger.debug(str(f'[PIM] ERROR: Failed to compute latency for {node.name}: {e}'))
                     raise RuntimeError(f'PIM latency computation failed for {node.name}: {e}')

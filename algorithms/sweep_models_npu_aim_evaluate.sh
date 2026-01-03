@@ -6,26 +6,26 @@ shopt -s nullglob
 # Single source of truth
 # =========================
 CONFIG_FILE="${CONFIG_FILE:-./examples/evaluate_len_sweep_config.json}"
-OUTPUT_ROOT="${OUTPUT_ROOT:-./output/experiment_halfnpu}"
+OUTPUT_ROOT="${OUTPUT_ROOT:-./output/experiment_npu}"
 
 # Sweep dims
 MODEL_FAMILY_VARIANTS=(
-  # "mixtral:8x7b"
+  "mixtral:8x7b"
   "palm:62b"
-  "qwen:1.8b"
+  "qwen:1.8b 7b 14b"
   # "llama:7b"
 )
 
-PREFILLS=(512 1024)
+PREFILLS=(128 512)
 DECODES=(128 512 1024 2048)
 
 # Hardware sweep (edit here, or use --hardware_glob)
 HARDWARE_CONFIGS=(
-  # ./examples/hardware_config_npu_aim.json
+  ./examples/hardware_config_npu_aim.json
   ./examples/hardware_config_npu_2aim.json
   ./examples/hardware_config_npu_4aim.json
   ./examples/hardware_config_npu_6aim.json
-  # ./examples/hardware_config_npu_8aim.json
+  ./examples/hardware_config_npu_8aim.json
   # ./examples/hardware_config_npu_10aim.json
 )
 

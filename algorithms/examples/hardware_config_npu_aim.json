@@ -11,8 +11,8 @@
       {
         "name": "NPU0",
         "type": "npu",
-        "tflops": 5.0,
-        "mem_bw_GBs": 40,
+        "tflops": 10.0,
+        "mem_bw_GBs": 51.2,
         "mem_capacity_GB": 0.003
       },
       {
