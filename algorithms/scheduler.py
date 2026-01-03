@@ -573,7 +573,7 @@ class SchedulerBase:
                     kv_ready = max(kv_ready, float(l2e))
                 logger.debug("[kv-load] node=%s target=%s kv_ready=%.4f", nid, dev.name, kv_ready)
 
-        #---------------------3. normal weight load + compute + activation handling
+        #---------------------2. normal weight load + compute + activation handling
         start = max(float(self.avail.get(dev.name, 0.0)), kv_ready)
         compute = self.cost.node_device_cost(node, dev, label, batch, seq_len, phase_eff)
         wload = self._weight_load_time(node, dev, start, commit)
