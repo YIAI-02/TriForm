@@ -174,9 +174,9 @@ SCHED_DEFAULT: str = "heft"
 # in large unrolled decode graphs.
 SCHED_JOINT_LK_ENABLE: bool = True
 SCHED_JOINT_LK_H: int = 5
-SCHED_JOINT_LK_GAMMA: float = 0.4
-SCHED_JOINT_LK_CONSIST_LAMBDA: float = 2
+SCHED_JOINT_LK_GAMMA: float = 0.5
+SCHED_JOINT_LK_CONSIST_LAMBDA: float = 20
 SCHED_JOINT_LK_PLAN_HINT_MAX: int =  5
 # Weight-reuse bias gain multiplier (eta in bias formula)
-SCHED_WEIGHT_BIAS_ETA: float = 100
+SCHED_WEIGHT_BIAS_ETA: float = 10
 

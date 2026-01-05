@@ -1,10 +1,10 @@
 {
-  "model_family": "llama",
+  "model_family": "qwen",
   "model_variant": "7b",
   "dtype": "int8",
   "batch": 4,
   "prefill_len": 128,
-  "decode_len": 1024,
+  "decode_len": 512,
   "decode_sample_stride": 64,
   "pim_config_path": "./aim_simulator/PIM_AiM.json",
   "gb_config_path": "./aim_simulator/gb.json",

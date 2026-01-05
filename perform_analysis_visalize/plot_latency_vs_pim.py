@@ -11,9 +11,9 @@ output/experiment_1/hw_4aim_2npu/st64/llama_7b_int8_b1_s64/baseline_compare_512x
 
 用法示例（输出为 pdf，可用 --output-dir 指定存放目录）：
 python plot_latency_vs_pim.py \
-    --root ../algorithms/output/experiment_halfnpu \
+    --root ../algorithms/output/experiment_npu \
     --metric total_time_s \
-    --output-dir ./figs/experiment_halfnpu/half_npu_aim \
+    --output-dir ./figs/experiment_npu/half_npu_aim \
 """
 
 import argparse

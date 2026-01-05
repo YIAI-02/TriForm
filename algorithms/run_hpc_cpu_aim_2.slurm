@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH -J 0105_npu
+#SBATCH -J 0105_2npu
 #SBATCH -p C064M0256G
-#SBATCH --qos=high
+#SBATCH --qos=low
 #SBATCH -N 1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=64
@@ -14,4 +14,4 @@ cd "$SLURM_SUBMIT_DIR"
 source ~/.bashrc
 conda activate triform
 
-bash sweep_models_npu_aim_evaluate.sh --jobs 64
+bash sweep_models_2npu_aim_evaluate.sh --jobs 64

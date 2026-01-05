@@ -23,6 +23,20 @@
         "mem_capacity_GB": 0.003
       },
       {
+        "name": "NPU2",
+        "type": "npu",
+        "tflops": 10.0,
+        "mem_bw_GBs": 51.2,
+        "mem_capacity_GB": 0.003
+      },
+      {
+        "name": "NPU3",
+        "type": "npu",
+        "tflops": 10.0,
+        "mem_bw_GBs": 51.2,
+        "mem_capacity_GB": 0.003
+      },
+      {
         "name": "PIMA0",
         "type": "pim",
         "pim_type": "accel",
@@ -121,6 +135,46 @@
         "mem_capacity_GB": 1,
         "pim_read_latency_ns": 5,
         "pim_write_latency_ns": 30
+      },
+      {
+        "name": "PIMA10",
+        "type": "pim",
+        "pim_type": "accel",
+        "tflops": 0.5,
+        "mem_bw_GBs": 32.0,
+        "mem_capacity_GB": 1,
+        "pim_read_latency_ns": 5,
+        "pim_write_latency_ns": 30
+      },
+      {
+        "name": "PIMA11",
+        "type": "pim",
+        "pim_type": "accel",
+        "tflops": 0.5,
+        "mem_bw_GBs": 32.0,
+        "mem_capacity_GB": 1,
+        "pim_read_latency_ns": 5,
+        "pim_write_latency_ns": 30
+      },
+      {
+        "name": "PIMA12",
+        "type": "pim",
+        "pim_type": "accel",
+        "tflops": 0.5,
+        "mem_bw_GBs": 32.0,
+        "mem_capacity_GB": 1,
+        "pim_read_latency_ns": 5,
+        "pim_write_latency_ns": 30
+      },
+      {
+        "name": "PIMA13",
+        "type": "pim",
+        "pim_type": "accel",
+        "tflops": 0.5,
+        "mem_bw_GBs": 32.0,
+        "mem_capacity_GB": 1,
+        "pim_read_latency_ns": 5,
+        "pim_write_latency_ns": 30
       }
     ],
     "links": [
@@ -132,6 +186,16 @@
       {
         "a": "CPU0",
         "b": "NPU1",
+        "bw_GBs": 32.0
+      },
+      {
+        "a": "CPU0",
+        "b": "NPU2",
+        "bw_GBs": 32.0
+      },
+      {
+        "a": "CPU0",
+        "b": "NPU3",
         "bw_GBs": 32.0
       },
       {
@@ -182,6 +246,26 @@
       {
         "a": "CPU0",
         "b": "PIMA9",
+        "bw_GBs": 32.0
+      },
+      {
+        "a": "CPU0",
+        "b": "PIMA10",
+        "bw_GBs": 32.0
+      },
+      {
+        "a": "CPU0",
+        "b": "PIMA11",
+        "bw_GBs": 32.0
+      },
+      {
+        "a": "CPU0",
+        "b": "PIMA12",
+        "bw_GBs": 32.0
+      },
+      {
+        "a": "CPU0",
+        "b": "PIMA13",
         "bw_GBs": 32.0
       }
     ]

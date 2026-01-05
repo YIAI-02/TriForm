@@ -439,49 +439,33 @@ class SchedulerBase:
                 return str(getattr(dev, "name", "")) == str(getattr(mapped, "name", ""))
             return True
 
-        # ---- 1) explicit PIM pinning for head-sharded ops (RR mapping) ----
+        # ---- 1) operator-level allow-list ----
+        allowed = getattr(node, "allowed", None)
+        if isinstance(allowed, Mapping):
+            dev_type = getattr(dev, "type", None) or str(dev)
+            if not bool(allowed.get(dev_type, True)):
+                return False
+        
+        # ---- 2) explicit PIM pinning for head-sharded ops (RR mapping) ----
         # Model-definition can attach:
         #   - attrs['pim_target'] or attrs['pim_target_name'] : explicit device name
         #   - attrs['pim_target_idx']                         : RR index into PIM devices
-        #
-        # If present, we hard-pin the node to that PIM device. This is crucial for
-        # head-parallel graphs; otherwise the scheduler may pack all shards onto one PIM.
-        try:
-            attrs = getattr(node, "attrs", None)
-        except Exception:
-            attrs = None
-
+        attrs = getattr(node, "attrs", None)      
         if isinstance(attrs, Mapping):
             tgt_name = attrs.get("pim_target") or attrs.get("pim_target_name")
-            tgt_idx = attrs.get("pim_target_idx")
+            tgt_idx  = attrs.get("pim_target_idx")
             if tgt_name is not None or tgt_idx is not None:
-                if str(getattr(dev, "type", "")).lower() == "pim":
-                    pim_devs = sorted(self.cluster.devices_by_type("pim"), key=lambda d: str(getattr(d, "name", "")))
-                    if not pim_devs:
-                        return False
-                    if tgt_name is not None:
-                        return str(getattr(dev, "name", "")) == str(tgt_name)
-                    try:
-                        idx = int(tgt_idx)
-                    except Exception:
-                        idx = 0
-                    idx = idx % len(pim_devs)
-                    return str(getattr(dev, "name", "")) == str(getattr(pim_devs[idx], "name", ""))
-                    
-        # ---- 2) operator-level allow-list ----
-        ok = True
-        allowed = getattr(node, "allowed", None)
-        if isinstance(allowed, Mapping):
-            try:
-                dev_type = getattr(dev, "type", None)
-                if dev_type is None:
-                    dev_type = str(dev)
-                ok = bool(allowed.get(dev_type, True))
-            except Exception:
-                ok = True
-        if not ok:
-            return False
+                if str(getattr(dev, "type", "")).lower() != "pim":
+                    return True
 
+                pim_devs = sorted(self.cluster.devices_by_type("pim"), key=lambda d: str(d.name))
+                if not pim_devs:
+                    return False
+                if tgt_name is not None:
+                    return str(dev.name) == str(tgt_name)
+                idx = int(tgt_idx) % len(pim_devs)
+                return str(dev.name) == str(pim_devs[idx].name)
+                            
         # ---- 3) KV mapping restriction (multi-PIM RR) ----
         # We already handled KV_WRITE above.
         try:
@@ -2114,13 +2098,13 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
         except Exception:
             return 0
 
-    def _device_can_hold_all_weights(self, dev: DeviceSpec, total_weight_bytes: int) -> bool:
-        """Whether `dev` can keep the whole-model weights resident (simple capacity check)."""
-        total_weight_bytes = int(total_weight_bytes)
-        if total_weight_bytes <= 0:
-            return False
-        cap = int(self._device_weight_capacity_bytes(dev))
-        return bool(cap >= total_weight_bytes)
+    def _device_can_hold_all_weights(self, dev, total_weight_bytes):
+        cap = self._device_weight_capacity_bytes(dev)
+        if dev.type == "pim":
+            pim_cnt = max(1, len(self.cluster.devices_by_type("pim")))
+            return cap >= math.ceil(total_weight_bytes / pim_cnt)
+        return cap >= total_weight_bytes
+
 
     def _update_plan_hints(self, assignments: Mapping[str, str], scheduled: set[str]) -> None:
         """Update bounded plan-hint mapping σ'(·) for near-future nodes."""

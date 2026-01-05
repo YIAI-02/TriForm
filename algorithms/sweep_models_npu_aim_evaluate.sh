@@ -11,13 +11,13 @@ OUTPUT_ROOT="${OUTPUT_ROOT:-./output/experiment_npu}"
 # Sweep dims
 MODEL_FAMILY_VARIANTS=(
   "mixtral:8x7b"
-  "palm:62b"
-  "qwen:1.8b 7b 14b"
+  # "palm:62b"
+  "qwen:1.8b 7b"
   # "llama:7b"
 )
 
 PREFILLS=(128 512)
-DECODES=(128 512 1024 2048)
+DECODES=(1024)
 
 # Hardware sweep (edit here, or use --hardware_glob)
 HARDWARE_CONFIGS=(
@@ -39,7 +39,7 @@ declare -a BATCHES
 
 NPU_FAST=1
 PIM_FAST=0
-DEBUG=1
+DEBUG=0
 HARDWARE_GLOB=""
 JOBS="${JOBS:-}"
 

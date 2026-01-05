@@ -713,12 +713,12 @@ def add_mpt_block_split_by_heads(g: TaskGraph, l: int, shape: ModelShape, dtype_
     kv_shards = _effective_shards(shape, for_kv=True)
     ffn_shards = _effective_shards(shape, for_ffn=True)
 
+    kv_ranges = _partition_ranges(kvh, kv_shards)
     if kvh > 0 and qh > 0 and kvh <= qh:
         q_ranges = _partition_q_ranges_from_kv_ranges(kv_ranges, q_heads=qh, kv_heads=kvh)
         q_shards = len(q_ranges)
     else:
         q_ranges = _partition_ranges(qh, q_shards)
-    kv_ranges = _partition_ranges(kvh, kv_shards)
     kv_head_to_shard = _make_head_to_shard_map(kv_ranges)
 
     base_attr_full = {
@@ -914,12 +914,12 @@ def add_palm_block_split_by_heads(g: TaskGraph, l: int, shape: ModelShape, dtype
     kv_shards = _effective_shards(shape, for_kv=True)
     ffn_shards = _effective_shards(shape, for_ffn=True)
 
+    kv_ranges = _partition_ranges(kvh, kv_shards)
     if kvh > 0 and qh > 0 and kvh <= qh:
         q_ranges = _partition_q_ranges_from_kv_ranges(kv_ranges, q_heads=qh, kv_heads=kvh)
         q_shards = len(q_ranges)
     else:
         q_ranges = _partition_ranges(qh, q_shards)
-    kv_ranges = _partition_ranges(kvh, kv_shards)
     kv_head_to_shard = _make_head_to_shard_map(kv_ranges)
 
     base_attr_full = {
