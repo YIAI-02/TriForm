@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""
+"""plot_latency_vs_pim.py
+
 Plot latency vs #PIM(AiM) from baseline_compare_{prefill}x{decode}.json
 
 目录结构只要路径里包含 hw_*aim* 段即可，例如：
@@ -11,9 +12,13 @@ output/experiment_1/hw_4aim_2npu/st64/llama_7b_int8_b1_s64/baseline_compare_512x
 
 用法示例（输出为 pdf，可用 --output-dir 指定存放目录）：
 python plot_latency_vs_pim.py \
-    --root ../algorithms/output/experiment_npu \
+    --root ../algorithms/output/experiment_4npu \
     --metric total_time_s \
-    --output-dir ./figs/experiment_npu/half_npu_aim \
+    --output-dir ../figs/experiment_4npu/experimnent_2\
+    --no-plot-per-batch
+
+      --no-plot-per-batch     关闭分立图
+      --no-plot-batch-avg     关闭 batch 平均图
 """
 
 import argparse
@@ -32,7 +37,8 @@ COLOR_POOL = ["#000000", "#0024FF", "#006CFE", "#0092FE",
 
 
 def _parse_model_str(model: str) -> Tuple[str, str, str]:
-    """
+    """Parse model string.
+
     model like: llama_7b_int8 / mixtral_8x7b_int8 / palm_62b_int8
     returns: (family, variant, dtype)
     """
@@ -70,9 +76,9 @@ def parse_hw_group_from_hw_segment(hw_seg: str) -> str:
     """Return the suffix after removing the AiM token.
 
     Examples:
-      - hw_2aim_2npu   -> 2npu
-      - hw_aim_npu     -> npu
-      - hw_npu_4aim    -> npu
+      - hw_2aim_2npu    -> 2npu
+      - hw_aim_npu      -> npu
+      - hw_npu_4aim     -> npu
       - hw_2aim_halfnpu -> halfnpu
     """
     seg2 = hw_seg[3:] if hw_seg.startswith("hw_") else hw_seg
@@ -81,8 +87,8 @@ def parse_hw_group_from_hw_segment(hw_seg: str) -> str:
 
 
 def elbow_point(x: np.ndarray, y: np.ndarray) -> Optional[int]:
-    """
-    Elbow detector for "latency decreases then saturates".
+    """Elbow detector for "latency decreases then saturates".
+
     Returns the x value (aim count) at elbow.
 
     - normalize x to [0,1]
@@ -125,7 +131,7 @@ def load_one_json(p: Path) -> Dict:
         return json.load(f)
 
 
-def iter_candidate_jsons(root: Path, prefill: int, decode: int) -> Iterable[Path]:
+def iter_candidate_jsons(root: Path, prefill: Optional[int], decode: Optional[int]) -> Iterable[Path]:
     if prefill is None or decode is None:
         return root.rglob("baseline_compare_*.json")
     pattern = f"baseline_compare_{prefill}x{decode}.json"
@@ -233,8 +239,48 @@ def build_dataframe(
         "aim",
         "policy",
     ]
-    df = df.groupby(group_keys, as_index=False)[agg_cols].mean()
+    df = df.groupby(group_keys, as_index=False, dropna=False)[agg_cols].mean()
     return df
+
+
+def build_batch_avg_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """Average metrics over all batches for the same model/config.
+
+    Assumes df is already de-duplicated per (model, batch, ...).
+    """
+    if df.empty:
+        return df
+
+    agg_cols = ["prefill_time_s", "decode_time_s", "total_time_s"]
+    group_keys = [
+        "model_family",
+        "model_variant",
+        "dtype",
+        # NOTE: intentionally drop `batch`
+        "prefill_len",
+        "decode_len",
+        "stride",
+        "hw_group",
+        "aim",
+        "policy",
+    ]
+    return df.groupby(group_keys, as_index=False, dropna=False)[agg_cols].mean()
+
+
+def make_batch_avg_title_and_tag(batches: List[int]) -> Tuple[str, str]:
+    """Create (title_str, file_tag) for batch-averaged plots."""
+    batches_sorted = sorted({int(b) for b in batches if b is not None})
+    if not batches_sorted:
+        return "bavg", "bavg"
+
+    if len(batches_sorted) <= 6:
+        title = "bavg(mean over batches: " + ",".join(map(str, batches_sorted)) + ")"
+        tag = "bavg_" + "_".join(f"b{b}" for b in batches_sorted)
+        return title, tag
+
+    title = f"bavg(mean over {len(batches_sorted)} batches: b{batches_sorted[0]}..b{batches_sorted[-1]})"
+    tag = f"bavg_n{len(batches_sorted)}_b{batches_sorted[0]}-b{batches_sorted[-1]}"
+    return title, tag
 
 
 def plot_one_group(
@@ -245,7 +291,8 @@ def plot_one_group(
     model_family: str,
     model_variant: str,
     dtype: str,
-    batch: int,
+    batch_title: str,
+    batch_tag: str,
     prefill: int,
     decode: int,
     stride: Optional[int],
@@ -276,7 +323,7 @@ def plot_one_group(
 
     ax.set_xlabel("#AiM (PIM count)  [from hw_*aim*]")
     ax.set_ylabel(f"{metric} (s)")
-    title = f"{model_family}_{model_variant}_{dtype} | b{batch} | {prefill}x{decode}"
+    title = f"{model_family}_{model_variant}_{dtype} | {batch_title} | {prefill}x{decode}"
     if stride is not None:
         title += f" | stride={stride}"
     title += f" | hw_group={hw_group}"
@@ -290,18 +337,21 @@ def plot_one_group(
 
     outdir.mkdir(parents=True, exist_ok=True)
     stride_tag = f"_s{stride}" if stride is not None else ""
-    outpath = outdir / f"latency_vs_aim_{model_family}_{model_variant}_{dtype}_b{batch}_{prefill}x{decode}{stride_tag}_{hw_group}_{metric}.pdf"
+    outpath = outdir / (
+        f"latency_vs_aim_{model_family}_{model_variant}_{dtype}_{batch_tag}_{prefill}x{decode}"
+        f"{stride_tag}_{hw_group}_{metric}.pdf"
+    )
     fig.tight_layout()
     fig.savefig(outpath, dpi=200)
     plt.close(fig)
 
     if elbow_summary:
         elbow_summary.sort(key=lambda t: (t[1], t[0]))
-        print(f"\n[Elbow estimate] hw_group={hw_group}, metric={metric}")
+        print(f"\n[Elbow estimate] {batch_tag} | hw_group={hw_group}, metric={metric}")
         for pol, elbow, y_elbow in elbow_summary:
             print(f"  - {pol:16s} elbow@aim={elbow:>3d}  {metric}={y_elbow:.6g}s")
     else:
-        print(f"\n[Elbow estimate] hw_group={hw_group}: not enough points (need >=3 aims per policy).")
+        print(f"\n[Elbow estimate] {batch_tag} | hw_group={hw_group}: not enough points (need >=3 aims per policy).")
 
     return outpath
 
@@ -319,10 +369,49 @@ def main():
     ap.add_argument("--decode", type=int, default=None, help="Optional decode length filter")
 
     ap.add_argument("--stride", type=int, default=None, help="Optional decode_sample_stride filter, e.g., 64")
-    ap.add_argument("--metric", type=str, default="total_time_s",
-                    choices=["total_time_s", "decode_time_s", "prefill_time_s"])
-    ap.add_argument("--hw-group", type=str, default=None,
-                    help="Optional: choose one group (2npu/npu/halfnpu...). If omitted, plot all groups.")
+    ap.add_argument(
+        "--metric",
+        type=str,
+        default="total_time_s",
+        choices=["total_time_s", "decode_time_s", "prefill_time_s"],
+    )
+    ap.add_argument(
+        "--hw-group",
+        type=str,
+        default=None,
+        help="Optional: choose one group (2npu/npu/halfnpu...). If omitted, plot all groups.",
+    )
+
+    # Keep the old per-batch plots, and also generate batch-avg plots by default.
+    # Use `--no-plot-...` to disable if you only want one mode.
+    ap.set_defaults(plot_per_batch=True)
+    ap.add_argument(
+        "--plot-per-batch",
+        dest="plot_per_batch",
+        action="store_true",
+        help="(default) Generate per-batch plots (existing behavior).",
+    )
+    ap.add_argument(
+        "--no-plot-per-batch",
+        dest="plot_per_batch",
+        action="store_false",
+        help="Disable per-batch plots.",
+    )
+
+    ap.set_defaults(plot_batch_avg=True)
+    ap.add_argument(
+        "--plot-batch-avg",
+        dest="plot_batch_avg",
+        action="store_true",
+        help="(default) Generate batch-averaged plots for the same model.",
+    )
+    ap.add_argument(
+        "--no-plot-batch-avg",
+        dest="plot_batch_avg",
+        action="store_false",
+        help="Disable batch-averaged plots.",
+    )
+
     ap.add_argument(
         "--output-dir",
         "--outdir",
@@ -362,56 +451,145 @@ def main():
         raise SystemExit("No matched jsons after filtering (model/batch/prefill/decode/stride).")
 
     outdir = Path(args.outdir)
-    combo_cols = [
-        "model_family",
-        "model_variant",
-        "dtype",
-        "batch",
-        "prefill_len",
-        "decode_len",
-        "stride",
-    ]
 
-    for combo_vals, combo_df in df.groupby(combo_cols):
-        combo = dict(zip(combo_cols, combo_vals))
+    # -------------------------
+    # 1) Existing: per-batch plots
+    # -------------------------
+    if args.plot_per_batch:
+        combo_cols = [
+            "model_family",
+            "model_variant",
+            "dtype",
+            "batch",
+            "prefill_len",
+            "decode_len",
+            "stride",
+        ]
 
-        mf = combo.get("model_family")
-        mv = combo.get("model_variant")
-        dt = combo.get("dtype")
-        b = combo.get("batch")
-        pf = combo.get("prefill_len")
-        dc = combo.get("decode_len")
-        st_val = combo.get("stride")
+        for combo_vals, combo_df in df.groupby(combo_cols, dropna=False):
+            combo = dict(zip(combo_cols, combo_vals))
 
-        # skip incomplete combos
-        if any(pd.isna(v) for v in [mf, mv, dt, b, pf, dc]):
-            continue
+            mf = combo.get("model_family")
+            mv = combo.get("model_variant")
+            dt = combo.get("dtype")
+            b = combo.get("batch")
+            pf = combo.get("prefill_len")
+            dc = combo.get("decode_len")
+            st_val = combo.get("stride")
 
-        stride_val: Optional[int] = None if pd.isna(st_val) else int(st_val)
-        groups = sorted(combo_df["hw_group"].unique().tolist())
-        if args.hw_group is not None:
-            if args.hw_group not in groups:
+            # skip incomplete combos
+            if any(pd.isna(v) for v in [mf, mv, dt, b, pf, dc]):
                 continue
-            groups = [args.hw_group]
 
-        print("\n=== Combo ===")
-        print(combo_df.sort_values(["hw_group", "policy", "aim"]).to_string(index=False))
+            stride_val: Optional[int] = None if pd.isna(st_val) else int(st_val)
+            groups = sorted(combo_df["hw_group"].unique().tolist())
+            if args.hw_group is not None:
+                if args.hw_group not in groups:
+                    continue
+                groups = [args.hw_group]
 
-        for g in groups:
-            outpath = plot_one_group(
-                combo_df,
-                hw_group=g,
-                metric=args.metric,
-                model_family=str(mf),
-                model_variant=str(mv),
-                dtype=str(dt),
-                batch=int(b),
-                prefill=int(pf),
-                decode=int(dc),
-                stride=stride_val,
-                outdir=outdir,
+            print("\n=== Combo (per-batch) ===")
+            print(combo_df.sort_values(["hw_group", "policy", "aim"]).to_string(index=False))
+
+            batch_title = f"b{int(b)}"
+            batch_tag = batch_title
+
+            for g in groups:
+                outpath = plot_one_group(
+                    combo_df,
+                    hw_group=g,
+                    metric=args.metric,
+                    model_family=str(mf),
+                    model_variant=str(mv),
+                    dtype=str(dt),
+                    batch_title=batch_title,
+                    batch_tag=batch_tag,
+                    prefill=int(pf),
+                    decode=int(dc),
+                    stride=stride_val,
+                    outdir=outdir,
+                )
+                print(f"Saved: {outpath}")
+
+    # -------------------------
+    # 2) New: average over batches for the same model
+    # -------------------------
+    if args.plot_batch_avg:
+        df_avg = build_batch_avg_dataframe(df)
+
+        combo_cols_avg = [
+            "model_family",
+            "model_variant",
+            "dtype",
+            "prefill_len",
+            "decode_len",
+            "stride",
+        ]
+
+        for combo_vals, combo_df in df_avg.groupby(combo_cols_avg, dropna=False):
+            combo = dict(zip(combo_cols_avg, combo_vals))
+
+            mf = combo.get("model_family")
+            mv = combo.get("model_variant")
+            dt = combo.get("dtype")
+            pf = combo.get("prefill_len")
+            dc = combo.get("decode_len")
+            st_val = combo.get("stride")
+
+            # skip incomplete combos
+            if any(pd.isna(v) for v in [mf, mv, dt, pf, dc]):
+                continue
+
+            stride_val: Optional[int] = None if pd.isna(st_val) else int(st_val)
+
+            # find which batches contributed (for title/tag)
+            mask = (
+                (df["model_family"] == mf)
+                & (df["model_variant"] == mv)
+                & (df["dtype"] == dt)
+                & (df["prefill_len"] == pf)
+                & (df["decode_len"] == dc)
             )
-            print(f"Saved: {outpath}")
+            if stride_val is None:
+                mask &= df["stride"].isna()
+            else:
+                mask &= (df["stride"] == stride_val)
+
+            batches = (
+                df.loc[mask, "batch"]
+                .dropna()
+                .astype(int)
+                .unique()
+                .tolist()
+            )
+            batch_title, batch_tag = make_batch_avg_title_and_tag(batches)
+
+            groups = sorted(combo_df["hw_group"].unique().tolist())
+            if args.hw_group is not None:
+                if args.hw_group not in groups:
+                    continue
+                groups = [args.hw_group]
+
+            print("\n=== Combo (batch-avg) ===")
+            print(f"Batch info: {batch_title}")
+            print(combo_df.sort_values(["hw_group", "policy", "aim"]).to_string(index=False))
+
+            for g in groups:
+                outpath = plot_one_group(
+                    combo_df,
+                    hw_group=g,
+                    metric=args.metric,
+                    model_family=str(mf),
+                    model_variant=str(mv),
+                    dtype=str(dt),
+                    batch_title=batch_title,
+                    batch_tag=batch_tag,
+                    prefill=int(pf),
+                    decode=int(dc),
+                    stride=stride_val,
+                    outdir=outdir,
+                )
+                print(f"Saved: {outpath}")
 
 
 if __name__ == "__main__":
