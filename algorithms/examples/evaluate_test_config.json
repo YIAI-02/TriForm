@@ -1,6 +1,6 @@
 {
   "model_family": "qwen",
-  "model_variant": "7b",
+  "model_variant": "1.8b",
   "dtype": "int8",
   "batch": 4,
   "prefill_len": 128,
@@ -10,8 +10,8 @@
   "gb_config_path": "./aim_simulator/gb.json",
   "ramulator_config_path": "./aim_simulator/example.yaml",
   "simulation_log_file": "./output/evaluate_single_test/pim_simulation.txt",
-  "result_dir": "./output/evaluate_single_test/npu_2aim/",
-  "hardware_json": "./examples/hardware_config_npu_2aim.json",
+  "result_dir": "./output/evaluate_single_test/hw_scale_down/",
+  "hardware_json": "./examples/hardware_config_scale_down_pima.json",
   "algo": [
     "heft",
     "hefthint"

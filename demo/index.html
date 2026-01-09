@@ -1,11 +1,11 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Best Pass</title>
-  <!-- 前端依赖：Cytoscape + dagre 布局插件（CDN） -->
+  <!-- Front-end deps: Cytoscape + dagre layout plugin (CDN) -->
   <script src="https://unpkg.com/cytoscape/dist/cytoscape.min.js"></script>
   <script src="https://unpkg.com/dagre/dist/dagre.min.js"></script>
   <script src="https://unpkg.com/cytoscape-dagre/cytoscape-dagre.js"></script>
@@ -186,6 +186,20 @@
       <h1>Best Pass Visualization</h1>
 
       <div class="control">
+        <label>Model (graph topology)</label>
+        <select id="model">
+          <option value="auto">auto (guess)</option>
+          <option value="llama">llama</option>
+          <option value="qwen">qwen (llama-like)</option>
+          <option value="mpt">mpt</option>
+          <option value="palm">palm</option>
+          <option value="mixtral">mixtral (MoE)</option>
+        </select>
+        <div class="filetag" id="modelStatus" style="margin-top:6px;">Model: (not set)</div></div>
+
+
+
+      <div class="control">
         <label>Load best_pass_summary.json</label>
         <input id="file" type="file" accept="application/json" />
         <div class="filetag" id="fileName">No file loaded</div>
@@ -229,15 +243,14 @@
         <h3>Legend</h3>
         <div style="margin:6px 0 8px;color:var(--muted);font-size:12px;">color = <b>device</b>, shape = <b>operator
             type</b>, border = <b>weight</b></div>
-        <div class="row"><span class="swatch" style="background:#1d2e53"></span> NPU</div>
-        <div class="row"><span class="swatch" style="background:#395aad"></span> PIM</div>
-        <div class="row"><span class="swatch" style="background:#84b4fc"></span> HYBRID</div>
-        <div class="row"><span class="swatch" style="background:#7f7f7f"></span> OTHER</div>
+        <div class="row"><span class="swatch" style="background:#0092FE"></span> NPU</div>
+        <div class="row"><span class="swatch" style="background:#FFBF02"></span> PIM</div>
+        <div class="row"><span class="swatch" style="background:#9ca3af"></span> HYBRID</div>
         <hr style="border:none;border-top:1px solid var(--border);margin:8px 0;">
         <div style="margin:6px 0 8px;color:var(--muted);font-size:12px;">border = weight format</div>
-        <div class="row"><span class="swatch border" style="border-color:#22c55e;"></span> NPU_OPT</div>
-        <div class="row"><span class="swatch border" style="border-color:#a17ed7;"></span> PIM_OPT</div>
-        <div class="row"><span class="swatch border" style="border-color:#9ca3af;"></span> ND / Other</div>
+        <div class="row"><span class="swatch border" style="border-color:#0024FF;"></span> NPU_OPT</div>
+        <div class="row"><span class="swatch border" style="border-color:#FE5D00;"></span> PIM_OPT</div>
+        <div class="row"><span class="swatch border" style="border-color:#808080;"></span> ND</div>
         <hr style="border:none;border-top:1px solid var(--border);margin:8px 0;">
         <div style="margin:6px 0 8px;color:var(--muted);font-size:12px;">Top row: <b>Main Memory</b> (weights) → dashed
           edges → compute nodes</div>
@@ -261,7 +274,80 @@
     }
     function parseLayerOp(nodeId) {
       const m = /^L_?(\d+)_([^/]+)$/i.exec(nodeId || "");
-      return { layer: m ? Number(m[1]) : null, op: m ? m[2] : nodeId };
+      const layer = m ? Number(m[1]) : null;
+
+      let opFull = m ? m[2] : (nodeId || "");
+      let shard = null;
+
+      const sm = /^(.*)_S(\d+)$/i.exec(opFull);
+      if (sm) {
+        opFull = sm[1];
+        shard = "S" + sm[2];
+      }
+      return { layer, op: opFull, shard };
+    }
+
+    // - labelShort: op×N
+    function mergeShardNodes(nodesByIdRaw, layer) {
+      const groups = {};
+      for (const [id, n] of Object.entries(nodesByIdRaw || {})) {
+        const op = String(n.op || "");
+        groups[op] ||= [];
+        groups[op].push({ id, n });
+      }
+
+      const merged = {};
+      for (const [op, arr] of Object.entries(groups)) {
+        if (arr.length === 1 && !arr[0].n.shard) {
+          const only = arr[0];
+          merged[only.id] = {
+            ...only.n,
+            node_id: only.id,
+            mergedFrom: [only.id],
+            shardCount: 1,
+            shardList: only.n.shard ? [only.n.shard] : []
+          };
+          continue;
+        }
+
+        const newId = `L${layer}_${op}`;
+        let start = Infinity, finish = -Infinity, durSum = 0;
+        const devSet = new Set();
+        const rawDevSet = new Set();
+        const shardSet = new Set();
+
+        for (const it of arr) {
+          const n = it.n || {};
+          const s = Number(n.start);
+          const f = Number(n.finish);
+          const d = Number.isFinite(+n.duration) ? Number(n.duration) : (Number.isFinite(f - s) ? (f - s) : 0);
+
+          if (Number.isFinite(s)) start = Math.min(start, s);
+          if (Number.isFinite(f)) finish = Math.max(finish, f);
+          durSum += Number.isFinite(d) ? d : 0;
+
+          devSet.add(deviceClass(n.device));
+          rawDevSet.add(String(n.device || ""));
+          if (n.shard) shardSet.add(n.shard);
+        }
+
+        const dev = (devSet.size === 1) ? [...devSet][0] : "HYBRID";
+
+        merged[newId] = {
+          ...arr[0].n,
+          node_id: newId,
+          op,
+          device: dev,
+          devicesRaw: [...rawDevSet].filter(Boolean).join(","),
+          start: Number.isFinite(start) ? start : arr[0].n.start,
+          finish: Number.isFinite(finish) ? finish : arr[0].n.finish,
+          duration: durSum,
+          mergedFrom: arr.map(x => x.id),
+          shardCount: arr.length,
+          shardList: [...shardSet]
+        };
+      }
+      return merged;
     }
     function opType(label) {
       const L = (label || "").toUpperCase();
@@ -272,7 +358,6 @@
         return "io";
       }
 
-      // Norm：支持 LN / RMSNorm
       if (L === "LN" || L === "LN1" || L === "LN2" ||
         L.includes("LAYERNORM") || L.includes("RMSNORM") || L.includes("RMS_NORM") || L === "X") {
         return "norm";
@@ -283,7 +368,6 @@
         return "moe";
       }
 
-      // Matmul / 线性：Q/K/V/O/FFN_W* / MLP / GEMM 等
       if (L === "Q" || L === "K" || L === "V" || L === "O" ||
         L.startsWith("FFN_W") || L.endsWith("_UP") || L.endsWith("_DOWN") ||
         L === "GEMM" || L === "MATMUL" || L === "PROJ" || L.includes("MLP")) {
@@ -300,14 +384,16 @@
         return "softmax";
       }
 
-      // 激活：ACT / SwiGLU / GELU / SiLU / ReLU / GLU
       if (L === "ACT" || L.startsWith("ACT_") || L.endsWith("_ACT") ||
         L.includes("GELU") || L.includes("SILU") || L.includes("RELU") ||
         L.includes("SWIGLU") || L.includes("GLU")) {
         return "activation";
       }
 
-      // Element-wise（Add / Bias / Mul 等）
+      if (L.endsWith("_MERGE") || L.includes("MERGE")) {
+        return "elementwise";
+      }
+
       if (L.startsWith("ADD") || L.includes("RES") || L.includes("BIAS") || L === "MUL") {
         return "elementwise";
       }
@@ -315,10 +401,8 @@
       return "other";
     }
 
-    // ========= 颜色与映射（设备 & 权重） =========
-    const colorByDev = { NPU: "#1d2e53", PIM: "#395aad", HYBRID: "#84b4fc", OTHER: "#7f7f7f" };
-    // 权重颜色：按你的偏好，PIM_OPT=绿、NPU_OPT=橙、ND=灰
-    const colorByWeight = { PIM_OPT: "#22c55e", NPU_OPT: "#a17ed7", ND: "#9ca3af", OTHER: "#17becf" };
+    const colorByDev = { NPU: "#0092FE", PIM: "#FFBF02", HYBRID: "#9ca3af" };
+    const colorByWeight = { NPU_OPT: "#0024FF", PIM_OPT: "#FE5D00", ND: "#808080" };
     function weightClass(v) {
       const u = (v || "").toUpperCase();
       if (u === "PIM_OPT") return "PIM_OPT";
@@ -331,7 +415,6 @@
       return c || "#1f2429";
     }
 
-    // 权重键↔算子
     function weightKeyFromOp(op) {
       const u = (op || "").toUpperCase();
       if (u === "Q") return "WQ";
@@ -345,19 +428,15 @@
     }
     const weight2op = { WQ: "Q", WK: "K", WV: "V", WO: "O", W1: "FFN_W1", W2: "FFN_W2", W3: "FFN_W3" };
 
-    // ========= 数据读取 =========
     let rawData = null;
     let weightFormat = {}; // { "L0_WQ": "PIM_OPT", ... }
     let store = {};        // store[stage][layer][token] = {elements}
 
-    // -------- 权重文件校验 --------
     function isWeightFormatMap(obj) {
       if (!obj || typeof obj !== "object") return false;
-      // 粗判：键里出现类似 L0_WQ / L1_W1 之类
       return Object.keys(obj).some(k => /^L\d+_W(Q|K|V|O|1|2|3)$/i.test(k));
     }
 
-    // -------- 收集所有 schedule --------
     function takeAllSchedules() {
       const out = [];
       const pre = Array.isArray(rawData?.prefill_schedule) ? rawData.prefill_schedule : [];
@@ -375,7 +454,6 @@
       return out;
     }
 
-    // -------- 权重列表：来自文件；若无则从图中推断并回退为 ND --------
     function weightsForLayerFromFile(L) {
       const list = [];
       for (const [k, v] of Object.entries(weightFormat || {})) {
@@ -409,7 +487,6 @@
     function weightsForLayer(L, nodesById) {
       const fromFile = weightsForLayerFromFile(L);
       if (fromFile.length) return fromFile;
-      // 回退：按图中出现的算子生成 ND 权重
       return weightCandidatesFromGraph(nodesById).map(suf => ({
         key: `L${L}_${suf}`,
         suf,
@@ -418,348 +495,435 @@
       }));
     }
 
-    function buildLayerEdges(nodesById, L) {
+
+    //
+    //
+
+    let currentModel = "auto";
+    let inferredModel = null;
+
+    function _isLayerId(x) {
+      return /^L\d+_/.test(String(x || ""));
+    }
+
+    function inferModelFromSchedules(allSchedules) {
+      const ids = (allSchedules || []).map(it => String(it?.node_id || ""));
+      const has = (re) => ids.some(id => re.test(id));
+
+      if (has(/_FFN_W[123]_E\d+\b/i) || has(/_Router\b/i)) return "mixtral";
+
+      const hasAdd1 = has(/_Add1\b/i);
+      const hasLN2 = has(/_LN2\b/i);
+      const hasFFNW3 = has(/_FFN_W3\b/i);
+      const hasAct = has(/_Act\b/i);
+      const hasGELU = has(/_GELU\b/i);
+      const hasLN = has(/_LN\b/i);
+
+      if (hasLN && !hasAdd1 && !hasLN2) return "palm";
+
+      if (hasAdd1 && hasLN2 && hasGELU && !hasFFNW3 && !hasAct) return "mpt";
+
+      // LLaMA/Qwen：SwiGLU（FFN_W3 + Act）
+      if (hasFFNW3 || hasAct) return "llama";
+
+      // fallback
+      return "llama";
+    }
+
+    function resolveModel(allSchedules) {
+      const m = String(currentModel || "").toLowerCase();
+      if (m && m !== "auto") return m;
+      if (!inferredModel) inferredModel = inferModelFromSchedules(allSchedules);
+      return inferredModel || "llama";
+    }
+
+    function layerHelpers(nodesById, L) {
       const N = (name) => `L${L}_${name}`;
-      const idExists = (id) => !!nodesById[id];
-      const nameExists = (name) => idExists(N(name));
+      const exists = (id) => !!nodesById[id];
+
+      function pick(names) {
+        if (!Array.isArray(names)) names = [names];
+
+        for (const name of names) {
+          const id = _isLayerId(name) ? String(name) : N(String(name));
+          if (exists(id)) return id;
+        }
+
+        const ups = names.map(x => String(x).toUpperCase());
+        for (const id of Object.keys(nodesById)) {
+          const up = id.toUpperCase();
+          for (const u of ups) {
+            if (up === u) return id;
+            if (up.endsWith("_" + u)) return id;
+            if (up.includes("_" + u + "_")) return id;
+          }
+        }
+        return null;
+      }
+
+      function add(E, u, v) {
+        const uid = pick(u);
+        const vid = pick(v);
+        if (uid && vid && exists(uid) && exists(vid)) E.push([uid, vid]);
+      }
+
+      return { N, exists, pick, add };
+    }
+
+    function buildLayerEdgesLlamaLike(nodesById, L) {
+      const { N, exists, pick, add } = layerHelpers(nodesById, L);
       const E = [];
 
-      // 辅助函数：根据操作类型查找节点（支持多种可能的操作名称）
-      const findNodeByOp = (opPatterns) => {
-        if (typeof opPatterns === "string") opPatterns = [opPatterns];
+      const ln1 = pick(["LN1", "LN"]);
+      const x = pick("X");
+      if (x && ln1) E.push([x, ln1]);
 
-        // 首先尝试直接通过节点ID匹配（最精确）
-        for (const pattern of opPatterns) {
-          const directId = N(pattern);
-          if (idExists(directId)) return directId;
-        }
-
-        // 然后尝试通过操作名匹配，但要考虑节点ID的上下文
-        for (const pattern of opPatterns) {
-          const patUpper = String(pattern).toUpperCase();
-
-          // 特殊处理：先通过节点ID匹配（即使操作名不同）
-          for (const [id, n] of Object.entries(nodesById)) {
-            const idUpper = id.toUpperCase();
-            if (patUpper === "ADD1" || patUpper === "ADD") {
-              if (idUpper.includes("ADD1") || (idUpper.includes("ADD") && !idUpper.includes("ADD2"))) {
-                return id;
-              }
-            } else if (patUpper === "ADD2") {
-              if (idUpper.includes("ADD2")) {
-                return id;
-              }
-            } else if (idUpper.includes(patUpper)) {
-              return id;
-            }
-          }
-
-          // 再通过操作名匹配
-          for (const [id, n] of Object.entries(nodesById)) {
-            const op = String(n.op || "").toUpperCase();
-            const idUpper = id.toUpperCase();
-
-            // 精确匹配操作名
-            if (op === patUpper) return id;
-
-            // 对于LN1/LN2的特殊处理
-            if (patUpper === "LN1") {
-              if ((op === "LN" || op === "LAYERNORM" || op === "RMSNORM") &&
-                (idUpper.includes("LN1") || idUpper.match(/L\d+_LN[^2]/))) {
-                return id;
-              }
-            } else if (patUpper === "LN2") {
-              if ((op === "LN" || op === "LAYERNORM" || op === "RMSNORM") &&
-                idUpper.includes("LN2")) {
-                return id;
-              }
-            } else if (patUpper === "ADD1" || patUpper === "ADD") {
-              // Add1节点：操作名可能是ADD、RES等
-              if ((op === "ADD" || op === "RES" || op === "RESIDUAL") &&
-                (idUpper.includes("ADD1") || !idUpper.includes("ADD2"))) {
-                return id;
-              }
-            } else if (patUpper === "ADD2") {
-              // Add2节点
-              if ((op === "ADD" || op === "RES" || op === "RESIDUAL") &&
-                idUpper.includes("ADD2")) {
-                return id;
-              }
-            } else if (op.includes(patUpper) || patUpper.includes(op)) {
-              return id;
-            }
-          }
-        }
-
-        return null;
-      };
-
-      const add = (u, v) => {
-        let uid, vid;
-
-        // 如果u是字符串且已经是完整ID，直接使用；否则尝试查找或构造
-        if (typeof u === "string" && u.startsWith("L")) {
-          uid = u;
-        } else if (typeof u === "string") {
-          // 对于LN1/LN2等，尝试智能查找
-          if (u === "LN1" || u === "LN2") {
-            uid = findNodeByOp([u, "LN", "LAYERNORM"]) || N(u);
-          } else {
-            uid = findNodeByOp([u]) || N(u);
-          }
-        } else {
-          uid = u;
-        }
-
-        // 同样的逻辑处理v
-        if (typeof v === "string" && v.startsWith("L")) {
-          vid = v;
-        } else if (typeof v === "string") {
-          if (v === "LN1" || v === "LN2") {
-            vid = findNodeByOp([v, "LN", "LAYERNORM"]) || N(v);
-          } else {
-            vid = findNodeByOp([v]) || N(v);
-          }
-        } else {
-          vid = v;
-        }
-
-        if (idExists(uid) && idExists(vid)) E.push([uid, vid]);
-      };
-
-      // ===== 注意力部分（所有模型共享） =====
-      // 先尝试查找LN1节点（可能是LN1或LN）
-      const ln1Id = findNodeByOp(["LN1", "LN", "LAYERNORM"]) || N("LN1");
-      if (idExists(ln1Id)) {
-        add(ln1Id, "Q");
-        add(ln1Id, "K");
-        add(ln1Id, "V");
+      // LN1 -> Q/K/V
+      if (ln1) {
+        add(E, ln1, "Q");
+        add(E, ln1, "K");
+        add(E, ln1, "V");
       }
 
-      // QK：K → K_read → QK（没有 K_read 就直接 K→QK）
-      add("Q", "QK");
-      if (nameExists("K_read")) {
-        add("K", "K_read");
-        add("K_read", "QK");
+      const qk = pick("QK");
+      if (qk) {
+        add(E, "Q", qk);
+        if (exists(N("K_read"))) { add(E, "K", "K_read"); add(E, "K_read", qk); }
+        else { add(E, "K", qk); }
+      }
+
+      // QK -> Softmax -> SV
+      add(E, "QK", "Softmax");
+      add(E, "Softmax", "SV");
+
+      if (exists(N("V_read"))) { add(E, "V", "V_read"); add(E, "V_read", "SV"); }
+      else { add(E, "V", "SV"); }
+
+      // SV -> O
+      add(E, "SV", "O");
+
+      // O -> (O_merge) -> Add1
+      if (exists(N("O_merge"))) {
+        add(E, "O", "O_merge");
+        add(E, "O_merge", "Add1");
       } else {
-        add("K", "QK");
+        add(E, "O", "Add1");
       }
 
-      // Softmax + SV：V → V_read → SV（没有 V_read 就直接 V→SV）
-      add("QK", "Softmax");
-      add("Softmax", "SV");
-      if (nameExists("V_read")) {
-        add("V", "V_read");
-        add("V_read", "SV");
+      add(E, "X", "Add1");
+
+      // Add1 -> LN2
+      add(E, "Add1", "LN2");
+
+      // LN2 -> FFN_W1/W3
+      add(E, "LN2", "FFN_W1");
+      add(E, "LN2", "FFN_W3");
+
+      // (W1,W3) -> Act -> W2
+      add(E, "FFN_W1", "Act");
+      add(E, "FFN_W3", "Act");
+      add(E, "Act", "FFN_W2");
+
+      // Add1 -> Add2
+      add(E, "Add1", "Add2");
+
+      // W2 -> (FFN_merge) -> Add2
+      if (exists(N("FFN_merge"))) {
+        add(E, "FFN_W2", "FFN_merge");
+        add(E, "FFN_merge", "Add2");
       } else {
-        add("V", "SV");
+        add(E, "FFN_W2", "Add2");
       }
 
-      // 输出 + 第一残差
-      add("SV", "O");
-      add("X", "Add1");
-      add("O", "Add1");
+      // KV writes
+      add(E, "K", "K_write");
+      add(E, "V", "V_write");
 
-      // KV 写
-      add("K", "K_write");
-      add("V", "V_write");
+      return E;
+    }
 
-      // ===== FFN / MoE 部分 =====
-      // 判断是否是 MoE：存在 FFN_W*_E* 或 Router / MoE_Router
-      let hasMoE = false;
-      for (const n of Object.values(nodesById)) {
-        const op = String(n.op || "").toUpperCase();
-        if (/^FFN_W[123]_E\d+/.test(op) || op === "MOE_ROUTER" || op === "ROUTER") {
-          hasMoE = true;
-          break;
-        }
+    function buildLayerEdgesMpt(nodesById, L) {
+      const { N, exists, pick, add } = layerHelpers(nodesById, L);
+      const E = [];
+
+      const ln1 = pick(["LN1", "LN"]);
+      const x = pick("X");
+      if (x && ln1) E.push([x, ln1]);
+
+      // LN1 -> Q/K/V
+      if (ln1) {
+        add(E, ln1, "Q");
+        add(E, ln1, "K");
+        add(E, ln1, "V");
       }
 
-      if (!hasMoE) {
-        // ---- 传统 dense FFN（LLaMA / Qwen / PaLM）----
-        // 查找Add1和LN2节点
-        const add1Id = findNodeByOp(["Add1", "ADD1", "ADD"]) || N("Add1");
-        const ln2Id = findNodeByOp(["LN2", "LN", "LAYERNORM"]) || N("LN2");
+      // Q/K -> QK
+      add(E, "Q", "QK");
+      if (exists(N("K_read"))) { add(E, "K", "K_read"); add(E, "K_read", "QK"); }
+      else { add(E, "K", "QK"); }
 
-        // Add1 → LN2
-        if (idExists(add1Id) && idExists(ln2Id)) {
-          E.push([add1Id, ln2Id]);
-        }
+      // QK -> Softmax -> SV
+      add(E, "QK", "Softmax");
+      add(E, "Softmax", "SV");
 
-        // LN2 → FFN节点
-        if (idExists(ln2Id)) {
-          add(ln2Id, "FFN_W1");
-          add(ln2Id, "FFN_W3");
-        }
-        add("FFN_W1", "Act");
-        add("FFN_W3", "FFN_W2");
-        add("Act", "FFN_W2");
-        add("FFN_W2", "Add2");
-        return E;
+      // V -> SV
+      if (exists(N("V_read"))) { add(E, "V", "V_read"); add(E, "V_read", "SV"); }
+      else { add(E, "V", "SV"); }
+
+      // SV -> O
+      add(E, "SV", "O");
+
+      // O -> (O_merge) -> Add1
+      if (exists(N("O_merge"))) {
+        add(E, "O", "O_merge");
+        add(E, "O_merge", "Add1");
+      } else {
+        add(E, "O", "Add1");
       }
 
-      // ---- MoE（Mixtral 等）----
-      // 查找Add1和LN2节点（使用与非 MoE 完全相同的逻辑）
-      let add1Id = findNodeByOp(["Add1", "ADD1", "ADD"]) || N("Add1");
-      let ln2Id = findNodeByOp(["LN2", "LN", "LAYERNORM"]) || N("LN2");
-      const add2Id = findNodeByOp(["Add2", "ADD2", "ADD"]) || N("Add2");
+      add(E, "X", "Add1");
 
-      // 如果查找失败，直接遍历所有节点查找
-      if (!idExists(add1Id)) {
-        for (const [id, n] of Object.entries(nodesById)) {
-          const idUpper = id.toUpperCase();
-          if (idUpper.includes("ADD1") || (idUpper.includes("ADD") && !idUpper.includes("ADD2"))) {
-            add1Id = id;
-            break;
-          }
-        }
-      }
-      if (!idExists(ln2Id)) {
-        for (const [id, n] of Object.entries(nodesById)) {
-          const idUpper = id.toUpperCase();
-          const op = String(n.op || "").toUpperCase();
-          if (idUpper.includes("LN2") ||
-            ((op === "LN" || op === "LAYERNORM" || op === "RMSNORM") && idUpper.includes("LN2"))) {
-            ln2Id = id;
-            break;
-          }
-        }
+      // Add1 -> LN2
+      add(E, "Add1", "LN2");
+
+      // LN2 -> W1 -> GELU -> W2
+      add(E, "LN2", "FFN_W1");
+      add(E, "FFN_W1", "GELU");
+      add(E, "GELU", "FFN_W2");
+
+      // Add1 -> Add2
+      add(E, "Add1", "Add2");
+
+      // W2 -> (FFN_merge) -> Add2
+      if (exists(N("FFN_merge"))) {
+        add(E, "FFN_W2", "FFN_merge");
+        add(E, "FFN_merge", "Add2");
+      } else {
+        add(E, "FFN_W2", "Add2");
       }
 
-      // Add1 → LN2（确保连接建立，与非 MoE 分支逻辑一致）
-      if (idExists(add1Id) && idExists(ln2Id)) {
-        E.push([add1Id, ln2Id]);
+      // KV writes
+      add(E, "K", "K_write");
+      add(E, "V", "V_write");
+
+      return E;
+    }
+
+    function buildLayerEdgesPalm(nodesById, L) {
+      const { N, exists, pick, add } = layerHelpers(nodesById, L);
+      const E = [];
+
+      const ln = pick(["LN", "LN1"]);
+      const x = pick("X");
+      if (x && ln) E.push([x, ln]);
+
+      if (ln) {
+        add(E, ln, "Q");
+        add(E, ln, "K");
+        add(E, ln, "V");
+        add(E, ln, "FFN_W1");
       }
 
-      // Router 节点（L{L}_Router 或 L{L}_MoE_Router）
-      let routerId = null;
-      for (const [id, n] of Object.entries(nodesById)) {
-        const op = String(n.op || "").toUpperCase();
-        if (op === "MOE_ROUTER" || op === "ROUTER") {
-          routerId = id;
-          break;
-        }
+      // Attention branch
+      add(E, "Q", "QK");
+      if (exists(N("K_read"))) { add(E, "K", "K_read"); add(E, "K_read", "QK"); }
+      else { add(E, "K", "QK"); }
+      add(E, "QK", "Softmax");
+      add(E, "Softmax", "SV");
+      if (exists(N("V_read"))) { add(E, "V", "V_read"); add(E, "V_read", "SV"); }
+      else { add(E, "V", "SV"); }
+      add(E, "SV", "O");
+
+      // MLP branch: W1 -> GELU -> W2
+      add(E, "FFN_W1", "GELU");
+      add(E, "GELU", "FFN_W2");
+
+      // Merge into Add2: residual + attn + mlp
+      add(E, "X", "Add2");
+
+      // O -> (O_merge) -> Add2
+      if (exists(N("O_merge"))) {
+        add(E, "O", "O_merge");
+        add(E, "O_merge", "Add2");
+      } else {
+        add(E, "O", "Add2");
       }
 
-      // 构建 experts map：e -> {w1, w3, act, w2}
+      // W2 -> (FFN_merge) -> Add2
+      if (exists(N("FFN_merge"))) {
+        add(E, "FFN_W2", "FFN_merge");
+        add(E, "FFN_merge", "Add2");
+      } else {
+        add(E, "FFN_W2", "Add2");
+      }
+
+      // KV writes
+      add(E, "K", "K_write");
+      add(E, "V", "V_write");
+
+      return E;
+    }
+
+    function buildLayerEdgesMixtral(nodesById, L) {
+      const { N, exists, pick, add } = layerHelpers(nodesById, L);
+      const E = [];
+
+      const ln1 = pick(["LN1", "LN"]);
+      const x = pick("X");
+      if (x && ln1) E.push([x, ln1]);
+
+      if (ln1) {
+        add(E, ln1, "Q");
+        add(E, ln1, "K");
+        add(E, ln1, "V");
+      }
+      add(E, "Q", "QK");
+      if (exists(N("K_read"))) { add(E, "K", "K_read"); add(E, "K_read", "QK"); }
+      else { add(E, "K", "QK"); }
+
+      add(E, "QK", "Softmax");
+      add(E, "Softmax", "SV");
+      if (exists(N("V_read"))) { add(E, "V", "V_read"); add(E, "V_read", "SV"); }
+      else { add(E, "V", "SV"); }
+
+      add(E, "SV", "O");
+
+      if (exists(N("O_merge"))) {
+        add(E, "O", "O_merge");
+        add(E, "O_merge", "Add1");
+      } else {
+        add(E, "O", "Add1");
+      }
+
+      add(E, "X", "Add1");
+
+      // LN2
+      add(E, "Add1", "LN2");
+
+      // Experts + Router
+      const ln2 = pick("LN2");
+      const routerId = pick(["Router", "MOE_ROUTER", "MoE_Router"]);
+
+      // experts: E -> {w1,w3,act,w2}
       const expertMap = {};
-      for (const [id, n] of Object.entries(nodesById)) {
-        const op = String(n.op || "");
+      for (const [id, n] of Object.entries(nodesById || {})) {
+        const op = String(n?.op || "");
         const U = op.toUpperCase();
         let m;
         if ((m = /^FFN_W1_E(\d+)/i.exec(U))) {
-          const e = m[1];
-          expertMap[e] ||= {};
-          expertMap[e].w1 = id;
+          const e = m[1]; expertMap[e] ||= {}; expertMap[e].w1 = id;
         } else if ((m = /^FFN_W3_E(\d+)/i.exec(U))) {
-          const e = m[1];
-          expertMap[e] ||= {};
-          expertMap[e].w3 = id;
-        } else if ((m = /^FFN_W2_E(\d+)/i.exec(U))) {
-          const e = m[1];
-          expertMap[e] ||= {};
-          expertMap[e].w2 = id;
+          const e = m[1]; expertMap[e] ||= {}; expertMap[e].w3 = id;
         } else if ((m = /^ACT_E(\d+)/i.exec(U))) {
-          const e = m[1];
-          expertMap[e] ||= {};
-          expertMap[e].act = id;
+          const e = m[1]; expertMap[e] ||= {}; expertMap[e].act = id;
+        } else if ((m = /^FFN_W2_E(\d+)/i.exec(U))) {
+          const e = m[1]; expertMap[e] ||= {}; expertMap[e].w2 = id;
         }
       }
 
-      // LN2 → 每个 expert，expert 内部连边
       for (const e of Object.keys(expertMap)) {
         const ex = expertMap[e];
-        if (idExists(ln2Id)) {
-          if (ex.w1) E.push([ln2Id, ex.w1]);
-          if (ex.w3) E.push([ln2Id, ex.w3]);
+        if (ln2) {
+          if (ex.w1) E.push([ln2, ex.w1]);
+          if (ex.w3) E.push([ln2, ex.w3]);
         }
         if (ex.w1 && ex.act) E.push([ex.w1, ex.act]);
         if (ex.w3 && ex.act) E.push([ex.w3, ex.act]);
         if (ex.act && ex.w2) E.push([ex.act, ex.w2]);
-
-        // expert 输出 → Router
-        if (routerId && ex.w2) {
-          E.push([ex.w2, routerId]);
-        }
+        if (routerId && ex.w2) E.push([ex.w2, routerId]);
       }
 
-      // LN2 → Router（路由网络输入）
-      if (routerId && idExists(ln2Id)) {
-        E.push([ln2Id, routerId]);
-      }
+      if (ln2 && routerId) E.push([ln2, routerId]);
 
-      // Router / Add1 → Add2
-      if (routerId && idExists(add2Id)) {
-        E.push([routerId, add2Id]);
-      }
-      if (idExists(add1Id) && idExists(add2Id)) {
-        E.push([add1Id, add2Id]);
-      }
+      // Add2
+      add(E, "Add1", "Add2");
+      if (routerId) add(E, routerId, "Add2");
+
+      // KV writes
+      add(E, "K", "K_write");
+      add(E, "V", "V_write");
 
       return E;
+    }
+
+    function buildLayerEdgesByModel(nodesById, L, modelFamily) {
+      const m = String(modelFamily || "").toLowerCase();
+      if (m === "palm") return buildLayerEdgesPalm(nodesById, L);
+      if (m === "mpt") return buildLayerEdgesMpt(nodesById, L);
+      if (m === "mixtral") return buildLayerEdgesMixtral(nodesById, L);
+
+      if (m === "qwen" || m === "llama") return buildLayerEdgesLlamaLike(nodesById, L);
+
+      return buildLayerEdgesLlamaLike(nodesById, L);
     }
 
     function buildStore() {
       store = {};
       const all = takeAllSchedules();
+      const modelUsed = resolveModel(all);
+      const ms = document.getElementById("modelStatus");
+      if (ms) {
+        ms.textContent = (String(currentModel || "").toLowerCase() === "auto")
+          ? `Model: ${modelUsed} (auto)`
+          : `Model: ${modelUsed}`;
+      }
       const nodeByKey = {};
 
-      // 按 (stage, layer, token) 分桶
       for (const it of all) {
         const stage = it.phase || (it.token_idx != null ? "decode" : "prefill");
-        const { layer, op } = parseLayerOp(it.node_id);
+        const { layer, op, shard } = parseLayerOp(it.node_id);
         if (layer == null) continue;
         const token = stage === 'decode' ? (Number.isFinite(+it.token_idx) ? Number(it.token_idx) : 0) : -1;
         const key = stage + "|" + layer + "|" + token;
         nodeByKey[key] ||= {};
-        nodeByKey[key][it.node_id] = { ...it, layer, op };
+        nodeByKey[key][it.node_id] = { ...it, layer, op, shard };
       }
 
-      // 每桶构建 elements
       for (const key of Object.keys(nodeByKey)) {
         const [stage, layerStr, tokStr] = key.split("|");
         const layer = Number(layerStr);
         const token = Number(tokStr);
-        const nodesById = nodeByKey[key];
+        const nodesByIdRaw = nodeByKey[key];
+        const nodesById = mergeShardNodes(nodesByIdRaw, layer);
         const elements = [];
 
-        // 主图节点
         for (const id of Object.keys(nodesById)) {
           const n = nodesById[id];
           const typ = opType(n.op);
           const dev = deviceClass(n.device);
           const wKey = weightKeyFromOp(n.op);
-          const wVal = wKey ? weightFormat[`L${layer}_${wKey}`] : null; // 用于边框着色（保留）
+          const wVal = wKey ? weightFormat[`L${layer}_${wKey}`] : null;
           elements.push({
             data: {
               id,
               label: id,
               op: n.op,
               type: typ,
-              labelShort: n.op,
+              labelShort: (n.shardCount && n.shardCount > 1) ? `${n.op}×${n.shardCount}` : n.op,
               dev,
               weightFmt: wVal || null,
               start: n.start, finish: n.finish, duration: n.duration
+            ,
+              mergedFrom: n.mergedFrom || null,
+              devicesRaw: n.devicesRaw || n.device || null
             }
           });
         }
 
-        // 主图连边
-        const E = buildLayerEdges(nodesById, layer);
+        const E = buildLayerEdgesByModel(nodesById, layer, modelUsed);
         for (const [u, v] of E) {
           if (nodesById[u] && nodesById[v]) {
             elements.push({ data: { id: `${u}->${v}`, source: u, target: v } });
           }
         }
 
-        // 顶部权重带（无论有没有权重文件，都生成）
         const mmId = `L${layer}_MM`;
         const wl = weightsForLayer(layer, nodesById);
         if (wl.length) {
           elements.push({ data: { id: mmId, mmLabel: `Main Memory (L${layer})`, isMM: true } });
           for (const w of wl) {
             const wid = `L${layer}_${w.suf}_WEI`;
-            const targetBaseOp = weight2op[w.suf]; // 如 "FFN_W1"
+            const targetBaseOp = weight2op[w.suf];
             elements.push({
               data: {
                 id: wid,
@@ -772,7 +936,6 @@
               }
             });
 
-            // 找到所有对应的算子：例如 FFN_W1 / FFN_W1_E*
             const targets = [];
             for (const [id, node] of Object.entries(nodesById)) {
               const opU = String(node.op || "").toUpperCase();
@@ -781,7 +944,6 @@
                 targets.push(id);
               }
             }
-            // 兼容旧 LLaMA 情况：只有单个 L{L}_FFN_W1
             if (!targets.length) {
               const fallbackId = `L${layer}_${targetBaseOp}`;
               if (nodesById[fallbackId]) targets.push(fallbackId);
@@ -806,7 +968,6 @@
       }
     }
 
-    // ========= 选择器与图 =========
     function stages() { return Object.keys(store).sort(); }
     function layersOf(stage) { return Object.keys(store[stage] || {}).map(x => Number(x)).sort((a, b) => a - b); }
     function tokensOf(stage, layer) { return Object.keys(store?.[stage]?.[layer] || {}).map(x => Number(x)).sort((a, b) => a - b); }
@@ -847,13 +1008,12 @@
               "text-wrap": "wrap",
               "text-max-width": 140,
               "padding": ele => ele.data("type") === "weight" ? "6px" : "10px",
-              "border-width": ele => ele.data("weightFmt") ? 3 : 1.5,           // 边框更粗
+              "border-width": ele => ele.data("weightFmt") ? 3 : 1.5,
               "border-color": ele => weightBorderColor(ele.data("weightFmt")),
               "text-outline-width": 3,
               "text-outline-color": "rgba(0,0,0,0.35)"
             }
           },
-          // Main Memory 容器（复合节点）
           {
             selector: "node[isMM]",
             style: {
@@ -879,7 +1039,6 @@
               "curve-style": "bezier"
             }
           },
-          // 权重加载边：虚线
           {
             selector: "edge[isWeightEdge]",
             style: {
@@ -898,31 +1057,24 @@
       return cy;
     }
 
-    // 把权重节点吸到图的最上方，并与目标算子对齐 X
-    // 用于把权重节点吸到图的最上方 + 与目标对齐 + 防重叠展开
     function positionWeightsAtTop() {
       if (!cy) return;
 
-      // 主图里除权重/容器外的节点
       const baseNodes = cy.nodes().filter(n => n.data("category") !== "weight" && !n.data("isMM"));
       if (baseNodes.length === 0) return;
 
-      // 顶部 Y（和主图留出间距）
       let minY = Infinity;
       baseNodes.forEach(n => { const y = n.position("y"); if (y < minY) minY = y; });
       const topY = minY - 110;
 
-      // 收集权重节点及其目标的 x
       const wNodes = cy.nodes('[category="weight"]');
       if (wNodes.length === 0) return;
 
-      // 先给一个“预布局”，避免初次渲染时挤在一起闪一下
       const preStep = 28;
       cy.batch(() => {
         wNodes.forEach((n, i) => n.position({ x: 50 + i * preStep, y: topY }));
       });
 
-      // 计算目标 x（若无连接边，则使用当前 x）
       const pairs = [];
       wNodes.forEach(n => {
         let tx = n.position("x");
@@ -934,14 +1086,11 @@
         pairs.push({ node: n, x: tx });
       });
 
-      // 依据目标 x 从左到右排序
       pairs.sort((a, b) => a.x - b.x);
 
-      // 防碰撞展开：同 x（或极近）的一组先均匀铺开，再全局保证最小间距
-      const MIN_GAP = 26;            // 你可以改成 30/36，间距更大
-      const SAME_EPS = 1e-3;         // 判断“几乎同一位置”的阈值
+      const MIN_GAP = 26;
+      const SAME_EPS = 1e-3;
 
-      // 1) 同 x 分组均匀展开（对齐目标算子中心，再左右对称散开）
       for (let i = 0; i < pairs.length;) {
         let j = i + 1;
         const group = [pairs[i]];
@@ -956,17 +1105,14 @@
         i = j;
       }
 
-      // 2) 全局扫一遍，保证相邻权重节点至少 MIN_GAP
       for (let k = 1; k < pairs.length; k++) {
         if (pairs[k].x - pairs[k - 1].x < MIN_GAP) {
           pairs[k].x = pairs[k - 1].x + MIN_GAP;
         }
       }
 
-      // 应用位置（吸顶 + 防重叠后的 x）
       cy.batch(() => {
         pairs.forEach(p => p.node.position({ x: p.x, y: topY }));
-        // 可选：给 Main Memory 容器一点 padding，视觉上更舒服
         cy.nodes('[isMM]').forEach(m => m.style('padding', '12px'));
       });
     }
@@ -975,49 +1121,92 @@
     function layersOf(stage) { return Object.keys(store[stage] || {}).map(x => Number(x)).sort((a, b) => a - b); }
     function tokensOf(stage, layer) { return Object.keys(store?.[stage]?.[layer] || {}).map(x => Number(x)).sort((a, b) => a - b); }
 
+    
     function fillSelectors() {
       const stageSel = document.getElementById("stage");
       const layerSel = document.getElementById("layer");
       const tokenWrap = document.getElementById("tokenWrap");
       const tokenSel = document.getElementById("token");
 
+      const prevStage = stageSel.value;
+      const prevLayer = layerSel.value;
+      const prevTok = tokenSel.value;
+
+      // ===== Stage =====
       stageSel.innerHTML = "";
-      for (const s of stages()) {
-        const opt = document.createElement("option"); opt.value = s; opt.textContent = s; stageSel.appendChild(opt);
+      const stageList = stages();
+      if (!stageList.length) {
+        const opt = document.createElement("option");
+        opt.value = "";
+        opt.textContent = "(no data)";
+        stageSel.appendChild(opt);
+        layerSel.innerHTML = "";
+        tokenWrap.style.display = "none";
+        return;
       }
-      stageSel.onchange = () => { fillLayers(); refresh(); };
+
+      for (const s of stageList) {
+        const opt = document.createElement("option");
+        opt.value = s;
+        opt.textContent = s;
+        stageSel.appendChild(opt);
+      }
+      if (prevStage && stageList.includes(prevStage)) stageSel.value = prevStage;
 
       function fillTokens() {
-        const s = stageSel.value || stages()[0];
+        const s = stageSel.value || stageList[0];
         const L = Number(layerSel.value || (layersOf(s)[0] ?? 0));
         const toks = tokensOf(s, L);
+
+        const keepTok = tokenSel.value;
         tokenSel.innerHTML = "";
+
         if (s === 'decode' && toks.length) {
           tokenWrap.style.display = "";
           for (const t of toks) {
-            const opt = document.createElement("option"); opt.value = String(t); opt.textContent = String(t); tokenSel.appendChild(opt);
+            const opt = document.createElement("option");
+            opt.value = String(t);
+            opt.textContent = String(t);
+            tokenSel.appendChild(opt);
           }
-          tokenSel.value = String(toks[toks.length - 1]);
+
+          if (keepTok && toks.includes(Number(keepTok))) tokenSel.value = keepTok;
+          else if (prevTok && toks.includes(Number(prevTok))) tokenSel.value = prevTok;
+          else tokenSel.value = String(toks[toks.length - 1]);
         } else {
           tokenWrap.style.display = "none";
         }
       }
 
-      function _fillLayers() {
-        const s = stageSel.value || stages()[0];
+      function fillLayers() {
+        const s = stageSel.value || stageList[0];
         const layers = layersOf(s);
+
+        const keepLayer = layerSel.value;
         layerSel.innerHTML = "";
         for (const L of layers) {
-          const opt = document.createElement("option"); opt.value = String(L); opt.textContent = `L${L}`; layerSel.appendChild(opt);
+          const opt = document.createElement("option");
+          opt.value = String(L);
+          opt.textContent = `L${L}`;
+          layerSel.appendChild(opt);
         }
+
+        const layerVals = layers.map(x => String(x));
+        if (keepLayer && layerVals.includes(keepLayer)) layerSel.value = keepLayer;
+        else if (prevLayer && layerVals.includes(prevLayer)) layerSel.value = prevLayer;
+
         layerSel.onchange = () => { fillTokens(); refresh(); };
         fillTokens();
       }
 
-      _fillLayers();
+      stageSel.onchange = () => { fillLayers(); refresh(); };
+
+      tokenSel.onchange = () => { refresh(); };
+
+      fillLayers();
     }
 
-    function refresh() {
+function refresh() {
       const stageSel = document.getElementById("stage");
       const layerSel = document.getElementById("layer");
       const tokenSel = document.getElementById("token");
@@ -1036,7 +1225,6 @@
       cy.fit();
     }
 
-    // 搜索过滤：id / op / type / labelShort / dev / weightFmt
     document.getElementById("search").addEventListener("input", (e) => {
       const q = (e.target.value || "").trim().toLowerCase();
       if (!cy) return;
@@ -1066,13 +1254,35 @@
       a.href = png; a.download = "layer_graph.png"; a.click();
     };
 
-    // ========== 文件选择（含权重文件校验 + 友好提示） ==========
     const nameMain = document.getElementById("fileName");
     const nameW = document.getElementById("wfileName");
     const mainInput = document.getElementById("file");
     const wInput = document.getElementById("fileW");
 
-    // 允许重复选择同文件
+    const modelSel = document.getElementById("model");
+    const modelStatus = document.getElementById("modelStatus");
+
+    if (modelSel) {
+      const saved = localStorage.getItem("bpvis_model");
+      currentModel = saved || modelSel.value || "auto";
+      modelSel.value = currentModel;
+
+      modelSel.addEventListener("change", () => {
+        currentModel = modelSel.value || "auto";
+        localStorage.setItem("bpvis_model", currentModel);
+        inferredModel = null;
+
+        if (rawData) {
+          buildStore();
+          fillSelectors();
+          refresh();
+        } else {
+          if (modelStatus) modelStatus.textContent = `Model: ${currentModel}`;
+        }
+      });
+    }
+
+
     [mainInput, wInput].forEach(inp => inp && inp.addEventListener("click", () => { inp.value = ""; }));
 
     mainInput && mainInput.addEventListener("change", async (e) => {
@@ -1080,10 +1290,11 @@
       try {
         const text = await f.text();
         rawData = JSON.parse(text);
+        inferredModel = null;
         buildStore(); fillSelectors(); refresh();
         if (nameMain) nameMain.textContent = `Loaded: ${f.name}`;
       } catch (err) {
-        alert("best_pass_summary.json 加载失败，请检查文件格式。");
+        alert("Failed to load best_pass_summary.json. Please check the file format.");
       }
     });
 
@@ -1093,24 +1304,24 @@
         const text = await f.text();
         const parsed = JSON.parse(text);
         if (!isWeightFormatMap(parsed)) {
-          weightFormat = {}; // 保持为空，走回退绘制
-          if (nameW) nameW.textContent = `⚠️ ${f.name} 不是 weight_format.json（已回退 ND）`;
+          weightFormat = {};
+          if (nameW) nameW.textContent = `⚠️ ${f.name} is not a valid weight_format.json (fallback: ND).`;
         } else {
           weightFormat = parsed;
           if (nameW) nameW.textContent = `Loaded: ${f.name}`;
         }
         buildStore(); refresh();
       } catch (err) {
-        alert("weight_format.json 加载失败，请检查文件格式。");
+        alert("Failed to load weight_format.json. Please check the file format.");
       }
     });
 
-    // 默认尝试读取 data/ 下的两个文件
     async function loadDefault() {
       try {
         const r = await fetch("./data/best_pass_summary.json", { cache: "no-store" });
         if (r.ok) {
           rawData = await r.json();
+          inferredModel = null;
           buildStore();
           fillSelectors();
           refresh();
@@ -1127,7 +1338,7 @@
             weightFormat = parsed;
             if (nameW) nameW.textContent = "Auto: data/weight_format.json";
           } else if (nameW) {
-            nameW.textContent = "⚠️ data/weight_format.json 不是权重映射（已回退 ND）";
+            nameW.textContent = "⚠️ data/weight_format.json is not a valid weight map (fallback: ND).";
           }
           buildStore(); refresh();
         }

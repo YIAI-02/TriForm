@@ -1,10 +1,10 @@
 #!/bin/bash
-#SBATCH -J 1212_hybrid_true
+#SBATCH -J 0107_pim
 #SBATCH -p C064M0256G
-#SBATCH --qos=low
+#SBATCH --qos=high
 #SBATCH -N 1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=16
+#SBATCH --cpus-per-task=64
 #SBATCH -t 96:00:00
 #SBATCH -o job.%j.out
 
@@ -14,4 +14,4 @@ cd "$SLURM_SUBMIT_DIR"
 source ~/.bashrc
 conda activate triform
 
-bash sweep_models_lens_evaluate.sh --jobs 16
+bash sweep_models_scale_down_evaluate.sh --jobs 64

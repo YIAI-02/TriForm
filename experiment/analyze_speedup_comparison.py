@@ -44,8 +44,7 @@ PREFERRED_ORDER = [
     "facil",
     "attacc",
     "ianus",
-    "heft",
-    "hefthint",
+    "this work",
 ]
 
 # 用户可能写错的别名（做兼容）
@@ -54,11 +53,11 @@ ALIASES = {
     "attn_on_pim": "attn_on_pim",
     "weight_on_pim": "weights_on_pim",
     "weights_on_pim": "weights_on_pim",
-    "heftcommaware": "hefthint",  # backward compatibility
+    "hefthint": "this work",  # backward compatibility
 }
 
 # 要去掉的算法
-EXCLUDE_ALGOS = {"neupims"}
+EXCLUDE_ALGOS = {"heft"}
 
 
 def _canonical_algo(policy: str) -> str:

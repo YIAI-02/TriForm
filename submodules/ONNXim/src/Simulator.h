@@ -33,7 +33,6 @@ class Simulator {
   uint32_t get_dest_node(MemoryAccess* access);
   SimulationConfig _config;
   uint32_t _n_cores;
-  uint32_t _noc_node_per_core;
   uint32_t _n_memories;
   uint32_t _memory_req_size;
 

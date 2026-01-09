@@ -15,9 +15,11 @@ std::unique_ptr<LangScheduler> LangScheduler::create(std::string name, std::stri
     return std::make_unique<IterLevelScheduler>(name, path, std::move(model), config, info["scheduler_config"]);
   }
   else {
-    spdlog::error("Invalid scheduler type: {}", info["scheduler"]);
-    throw std::runtime_error("Invalid scheduler type");
-    return nullptr;
+      const std::string sched = info.contains("scheduler")
+          ? info["scheduler"].dump()
+          : "<missing>";
+      spdlog::error("Invalid scheduler type: {}", sched);
+      throw std::runtime_error(std::string("Invalid scheduler type: ") + sched);
   }
 }
 
