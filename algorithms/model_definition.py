@@ -511,9 +511,9 @@ def add_llama_block_split_by_heads(g: TaskGraph, l: int, shape: ModelShape, dtyp
             # Representative id (scheduler fallback uses single head id).
             "kv_head_id": int(kv_st),
             "kv_head_ids": list(range(int(kv_st), int(kv_st + kv_cnt))),
-            # RR pinning across PIM devices (scheduler maps idx -> device name).
-            "pim_target_idx": int(sid),
         })
+        if kv_shards > 1:
+            attr_kv["pim_target_idx"] = int(sid)
 
         nid_K = f"L{l}_K_S{sid}"
         nid_V = f"L{l}_V_S{sid}"
@@ -551,8 +551,9 @@ def add_llama_block_split_by_heads(g: TaskGraph, l: int, shape: ModelShape, dtyp
             "kv_head_count": int(kv_cnt),
             "kv_head_id": int(kv_st),
             "kv_head_ids": list(range(int(kv_st), int(kv_st + kv_cnt))),
-            "pim_target_idx": int(sid),
         })
+        if kv_shards > 1:
+            attr_kvw["pim_target_idx"] = int(sid)
 
         nid_KW = f"L{l}_K_write_S{sid}"
         nid_VW = f"L{l}_V_write_S{sid}"
@@ -577,8 +578,9 @@ def add_llama_block_split_by_heads(g: TaskGraph, l: int, shape: ModelShape, dtyp
             "q_head_count": int(q_cnt),
             "q_head_id": int(q_st),
             "q_head_ids": list(range(int(q_st), int(q_st + q_cnt))),
-            "pim_target_idx": int(sid),
         })
+        if q_shards > 1:
+            attr_q["pim_target_idx"] = int(sid)
         nid_Q = f"L{l}_Q_S{sid}"
         g.add_node(TaskNode(
             nid_Q, "Q", flops=0.0,
@@ -659,9 +661,9 @@ def add_llama_block_split_by_heads(g: TaskGraph, l: int, shape: ModelShape, dtyp
             "is_shard": True,
             "ffn_shard": int(sid),
             "ffn_dim": int(ffn_cnt),
-            # RR pinning across PIM devices (scheduler maps idx -> device name).
-            "pim_target_idx": int(sid),
         })
+        if ffn_shards > 1:
+            attr_ffn["pim_target_idx"] = int(sid)
 
         nid_W1 = f"L{l}_FFN_W1_S{sid}"
         nid_W3 = f"L{l}_FFN_W3_S{sid}"
@@ -764,8 +766,9 @@ def add_mpt_block_split_by_heads(g: TaskGraph, l: int, shape: ModelShape, dtype_
             "kv_head_count": int(kv_cnt),
             "kv_head_id": int(kv_st),
             "kv_head_ids": list(range(int(kv_st), int(kv_st + kv_cnt))),
-            "pim_target_idx": int(sid),
         })
+        if kv_shards > 1:
+            attr_kv["pim_target_idx"] = int(sid)
         nid_K = f"L{l}_K_S{sid}"
         nid_V = f"L{l}_V_S{sid}"
         g.add_node(TaskNode(nid_K, "K", flops=0.0,
@@ -793,8 +796,9 @@ def add_mpt_block_split_by_heads(g: TaskGraph, l: int, shape: ModelShape, dtype_
             "kv_head_count": int(kv_cnt),
             "kv_head_id": int(kv_st),
             "kv_head_ids": list(range(int(kv_st), int(kv_st + kv_cnt))),
-            "pim_target_idx": int(sid),
         })
+        if kv_shards > 1:
+            attr_kvw["pim_target_idx"] = int(sid)
         nid_KW = f"L{l}_K_write_S{sid}"
         nid_VW = f"L{l}_V_write_S{sid}"
         g.add_node(TaskNode(nid_KW, "K_write", flops=0.0, attrs=dict(attr_kvw), allowed=get_op_allowed("K_write")))
@@ -818,8 +822,9 @@ def add_mpt_block_split_by_heads(g: TaskGraph, l: int, shape: ModelShape, dtype_
             "q_head_count": int(q_cnt),
             "q_head_id": int(q_st),
             "q_head_ids": list(range(int(q_st), int(q_st + q_cnt))),
-            "pim_target_idx": int(sid),
         })
+        if q_shards > 1:
+            attr_q["pim_target_idx"] = int(sid)
 
         nid_Q = f"L{l}_Q_S{sid}"
         g.add_node(TaskNode(nid_Q,"Q",flops=0.0,weight_id=f"L{l}_WQ_S{sid}",weight_size=dim*q_dim_s*dtype_bytes,attrs=dict(attr_q),allowed=get_op_allowed("Q")))
@@ -881,8 +886,9 @@ def add_mpt_block_split_by_heads(g: TaskGraph, l: int, shape: ModelShape, dtype_
             "is_shard": True,
             "ffn_shard": int(sid),
             "ffn_dim": int(ffn_cnt),
-            "pim_target_idx": int(sid),
         })
+        if ffn_shards > 1:
+            attr_ffn["pim_target_idx"] = int(sid)
         nid_W1=f"L{l}_FFN_W1_S{sid}"; nid_G=f"L{l}_GELU_S{sid}"; nid_W2=f"L{l}_FFN_W2_S{sid}"
         g.add_node(TaskNode(nid_W1,"FFN_W1",flops=0.0,weight_id=f"L{l}_W1_S{sid}",weight_size=dim*int(ffn_cnt)*dtype_bytes,attrs=dict(attr_ffn),allowed=get_op_allowed("FFN_W1")))
         g.add_node(TaskNode(nid_G,"GELU",flops=0.0,attrs=dict(attr_ffn),allowed=get_op_allowed("GELU")))
@@ -964,8 +970,9 @@ def add_palm_block_split_by_heads(g: TaskGraph, l: int, shape: ModelShape, dtype
             "kv_head_count": int(kv_cnt),
             "kv_head_id": int(kv_st),
             "kv_head_ids": list(range(int(kv_st), int(kv_st + kv_cnt))),
-            "pim_target_idx": int(sid),
         })
+        if kv_shards > 1:
+            attr_kv["pim_target_idx"] = int(sid)
         nid_K=f"L{l}_K_S{sid}"; nid_V=f"L{l}_V_S{sid}"
         g.add_node(TaskNode(nid_K,"K",flops=0.0,weight_id=f"L{l}_WK_S{sid}",weight_size=dim*kv_dim_s*dtype_bytes,attrs=dict(attr_kv),allowed=get_op_allowed("K")))
         g.add_node(TaskNode(nid_V,"V",flops=0.0,weight_id=f"L{l}_WV_S{sid}",weight_size=dim*kv_dim_s*dtype_bytes,attrs=dict(attr_kv),allowed=get_op_allowed("V")))
@@ -986,8 +993,9 @@ def add_palm_block_split_by_heads(g: TaskGraph, l: int, shape: ModelShape, dtype
             "kv_head_count": int(kv_cnt),
             "kv_head_id": int(kv_st),
             "kv_head_ids": list(range(int(kv_st), int(kv_st + kv_cnt))),
-            "pim_target_idx": int(sid),
         })
+        if kv_shards > 1:
+            attr_kvw["pim_target_idx"] = int(sid)
         nid_KW=f"L{l}_K_write_S{sid}"; nid_VW=f"L{l}_V_write_S{sid}"
         g.add_node(TaskNode(nid_KW,"K_write",flops=0.0,attrs=dict(attr_kvw),allowed=get_op_allowed("K_write")))
         g.add_node(TaskNode(nid_VW,"V_write",flops=0.0,attrs=dict(attr_kvw),allowed=get_op_allowed("V_write")))
@@ -1010,8 +1018,9 @@ def add_palm_block_split_by_heads(g: TaskGraph, l: int, shape: ModelShape, dtype
             "q_head_count": int(q_cnt),
             "q_head_id": int(q_st),
             "q_head_ids": list(range(int(q_st), int(q_st + q_cnt))),
-            "pim_target_idx": int(sid),
         })
+        if q_shards > 1:
+            attr_q["pim_target_idx"] = int(sid)
 
         nid_Q=f"L{l}_Q_S{sid}"
         g.add_node(TaskNode(nid_Q,"Q",flops=0.0,weight_id=f"L{l}_WQ_S{sid}",weight_size=dim*q_dim_s*dtype_bytes,attrs=dict(attr_q),allowed=get_op_allowed("Q")))
@@ -1064,8 +1073,9 @@ def add_palm_block_split_by_heads(g: TaskGraph, l: int, shape: ModelShape, dtype
             "is_shard": True,
             "ffn_shard": int(sid),
             "ffn_dim": int(ffn_cnt),
-            "pim_target_idx": int(sid),
         })
+        if ffn_shards > 1:
+            attr_ffn["pim_target_idx"] = int(sid)
         nid_W1=f"L{l}_FFN_W1_S{sid}"; nid_G=f"L{l}_GELU_S{sid}"; nid_W2=f"L{l}_FFN_W2_S{sid}"
         g.add_node(TaskNode(nid_W1,"FFN_W1",flops=0.0,weight_id=f"L{l}_W1_S{sid}",weight_size=dim*int(ffn_cnt)*dtype_bytes,attrs=dict(attr_ffn),allowed=get_op_allowed("FFN_W1")))
         g.add_node(TaskNode(nid_G,"GELU",flops=0.0,attrs=dict(attr_ffn),allowed=get_op_allowed("GELU")))

@@ -243,9 +243,7 @@
         <h3>Legend</h3>
         <div style="margin:6px 0 8px;color:var(--muted);font-size:12px;">color = <b>device</b>, shape = <b>operator
             type</b>, border = <b>weight</b></div>
-        <div class="row"><span class="swatch" style="background:#0092FE"></span> NPU</div>
-        <div class="row"><span class="swatch" style="background:#FFBF02"></span> PIM</div>
-        <div class="row"><span class="swatch" style="background:#9ca3af"></span> HYBRID</div>
+        <div id="legendDevices"></div>
         <hr style="border:none;border-top:1px solid var(--border);margin:8px 0;">
         <div style="margin:6px 0 8px;color:var(--muted);font-size:12px;">border = weight format</div>
         <div class="row"><span class="swatch border" style="border-color:#0024FF;"></span> NPU_OPT</div>
@@ -265,13 +263,105 @@
 
   <script>
     // ========= Helpers =========
-    function deviceClass(d) {
-      const u = (d || "").toUpperCase();
-      if (u.includes("HYBRID")) return "HYBRID";
-      if (u.includes("PIM")) return "PIM";
+    function normalizeDevice(d) {
+  const s = String(d ?? "").trim();
+  return s || "UNKNOWN";
+}
+
+// ========= Device palette (auto from JSON) =========
+// Assign colors to each distinct device name found in best_pass_summary.json.
+// If multiple devices exist, they will be displayed in the left legend with these colors.
+// Palettes by device family (keep NPU = blue-ish, PIM = yellow/orange-ish)
+const npuPalette = ["#0092FE", "#60A5FA", "#3B82F6", "#93C5FD", "#1D4ED8"];
+const pimPalette = ["#FFBF02", "#F59E0B", "#F97316", "#FDBA74", "#EA580C"];
+const otherPalette = ["#8B5CF6", "#22C55E", "#06B6D4", "#EF4444", "#EC4899", "#A3E635", "#14B8A6"];
+const HYBRID_DEVICE = "HYBRID";
+const HYBRID_COLOR = "#9ca3af";
+const UNKNOWN_DEVICE = "UNKNOWN";
+const UNKNOWN_DEVICE_COLOR = "#7f7f7f";
+
+    function deviceFamily(name) {
+      const u = String(name || "").toUpperCase();
       if (u.includes("NPU")) return "NPU";
+      if (u.includes("PIM")) return "PIM";
       return "OTHER";
     }
+
+
+let deviceList = [];
+let deviceColorMap = { [HYBRID_DEVICE]: HYBRID_COLOR, [UNKNOWN_DEVICE]: UNKNOWN_DEVICE_COLOR };
+
+function collectDevicesFromSchedules(allSchedules) {
+  const out = [];
+  const seen = new Set();
+  for (const it of (allSchedules || [])) {
+    const d = normalizeDevice(it?.device);
+    if (!d || d === UNKNOWN_DEVICE) continue;
+    if (d === HYBRID_DEVICE) continue; // reserved label for merged/mixed nodes
+    if (!seen.has(d)) { seen.add(d); out.push(d); }
+  }
+  return out;
+}
+
+function rebuildDeviceColorsAndLegend(allSchedules) {
+  deviceList = collectDevicesFromSchedules(allSchedules);
+
+  const map = { [HYBRID_DEVICE]: HYBRID_COLOR, [UNKNOWN_DEVICE]: UNKNOWN_DEVICE_COLOR };
+  const famIdx = { NPU: 0, PIM: 0, OTHER: 0 };
+deviceList.forEach((d) => {
+  const fam = deviceFamily(d);
+  const pal = (fam === "NPU") ? npuPalette : (fam === "PIM") ? pimPalette : otherPalette;
+  const i = famIdx[fam] || 0;
+  famIdx[fam] = i + 1;
+  map[d] = pal[i % pal.length];
+});
+  deviceColorMap = map;
+
+  const box = document.getElementById("legendDevices");
+  if (!box) return;
+
+  box.innerHTML = "";
+  if (!deviceList.length) {
+    const row = document.createElement("div");
+    row.className = "row";
+    row.textContent = "(Load JSON to show devices)";
+    box.appendChild(row);
+    return;
+  }
+
+  for (const d of deviceList) {
+    const row = document.createElement("div");
+    row.className = "row";
+    const sw = document.createElement("span");
+    sw.className = "swatch";
+    sw.style.background = deviceColorMap[d] || UNKNOWN_DEVICE_COLOR;
+    row.appendChild(sw);
+
+    const t = document.createElement("span");
+    t.textContent = d;
+    row.appendChild(t);
+
+    box.appendChild(row);
+  }
+
+  // Only show HYBRID when multiple devices exist (merged shard nodes may mix devices)
+  if (deviceList.length > 1) {
+    const row = document.createElement("div");
+    row.className = "row";
+    const sw = document.createElement("span");
+    sw.className = "swatch";
+    sw.style.background = HYBRID_COLOR;
+    row.appendChild(sw);
+
+    const t = document.createElement("span");
+    t.textContent = HYBRID_DEVICE;
+    row.appendChild(t);
+
+    box.appendChild(row);
+  }
+}
+    rebuildDeviceColorsAndLegend([]);
+
     function parseLayerOp(nodeId) {
       const m = /^L_?(\d+)_([^/]+)$/i.exec(nodeId || "");
       const layer = m ? Number(m[1]) : null;
@@ -326,8 +416,8 @@
           if (Number.isFinite(f)) finish = Math.max(finish, f);
           durSum += Number.isFinite(d) ? d : 0;
 
-          devSet.add(deviceClass(n.device));
-          rawDevSet.add(String(n.device || ""));
+          devSet.add(normalizeDevice(n.device));
+          rawDevSet.add(normalizeDevice(n.device));
           if (n.shard) shardSet.add(n.shard);
         }
 
@@ -400,8 +490,6 @@
 
       return "other";
     }
-
-    const colorByDev = { NPU: "#0092FE", PIM: "#FFBF02", HYBRID: "#9ca3af" };
     const colorByWeight = { NPU_OPT: "#0024FF", PIM_OPT: "#FE5D00", ND: "#808080" };
     function weightClass(v) {
       const u = (v || "").toUpperCase();
@@ -860,6 +948,8 @@
     function buildStore() {
       store = {};
       const all = takeAllSchedules();
+      rebuildDeviceColorsAndLegend(all);
+
       const modelUsed = resolveModel(all);
       const ms = document.getElementById("modelStatus");
       if (ms) {
@@ -890,7 +980,7 @@
         for (const id of Object.keys(nodesById)) {
           const n = nodesById[id];
           const typ = opType(n.op);
-          const dev = deviceClass(n.device);
+          const dev = normalizeDevice(n.device);
           const wKey = weightKeyFromOp(n.op);
           const wVal = wKey ? weightFormat[`L${layer}_${wKey}`] : null;
           elements.push({
@@ -999,7 +1089,7 @@
               },
               "background-color": ele => {
                 if (ele.data("category") === "weight") return colorByWeight[weightClass(ele.data("weightFmt"))] || "#9ca3af";
-                return colorByDev[ele.data("dev")] || "#7f7f7f";
+                return deviceColorMap[ele.data("dev")] || UNKNOWN_DEVICE_COLOR;
               },
               "label": ele => ele.data("labelShort"),
               "color": "#ffffff",

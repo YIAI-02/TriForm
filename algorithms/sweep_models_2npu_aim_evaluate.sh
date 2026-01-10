@@ -16,16 +16,16 @@ MODEL_FAMILY_VARIANTS=(
   # "llama:7b"
 )
 
-PREFILLS=(128 512)
+PREFILLS=(1024 2048)
 DECODES=(128 512 1024 2048)
 
 # Hardware sweep (edit here, or use --hardware_glob)
 HARDWARE_CONFIGS=(
   ./examples/hardware_config_2npu_2aim.json
   ./examples/hardware_config_2npu_4aim.json
-  ./examples/hardware_config_2npu_6aim.json
+  # ./examples/hardware_config_2npu_6aim.json
   ./examples/hardware_config_2npu_8aim.json
-  ./examples/hardware_config_2npu_12aim.json
+  # ./examples/hardware_config_2npu_12aim.json
   # ./examples/hardware_config_2npu_16aim.json
 )
 
