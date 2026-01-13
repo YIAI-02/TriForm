@@ -34,10 +34,27 @@ import itertools
 from stats_recorder import StatsRecorder
 
 _MISSING = object()
-DEBUG_SCHEDULER = False
+DEBUG_SCHEDULER = True
 logger = logging.getLogger(__name__)
 attach_local_debug_filter(logger, lambda: DEBUG_SCHEDULER)
 
+def _fmt_bytes(n: int) -> str:
+    """Human-friendly bytes formatter (base-2)."""
+    try:
+        n = int(n)
+    except Exception:
+        return str(n)
+    sign = "-" if n < 0 else ""
+    n = abs(n)
+    units = ("B", "KiB", "MiB", "GiB", "TiB", "PiB")
+    v = float(n)
+    u = 0
+    while v >= 1024.0 and u < (len(units) - 1):
+        v /= 1024.0
+        u += 1
+    if u == 0:
+        return f"{sign}{int(v)}{units[u]}"
+    return f"{sign}{v:.2f}{units[u]}"
 @dataclass
 class _GraphIndex:
     nodes: tuple
@@ -100,6 +117,8 @@ class SchedulerBase:
         self.buffer = buffer or GlobalMemoryManager()
         self.stats = StatsRecorder()
         self.comm = CommManager(cluster, stats=self.stats)
+        self._debug_budget = bool(DEBUG_SCHEDULER)
+        self._pim_budget: Dict[str, Dict[str, int]] = {}
 
         # runtime state (PIM runtime is managed by buffer manager)
         self._node_host_store_end: Dict[str, float] = {}  # 节点输出在 host 上的可用时间
@@ -125,6 +144,32 @@ class SchedulerBase:
                 runtime_caps.append(runtime_cap)
 
             total_runtime = sum(runtime_caps) or 1
+
+            total_kv_reserve = 0
+            total_weight_cap = 0
+
+            if getattr(self, "_debug_budget", False):
+                try:
+                    logger.warning(
+                        "[PIM-BUDGET:init] threshold=%.3f seq_len=%d batch=%d kv_in_pim=%s kv_total_bytes=%s",
+                        float(PIM_RUNTIME_LRU_THRESHOLD),
+                        int(self.seq_len),
+                        int(self.batch),
+                        bool(kv_in_pim),
+                        _fmt_bytes(int(kv_total_bytes)),
+                    )
+                    logger.warning(
+                        "[PIM-BUDGET:init] pim_cnt=%d total_phy=%s total_runtime=%s",
+                        int(len(pim_devs)),
+                        _fmt_bytes(int(sum(phy_caps))),
+                        _fmt_bytes(int(sum(runtime_caps))),
+                    )
+                    if isinstance(kv_bytes_by_pim, Mapping) and kv_bytes_by_pim:
+                        pretty = {str(k): _fmt_bytes(int(v)) for k, v in dict(kv_bytes_by_pim).items()}
+                        logger.warning("[PIM-BUDGET:init] label.kv_bytes_by_pim=%s", pretty)
+                except Exception:
+                    pass
+
             for d, phy_bytes, runtime_cap in zip(pim_devs, phy_caps, runtime_caps):
                 kv_reserve = 0
                 if kv_in_pim:
@@ -141,6 +186,42 @@ class SchedulerBase:
                         # Fallback: proportional split by runtime budgets.
                         kv_reserve = int(kv_total_bytes * (runtime_cap / total_runtime))
                 weight_cap = max(0, int(runtime_cap - kv_reserve))
+
+                # Record/debug: per-device KV reservation and resulting weight-cache capacity.
+                try:
+                    self._pim_budget[str(d.name)] = {
+                        "phy_bytes": int(phy_bytes),
+                        "runtime_cap": int(runtime_cap),
+                        "kv_reserve": int(kv_reserve),
+                        "weight_cap": int(weight_cap),
+                    }
+                except Exception:
+                    pass
+                try:
+                    total_kv_reserve += int(kv_reserve)
+                    total_weight_cap += int(weight_cap)
+                except Exception:
+                    pass
+
+                if getattr(self, "_debug_budget", False):
+                    kv_pct = (100.0 * float(kv_reserve) / float(runtime_cap)) if runtime_cap else 0.0
+                    w_pct = (100.0 * float(weight_cap) / float(runtime_cap)) if runtime_cap else 0.0
+                    logger.warning(
+                        "[PIM-BUDGET:init] dev=%s phy=%s runtime_cap=%s kv_reserve=%s weight_cap=%s (kv/runtime=%.1f%%, weight/runtime=%.1f%%)",
+                        d.name,
+                        _fmt_bytes(int(phy_bytes)),
+                        _fmt_bytes(int(runtime_cap)),
+                        _fmt_bytes(int(kv_reserve)),
+                        _fmt_bytes(int(weight_cap)),
+                        float(kv_pct),
+                        float(w_pct),
+                    )
+                    if kv_in_pim and int(weight_cap) <= 0:
+                        logger.warning(
+                            "[PIM-BUDGET:init] dev=%s weight_cap<=0: weight cache effectively disabled; expect every weight op to reload.",
+                            d.name,
+                        )
+
                 self.buffer.register_pim_device(
                     d.name,
                     phy_bytes=phy_bytes,
@@ -149,6 +230,19 @@ class SchedulerBase:
                     kv_in_pim=kv_in_pim,
                     weight_cache_capacity_bytes=weight_cap,
                 )
+
+
+            if getattr(self, "_debug_budget", False):
+                try:
+                    logger.warning(
+                        "[PIM-BUDGET:init] totals kv_reserve=%s (label.kv_total=%s) weight_cap=%s",
+                        _fmt_bytes(int(total_kv_reserve)),
+                        _fmt_bytes(int(kv_total_bytes)),
+                        _fmt_bytes(int(total_weight_cap)),
+                    )
+                except Exception:
+                    pass
+
 
         # non-PIM activation budget
         for name, d in self.cluster.devices.items():
@@ -191,9 +285,9 @@ class SchedulerBase:
         self._act_used.clear()
         self._act_resident.clear()
         self._act_refcnt.clear()
-
-        # KV/activation runtime states on PIM are centrally managed in buffer manager
         self.buffer.reset_runtime_state()
+        self.comm.timeline_end.clear()
+        self.avail = {name: 0.0 for name in self.cluster.devices}
     
     # -------- Node/graph abstraction hooks --------
 
@@ -370,8 +464,6 @@ class SchedulerBase:
         return dev
     
     def _preferred_kv_write_device(self, g: Any, nid: str) -> Optional[DeviceSpec]:
-        """对于 K_WRITE / V_WRITE，尽量把它们 pin 在本层 K/V 计算算子所在的设备上。
-        """
         try:
             node = g.nodes[nid]
         except Exception:
@@ -527,9 +619,9 @@ class SchedulerBase:
             kv_in_pim = bool(getattr(self.label, "kv_in_pim", False))
             _, out_write_nd = self.cost.estimate_activation_bytes(node, batch, seq_len, phase_eff)
             size_nd = self.cost.format_size(out_write_nd, "ND")
-            logger.debug(
-                "[kv-write] node=%s target=%s kv_in_pim=%s bytes_nd=%s", nid, dev.name, kv_in_pim, out_write_nd
-            )
+            # logger.debug(
+            #     "[kv-write] node=%s target=%s kv_in_pim=%s bytes_nd=%s", nid, dev.name, kv_in_pim, out_write_nd
+            # )
 
             if kv_in_pim:
                 pim_devs = self.cluster.devices_by_type("pim")
@@ -542,9 +634,9 @@ class SchedulerBase:
                 ready_kv = self._ready_time_for_device(g, nid, target_pim, phase_eff, commit)
                 start = max(float(self.avail.get(target_pim.name, 0.0)), float(ready_kv))
                 finish = start + 3.0 * float(self.cost.activation_read_time_pim(out_write_nd))  # todo: consider write time
-                logger.debug(
-                    "[kv-write] node=%s target_pim=%s start=%.4f finish=%.4f", nid, target_pim.name, start, finish
-                )
+                # logger.debug(
+                #     "[kv-write] node=%s target_pim=%s start=%.4f finish=%.4f", nid, target_pim.name, start, finish
+                # )
                 if commit:
                     self.avail[target_pim.name] = float(finish)
                     self._node_finish_time[nid] = float(finish)
@@ -559,9 +651,9 @@ class SchedulerBase:
                 conv_cost = self.cost.format_conversion_time(size_nd, self.cost.device_preferred_fmt(dev), "ND", dev)
                 _, l2e = self.comm.reserve(dev.name, host.name, size_nd, earliest=conv_start + conv_cost, commit=commit, tag="kv_write")
                 finish = float(l2e)
-                logger.debug(
-                    "[kv-write] node=%s dev=%s -> host start=%.4f finish=%.4f", nid, dev.name, conv_start, finish
-                )
+                # logger.debug(
+                #     "[kv-write] node=%s dev=%s -> host start=%.4f finish=%.4f", nid, dev.name, conv_start, finish
+                # )
                 if commit:
                     self.avail[dev.name] = max(self.avail.get(dev.name, 0.0), finish)
                     self.avail[host.name] = max(self.avail.get(host.name, 0.0), finish)
@@ -579,10 +671,10 @@ class SchedulerBase:
             if kv_bytes > 0:
                 kv_in_pim = bool(getattr(self.label, "kv_in_pim", False))
                 size_nd = self.cost.format_size(kv_bytes, "ND")
-                logger.debug(
-                    "[kv-load] node=%s target=%s kv_in_pim=%s kv_bytes=%s ready=%.4f",
-                    nid, dev.name, kv_in_pim, kv_bytes, ready
-                )
+                # logger.debug(
+                #     "[kv-load] node=%s target=%s kv_in_pim=%s kv_bytes=%s ready=%.4f",
+                #     nid, dev.name, kv_in_pim, kv_bytes, ready
+                # )
                 if kv_in_pim:
                     pim_devs = self.cluster.devices_by_type("pim")
                     if pim_devs:
@@ -676,7 +768,7 @@ class SchedulerBase:
                     l2s, l2e = self.comm.reserve(host.name, dev.name, size_nd, earliest=float(ready), commit=commit, tag="kv_load")
                     conv2 = float(self.cost.format_conversion_time(size_nd, "ND", self.cost.device_preferred_fmt(dev), dev))
                     kv_ready = max(kv_ready, float(l2e) + conv2)
-                logger.debug("[kv-load] node=%s target=%s kv_ready=%.4f", nid, dev.name, kv_ready)
+                # logger.debug("[kv-load] node=%s target=%s kv_ready=%.4f", nid, dev.name, kv_ready)
 
         #---------------------3. normal weight load + compute + activation handling
         start = max(float(self.avail.get(dev.name, 0.0)), kv_ready)
@@ -1040,9 +1132,9 @@ class SchedulerBase:
 
         # The node can start after all required inbound transfers are done.
         ready_t = float(max(inbound_end_times, default=0.0))
-        logger.debug(
-            "[ready] node=%s dev=%s ready=%.4f deps=%d", nid, dev.name, ready_t, len(inbound_end_times)
-        )
+        # logger.debug(
+        #     "[ready] node=%s dev=%s ready=%.4f deps=%d", nid, dev.name, ready_t, len(inbound_end_times)
+        # )
         return ready_t
 
     def _weight_load_time(self, node: TaskNode, dev: DeviceSpec, earliest: float, commit: bool) -> float:
@@ -1476,10 +1568,10 @@ class HEFTScheduler(SchedulerBase):
                 raise RuntimeError("No available device for node %s" % nid)
 
             chosen_mode, chosen_finish, chosen_data = min(candidates, key=lambda x: x[1])
-            logger.debug(
-                "[sched] choose node=%s mode=%s finish=%.4f candidates=%s",
-                nid, chosen_mode, chosen_finish, [(m, round(f, 4)) for m, f, _ in candidates]
-            )
+            # logger.debug(
+            #     "[sched] choose node=%s mode=%s finish=%.4f candidates=%s",
+            #     nid, chosen_mode, chosen_finish, [(m, round(f, 4)) for m, f, _ in candidates]
+            # )
             if chosen_mode == 'HYBRID':
                 hy = self._earliest_finish_hybrid(g, nid, phase, commit=True)
                 npu = hy['npu']
@@ -1625,9 +1717,6 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
 
     def reset_state(self):
         """Reset runtime state + clear COMMAWARE hints.
-
-        `SchedulerBase.reset_state()` 只会清空调度/缓存相关状态；
-        COMMAWARE 的 lookahead hint 与 weight-level hint 需要在新一轮仿真前同步清空。
         """
         super().reset_state()
         self._plan_hint.clear()

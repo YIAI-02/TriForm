@@ -842,7 +842,8 @@ def _eval_one_baseline(cfg: Dict, policy: str) -> Dict:
         sched, cfg, g_decode, prefill_end=t_prefill
     )
 
-    decode_time_effective = float(t_decode + (t_kv_move if is_pd else 0.0))
+    # decode_time_effective = float(t_decode + (t_kv_move if is_pd else 0.0))
+    decode_time_effective = float(t_decode)
     total_time = float(t_prefill + decode_time_effective)
 
     best = {

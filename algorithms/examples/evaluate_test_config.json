@@ -1,29 +1,23 @@
 {
-  "model_family": "qwen",
-  "model_variant": "1.8b",
+  "model_family": "llama",
+  "model_variant": "7b",
   "dtype": "int8",
-  "batch": 4,
-  "prefill_len": 128,
-  "decode_len": 512,
+  "batch": 8,
+  "prefill_len": 1024,
+  "decode_len": 1024,
   "decode_sample_stride": 64,
   "pim_config_path": "./aim_simulator/PIM_AiM.json",
   "gb_config_path": "./aim_simulator/gb.json",
   "ramulator_config_path": "./aim_simulator/example.yaml",
-  "simulation_log_file": "./output/evaluate_single_test/pim_simulation.txt",
-  "result_dir": "./output/evaluate_single_test/hw_scale_down/",
-  "hardware_json": "./examples/hardware_config_scale_down_pima.json",
+  "simulation_log_file": "./output/evaluate_single_test/hardware_config_2npu_8aim/pim_simulation.txt",
+  "result_dir": "./output/evaluate_single_test/hardware_config_2npu_8aim/",
+  "hardware_json": "./examples/hardware_config_2npu_8aim.json",
   "algo": [
-    "heft",
     "hefthint"
   ],
   "baselines": [
-    "ianus",
-    "attacc",
-    "facil",
-    "pd",
-    "weights_on_pim",
-    "attn_on_pim"
+    "pd"
   ],
   "split_by": "head",
-  "split_shards": 4
+  "split_shards": 8
 }
