@@ -233,7 +233,7 @@ run_one() {
 
   if (( DEBUG )); then cmd+=(--debug); fi
   if (( NPU_FAST )); then cmd+=(--npu_fast_mode); fi
-  if (( PIM_FAST )); then cmd+=(--npu_fast_mode); fi
+  if (( PIM_FAST )); then cmd+=(--pim_fast_mode); fi
 
   (
     "${cmd[@]}"

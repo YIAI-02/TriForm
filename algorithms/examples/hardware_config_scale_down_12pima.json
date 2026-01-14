@@ -40,7 +40,7 @@
         { "a": "CPU0", "b": "NPU0", "bw_GBs": 45.0 },
         { "a": "CPU0", "b": "PIMA0", "bw_GBs": 300.0 },
         { "a": "CPU0", "b": "PIMA1", "bw_GBs": 300.0 },
-        { "a":"NPU0", "b":"PIMA0", "bw_GBs": 16.0 }
+        { "a":"NPU0", "b":"PIMA0", "bw_GBs": 16.0 },
         { "a":"NPU0", "b":"PIMA1", "bw_GBs": 16.0 }
       ]
     }

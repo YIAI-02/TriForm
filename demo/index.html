@@ -354,6 +354,54 @@
       color: var(--muted);
       font-size: 12px;
     }
+
+    /* =========================
+       Legend (operator shapes)
+    ========================= */
+    .legend{
+      margin: 10px 0 12px;
+      padding: 10px 10px 8px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: rgba(255,255,255,0.02);
+    }
+    .legendTitle{
+      font-size: 12px;
+      font-weight: 650;
+      letter-spacing: .2px;
+      margin: 0 0 8px;
+      color: var(--fg);
+    }
+    .legendGrid{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px 10px;
+    }
+    .legendItem{
+      display:flex;
+      align-items:center;
+      gap: 8px;
+      min-width: 0;
+    }
+    .legendIcon{
+      width: 18px;
+      height: 18px;
+      flex: 0 0 18px;
+      display:block;
+    }
+    .legendIcon .shape{
+      fill: transparent;
+      stroke: var(--muted);
+      stroke-width: 1.6;
+      vector-effect: non-scaling-stroke;
+    }
+    .legendLabel{
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
   </style>
 </head>
 
@@ -398,6 +446,67 @@
         <option>fp16</option>
         <option>fp8</option>
       </select>
+    </div>
+
+    <div class="legend" aria-label="Operator shape legend">
+      <div class="legendTitle"></div>
+      <div class="legendGrid">
+        <div class="legendItem">
+          <svg class="legendIcon" viewBox="0 0 24 24" aria-hidden="true">
+            <rect class="shape" x="5" y="5" width="14" height="14"></rect>
+          </svg>
+          <div class="legendLabel">MatMul</div>
+        </div>
+
+        <div class="legendItem">
+          <svg class="legendIcon" viewBox="0 0 24 24" aria-hidden="true">
+            <polygon class="shape" points="12,3 21,12 12,21 3,12"></polygon>
+          </svg>
+          <div class="legendLabel">Attention</div>
+        </div>
+
+        <div class="legendItem">
+          <svg class="legendIcon" viewBox="0 0 24 24" aria-hidden="true">
+            <ellipse class="shape" cx="12" cy="12" rx="8" ry="6"></ellipse>
+          </svg>
+          <div class="legendLabel">Norm/Activation</div>
+        </div>
+
+        <div class="legendItem">
+          <svg class="legendIcon" viewBox="0 0 24 24" aria-hidden="true">
+            <polygon class="shape" points="4,7 17,7 20,12 17,17 4,17"></polygon>
+          </svg>
+          <div class="legendLabel">Softmax</div>
+        </div>
+
+        <div class="legendItem">
+          <svg class="legendIcon" viewBox="0 0 24 24" aria-hidden="true">
+            <polygon class="shape" points="8,3 16,3 21,12 16,21 8,21 3,12"></polygon>
+          </svg>
+          <div class="legendLabel">Elementwise</div>
+        </div>
+
+        <div class="legendItem">
+          <svg class="legendIcon" viewBox="0 0 24 24" aria-hidden="true">
+            <polygon class="shape" points="12,4 20,20 4,20"></polygon>
+          </svg>
+          <div class="legendLabel">KV R/W</div>
+        </div>
+
+        <div class="legendItem">
+          <svg class="legendIcon" viewBox="0 0 24 24" aria-hidden="true">
+            <polygon class="shape" points="4,6 12,18 20,6 16.8,6 12,13 7.2,6"></polygon>
+          </svg>
+          <div class="legendLabel">MoE Router</div>
+        </div>
+
+        <div class="legendItem">
+          <svg class="legendIcon" viewBox="0 0 24 24" aria-hidden="true">
+            <rect class="shape" x="4" y="7" width="16" height="10" rx="4" ry="4"></rect>
+          </svg>
+          <div class="legendLabel">Other</div>
+        </div>
+      </div>
     </div>
 
     <hr />

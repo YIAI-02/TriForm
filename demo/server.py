@@ -1,6 +1,6 @@
 import http.server, socketserver, os, webbrowser
 
-PORT = int(os.environ.get("PORT", "8001"))
+PORT = int(os.environ.get("PORT", "8012"))
 ROOT = os.path.dirname(os.path.abspath(__file__))
 
 class Handler(http.server.SimpleHTTPRequestHandler):

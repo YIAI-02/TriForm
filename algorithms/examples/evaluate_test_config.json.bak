@@ -6,18 +6,22 @@
   "prefill_len": 128,
   "decode_len": 1024,
   "decode_sample_stride": 64,
-  "pim_config_path": "./aim_simulator/PIM_AiM.json",
   "gb_config_path": "./aim_simulator/gb.json",
-  "ramulator_config_path": "./aim_simulator/example.yaml",
   "simulation_log_file": "./output/evaluate_single_test/hardware_config_scale_down_11pima/pim_simulation.txt",
   "result_dir": "./output/evaluate_single_test/hardware_config_scale_down_11pima/",
   "hardware_json": "./examples/hardware_config_scale_down_11pima.json",
   "algo": [
-    "hefthint"
+    "hefthint",
+    "heft"
   ],
   "baselines": [
-    "pd"
+    "pd",
+    "attn_on_pim",
+    "weights_on_pim",
+    "ianus",
+    "facil",
+    "attacc"
   ],
   "split_by": "head",
-  "split_shards": 4
+  "split_shards": 8
 }

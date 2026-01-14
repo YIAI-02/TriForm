@@ -32,12 +32,333 @@ import copy
 import heapq
 import itertools
 from stats_recorder import StatsRecorder
+from abc import ABC, abstractmethod
+import json
+import subprocess
+import tempfile
+from pathlib import Path
+
+# -----------------------------
+# NoC / communication modeling
+# -----------------------------
+#
+# The scheduler frequently calls CommManager.reserve(...) inside the critical path
+# (EFT evaluation, tentative placement, committing placements). Calling an external
+# BookSim executable ("./booksim") for every reservation is prohibitively expensive
+# and hard to keep consistent with the scheduler's internal timeline.
+#
+# For integration, we support a pluggable backend model:
+#   - "pairwise": the original per-(src,dst) independent link timeline model.
+#   - "routed":  (optional) a per-hop link reservation model if the Cluster can
+#                provide a route between endpoints (contends on shared hops).
+#   - "booksim": an in-process BookSim backend via a Python binding
+#                (recommended for tight integration).
+#
+# See CommManager and _build_comm_backend below.
+
 
 _MISSING = object()
-DEBUG_SCHEDULER = False
+DEBUG_SCHEDULER = True
 logger = logging.getLogger(__name__)
 attach_local_debug_filter(logger, lambda: DEBUG_SCHEDULER)
 
+def _fmt_bytes(n: int) -> str:
+    """Human-friendly bytes formatter (base-2)."""
+    try:
+        n = int(n)
+    except Exception:
+        return str(n)
+    sign = "-" if n < 0 else ""
+    n = abs(n)
+    units = ("B", "KiB", "MiB", "GiB", "TiB", "PiB")
+    v = float(n)
+    u = 0
+    while v >= 1024.0 and u < (len(units) - 1):
+        v /= 1024.0
+        u += 1
+    if u == 0:
+        return f"{sign}{int(v)}{units[u]}"
+    return f"{sign}{v:.2f}{units[u]}"
+
+
+class _CommBackend(ABC):
+    """Abstract communication (NoC) backend.
+
+    The scheduler expects a *reservation-style* API:
+    given (src, dst, bytes, earliest), return (start, end), and optionally
+    update internal state when commit=True.
+
+    Time unit: keep consistent with CostModel/Cluster (typically seconds).
+    """
+
+    def __init__(self, cluster: Cluster):
+        self.cluster = cluster
+
+    @abstractmethod
+    def reserve(
+        self,
+        src: str,
+        dst: str,
+        bytes_amount: int,
+        earliest: float,
+        *,
+        commit: bool,
+        tag: str | None,
+    ) -> Tuple[float, float]:
+        raise NotImplementedError
+
+    def reset(self) -> None:
+        """Reset runtime state."""
+        return None
+
+    def debug_state(self) -> dict:
+        """Return a JSON-serializable snapshot for debugging."""
+        return {}
+
+
+class _PairwiseBWBackend(_CommBackend):
+    """Original model: independent timeline per (src, dst) channel."""
+
+    def __init__(self, cluster: Cluster):
+        super().__init__(cluster)
+        self.timeline_end: Dict[Tuple[str, str], float] = {}
+
+    def reserve(
+        self,
+        src: str,
+        dst: str,
+        bytes_amount: int,
+        earliest: float,
+        *,
+        commit: bool,
+        tag: str | None,
+    ) -> Tuple[float, float]:
+        key = (str(src), str(dst))
+        bw = float(self.cluster.get_link_bw(src, dst)) * 1024**3
+        ch_end = float(self.timeline_end.get(key, 0.0))
+        start = max(ch_end, float(earliest))
+        if bw <= 0 and src != dst and int(bytes_amount) > 0:
+            dt = float("inf")
+        else:
+            dt = 0.0 if bw <= 0 else float(int(bytes_amount)) / bw
+        end = start + dt
+        if commit:
+            self.timeline_end[key] = float(end)
+        return float(start), float(end)
+
+    def reset(self) -> None:
+        self.timeline_end.clear()
+
+    def debug_state(self) -> dict:
+        return {"timeline_end": dict(self.timeline_end)}
+
+
+class _RoutedBWBackend(_CommBackend):
+    """Optional model: reserve per-hop links along a route.
+
+    This increases realism without running a full packet-level simulator:
+    different transfers will contend if they share any hop.
+
+    Requirements:
+      Cluster must provide a route method that returns either:
+        - a list of node names [src, ..., dst], or
+        - a list of hops [(u,v), (v,w), ...]
+
+    If the route is unavailable, this backend transparently falls back to the
+    pairwise model.
+    """
+
+    def __init__(self, cluster: Cluster):
+        super().__init__(cluster)
+        self.timeline_end: Dict[Tuple[str, str], float] = {}
+
+        # Best-effort route resolver.
+        self._route_fn = (
+            getattr(cluster, "get_noc_route", None)
+            or getattr(cluster, "get_route", None)
+            or getattr(cluster, "route", None)
+        )
+
+        self._fallback = _PairwiseBWBackend(cluster)
+
+    def _get_hops(self, src: str, dst: str) -> Optional[List[Tuple[str, str]]]:
+        if self._route_fn is None:
+            return None
+        try:
+            r = self._route_fn(src, dst)
+        except Exception:
+            return None
+        if r is None:
+            return None
+        # r can be [src, ..., dst]
+        if isinstance(r, (list, tuple)) and r:
+            if all(isinstance(x, (list, tuple)) and len(x) == 2 for x in r):
+                return [(str(u), str(v)) for (u, v) in r]
+            if len(r) >= 2 and all(not isinstance(x, (list, tuple)) for x in r):
+                nodes = [str(x) for x in r]
+                return list(zip(nodes[:-1], nodes[1:]))
+        return None
+
+    def reserve(
+        self,
+        src: str,
+        dst: str,
+        bytes_amount: int,
+        earliest: float,
+        *,
+        commit: bool,
+        tag: str | None,
+    ) -> Tuple[float, float]:
+        hops = self._get_hops(src, dst)
+        if not hops:
+            # Fallback to original behavior
+            return self._fallback.reserve(src, dst, bytes_amount, earliest, commit=commit, tag=tag)
+
+        t = float(earliest)
+        for (u, v) in hops:
+            bw = float(self.cluster.get_link_bw(u, v)) * 1024**3
+            key = (u, v)
+            ch_end = float(self.timeline_end.get(key, 0.0))
+            start = max(ch_end, t)
+            if bw <= 0 and u != v and int(bytes_amount) > 0:
+                dt = float("inf")
+            else:
+                dt = 0.0 if bw <= 0 else float(int(bytes_amount)) / bw
+            end = start + dt
+            if commit:
+                self.timeline_end[key] = float(end)
+            # Conservative: assume store-and-forward per hop.
+            t = float(end)
+        return float(max(float(earliest), 0.0)), float(t)
+
+    def reset(self) -> None:
+        self.timeline_end.clear()
+        self._fallback.reset()
+
+    def debug_state(self) -> dict:
+        return {"timeline_end": dict(self.timeline_end)}
+
+
+class _BookSimBackend(_CommBackend):
+    """BookSim backend (requires an in-process binding).
+
+    Why a binding instead of invoking ./booksim?
+      - The CLI is optimized for steady-state synthetic traffic and prints
+        aggregate statistics.
+      - The scheduler needs interactive, incremental reservations.
+
+    Expected binding module (one of these must exist in PYTHONPATH):
+      - booksim_bridge (recommended)
+      - booksim2_bridge
+
+    Minimal expected API:
+      class BookSimNoC:
+          def reserve(self, src: str, dst: str, bytes: int, earliest: float, commit: bool, tag: str|None) -> tuple[float,float]
+          def reset(self) -> None
+
+    NOTE: This file only provides the scheduler-side plumbing. You still need
+          to compile the binding (e.g., via pybind11) against your BookSim2
+          wrapper (like the provided Interconnect.cc/h).
+    """
+
+    def __init__(
+        self,
+        cluster: Cluster,
+        *,
+        config_path: str | None = None,
+        clock_hz: float | None = None,
+        flit_bytes: int | None = None,
+    ):
+        super().__init__(cluster)
+
+        self.config_path = str(config_path) if config_path else None
+        self.clock_hz = float(clock_hz) if clock_hz else None
+        self.flit_bytes = int(flit_bytes) if flit_bytes else None
+
+        self._impl = None
+        last_err: Exception | None = None
+        for mod_name in ("booksim_bridge", "booksim2_bridge"):
+            try:
+                m = __import__(mod_name)
+                self._impl = getattr(m, "BookSimNoC", None) or getattr(m, "BookSimInterconnect", None)
+                if self._impl is not None:
+                    break
+            except Exception as e:
+                last_err = e
+                continue
+
+        if self._impl is None:
+            raise ImportError(
+                "BookSim backend selected but no Python binding found. "
+                "Provide a module named 'booksim_bridge' (or 'booksim2_bridge') "
+                "exposing BookSimNoC/BookSimInterconnect."
+            ) from last_err
+
+        # Instantiate backend
+        try:
+            self._noc = self._impl(
+                config_path=self.config_path,
+                num_nodes=len(getattr(cluster, "devices", {}) or {}),
+                clock_hz=self.clock_hz,
+                flit_bytes=self.flit_bytes,
+            )
+        except TypeError:
+            # Backward/alternate signatures
+            self._noc = self._impl(self.config_path, len(getattr(cluster, "devices", {}) or {}))
+
+    def reserve(
+        self,
+        src: str,
+        dst: str,
+        bytes_amount: int,
+        earliest: float,
+        *,
+        commit: bool,
+        tag: str | None,
+    ) -> Tuple[float, float]:
+        # Delegate to the binding.
+        return tuple(self._noc.reserve(str(src), str(dst), int(bytes_amount), float(earliest), bool(commit), tag))  # type: ignore[return-value]
+
+    def reset(self) -> None:
+        try:
+            self._noc.reset()
+        except Exception:
+            pass
+
+    def debug_state(self) -> dict:
+        try:
+            return dict(self._noc.debug_state())
+        except Exception:
+            return {}
+
+
+def _build_comm_backend(
+    cluster: Cluster,
+    backend: str | None,
+    *,
+    booksim_config: str | None = None,
+    booksim_clock_hz: float | None = None,
+    booksim_flit_bytes: int | None = None,
+) -> _CommBackend:
+    b = (backend or "").strip().lower()
+    if not b:
+        b = (os.getenv("SCHED_NOC_BACKEND") or "pairwise").strip().lower()
+
+    if b in ("pairwise", "simple", "direct", "naive", "bw"):
+        return _PairwiseBWBackend(cluster)
+    if b in ("routed", "route", "hop", "perhop"):
+        return _RoutedBWBackend(cluster)
+    if b in ("booksim", "booksim2"):
+        return _BookSimBackend(
+            cluster,
+            config_path=booksim_config,
+            clock_hz=booksim_clock_hz,
+            flit_bytes=booksim_flit_bytes,
+        )
+
+    # Unknown backend: be conservative and fall back.
+    logger.warning("[CommManager] Unknown backend '%s', falling back to 'pairwise'", b)
+    return _PairwiseBWBackend(cluster)
 @dataclass
 class _GraphIndex:
     nodes: tuple
@@ -57,37 +378,94 @@ class ScheduledTask:
     finish: float
 
 class CommManager:
-    """
-    Maintain independent timelines per (src, dst) channel.
+    """Communication manager used by schedulers.
+
+    This is a thin wrapper around a pluggable backend (_CommBackend). It also
+    centralizes comm-event logging via StatsRecorder.
     """
 
-    def __init__(self, cluster: Cluster, stats: StatsRecorder | None = None):
+    def __init__(
+        self,
+        cluster: Cluster,
+        stats: StatsRecorder | None = None,
+        *,
+        backend: str | None = None,
+        booksim_config: str | None = None,
+        booksim_clock_hz: float | None = None,
+        booksim_flit_bytes: int | None = None,
+    ):
         self.cluster = cluster
-        self.timeline_end: Dict[Tuple[str, str], float] = {}
         self.stats = stats
+        self._backend: _CommBackend = _build_comm_backend(
+            cluster,
+            backend,
+            booksim_config=booksim_config,
+            booksim_clock_hz=booksim_clock_hz,
+            booksim_flit_bytes=booksim_flit_bytes,
+        )
 
-    def reserve(self, src: str, dst: str, bytes_amount: int, earliest: float, commit: bool=True, tag: str | None = None):
-        key = (src, dst)
-        bw = self.cluster.get_link_bw(src, dst) * 1024**3
-        ch_end = self.timeline_end.get(key, 0.0)
-        start = max(ch_end, earliest)
-        if bw <= 0 and src != dst and bytes_amount > 0:
-            # Invalid direct reservation on a missing link: model as impossible.
-            dt = float("inf")
-        else:
-            dt = 0.0 if bw <= 0 else bytes_amount / bw
-        end = start + dt
+        # Optional: keep a local event list for offline BookSim evaluation.
+        # Each entry: {src,dst,bytes,start,end,tag}
+        self.events: List[dict] = []
+
+    @property
+    def timeline_end(self) -> Dict[Tuple[str, str], float]:
+        """Best-effort access to timeline state (only for simple/routed backends)."""
+        te = getattr(self._backend, "timeline_end", None)
+        return te if isinstance(te, dict) else {}
+
+    def reset(self) -> None:
+        self.events.clear()
+        self._backend.reset()
+
+    def debug_state(self) -> dict:
+        return self._backend.debug_state()
+
+    def reserve(
+        self,
+        src: str,
+        dst: str,
+        bytes_amount: int,
+        earliest: float,
+        commit: bool = True,
+        tag: str | None = None,
+    ) -> Tuple[float, float]:
+        start, end = self._backend.reserve(
+            src,
+            dst,
+            int(bytes_amount),
+            float(earliest),
+            commit=bool(commit),
+            tag=tag,
+        )
+
         if commit:
-            self.timeline_end[key] = end
-            src_dev = self.cluster.devices.get(src)
-            dst_dev = self.cluster.devices.get(dst)
-
             if self.stats is not None:
                 try:
-                    self.stats.log_comm(src=src, dst=dst, bytes=bytes_amount,start=float(start), end=float(end),tag=tag or 'comm')
+                    self.stats.log_comm(
+                        src=str(src),
+                        dst=str(dst),
+                        bytes=int(bytes_amount),
+                        start=float(start),
+                        end=float(end),
+                        tag=tag or "comm",
+                    )
                 except AttributeError:
                     pass
-        return (start, end)
+            try:
+                self.events.append(
+                    {
+                        "src": str(src),
+                        "dst": str(dst),
+                        "bytes": int(bytes_amount),
+                        "start": float(start),
+                        "end": float(end),
+                        "tag": str(tag or "comm"),
+                    }
+                )
+            except Exception:
+                pass
+        return float(start), float(end)
 
 
 class SchedulerBase:
@@ -99,7 +477,36 @@ class SchedulerBase:
         self.seq_len = seq_len
         self.buffer = buffer or GlobalMemoryManager()
         self.stats = StatsRecorder()
-        self.comm = CommManager(cluster, stats=self.stats)
+
+        # Communication backend selection:
+        #   - label.noc_backend (if present) wins
+        #   - otherwise SCHED_NOC_BACKEND env var
+        #   - fallback to 'pairwise'
+        noc_backend = getattr(label, "noc_backend", None)
+        booksim_config = getattr(label, "booksim_config", None) or os.getenv("BOOKSIM_CONFIG")
+        booksim_clock_hz = getattr(label, "booksim_clock_hz", None)
+        if booksim_clock_hz is None:
+            try:
+                booksim_clock_hz = float(os.getenv("BOOKSIM_CLOCK_HZ") or 0) or None
+            except Exception:
+                booksim_clock_hz = None
+        booksim_flit_bytes = getattr(label, "booksim_flit_bytes", None)
+        if booksim_flit_bytes is None:
+            try:
+                booksim_flit_bytes = int(os.getenv("BOOKSIM_FLIT_BYTES") or 0) or None
+            except Exception:
+                booksim_flit_bytes = None
+
+        self.comm = CommManager(
+            cluster,
+            stats=self.stats,
+            backend=noc_backend,
+            booksim_config=booksim_config,
+            booksim_clock_hz=booksim_clock_hz,
+            booksim_flit_bytes=booksim_flit_bytes,
+        )
+        self._debug_budget = bool(DEBUG_SCHEDULER)
+        self._pim_budget: Dict[str, Dict[str, int]] = {}
 
         # runtime state (PIM runtime is managed by buffer manager)
         self._node_host_store_end: Dict[str, float] = {}  # 节点输出在 host 上的可用时间
@@ -125,6 +532,32 @@ class SchedulerBase:
                 runtime_caps.append(runtime_cap)
 
             total_runtime = sum(runtime_caps) or 1
+
+            total_kv_reserve = 0
+            total_weight_cap = 0
+
+            if getattr(self, "_debug_budget", False):
+                try:
+                    logger.warning(
+                        "[PIM-BUDGET:init] threshold=%.3f seq_len=%d batch=%d kv_in_pim=%s kv_total_bytes=%s",
+                        float(PIM_RUNTIME_LRU_THRESHOLD),
+                        int(self.seq_len),
+                        int(self.batch),
+                        bool(kv_in_pim),
+                        _fmt_bytes(int(kv_total_bytes)),
+                    )
+                    logger.warning(
+                        "[PIM-BUDGET:init] pim_cnt=%d total_phy=%s total_runtime=%s",
+                        int(len(pim_devs)),
+                        _fmt_bytes(int(sum(phy_caps))),
+                        _fmt_bytes(int(sum(runtime_caps))),
+                    )
+                    if isinstance(kv_bytes_by_pim, Mapping) and kv_bytes_by_pim:
+                        pretty = {str(k): _fmt_bytes(int(v)) for k, v in dict(kv_bytes_by_pim).items()}
+                        logger.warning("[PIM-BUDGET:init] label.kv_bytes_by_pim=%s", pretty)
+                except Exception:
+                    pass
+
             for d, phy_bytes, runtime_cap in zip(pim_devs, phy_caps, runtime_caps):
                 kv_reserve = 0
                 if kv_in_pim:
@@ -141,6 +574,42 @@ class SchedulerBase:
                         # Fallback: proportional split by runtime budgets.
                         kv_reserve = int(kv_total_bytes * (runtime_cap / total_runtime))
                 weight_cap = max(0, int(runtime_cap - kv_reserve))
+
+                # Record/debug: per-device KV reservation and resulting weight-cache capacity.
+                try:
+                    self._pim_budget[str(d.name)] = {
+                        "phy_bytes": int(phy_bytes),
+                        "runtime_cap": int(runtime_cap),
+                        "kv_reserve": int(kv_reserve),
+                        "weight_cap": int(weight_cap),
+                    }
+                except Exception:
+                    pass
+                try:
+                    total_kv_reserve += int(kv_reserve)
+                    total_weight_cap += int(weight_cap)
+                except Exception:
+                    pass
+
+                if getattr(self, "_debug_budget", False):
+                    kv_pct = (100.0 * float(kv_reserve) / float(runtime_cap)) if runtime_cap else 0.0
+                    w_pct = (100.0 * float(weight_cap) / float(runtime_cap)) if runtime_cap else 0.0
+                    logger.warning(
+                        "[PIM-BUDGET:init] dev=%s phy=%s runtime_cap=%s kv_reserve=%s weight_cap=%s (kv/runtime=%.1f%%, weight/runtime=%.1f%%)",
+                        d.name,
+                        _fmt_bytes(int(phy_bytes)),
+                        _fmt_bytes(int(runtime_cap)),
+                        _fmt_bytes(int(kv_reserve)),
+                        _fmt_bytes(int(weight_cap)),
+                        float(kv_pct),
+                        float(w_pct),
+                    )
+                    if kv_in_pim and int(weight_cap) <= 0:
+                        logger.warning(
+                            "[PIM-BUDGET:init] dev=%s weight_cap<=0: weight cache effectively disabled; expect every weight op to reload.",
+                            d.name,
+                        )
+
                 self.buffer.register_pim_device(
                     d.name,
                     phy_bytes=phy_bytes,
@@ -149,6 +618,19 @@ class SchedulerBase:
                     kv_in_pim=kv_in_pim,
                     weight_cache_capacity_bytes=weight_cap,
                 )
+
+
+            if getattr(self, "_debug_budget", False):
+                try:
+                    logger.warning(
+                        "[PIM-BUDGET:init] totals kv_reserve=%s (label.kv_total=%s) weight_cap=%s",
+                        _fmt_bytes(int(total_kv_reserve)),
+                        _fmt_bytes(int(kv_total_bytes)),
+                        _fmt_bytes(int(total_weight_cap)),
+                    )
+                except Exception:
+                    pass
+
 
         # non-PIM activation budget
         for name, d in self.cluster.devices.items():
@@ -191,9 +673,17 @@ class SchedulerBase:
         self._act_used.clear()
         self._act_resident.clear()
         self._act_refcnt.clear()
-
-        # KV/activation runtime states on PIM are centrally managed in buffer manager
         self.buffer.reset_runtime_state()
+        # Reset communication backend state.
+        try:
+            self.comm.reset()
+        except Exception:
+            # Backward compatibility: older CommManager had timeline_end.
+            try:
+                self.comm.timeline_end.clear()  # type: ignore[attr-defined]
+            except Exception:
+                pass
+        self.avail = {name: 0.0 for name in self.cluster.devices}
     
     # -------- Node/graph abstraction hooks --------
 
@@ -525,9 +1015,9 @@ class SchedulerBase:
             kv_in_pim = bool(getattr(self.label, "kv_in_pim", False))
             _, out_write_nd = self.cost.estimate_activation_bytes(node, batch, seq_len, phase_eff)
             size_nd = self.cost.format_size(out_write_nd, "ND")
-            logger.debug(
-                "[kv-write] node=%s target=%s kv_in_pim=%s bytes_nd=%s", nid, dev.name, kv_in_pim, out_write_nd
-            )
+            # logger.debug(
+            #     "[kv-write] node=%s target=%s kv_in_pim=%s bytes_nd=%s", nid, dev.name, kv_in_pim, out_write_nd
+            # )
 
             if kv_in_pim:
                 pim_devs = self.cluster.devices_by_type("pim")
@@ -540,9 +1030,9 @@ class SchedulerBase:
                 ready_kv = self._ready_time_for_device(g, nid, target_pim, phase_eff, commit)
                 start = max(float(self.avail.get(target_pim.name, 0.0)), float(ready_kv))
                 finish = start + 3.0 * float(self.cost.activation_read_time_pim(out_write_nd))  # todo: consider write time
-                logger.debug(
-                    "[kv-write] node=%s target_pim=%s start=%.4f finish=%.4f", nid, target_pim.name, start, finish
-                )
+                # logger.debug(
+                #     "[kv-write] node=%s target_pim=%s start=%.4f finish=%.4f", nid, target_pim.name, start, finish
+                # )
                 if commit:
                     self.avail[target_pim.name] = float(finish)
                     self._node_finish_time[nid] = float(finish)
@@ -557,9 +1047,9 @@ class SchedulerBase:
                 conv_cost = self.cost.format_conversion_time(size_nd, self.cost.device_preferred_fmt(dev), "ND", dev)
                 _, l2e = self.comm.reserve(dev.name, host.name, size_nd, earliest=conv_start + conv_cost, commit=commit, tag="kv_write")
                 finish = float(l2e)
-                logger.debug(
-                    "[kv-write] node=%s dev=%s -> host start=%.4f finish=%.4f", nid, dev.name, conv_start, finish
-                )
+                # logger.debug(
+                #     "[kv-write] node=%s dev=%s -> host start=%.4f finish=%.4f", nid, dev.name, conv_start, finish
+                # )
                 if commit:
                     self.avail[dev.name] = max(self.avail.get(dev.name, 0.0), finish)
                     self.avail[host.name] = max(self.avail.get(host.name, 0.0), finish)
@@ -577,10 +1067,10 @@ class SchedulerBase:
             if kv_bytes > 0:
                 kv_in_pim = bool(getattr(self.label, "kv_in_pim", False))
                 size_nd = self.cost.format_size(kv_bytes, "ND")
-                logger.debug(
-                    "[kv-load] node=%s target=%s kv_in_pim=%s kv_bytes=%s ready=%.4f",
-                    nid, dev.name, kv_in_pim, kv_bytes, ready
-                )
+                # logger.debug(
+                #     "[kv-load] node=%s target=%s kv_in_pim=%s kv_bytes=%s ready=%.4f",
+                #     nid, dev.name, kv_in_pim, kv_bytes, ready
+                # )
                 if kv_in_pim:
                     pim_devs = self.cluster.devices_by_type("pim")
                     if pim_devs:
@@ -674,7 +1164,7 @@ class SchedulerBase:
                     l2s, l2e = self.comm.reserve(host.name, dev.name, size_nd, earliest=float(ready), commit=commit, tag="kv_load")
                     conv2 = float(self.cost.format_conversion_time(size_nd, "ND", self.cost.device_preferred_fmt(dev), dev))
                     kv_ready = max(kv_ready, float(l2e) + conv2)
-                logger.debug("[kv-load] node=%s target=%s kv_ready=%.4f", nid, dev.name, kv_ready)
+                # logger.debug("[kv-load] node=%s target=%s kv_ready=%.4f", nid, dev.name, kv_ready)
 
         #---------------------3. normal weight load + compute + activation handling
         start = max(float(self.avail.get(dev.name, 0.0)), kv_ready)
@@ -1038,9 +1528,9 @@ class SchedulerBase:
 
         # The node can start after all required inbound transfers are done.
         ready_t = float(max(inbound_end_times, default=0.0))
-        logger.debug(
-            "[ready] node=%s dev=%s ready=%.4f deps=%d", nid, dev.name, ready_t, len(inbound_end_times)
-        )
+        # logger.debug(
+        #     "[ready] node=%s dev=%s ready=%.4f deps=%d", nid, dev.name, ready_t, len(inbound_end_times)
+        # )
         return ready_t
 
     def _weight_load_time(self, node: TaskNode, dev: DeviceSpec, earliest: float, commit: bool) -> float:
@@ -1474,10 +1964,10 @@ class HEFTScheduler(SchedulerBase):
                 raise RuntimeError("No available device for node %s" % nid)
 
             chosen_mode, chosen_finish, chosen_data = min(candidates, key=lambda x: x[1])
-            logger.debug(
-                "[sched] choose node=%s mode=%s finish=%.4f candidates=%s",
-                nid, chosen_mode, chosen_finish, [(m, round(f, 4)) for m, f, _ in candidates]
-            )
+            # logger.debug(
+            #     "[sched] choose node=%s mode=%s finish=%.4f candidates=%s",
+            #     nid, chosen_mode, chosen_finish, [(m, round(f, 4)) for m, f, _ in candidates]
+            # )
             if chosen_mode == 'HYBRID':
                 hy = self._earliest_finish_hybrid(g, nid, phase, commit=True)
                 npu = hy['npu']

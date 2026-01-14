@@ -6,14 +6,14 @@ shopt -s nullglob
 # Single source of truth
 # =========================
 CONFIG_FILE="${CONFIG_FILE:-./examples/evaluate_len_sweep_config.json}"
-OUTPUT_ROOT="${OUTPUT_ROOT:-./output/experiment_scale_down}"
+OUTPUT_ROOT="${OUTPUT_ROOT:-./output/experiment_scale_down_test}"
 
 # Sweep dims
 MODEL_FAMILY_VARIANTS=(
   "mixtral:8x7b"
   "palm:62b"
   "qwen:1.8b 7b"
-  # "llama:7b"
+  # "llama:7b 13b"
 )
 
 PREFILLS=(128 512 1024 2048)
@@ -231,7 +231,7 @@ run_one() {
 
   if (( DEBUG )); then cmd+=(--debug); fi
   if (( NPU_FAST )); then cmd+=(--npu_fast_mode); fi
-  if (( PIM_FAST )); then cmd+=(--npu_fast_mode); fi
+  if (( PIM_FAST )); then cmd+=(--pim_fast_mode); fi
 
   (
     "${cmd[@]}"

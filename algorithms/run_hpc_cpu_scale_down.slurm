@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH -J 0107_pim
+#SBATCH -J 0113_huawei
 #SBATCH -p C064M0256G
-#SBATCH --qos=high
+#SBATCH --qos=low
 #SBATCH -N 1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=64
