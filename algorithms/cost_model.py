@@ -20,11 +20,41 @@ from collections import defaultdict
 from task_graph import TaskGraph, TaskNode
 from hardware import Cluster, DeviceSpec
 from plan_label import PlanLabel
-from config import HOST_NAME, DEVICE_PREFERRED_FORMAT, FORMAT_SIZE_MULTIPLIER, FORMAT_CONV_BW_GBs, PIM_FREQ_GHZ, GB_FREQ_GHZ, OPERATOR_DEVICE_ALLOWED, NONOVERLAP_TIME, PIM_RUNTIME_LRU_THRESHOLD
+from config import HOST_NAME, DEVICE_PREFERRED_FORMAT, FORMAT_SIZE_MULTIPLIER, FORMAT_CONV_BW_GBs, FORMAT_CONV_OVERHEAD_US, PIM_FREQ_GHZ, GB_FREQ_GHZ, OPERATOR_DEVICE_ALLOWED, NONOVERLAP_TIME, PIM_RUNTIME_LRU_THRESHOLD
 import logging
 logger = logging.getLogger(__name__)
 attach_local_debug_filter(logger, lambda: False)
 DTYPE_BYTES: Dict[str, float] = {'fp32': 4, 'fp16': 2, 'bf16': 2, 'int8': 1, 'int4': 0.5}
+
+@dataclass(frozen=True)
+class LatencyBreakdown:
+    """A small helper to keep latency accounting consistent.
+    """
+
+    compute: float = 0.0
+    transfer: float = 0.0
+    format_convert: float = 0.0
+    pim_internal: float = 0.0
+    note: str = ""
+
+    @property
+    def total(self) -> float:
+        return float(self.compute + self.transfer + self.format_convert + self.pim_internal)
+
+    def __add__(self, other: "LatencyBreakdown") -> "LatencyBreakdown":
+        if not isinstance(other, LatencyBreakdown):
+            return NotImplemented
+        note = self.note or other.note
+        if self.note and other.note and self.note != other.note:
+            note = f"{self.note} + {other.note}"
+        return LatencyBreakdown(
+            compute=float(self.compute + other.compute),
+            transfer=float(self.transfer + other.transfer),
+            format_convert=float(self.format_convert + other.format_convert),
+            pim_internal=float(self.pim_internal + other.pim_internal),
+            note=note,
+        )
+
 
 def _ensure_cent_on_path(start: Optional[Path]=None) -> Tuple[Path, Path]:
     here = (start or Path(__file__)).resolve()
@@ -883,7 +913,11 @@ class CostModel:
 
     def link_time(self, bytes_amount: int, src: DeviceSpec, dst: DeviceSpec) -> float:
         bw = self.cluster.get_link_bw(src.name, dst.name) * 1024 * 1024 * 1024.0
-        return 0.0 if bw <= 0 else bytes_amount / bw
+        if bw <= 0:
+            if src.name != dst.name and int(bytes_amount) > 0:
+                return float('inf')
+            return 0.0
+        return float(bytes_amount) / bw
 
     def comm_cost(self, src: DeviceSpec, dst: DeviceSpec, bytes_amount: int) -> float:
         if src.name == dst.name:
@@ -906,15 +940,152 @@ class CostModel:
     def format_conversion_time(self, size_src_bytes: int, src_fmt: str, dst_fmt: str, dev: DeviceSpec) -> float:
         if src_fmt == dst_fmt:
             return 0.0
+        if size_src_bytes <= 0:
+            return 0.0
         bw_gbs = float(FORMAT_CONV_BW_GBs.get(dev.type, FORMAT_CONV_BW_GBs.get('default', 50.0)))
-        bw = bw_gbs * 1000000000.0
-        return 0.0 if bw <= 0 else size_src_bytes / bw
+        bw = bw_gbs * 1e9
+        if bw <= 0:
+            return float('inf')
+        t0_us = float(FORMAT_CONV_OVERHEAD_US.get(dev.type, FORMAT_CONV_OVERHEAD_US.get('default', 0.0)))
+        t0 = t0_us * 1e-6
+        return float(t0 + float(size_src_bytes) / bw)     
+
+
+    # ---------------------------
+    # Unified latency composition
+    # ---------------------------
+    def combine_transfer_and_convert(self, t_transfer: float, t_convert: float) -> float:
+        return float(t_transfer + float(NONOVERLAP_TIME) * t_convert)
+
+    def effective_total(self, bd: LatencyBreakdown) -> float:
+        """Return the effective critical-path duration for a breakdown."""
+        return float(
+            float(bd.compute) + float(bd.pim_internal) +
+            self.combine_transfer_and_convert(float(bd.transfer), float(bd.format_convert))
+        )
+
+    def host_to_device_weight_load_breakdown(
+        self,
+        dev: DeviceSpec,
+        size_nd_bytes: int,
+        stored_fmt: str,
+        *,
+        dst_fmt: Optional[str] = None,
+        include_pim_internal: bool = True,
+    ) -> LatencyBreakdown:
+        """No-contention *duration* to load weights from host to `dev`."""
+
+        size_nd_bytes = int(size_nd_bytes or 0)
+        if size_nd_bytes <= 0:
+            return LatencyBreakdown(note='wload')
+
+        host = self.get_host_device()
+        dst_fmt = dst_fmt or self.device_preferred_fmt(dev)
+
+        size_src = int(self.format_size(size_nd_bytes, stored_fmt))
+        t_transfer = float(self.link_time(size_src, host, dev))
+
+        t_conv = float(self.format_conversion_time(size_src, stored_fmt, dst_fmt, dev))
+
+        t_pim = 0.0
+        if include_pim_internal and getattr(dev, 'type', None) == 'pim':
+            # IMPORTANT: this is a *static* estimate used by scheduling heuristics.
+            # Do NOT run expensive trace simulations here.
+            try:
+                t_pim = float(self.pim_mem_time(0, int(size_nd_bytes), dev))
+            except Exception:
+                t_pim = 0.0
+
+        return LatencyBreakdown(
+            transfer=float(t_transfer),
+            format_convert=float(t_conv),
+            pim_internal=float(t_pim),
+            note='wload',
+        )
+
+    def host_to_device_weight_load_time(
+        self,
+        dev: DeviceSpec,
+        size_nd_bytes: int,
+        stored_fmt: str,
+        *,
+        dst_fmt: Optional[str] = None,
+        include_pim_internal: bool = True,
+    ) -> float:
+        bd = self.host_to_device_weight_load_breakdown(
+            dev,
+            size_nd_bytes,
+            stored_fmt,
+            dst_fmt=dst_fmt,
+            include_pim_internal=include_pim_internal,
+        )
+        return float(self.effective_total(bd))
+
+    def activation_transfer_breakdown_no_contention(
+        self,
+        src_dev: DeviceSpec,
+        dst_dev: DeviceSpec,
+        bytes_nd: int,
+        src_fmt: str,
+        *,
+        dst_fmt: Optional[str] = None,
+        allow_via_host: bool = True,
+    ) -> LatencyBreakdown:
+        """No-contention *duration* for an activation edge."""
+
+        bytes_nd = int(bytes_nd or 0)
+        if bytes_nd <= 0 or src_dev.name == dst_dev.name:
+            return LatencyBreakdown(note='act')
+
+        dst_fmt = dst_fmt or self.device_preferred_fmt(dst_dev)
+        host = self.get_host_device()
+
+        size_nd = int(self.format_size(bytes_nd, 'ND'))
+
+        size_src = int(self.format_size(bytes_nd, src_fmt))
+        t_conv_src = 0.0
+        if src_fmt != 'ND':
+            t_conv_src = float(self.format_conversion_time(size_src, src_fmt, 'ND', src_dev))
+
+        t_pim_src = 0.0
+        if getattr(src_dev, 'type', None) == 'pim':
+            # Static estimate: use bandwidth/latency model (avoid trace simulation).
+            try:
+                t_pim_src = float(self.pim_mem_time(int(size_nd), 0, src_dev))
+            except Exception:
+                t_pim_src = 0.0
+
+        t_conv_dst = 0.0
+        if dst_fmt != 'ND':
+            t_conv_dst = float(self.format_conversion_time(size_nd, 'ND', dst_fmt, dst_dev))
+
+        t_direct = float(self.link_time(size_nd, src_dev, dst_dev))
+        direct_bd = LatencyBreakdown(
+            transfer=float(t_direct),
+            format_convert=float(t_conv_src + t_conv_dst),
+            pim_internal=float(t_pim_src),
+            note='act:direct',
+        )
+
+        if not allow_via_host:
+            return direct_bd
+
+        t_to_host = float(self.link_time(size_nd, src_dev, host))
+        t_from_host = float(self.link_time(size_nd, host, dst_dev))
+        via_bd = LatencyBreakdown(
+            transfer=float(t_to_host + t_from_host),
+            format_convert=float(t_conv_src + t_conv_dst),
+            pim_internal=float(t_pim_src),
+            note='act:via_host',
+        )
+
+        return direct_bd if self.effective_total(direct_bd) <= self.effective_total(via_bd) else via_bd
 
     def gb_move_and_format(self, dev: DeviceSpec, size_src_bytes: int, src_fmt: str, dst_fmt: str) -> float:
         host = self.get_host_device()
-        t_move = self.link_time(size_src_bytes, host, dev)
-        t_conv = self.format_conversion_time(size_src_bytes, src_fmt, dst_fmt, dev)
-        return t_move + NONOVERLAP_TIME* t_conv
+        t_move = float(self.link_time(int(size_src_bytes or 0), host, dev))
+        t_conv = float(self.format_conversion_time(int(size_src_bytes or 0), src_fmt, dst_fmt, dev))
+        return float(self.combine_transfer_and_convert(t_move, t_conv))
 
     def _resolve_pim_key(self, node) -> List[str]:
         """将 node 映射到 PIM op key"""

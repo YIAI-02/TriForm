@@ -1,5 +1,6 @@
 from __future__ import annotations
 import os
+import re
 from config import attach_local_debug_filter
 from dataclasses import dataclass,field
 from typing import Dict, List, Tuple, Optional, Any, Iterable, OrderedDict, Hashable,override
@@ -14,7 +15,6 @@ from task_graph import TaskGraph, TaskNode, JointTaskGraph, JointNodeMeta
 from cost_model import CostModel
 from buffer_manager import GlobalMemoryManager, LRUCache
 from config import (
-    ALLOW_HYBRID,
     RANKU_INCLUDE_AVG_WEIGHT_LOAD,
     PIM_RUNTIME_LRU_THRESHOLD,
     SCHED_JOINT_LK_ENABLE,
@@ -648,12 +648,14 @@ class SchedulerBase:
 
                                 if bw_direct > 0.0:
                                     # Direct KV movement
-                                    _, l2e = self.comm.reserve(
+                                    l2s, l2e = self.comm.reserve(
                                         src.name, dev.name, size_share_nd,
                                         earliest=send_ready, commit=commit, tag="kv_load",
                                     )
                                     conv2 = float(self.cost.format_conversion_time(size_share_nd, "ND", dst_fmt, dev))
-                                    kv_ready = max(kv_ready, float(l2e) + conv2)
+                                    dt_xfer = float(l2e) - float(l2s)
+                                    ready = float(l2s) + float(self.cost.combine_transfer_and_convert(dt_xfer, conv2))
+                                    kv_ready = max(kv_ready, float(ready))                                    
                                 else:
                                     # Via-host KV movement
                                     host = self.cost.get_host_device()
@@ -661,19 +663,22 @@ class SchedulerBase:
                                         src.name, host.name, size_share_nd,
                                         earliest=send_ready, commit=commit, tag="kv_load",
                                     )
-                                    _, t2 = self.comm.reserve(
+                                    t2s, t2e = self.comm.reserve(
                                         host.name, dev.name, size_share_nd,
                                         earliest=float(t1), commit=commit, tag="kv_load",
                                     )
                                     conv2 = float(self.cost.format_conversion_time(size_share_nd, "ND", dst_fmt, dev))
-                                    kv_ready = max(kv_ready, float(t2) + conv2)
+                                    dt_xfer = float(t2e) - float(t2s)
+                                    ready = float(t2s) + float(self.cost.combine_transfer_and_convert(dt_xfer, conv2))
+                                    kv_ready = max(kv_ready, float(ready))
                     else:
                         kv_ready = float(ready)
                 else:
                     host = self.cost.get_host_device()
                     l2s, l2e = self.comm.reserve(host.name, dev.name, size_nd, earliest=float(ready), commit=commit, tag="kv_load")
                     conv2 = float(self.cost.format_conversion_time(size_nd, "ND", self.cost.device_preferred_fmt(dev), dev))
-                    kv_ready = max(kv_ready, float(l2e) + conv2)
+                    dt_xfer = float(l2e) - float(l2s)
+                    kv_ready = max(kv_ready, float(l2s) + float(self.cost.combine_transfer_and_convert(dt_xfer, conv2)))
                 logger.debug("[kv-load] node=%s target=%s kv_ready=%.4f", nid, dev.name, kv_ready)
 
         #---------------------3. normal weight load + compute + activation handling
@@ -707,158 +712,6 @@ class SchedulerBase:
                     src_fmt = self.cost.device_preferred_fmt(dev)
                     self._ensure_host_store(nid, dev, out_nd, src_fmt, finish, commit=True)
         return float(start), float(finish)
-
-    # def _earliest_finish_hybrid(self, g, nid: str, phase: str, commit: bool):
-    #     """Estimate (or commit) a HYBRID execution of `nid` on one NPU + one PIM.
-
-    #     - Split weights / compute / output by `label.hybrid_ratio` (alpha).
-    #     - Inputs are assumed needed on both devices (modeled via `_ready_time_for_device`).
-    #     - Outputs are written back to host in ND format.
-
-    #     Return dict contains:
-    #         npu / pim: chosen devices
-    #         start_npu / start_pim: start times (after deps + device avail)
-    #         finish: finish time after write-back to host
-    #         out_dev: host device spec
-    #         alpha: split ratio
-    #         npu_detail / pim_detail: breakdown timings
-    #     """
-    #     node = g.nodes[nid]
-    #     if node.name.upper() in ("K_WRITE", "V_WRITE", "KV_WRITE"):
-    #         # Hybrid not applicable; fall back to per-device handling by caller.
-    #         return None
-    #     npu_list = self.cluster.devices_by_type("npu")
-    #     pim_list = self.cluster.devices_by_type("pim")
-    #     if not npu_list or not pim_list:
-    #         raise RuntimeError("HYBRID requires at least one NPU and one PIM in cluster")
-    #     # TODO: current heuristic picks the first devices. You can override this method to do smarter pairing.
-    #     npu_dev = npu_list[0]
-    #     pim_dev = pim_list[0]
-
-    #     alpha = float(getattr(self.label, "hybrid_ratio", 0.5) or 0.5)
-    #     alpha = max(0.0, min(1.0, alpha))
-    #     phase_eff = self._node_phase(g, nid, phase)
-    #     batch = self._node_batch(g, nid, phase_eff)
-    #     seq_len = self._node_seq_len(g, nid, phase_eff)
-
-    #     # Dependency ready times (may reserve links when commit=True)
-    #     t_ready_npu = float(self._ready_time_for_device(g, nid, npu_dev, phase_eff, commit))
-    #     t_ready_pim = float(self._ready_time_for_device(g, nid, pim_dev, phase_eff, commit))
-    #     # Also wait for local device availability
-    #     start_npu = max(float(self.avail.get(npu_dev.name, 0.0)), t_ready_npu)
-    #     start_pim = max(float(self.avail.get(pim_dev.name, 0.0)), t_ready_pim)
-
-    #     # If node consumes cached KV, ensure KV load before compute on both sides.
-    #     if node.name.upper() in ("QK", "SV"):
-    #         kv_bytes = int(self.cost.estimate_kv_cache_read_bytes(node, batch, seq_len, phase_eff))
-    #         if kv_bytes > 0:
-    #             kv_in_pim = bool(getattr(self.label, "kv_in_pim", False))
-    #             size_nd = self.cost.format_size(kv_bytes, "ND")
-    #             if kv_in_pim:
-    #                 pim_devs = self.cluster.devices_by_type("pim")
-    #                 if pim_devs:
-    #                     src = min(pim_devs, key=lambda d: self.avail.get(d.name, 0.0))
-    #                     earliest_src = float(self.avail.get(src.name, 0.0))
-    #                     # NPU side: transfer from PIM -> NPU
-    #                     l2s, l2e = self.comm.reserve(src.name, npu_dev.name, size_nd, earliest=max(start_npu, earliest_src), commit=commit, tag="kv_load")
-    #                     start_npu = max(start_npu, float(l2e))
-    #                     # PIM side: local read time
-    #                     start_pim = max(start_pim, max(start_pim, earliest_src) + float(self.cost.activation_read_time_pim(kv_bytes)))
-    #                     if commit:
-    #                         self.avail[src.name] = max(self.avail.get(src.name, 0.0), start_pim)
-    #             else:
-    #                 host = self.cost.get_host_device()
-    #                 l2s_n, l2e_n = self.comm.reserve(host.name, npu_dev.name, size_nd, earliest=start_npu, commit=commit, tag="kv_load")
-    #                 start_npu = max(start_npu, float(l2e_n))
-    #                 l2s_p, l2e_p = self.comm.reserve(host.name, pim_dev.name, size_nd, earliest=start_pim, commit=commit, tag="kv_load")
-    #                 start_pim = max(start_pim, float(l2e_p))
-        
-    #     host = self.cost.get_host_device()
-    #     wid = self._node_weight_id(node)
-    #     w_total_nd = self._node_weight_size(node)
-        
-    #     # Split weights (ND bytes)
-    #     w_npu_nd = int(round(float(w_total_nd) * alpha))
-    #     w_pim_nd = max(0, int(w_total_nd) - w_npu_nd)
-
-    #     # -------- weight load (NPU side) --------
-    #     w_npu_t = 0.0
-    #     if wid and w_npu_nd > 0:
-    #         stub_npu = SimpleNamespace(weight_id=wid, weight_size=w_npu_nd)
-    #         w_npu_t = float(self._weight_load_time(stub_npu, npu_dev, start_npu, commit))
-
-    #     # -------- weight load (PIM side) --------
-    #     w_pim_t = 0.0
-    #     if wid and w_pim_nd > 0:
-    #         stub_pim = SimpleNamespace(weight_id=wid, weight_size=w_pim_nd)
-    #         w_pim_t = float(self._weight_load_time(stub_pim, pim_dev, start_pim, commit))
-
-    #     # -------- compute --------
-    #     t_full_npu = float(self.cost.node_device_cost(node, npu_dev, self.label, batch, seq_len, phase_eff))
-    #     t_full_pim = float(self.cost.node_device_cost(node, pim_dev, self.label, batch, seq_len, phase_eff))
-    #     t_npu_compute = t_full_npu * alpha
-    #     t_pim_compute = t_full_pim * (1.0 - alpha)
-    #     finish_compute_npu = start_npu + w_npu_t + t_npu_compute
-    #     finish_compute_pim = start_pim + w_pim_t + t_pim_compute
-        
-    #     # -------- output write-back to host (ND) --------
-    #     out_read_nd, out_write_nd = self.cost.estimate_activation_bytes(node, batch, seq_len, phase_eff)
-    #     out_nd = max(int(out_write_nd), int(out_read_nd))
-
-    #     out_npu_nd = int(round(float(out_nd) * alpha))
-    #     out_pim_nd = max(0, int(out_nd) - out_npu_nd)
-
-    #     npu_w_end = float(finish_compute_npu)
-    #     pim_w_end = float(finish_compute_pim)
-
-    #     if out_npu_nd > 0 and alpha > 0.0:
-    #         size_nd = self.cost.format_size(out_npu_nd, "ND")
-    #         _, l2e = self.comm.reserve(npu_dev.name, host.name, size_nd, earliest=finish_compute_npu, commit=commit)
-    #         npu_w_end = float(l2e)
-
-    #     if out_pim_nd > 0 and (1.0 - alpha) > 0.0:
-    #         size_nd = self.cost.format_size(out_pim_nd, "ND")
-    #         _, l2e = self.comm.reserve(pim_dev.name, host.name, size_nd, earliest=finish_compute_pim, commit=commit)
-    #         pim_w_end = float(l2e)
-
-    #     finish = float(max(npu_w_end, pim_w_end))
-
-    #     npu_detail = {
-    #         "start": float(start_npu),
-    #         "weight_end": float(start_npu + w_npu_t),
-    #         "compute_end": float(finish_compute_npu),
-    #         "output_end": float(npu_w_end),
-    #     }
-    #     pim_detail = {
-    #         "start": float(start_pim),
-    #         "weight_end": float(start_pim + w_pim_t),
-    #         "compute_end": float(finish_compute_pim),
-    #         "output_end": float(pim_w_end),
-    #     }
-
-    #     if commit:
-    #         # Only occupy devices that actually do work
-    #         if alpha > 0.0:
-    #             self.avail[npu_dev.name] = finish
-    #         if (1.0 - alpha) > 0.0:
-    #             self.avail[pim_dev.name] = finish
-
-    #         self._node_finish_time[nid] = finish
-    #         self._node_placement[nid] = host.name #hybrid reduce to host
-    #         self._node_out_fmt[nid] = "ND"
-    #         self._node_host_store_end[nid] = finish
-        
-    #     return {
-    #         "npu": npu_dev,
-    #         "pim": pim_dev,
-    #         "alpha": alpha,
-    #         "start_npu": float(start_npu),
-    #         "start_pim": float(start_pim),
-    #         "finish": finish,
-    #         "out_dev": host,
-    #         "npu_detail": npu_detail,
-    #         "pim_detail": pim_detail,
-    #     }
 
     def _after_commit_consume_predecessors(self, g: TaskGraph, nid: str) -> None:
         for u in g.predecessors(nid):
@@ -928,9 +781,14 @@ class SchedulerBase:
         def _via_host(commit_flag:bool) -> Tuple[float, float]:
             host_ready = self._ensure_host_store(
                 prod_nid, src_dev, bytes_nd, src_fmt, pred_finish, commit_flag)
-            l2s, l2e = self.comm.reserve(host.name, dst_dev.name, size_nd, earliest=host_ready, commit=commit_flag,tag='act_move')
-            conv2 = self.cost.format_conversion_time(size_nd, 'ND', dst_fmt, dst_dev)
-            return (l2s, l2e + conv2)
+            l2s, l2e = self.comm.reserve(
+                host.name, dst_dev.name, size_nd,
+                earliest=host_ready, commit=commit_flag, tag='act_move'
+            )
+            conv2 = float(self.cost.format_conversion_time(size_nd, 'ND', dst_fmt, dst_dev))
+            dt_xfer = float(l2e) - float(l2s)
+            ready = float(l2s) + float(self.cost.combine_transfer_and_convert(dt_xfer, conv2))
+            return (float(l2s), float(ready))
         
         def _direct(commit_flag: bool) -> Tuple[float, float]:
             # Only consider direct transfer if link exists.
@@ -938,7 +796,7 @@ class SchedulerBase:
                 t_direct = self.cost.link_time(size_nd, src_dev, dst_dev)
             except Exception:
                 t_direct = 0.0
-            if t_direct <= 0:
+            if (not math.isfinite(float(t_direct))) or t_direct <= 0:
                 return (float('inf'), float('inf'))
 
             # If source is PIM, require activation still resident on that PIM.
@@ -957,8 +815,10 @@ class SchedulerBase:
                 src_dev.name, dst_dev.name, size_nd,
                 earliest=earliest, commit=commit_flag, tag='act_move'
             )
-            conv2 = self.cost.format_conversion_time(size_nd, 'ND', dst_fmt, dst_dev)
-            return l2s, l2e + conv2
+            conv2 = float(self.cost.format_conversion_time(size_nd, 'ND', dst_fmt, dst_dev))
+            dt_xfer = float(l2e) - float(l2s)
+            ready = float(l2s) + float(self.cost.combine_transfer_and_convert(dt_xfer, conv2))
+            return float(l2s), float(ready)
 
         # Decide best route by completion time.
         s_direct, e_direct = _direct(False)
@@ -989,14 +849,6 @@ class SchedulerBase:
             seq_u = self._node_seq_len(g, u, phase_u)
             _, pred_write = self.cost.estimate_activation_bytes(pred_node, batch_u, seq_u, phase_u)
             
-            if pred_dev_name == 'HYBRID':  # legacy marker (treat as host-written ND payload)
-                host = self.cost.get_host_device()
-                size_nd = self.cost.format_size(int(pred_write), 'ND')
-                l2s, l2e = self.comm.reserve(host.name, dev.name, size_nd, earliest=pred_finish, commit=commit)
-                inbound_start_times.append(float(l2s))
-                inbound_end_times.append(float(l2e))
-                continue            
-
             pred_dev = self.cluster.devices[pred_dev_name]
             src_fmt = self._node_out_fmt.get(u, self.cost.device_preferred_fmt(pred_dev))
 
@@ -1018,7 +870,9 @@ class SchedulerBase:
                             size_nd, 'ND', self.cost.device_preferred_fmt(dev), dev
                         )
                         inbound_start_times.append(float(l2s))
-                        inbound_end_times.append(float(l2e + conv2))
+                        dt_xfer = float(l2e) - float(l2s)
+                        ready = float(l2s) + float(self.cost.combine_transfer_and_convert(dt_xfer, float(conv2)))
+                        inbound_end_times.append(float(ready))
                 else:
                     inbound_start_times.append(pred_finish)
                     inbound_end_times.append(pred_finish)
@@ -1044,13 +898,6 @@ class SchedulerBase:
         return ready_t
 
     def _weight_load_time(self, node: TaskNode, dev: DeviceSpec, earliest: float, commit: bool) -> float:
-        """Return time (seconds) to ensure `node`'s weight is available on `dev`.
-
-        Size-aware cache semantics:
-        - Hit only if cached ND bytes >= required ND bytes.
-        - If only partially cached (e.g. loaded by HYBRID split), load the missing tail,
-        then update the cache entry size to the required full size.
-        """
         wid = self._node_weight_id(node)
         if not wid:
             return 0.0
@@ -1108,10 +955,12 @@ class SchedulerBase:
         to_fmt = self.cost.device_preferred_fmt(dev)
 
         rd_bytes = int(self.cost.format_size(need_nd, from_fmt))
-        _, l2e = self.comm.reserve(host.name, dev.name, rd_bytes, earliest=earliest, commit=commit)
+        l2s, l2e = self.comm.reserve(host.name, dev.name, rd_bytes, earliest=earliest, commit=commit)
 
-        conv_t = float(self.buffer.convert_time(from_fmt, to_fmt, rd_bytes))
-        end = max(float(l2e) + conv_t, float(earliest))
+        conv_t = float(self.cost.format_conversion_time(rd_bytes, from_fmt, to_fmt, dev))
+        dt_xfer = float(l2e) - float(l2s)
+        ready = float(l2s) + float(self.cost.combine_transfer_and_convert(dt_xfer, conv_t))
+        end = max(float(ready), float(earliest))
 
         if commit:
             try:
@@ -1302,7 +1151,15 @@ class HEFTScheduler(SchedulerBase):
             if RANKU_INCLUDE_AVG_WEIGHT_LOAD and wid and (node_weight_size > 0):
                 stored_fmt = self.storage_fmt_map.get(wid, 'ND')
                 size_src = self.cost.format_size(int(node_weight_size), stored_fmt)
-                weight_cost = self.cost.gb_move_and_format(d, size_src, stored_fmt, self.cost.device_preferred_fmt(d))
+                weight_cost = float(
+                    self.cost.host_to_device_weight_load_time(
+                        d,
+                        int(node_weight_size),
+                        str(stored_fmt),
+                        dst_fmt=str(self.cost.device_preferred_fmt(d)),
+                        include_pim_internal=True,
+                    )
+                )
                 total_w += weight_cost
         avg_compute = total_compute / k if k else 0.0
         avg_w = total_w / k if k and RANKU_INCLUDE_AVG_WEIGHT_LOAD and wid else 0.0
@@ -1331,31 +1188,17 @@ class HEFTScheduler(SchedulerBase):
             for dj in devs:
                 if not (self._node_allowed_on(node_u, di) and self._node_allowed_on(node_v, dj)):
                     continue
-                src_fmt = self.cost.device_preferred_fmt(di)
-                dst_fmt = self.cost.device_preferred_fmt(dj)
-                payload_src = self.cost.format_size(int(payload_bytes), src_fmt)
-                
-                if di.type == dj.type:
-                    t_link = self.cost.comm_cost(di, dj, payload_src)
-                else:
-                    host = self.cost.get_host_device()
-                    t_host = (
-                        self.cost.comm_cost(di, host, payload_src) +
-                        self.cost.comm_cost(host, dj, payload_src)
-                    )
-                    try:
-                        t_direct = self.cost.link_time(payload_src, di, dj)
-                        if t_direct <= 0:
-                            t_direct = float('inf')
-                    except Exception:
-                        t_direct = float('inf')
-
-                    t_link = min(t_host, t_direct)
-
-                t_conv = 0.0
-                if di.type != dj.type:
-                    t_conv = self.cost.format_conversion_time(payload_src, src_fmt, dst_fmt, dj)
-                total += max(t_link, t_conv)
+                src_fmt = str(self.cost.device_preferred_fmt(di))
+                dst_fmt = str(self.cost.device_preferred_fmt(dj))
+                bd = self.cost.activation_transfer_breakdown_no_contention(
+                    di,
+                    dj,
+                    int(payload_bytes),
+                    src_fmt,
+                    dst_fmt=dst_fmt,
+                    allow_via_host=True,
+                )
+                total += float(self.cost.effective_total(bd))
                 k += 1
         return total / k if k else 0.0
 
@@ -1431,7 +1274,6 @@ class HEFTScheduler(SchedulerBase):
                 dev_type = getattr(pinned_dev, "type", "").upper()
                 mode = "NPU" if dev_type == "NPU" else "PIM" if dev_type == "PIM" else dev_type
                 candidates.append((mode, float(finish), pinned_dev))
-                allow_hybrid = False
             else:
                 if allow_npu or (is_kv_write and (not kv_in_pim)):
                     best_npu_dev = None
@@ -1463,12 +1305,6 @@ class HEFTScheduler(SchedulerBase):
                     if best_pim_dev is not None:
                         candidates.append(('PIM', best_pim_finish, best_pim_dev))
 
-                allow_hybrid = ALLOW_HYBRID and allow_npu and allow_pim and (not is_kv_write)
-
-            if allow_hybrid:
-                best_result = self._earliest_finish_hybrid(g, nid, phase, commit=False)
-                if best_result is not None:
-                    candidates.append(('HYBRID', best_result['finish'], None))
 
             if not candidates:
                 raise RuntimeError("No available device for node %s" % nid)
@@ -1478,51 +1314,23 @@ class HEFTScheduler(SchedulerBase):
                 "[sched] choose node=%s mode=%s finish=%.4f candidates=%s",
                 nid, chosen_mode, chosen_finish, [(m, round(f, 4)) for m, f, _ in candidates]
             )
-            if chosen_mode == 'HYBRID':
-                hy = self._earliest_finish_hybrid(g, nid, phase, commit=True)
-                npu = hy['npu']
-                pim = hy['pim']
-                start = min(hy['start_npu'], hy['start_pim'])
-                finish = hy['finish']
-                schedule.append(ScheduledTask(nid, f'HYBRID({npu.name}+{pim.name})', start, finish))
+
+            dev = chosen_data
+            start, finish = self._earliest_finish_on_device(g, nid, dev, self.label, phase, commit=True)
+            schedule.append(ScheduledTask(nid, dev.name, start, finish))
+            op_name = node.attrs.get('op') or node.name
+            self._after_commit_consume_predecessors(g, nid)
+            if getattr(self, 'stats', None):
                 op_name = node.attrs.get('op') or node.name
-                self._after_commit_consume_predecessors(g, nid)
-                if getattr(self, 'stats', None):
-                    op_name = node.attrs.get('op') or node.name
-                    try:
-                        self.stats.log_op_device(
-                            nid=nid, op=op_name,
-                            device=npu.name, device_type=npu.type,
-                            start=float(hy['start_npu']),
-                            end=float(hy['npu_detail']['finish_compute']),
-                            mode='HYBRID'
-                        )
-                        self.stats.log_op_device(
-                            nid=nid, op=op_name,
-                            device=pim.name, device_type=pim.type,
-                            start=float(hy['start_pim']),
-                            end=float(hy['pim_detail']['finish_compute']),
-                            mode='HYBRID'
-                        )
-                    except Exception:
-                        pass
-            else:
-                dev = chosen_data
-                start, finish = self._earliest_finish_on_device(g, nid, dev, self.label, phase, commit=True)
-                schedule.append(ScheduledTask(nid, dev.name, start, finish))
-                op_name = node.attrs.get('op') or node.name
-                self._after_commit_consume_predecessors(g, nid)
-                if getattr(self, 'stats', None):
-                    op_name = node.attrs.get('op') or node.name
-                    try:
-                        self.stats.log_op_device(
-                            nid=nid, op=op_name,
-                            device=dev.name, device_type=dev.type,
-                            start=float(start), end=float(finish),
-                            mode=chosen_mode
-                        )
-                    except Exception:
-                        pass
+                try:
+                    self.stats.log_op_device(
+                        nid=nid, op=op_name,
+                        device=dev.name, device_type=dev.type,
+                        start=float(start), end=float(finish),
+                        mode=chosen_mode
+                    )
+                except Exception:
+                    pass
             # Unlock successors whose predecessors are now all scheduled (ready-queue).
             for v in idx.succs.get(nid, ()):
                 remaining_preds[v] -= 1
@@ -1542,7 +1350,21 @@ class HEFTScheduler(SchedulerBase):
         by_wid = defaultdict(lambda: defaultdict(int))
         for (wid, dev_type), cnt in self._weight_load_count.items():
             by_wid[wid][dev_type] += cnt
-        return {'weight_sizes': dict(self._weight_sizes), 'weight_load_counts': {wid: dict(cnts) for wid, cnts in by_wid.items()}, 'storage_fmt_map': dict(self.storage_fmt_map or {}), 'host_format': dict(self.buffer.host_format or {})}
+        chain_hits = {}
+
+        try:
+            chain_hits = dict(getattr(self, "_weight_chain_hits", {}) or {})
+        except Exception:
+            chain_hits = {}
+
+        return {
+            'weight_sizes': dict(self._weight_sizes),
+            'weight_load_counts': {wid: dict(cnts) for wid, cnts in by_wid.items()},
+            'storage_fmt_map': dict(self.storage_fmt_map or {}),
+            'host_format': dict(self.buffer.host_format or {}),
+            'weight_chain_hits': chain_hits,
+        }
+
 
     def set_storage_format_map(self, fmt_map: Dict[str, str]):
         self.storage_fmt_map = dict(fmt_map or {})
@@ -1550,14 +1372,6 @@ class HEFTScheduler(SchedulerBase):
             self.buffer.set_host_fmt(k, v)
 
     def suggest_weight_storage_formats(self) -> Dict[str, str]:
-        """
-        Propose a host-side weight storage format for each weight_id based on
-        how often that weight is consumed by each device type during the last
-        scheduling pass. We evaluate candidate formats by estimating the
-        (host->device move + format-conversion) time aggregated across all
-        loads observed for that weight.
-        """
-        from collections import defaultdict
         Base = ['ND', 'NPU_OPT', 'PIM_OPT']
         sugg: Dict[str, str] = {}
 
@@ -1582,22 +1396,238 @@ class HEFTScheduler(SchedulerBase):
 
             best_t, best_fmt = float('inf'), candidates[0]
             for fmt in candidates:
-                size_src = self.cost.format_size(w_bytes_nd, fmt)
                 total = 0.0
                 for dev_type, cnt in counts.items():
                     devs = self.cluster.devices_by_type(dev_type)
                     if not devs:
                         continue
                     d = devs[0]
-                    total += cnt * self.cost.gb_move_and_format(
-                        d, size_src, fmt, self.cost.device_preferred_fmt(d)
-                    )
+                    total += float(cnt) * float(
+                        self.cost.host_to_device_weight_load_time(
+                            d,
+                            int(w_bytes_nd),
+                            str(fmt),
+                            dst_fmt=str(self.cost.device_preferred_fmt(d)),
+                            include_pim_internal=True,
+                        )
+                     )
                 if total + EPS < best_t or (abs(total - best_t) < EPS and fmt == native):
                     best_t, best_fmt = total, fmt
             sugg[wid] = best_fmt
 
         return sugg
 
+    # ------------------------------------------------------------------
+    # Block Coordinate Descent (BCD) weight-format suggestion
+    # ------------------------------------------------------------------
+    def _strip_layer_prefix(self, wid: str) -> str:
+        """Strip leading layer tag from weight_id.
+
+        Examples:
+            L12_WQ      -> WQ
+            L3_WQ_S0    -> WQ_S0
+            L7_E2_W1    -> E2_W1
+        """
+        if not wid:
+            return ""
+        try:
+            m = re.match(r"^L\d+_(.*)$", str(wid))
+            return m.group(1) if m else str(wid)
+        except Exception:
+            return str(wid)
+
+    def _weight_block_key(self, wid: str, *, mode: str = "coupled") -> str:
+        """Return a block key for `wid`.
+
+        mode:
+          - 'none'   : only strip layer prefix, no coupling.
+          - 'coupled': additionally couple (WQ,WK,WV) as one block, and (W1,W3) as one block,
+                       while keeping shard/expert suffixes.
+        """
+        base = self._strip_layer_prefix(wid)
+        if mode in ("none", "strip_only", ""):
+            return base
+
+        parts = [p for p in str(base).split("_") if p]
+        if not parts:
+            return base
+
+        # Common (non-MoE) weights: WQ/WK/WV, WO, W1/W2/W3, possibly with _S{sid}.
+        head = parts[0]
+        tail = "_".join(parts[1:]) if len(parts) > 1 else ""
+
+        def _join(prefix: str, rest: str) -> str:
+            return f"{prefix}_{rest}" if rest else prefix
+
+        if head in ("WQ", "WK", "WV"):
+            return _join("ATTN_QKV", tail)
+        if head in ("W1", "W3"):
+            return _join("FFN_W13", tail)
+
+        # MoE style: E{e}_W1 / E{e}_W3 etc. Keep expert id as part of the key.
+        if head.startswith("E") and len(parts) >= 2:
+            wname = parts[1]
+            rest = "_".join(parts[2:]) if len(parts) > 2 else ""
+            if wname in ("W1", "W3"):
+                return _join(f"{head}_FFN_W13", rest)
+            if wname in ("WQ", "WK", "WV"):
+                return _join(f"{head}_ATTN_QKV", rest)
+
+        return base
+
+    def _estimate_weight_host_to_device_cost(
+        self,
+        wid: str,
+        counts: Mapping[str, int],
+        fmt: str,
+        *,
+        lookahead_beta: float = 0.0,
+        max_chain_hits: float = 0.0,
+        chain_hits: Mapping[str, float] | None = None,
+    ) -> float:
+        """Aggregate (host->device move + conversion) cost for a weight under a host format.
+
+        This is a *surrogate* objective computed from the last scheduling pass'
+        observed cache-miss load counts. It is *exact* if placements & cache-miss
+        patterns stay unchanged, and is used to guide format updates between passes.
+        """
+        w_bytes_nd = int(self._weight_sizes.get(wid, 0) or 0)
+        if w_bytes_nd <= 0:
+            return 0.0
+
+        # Lookahead weighting: emphasize weights that appear in selected lookahead chains.
+        factor = 1.0
+        try:
+            if lookahead_beta and chain_hits and max_chain_hits and max_chain_hits > 0:
+                h = float(chain_hits.get(wid, 0.0) or 0.0)
+                factor = float(1.0 + float(lookahead_beta) * (h / float(max_chain_hits)))
+        except Exception:
+            factor = 1.0
+
+        total = 0.0
+        for dev_type, cnt in counts.items():
+            if not cnt:
+                continue
+            devs = self.cluster.devices_by_type(str(dev_type))
+            if not devs:
+                continue
+            d = devs[0]
+            total += float(cnt) * float(
+                self.cost.host_to_device_weight_load_time(
+                    d,
+                    int(w_bytes_nd),
+                    str(fmt),
+                    dst_fmt=str(self.cost.device_preferred_fmt(d)),
+                    include_pim_internal=True,
+                )                
+            )
+        return float(factor * total)
+
+    def suggest_weight_storage_formats_bcd(
+        self,
+        current_map: Dict[str, str] | None = None,
+        *,
+        max_block_changes: int = 1,
+        min_gain_ratio: float = 0.005,
+        block_mode: str = "coupled",
+        candidates: Tuple[str, ...] = ("ND", "NPU_OPT", "PIM_OPT"),
+        lookahead_beta: float = 0.25,
+    ) -> Dict[str, str]:
+        """Suggest next host weight formats via *block* coordinate descent (BCD).
+
+        Returns:
+            A new map (wid -> fmt).
+        """
+        cur = dict(current_map or {})
+
+        # Aggregate cache-miss load counts observed in the last scheduling pass.
+        by_wid: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
+        for (wid, dev_type), cnt in self._weight_load_count.items():
+            by_wid[str(wid)][str(dev_type)] += int(cnt)
+
+        # Include weights already in the map so blocks stay consistent even if
+        # a few weights did not show up in the stats (e.g., sampling).
+        for wid in list(cur.keys()):
+            by_wid.setdefault(str(wid), defaultdict(int))
+
+        # Lookahead-chain hits (optional, only available in HEFTCOMMAWARE).
+        chain_hits = {}
+        try:
+            chain_hits = dict(getattr(self, "_weight_chain_hits", {}) or {})
+        except Exception:
+            chain_hits = {}
+        max_hits = float(max(chain_hits.values(), default=0.0)) if chain_hits else 0.0
+
+        # Build blocks.
+        blocks: Dict[str, List[str]] = defaultdict(list)
+        for wid in by_wid.keys():
+            key = self._weight_block_key(wid, mode=block_mode)
+            blocks[str(key)].append(str(wid))
+
+        # Helper: block-level dominant device type for tie-breaking.
+        def _block_native_fmt(wids: List[str]) -> str:
+            npu = 0
+            pim = 0
+            for w in wids:
+                c = by_wid.get(w, {})
+                npu += int(c.get("npu", 0) or 0)
+                pim += int(c.get("pim", 0) or 0)
+            if npu > pim:
+                return "NPU_OPT"
+            if pim > npu:
+                return "PIM_OPT"
+            return "ND"
+
+        # Evaluate each block's best format and improvement.
+        cand = tuple(str(x) for x in candidates if x)
+        scored: List[Tuple[float, float, str, str]] = []  # (improve, ratio, block_key, best_fmt)
+        eps = 1e-12
+        for bkey, wids in blocks.items():
+            if not wids:
+                continue
+
+            native = _block_native_fmt(wids)
+
+            cur_cost = 0.0
+            for w in wids:
+                fmt0 = cur.get(w, "ND")
+                cur_cost += self._estimate_weight_host_to_device_cost(
+                    w, by_wid.get(w, {}), fmt0,
+                    lookahead_beta=lookahead_beta, max_chain_hits=max_hits, chain_hits=chain_hits
+                )
+
+            best_cost = float("inf")
+            best_fmt = cur.get(wids[0], "ND")
+            for fmt in cand:
+                total = 0.0
+                for w in wids:
+                    total += self._estimate_weight_host_to_device_cost(
+                        w, by_wid.get(w, {}), fmt,
+                        lookahead_beta=lookahead_beta, max_chain_hits=max_hits, chain_hits=chain_hits
+                    )
+                # Tie-break to native.
+                if total + eps < best_cost or (abs(total - best_cost) <= eps and fmt == native):
+                    best_cost = float(total)
+                    best_fmt = str(fmt)
+
+            improve = float(cur_cost - best_cost)
+            ratio = float(improve / (cur_cost + eps)) if cur_cost > 0 else 0.0
+            if improve > 0.0 and ratio >= float(min_gain_ratio):
+                scored.append((improve, ratio, str(bkey), str(best_fmt)))
+
+        if not scored:
+            return cur
+
+        scored.sort(key=lambda x: (-x[0], -x[1], x[2]))
+
+        # Apply top-K block updates (BCD step).
+        out = dict(cur)
+        k = max(1, int(max_block_changes))
+        for _, _, bkey, best_fmt in scored[:k]:
+            for w in blocks.get(bkey, []):
+                out[str(w)] = str(best_fmt)
+
+        return out
 
 class HEFTCOMMAWAREScheduler(HEFTScheduler):
     """Joint-graph scheduler that reuses SchedulerBase timing + buffer/comm modeling."""
@@ -1620,6 +1650,7 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
         self._rng = random.Random(rand_seed)
         self._weight_plan_hint: Dict[str, str] = {}
         self._model_total_weight_bytes: Optional[int] = None
+        self._weight_chain_hits: Dict[str, float] = defaultdict(float)
 
     def reset_state(self):
         """Reset runtime state + clear COMMAWARE hints.
@@ -1628,6 +1659,10 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
         self._plan_hint.clear()
         self._weight_plan_hint.clear()
         self._model_total_weight_bytes = None
+        try:
+            self._weight_chain_hits.clear()
+        except Exception:
+            pass
     # -----------------------------
     # Helpers for COMMAWARE HEFT
     # -----------------------------
@@ -1696,20 +1731,17 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
         if self.buffer.is_cached(dev.name, wid):
             return 0.0
 
-        host = self.cost.get_host_device()
         from_fmt = self.buffer.get_host_fmt(wid) or "ND"
         to_fmt = self.cost.device_preferred_fmt(dev)
-        rd_bytes = int(self.cost.format_size(int(wsize_nd), from_fmt))
-        t = float(self.cost.comm_cost(host, dev, rd_bytes))
-        try:
-            t += float(self.buffer.convert_time(from_fmt, to_fmt, rd_bytes))
-        except Exception:
-            pass
-        if dev.type == "pim":
-            try:
-                t += float(self.cost.weight_load_time_pim(int(wsize_nd)))
-            except Exception:
-                pass
+        t = float(
+            self.cost.host_to_device_weight_load_time(
+                dev,
+                int(wsize_nd),
+                str(from_fmt),
+                dst_fmt=str(to_fmt),
+                include_pim_internal=True,
+            )
+        )
         return float(t)
 
     def _representative_activation_bytes(self, g: TaskGraph, nid: str, phase: str) -> int:
@@ -2124,6 +2156,7 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
             # pop oldest
             oldest = next(iter(self._plan_hint))
             self._plan_hint.pop(oldest, None)
+
     def _update_weight_hint_after_commit(self, g: TaskGraph, nid: str, hinted_type: str) -> None:
         """
         Record: weight_id -> last chosen device type.
@@ -2208,17 +2241,8 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
 
             allow_npu = any(d.type == "npu" for d in cands)
             allow_pim = any(d.type == "pim" for d in cands)
-            allow_hybrid = bool(ALLOW_HYBRID) and allow_npu and allow_pim and (not is_kv_write)
 
             hy_est: Optional[dict] = None
-            if allow_hybrid:
-                try:
-                    hy_est = self._earliest_finish_hybrid(g, nid, phase, commit=False)
-                except Exception:
-                    hy_est = None
-                if hy_est is None:
-                    allow_hybrid = False
-
             best_score = float("inf")
             best_eft = float("inf")
             best_mode: str = "DEV"
@@ -2255,28 +2279,6 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
                     best_hy = None
                     best_hint = dict(hint_assign)
 
-            if allow_hybrid and hy_est is not None:
-                eft = float(hy_est.get("finish", float("inf")))
-                first_dev = hy_est.get("out_dev") or self.cost.get_host_device()
-
-                window_est = eft
-                hint_assign = {}
-                if use_lookahead and len(chain) > 1:
-                    window_est, hint_assign = self._lookahead_window_estimate(
-                        g, chain=chain, first_dev=first_dev, first_eft=eft, phase=phase
-                    )
-
-                score = float((1.0 - gamma) * eft + gamma * float(window_est))
-                if (score < best_score) or (
-                    abs(score - best_score) < 1e-9 and eft < best_eft
-                ):
-                    best_score = score
-                    best_eft = eft
-                    best_mode = "HYBRID"
-                    best_dev = None
-                    best_hy = dict(hy_est)
-                    best_hint = dict(hint_assign)
-
             return best_score, best_eft, best_mode, best_dev, best_hy, best_hint
 
         while ready:
@@ -2309,78 +2311,48 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
 
             node = g.nodes[nid]
 
+            # Record lookahead-chain weight importance for this *selected* node only.
+            if use_lookahead:
+                try:
+                    chain_sel = self._build_lookahead_chain(g, nid, idx, rank_u, phase=phase, H=H)
+                    for cnid in chain_sel:
+                        try:
+                            cw = self._node_weight_id(g.nodes[cnid])
+                            if cw:
+                                self._weight_chain_hits[str(cw)] += 1.0
+                        except Exception:
+                            continue
+                except Exception:
+                    pass
             # Commit
             scheduled.add(nid)
 
-            if best_mode == "HYBRID":
-                # Commit hybrid
-                hy = self._earliest_finish_hybrid(g, nid, phase, commit=True)
-                if hy is None:
-                    raise RuntimeError(f"HYBRID candidate selected but commit failed for node {nid}")
+            if best_choice is None:
+                raise RuntimeError(f"No feasible placement found for node {nid}")
+            dev = best_choice
+            start, finish = self._earliest_finish_on_device(g, nid, dev, self.label, phase, commit=True)
+            schedule.append(ScheduledTask(nid, dev.name, float(start), float(finish)))
+            self._after_commit_consume_predecessors(g, nid)
 
-                npu = hy["npu"]
-                pim = hy["pim"]
-                start = float(min(hy["start_npu"], hy["start_pim"]))
-                finish = float(hy["finish"])
+            # 记录 weight-level hint
+            self._update_weight_hint_after_commit(g, nid, str(getattr(dev, "type", "")))
 
-                schedule.append(ScheduledTask(nid, f"HYBRID({npu.name}+{pim.name})", start, finish))
-                self._after_commit_consume_predecessors(g, nid)
-
-                # 记录 weight-level hint
-                self._update_weight_hint_after_commit(g, nid, "hybrid")
-
-                # Stats: log both sides
-                if getattr(self, "stats", None):
-                    op_name = getattr(node, "attrs", {}).get("op") if hasattr(node, "attrs") else None
-                    op_name = op_name or getattr(node, "name", "")
-                    try:
-                        self.stats.log_op_device(
-                            nid=nid,
-                            op=op_name,
-                            device=npu.name,
-                            device_type=npu.type,
-                            start=float(hy["start_npu"]),
-                            end=float(hy["npu_detail"]["compute_end"]),
-                            mode="HYBRID",
-                        )
-                        self.stats.log_op_device(
-                            nid=nid,
-                            op=op_name,
-                            device=pim.name,
-                            device_type=pim.type,
-                            start=float(hy["start_pim"]),
-                            end=float(hy["pim_detail"]["compute_end"]),
-                            mode="HYBRID",
-                        )
-                    except Exception:
-                        pass
-            else:
-                if best_choice is None:
-                    raise RuntimeError(f"No feasible placement found for node {nid}")
-                dev = best_choice
-                start, finish = self._earliest_finish_on_device(g, nid, dev, self.label, phase, commit=True)
-                schedule.append(ScheduledTask(nid, dev.name, float(start), float(finish)))
-                self._after_commit_consume_predecessors(g, nid)
-
-                # 记录 weight-level hint
-                self._update_weight_hint_after_commit(g, nid, str(getattr(dev, "type", "")))
-
-                # Stats
-                if getattr(self, "stats", None):
-                    op_name = getattr(node, "attrs", {}).get("op") if hasattr(node, "attrs") else None
-                    op_name = op_name or getattr(node, "name", "")
-                    try:
-                        self.stats.log_op_device(
-                            nid=nid,
-                            op=op_name,
-                            device=dev.name,
-                            device_type=dev.type,
-                            start=float(start),
-                            end=float(finish),
-                            mode="COMMAWARE",
-                        )
-                    except Exception:
-                        pass
+            # Stats
+            if getattr(self, "stats", None):
+                op_name = getattr(node, "attrs", {}).get("op") if hasattr(node, "attrs") else None
+                op_name = op_name or getattr(node, "name", "")
+                try:
+                    self.stats.log_op_device(
+                        nid=nid,
+                        op=op_name,
+                        device=dev.name,
+                        device_type=dev.type,
+                        start=float(start),
+                        end=float(finish),
+                        mode="COMMAWARE",
+                    )
+                except Exception:
+                    pass
 
             # Update near-future plan hints from best lookahead pattern.
             if use_lookahead and best_hint_assignments:

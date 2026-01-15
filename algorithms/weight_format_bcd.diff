@@ -1,0 +1,679 @@
+--- a/scheduler.py
++++ b/scheduler.py
+@@ -1,5 +1,6 @@
+ from __future__ import annotations
+
+ import os
+
++import re
+
+ from config import attach_local_debug_filter
+
+ from dataclasses import dataclass,field
+
+ from typing import Dict, List, Tuple, Optional, Any, Iterable, OrderedDict, Hashable,override
+
+@@ -1630,13 +1631,27 @@
+                 f"Schedule failed: graph may have cycles or missing deps; unscheduled nodes: {missing[:16]}"
+
+             )
+
+         return schedule
+
+-
+
+     def export_weight_stats(self):
+
+         from collections import defaultdict
+
+         by_wid = defaultdict(lambda: defaultdict(int))
+
+         for (wid, dev_type), cnt in self._weight_load_count.items():
+
+             by_wid[wid][dev_type] += cnt
+
+-        return {'weight_sizes': dict(self._weight_sizes), 'weight_load_counts': {wid: dict(cnts) for wid, cnts in by_wid.items()}, 'storage_fmt_map': dict(self.storage_fmt_map or {}), 'host_format': dict(self.buffer.host_format or {})}
+
++
+
++        # Optional: how often each weight_id appeared in the *selected* lookahead
+
++        # chains (only available in HEFTCOMMAWAREScheduler).
+
++        chain_hits = {}
+
++        try:
+
++            chain_hits = dict(getattr(self, "_weight_chain_hits", {}) or {})
+
++        except Exception:
+
++            chain_hits = {}
+
++
+
++        return {
+
++            'weight_sizes': dict(self._weight_sizes),
+
++            'weight_load_counts': {wid: dict(cnts) for wid, cnts in by_wid.items()},
+
++            'storage_fmt_map': dict(self.storage_fmt_map or {}),
+
++            'host_format': dict(self.buffer.host_format or {}),
+
++            'weight_chain_hits': chain_hits,
+
++        }
+
+ 
+
+     def set_storage_format_map(self, fmt_map: Dict[str, str]):
+
+         self.storage_fmt_map = dict(fmt_map or {})
+
+@@ -1693,6 +1708,233 @@
+         return sugg
+
+ 
+
+ 
+
++    # ------------------------------------------------------------------
+
++    # Block Coordinate Descent (BCD) weight-format suggestion
+
++    # ------------------------------------------------------------------
+
++    def _strip_layer_prefix(self, wid: str) -> str:
+
++        """Strip leading layer tag from weight_id.
+
++
+
++        Examples:
+
++            L12_WQ      -> WQ
+
++            L3_WQ_S0    -> WQ_S0
+
++            L7_E2_W1    -> E2_W1
+
++        """
+
++        if not wid:
+
++            return ""
+
++        try:
+
++            m = re.match(r"^L\d+_(.*)$", str(wid))
+
++            return m.group(1) if m else str(wid)
+
++        except Exception:
+
++            return str(wid)
+
++
+
++    def _weight_block_key(self, wid: str, *, mode: str = "coupled") -> str:
+
++        """Return a block key for `wid`.
+
++
+
++        mode:
+
++          - 'none'   : only strip layer prefix, no coupling.
+
++          - 'coupled': additionally couple (WQ,WK,WV) as one block, and (W1,W3) as one block,
+
++                       while keeping shard/expert suffixes.
+
++        """
+
++        base = self._strip_layer_prefix(wid)
+
++        if mode in ("none", "strip_only", ""):
+
++            return base
+
++
+
++        parts = [p for p in str(base).split("_") if p]
+
++        if not parts:
+
++            return base
+
++
+
++        # Common (non-MoE) weights: WQ/WK/WV, WO, W1/W2/W3, possibly with _S{sid}.
+
++        head = parts[0]
+
++        tail = "_".join(parts[1:]) if len(parts) > 1 else ""
+
++
+
++        def _join(prefix: str, rest: str) -> str:
+
++            return f"{prefix}_{rest}" if rest else prefix
+
++
+
++        if head in ("WQ", "WK", "WV"):
+
++            return _join("ATTN_QKV", tail)
+
++        if head in ("W1", "W3"):
+
++            return _join("FFN_W13", tail)
+
++
+
++        # MoE style: E{e}_W1 / E{e}_W3 etc. Keep expert id as part of the key.
+
++        if head.startswith("E") and len(parts) >= 2:
+
++            wname = parts[1]
+
++            rest = "_".join(parts[2:]) if len(parts) > 2 else ""
+
++            if wname in ("W1", "W3"):
+
++                return _join(f"{head}_FFN_W13", rest)
+
++            if wname in ("WQ", "WK", "WV"):
+
++                return _join(f"{head}_ATTN_QKV", rest)
+
++
+
++        return base
+
++
+
++    def _estimate_weight_host_to_device_cost(
+
++        self,
+
++        wid: str,
+
++        counts: Mapping[str, int],
+
++        fmt: str,
+
++        *,
+
++        lookahead_beta: float = 0.0,
+
++        max_chain_hits: float = 0.0,
+
++        chain_hits: Mapping[str, float] | None = None,
+
++    ) -> float:
+
++        """Aggregate (host->device move + conversion) cost for a weight under a host format.
+
++
+
++        This is a *surrogate* objective computed from the last scheduling pass'
+
++        observed cache-miss load counts. It is *exact* if placements & cache-miss
+
++        patterns stay unchanged, and is used to guide format updates between passes.
+
++        """
+
++        w_bytes_nd = int(self._weight_sizes.get(wid, 0) or 0)
+
++        if w_bytes_nd <= 0:
+
++            return 0.0
+
++
+
++        # Lookahead weighting: emphasize weights that appear in selected lookahead chains.
+
++        factor = 1.0
+
++        try:
+
++            if lookahead_beta and chain_hits and max_chain_hits and max_chain_hits > 0:
+
++                h = float(chain_hits.get(wid, 0.0) or 0.0)
+
++                factor = float(1.0 + float(lookahead_beta) * (h / float(max_chain_hits)))
+
++        except Exception:
+
++            factor = 1.0
+
++
+
++        size_src = int(self.cost.format_size(int(w_bytes_nd), str(fmt)))
+
++        total = 0.0
+
++        for dev_type, cnt in counts.items():
+
++            if not cnt:
+
++                continue
+
++            devs = self.cluster.devices_by_type(str(dev_type))
+
++            if not devs:
+
++                continue
+
++            d = devs[0]
+
++            total += float(cnt) * float(
+
++                self.cost.gb_move_and_format(d, size_src, str(fmt), self.cost.device_preferred_fmt(d))
+
++            )
+
++        return float(factor * total)
+
++
+
++    def suggest_weight_storage_formats_bcd(
+
++        self,
+
++        current_map: Dict[str, str] | None = None,
+
++        *,
+
++        max_block_changes: int = 1,
+
++        min_gain_ratio: float = 0.005,
+
++        block_mode: str = "coupled",
+
++        candidates: Tuple[str, ...] = ("ND", "NPU_OPT", "PIM_OPT"),
+
++        lookahead_beta: float = 0.25,
+
++    ) -> Dict[str, str]:
+
++        """Suggest next host weight formats via *block* coordinate descent (BCD).
+
++
+
++        Compared to `suggest_weight_storage_formats()` (per-weight, independent),
+
++        this method updates a *block* (a group of coupled weights) at a time,
+
++        encouraging consistent formats across layers and across tightly-coupled
+
++        weights (Q/K/V, W1/W3).
+
++
+
++        The update is guided by the last-pass observed cache-miss load counts
+
++        (`self._weight_load_count`) and is therefore inexpensive.
+
++
+
++        Args:
+
++            current_map: current host format map (wid -> fmt). Missing => 'ND'.
+
++            max_block_changes: how many blocks to update per call (BCD step size).
+
++            min_gain_ratio: minimum relative gain required to accept a block flip.
+
++            block_mode: 'coupled' or 'none'
+
++            candidates: allowed host formats.
+
++            lookahead_beta: extra weighting for weights on lookahead chains (COMMAWARE only).
+
++
+
++        Returns:
+
++            A new map (wid -> fmt).
+
++        """
+
++        from collections import defaultdict
+
++
+
++        cur = dict(current_map or {})
+
++
+
++        # Aggregate cache-miss load counts observed in the last scheduling pass.
+
++        by_wid: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
+
++        for (wid, dev_type), cnt in self._weight_load_count.items():
+
++            by_wid[str(wid)][str(dev_type)] += int(cnt)
+
++
+
++        # Include weights already in the map so blocks stay consistent even if
+
++        # a few weights did not show up in the stats (e.g., sampling).
+
++        for wid in list(cur.keys()):
+
++            by_wid.setdefault(str(wid), defaultdict(int))
+
++
+
++        # Lookahead-chain hits (optional, only available in HEFTCOMMAWARE).
+
++        chain_hits = {}
+
++        try:
+
++            chain_hits = dict(getattr(self, "_weight_chain_hits", {}) or {})
+
++        except Exception:
+
++            chain_hits = {}
+
++        max_hits = float(max(chain_hits.values(), default=0.0)) if chain_hits else 0.0
+
++
+
++        # Build blocks.
+
++        blocks: Dict[str, List[str]] = defaultdict(list)
+
++        for wid in by_wid.keys():
+
++            key = self._weight_block_key(wid, mode=block_mode)
+
++            blocks[str(key)].append(str(wid))
+
++
+
++        # Helper: block-level dominant device type for tie-breaking.
+
++        def _block_native_fmt(wids: List[str]) -> str:
+
++            npu = 0
+
++            pim = 0
+
++            for w in wids:
+
++                c = by_wid.get(w, {})
+
++                npu += int(c.get("npu", 0) or 0)
+
++                pim += int(c.get("pim", 0) or 0)
+
++            if npu > pim:
+
++                return "NPU_OPT"
+
++            if pim > npu:
+
++                return "PIM_OPT"
+
++            return "ND"
+
++
+
++        # Evaluate each block's best format and improvement.
+
++        cand = tuple(str(x) for x in candidates if x)
+
++        scored: List[Tuple[float, float, str, str]] = []  # (improve, ratio, block_key, best_fmt)
+
++        eps = 1e-12
+
++        for bkey, wids in blocks.items():
+
++            if not wids:
+
++                continue
+
++
+
++            native = _block_native_fmt(wids)
+
++
+
++            cur_cost = 0.0
+
++            for w in wids:
+
++                fmt0 = cur.get(w, "ND")
+
++                cur_cost += self._estimate_weight_host_to_device_cost(
+
++                    w, by_wid.get(w, {}), fmt0,
+
++                    lookahead_beta=lookahead_beta, max_chain_hits=max_hits, chain_hits=chain_hits
+
++                )
+
++
+
++            best_cost = float("inf")
+
++            best_fmt = cur.get(wids[0], "ND")
+
++            for fmt in cand:
+
++                total = 0.0
+
++                for w in wids:
+
++                    total += self._estimate_weight_host_to_device_cost(
+
++                        w, by_wid.get(w, {}), fmt,
+
++                        lookahead_beta=lookahead_beta, max_chain_hits=max_hits, chain_hits=chain_hits
+
++                    )
+
++                # Tie-break to native.
+
++                if total + eps < best_cost or (abs(total - best_cost) <= eps and fmt == native):
+
++                    best_cost = float(total)
+
++                    best_fmt = str(fmt)
+
++
+
++            improve = float(cur_cost - best_cost)
+
++            ratio = float(improve / (cur_cost + eps)) if cur_cost > 0 else 0.0
+
++            if improve > 0.0 and ratio >= float(min_gain_ratio):
+
++                scored.append((improve, ratio, str(bkey), str(best_fmt)))
+
++
+
++        if not scored:
+
++            return cur
+
++
+
++        scored.sort(key=lambda x: (-x[0], -x[1], x[2]))
+
++
+
++        # Apply top-K block updates (BCD step).
+
++        out = dict(cur)
+
++        k = max(1, int(max_block_changes))
+
++        for _, _, bkey, best_fmt in scored[:k]:
+
++            for w in blocks.get(bkey, []):
+
++                out[str(w)] = str(best_fmt)
+
++
+
++        return out
+
++
+
++
+
++
+
+ class HEFTCOMMAWAREScheduler(HEFTScheduler):
+
+     """Joint-graph scheduler that reuses SchedulerBase timing + buffer/comm modeling."""
+
+ 
+
+@@ -1714,6 +1956,7 @@
+         self._rng = random.Random(rand_seed)
+
+         self._weight_plan_hint: Dict[str, str] = {}
+
+         self._model_total_weight_bytes: Optional[int] = None
+
++        self._weight_chain_hits: Dict[str, float] = defaultdict(float)
+
+ 
+
+     def reset_state(self):
+
+         """Reset runtime state + clear COMMAWARE hints.
+
+@@ -1722,6 +1965,10 @@
+         self._plan_hint.clear()
+
+         self._weight_plan_hint.clear()
+
+         self._model_total_weight_bytes = None
+
++        try:
+
++            self._weight_chain_hits.clear()
+
++        except Exception:
+
++            pass
+
+     # -----------------------------
+
+     # Helpers for COMMAWARE HEFT
+
+     # -----------------------------
+
+@@ -2403,6 +2650,20 @@
+ 
+
+             node = g.nodes[nid]
+
+ 
+
++            # Record lookahead-chain weight importance for this *selected* node only.
+
++            if use_lookahead:
+
++                try:
+
++                    chain_sel = self._build_lookahead_chain(g, nid, idx, rank_u, phase=phase, H=H)
+
++                    for cnid in chain_sel:
+
++                        try:
+
++                            cw = self._node_weight_id(g.nodes[cnid])
+
++                            if cw:
+
++                                self._weight_chain_hits[str(cw)] += 1.0
+
++                        except Exception:
+
++                            continue
+
++                except Exception:
+
++                    pass
+
++
+
+             # Commit
+
+             scheduled.add(nid)
+
+ 
+
+
+--- a/main.py
++++ b/main.py
+@@ -430,6 +430,10 @@
+         last_decode = 0.0
+
+         all_pass_records: List[Dict] = []
+
+         sa_enable = bool(SA_ENABLE)
+
++        fmt_opt_method = str(cfg.get('weight_format_opt_method', 'bcd') or 'bcd').strip().lower()
+
++        if fmt_opt_method in ('bcd', 'block', 'block_cd', 'block-coordinate', 'block_coordinate'):
+
++            # Block-coordinate descent expects block-consistent maps; disable SA flips by default.
+
++            sa_enable = False
+
+         T = float(SA_T0)
+
+         alpha = float(SA_ALPHA)
+
+         flip_prob = float(SA_FLIP_PROB)
+
+@@ -470,7 +474,17 @@
+             total_time = prefill_time + decode_time
+
+             wall_time_current = time.time() - t_wall0
+
+             cost.logger._log(f'[PASS{p}] CurrentMap  WallTime: {wall_time_current:.3f}s | Prefill(sim): {prefill_time:.6f}s, Decode(sim): {decode_time:.6f}s, Total(sim): {total_time:.6f}s')
+
+-            fmt_suggestion = sched.suggest_weight_storage_formats()
+
++            # ---- weight-format update (between passes) ----
+
++            if fmt_opt_method in ('bcd', 'block', 'block_cd', 'block-coordinate', 'block_coordinate') and hasattr(sched, 'suggest_weight_storage_formats_bcd'):
+
++                fmt_suggestion = sched.suggest_weight_storage_formats_bcd(
+
++                    fmt_map,
+
++                    max_block_changes=int(cfg.get('format_bcd_max_blocks', 1) or 1),
+
++                    min_gain_ratio=float(cfg.get('format_bcd_min_gain_ratio', 0.005) or 0.0),
+
++                    block_mode=str(cfg.get('format_bcd_block_mode', 'coupled') or 'coupled'),
+
++                    lookahead_beta=float(cfg.get('format_bcd_lookahead_beta', 0.25) or 0.0),
+
++                )
+
++            else:
+
++                fmt_suggestion = sched.suggest_weight_storage_formats()
+
+             wids = sorted(set(list(fmt_suggestion.keys()) + list(fmt_map.keys())))
+
+             if sa_enable:
+
+                 neighbor_map = _sa_make_neighbor_map(fmt_suggestion or fmt_map, wids, flip_prob)
+

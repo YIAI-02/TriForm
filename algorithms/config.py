@@ -40,12 +40,22 @@ FORMAT_SIZE_MULTIPLIER = {
 #TODO
 # Format conversion bandwidth (GB/s) per device type
 FORMAT_CONV_BW_GBs = {
-    "cpu": 50.0,
-    "npu": 200.0,
-    "pim": 100.0,
-    "default": 50.0,
+    "cpu": 25.0,
+    "npu": 120.0,
+    "pim": 60.0,
+    "default": 25.0,
 }
-NONOVERLAP_TIME: float = 0.3  # 0.0 means fully overlapped, 1.0 means non-overlapped
+
+# data format cold start
+FORMAT_CONV_OVERHEAD_US = {
+    "cpu": 1,
+    "npu": 0.5,
+    "pim": 0.8,
+    "default": 1,
+}
+
+# “latency = transfer + convert” serial or overlap (0~1)
+NONOVERLAP_TIME = 1.0
 
 # PIM 频率（GHz）：cycles / (PIM_FREQ_GHZ * 1e9) = seconds
 PIM_FREQ_GHZ: float = 1.0

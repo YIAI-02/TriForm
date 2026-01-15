@@ -424,16 +424,4 @@ class GlobalMemoryManager:
         if pinned:
             cache.pin(wid)
 
-    # ------------------------------------------------------------------
-    # Format conversion accounting
-    # ------------------------------------------------------------------
-    def convert_time(self, from_fmt: str, to_fmt: str, size_bytes: int) -> float:
-        if from_fmt == to_fmt:
-            return 0.0
-        bw = self.conv_bw_GBs.get((from_fmt, to_fmt), 0.0)
-        if bw <= 0:
-            # conservative: 10 GB/s default
-            bw = 10.0
-        self.stats_convert_bytes[(from_fmt, to_fmt)] = self.stats_convert_bytes.get((from_fmt, to_fmt), 0) + int(size_bytes)
-        return int(size_bytes) / (bw * 1024**3)
 

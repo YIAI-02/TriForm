@@ -470,35 +470,23 @@ def run(cfg: Dict):
             total_time = prefill_time + decode_time
             wall_time_current = time.time() - t_wall0
             cost.logger._log(f'[PASS{p}] CurrentMap  WallTime: {wall_time_current:.3f}s | Prefill(sim): {prefill_time:.6f}s, Decode(sim): {decode_time:.6f}s, Total(sim): {total_time:.6f}s')
-            fmt_suggestion = sched.suggest_weight_storage_formats()
-            wids = sorted(set(list(fmt_suggestion.keys()) + list(fmt_map.keys())))
-            if sa_enable:
-                neighbor_map = _sa_make_neighbor_map(fmt_suggestion or fmt_map, wids, flip_prob)
-                sched2 = SchedCls(cluster, cost, label, batch=batch, seq_len=prefill_len, buffer=buffer_mgr)
-                sched2.set_storage_format_map(neighbor_map)
-                sched2.reset_state()
-                t_wall1 = time.time()
-                logger.debug(str(f'[PASS{p}] Running prefill phase (neighbor map)...'))
-                prefill_time_nb, prefill_sched_ser_nb = simulate_prefill(sched2, cfg, graph)
-                logger.debug(str(f'[PASS{p}] Running decode phase (neighbor map)...'))
-                decode_time_nb, decode_steps_ser_nb = simulate_decode_progressive(sched2, cfg, graph, prefill_end=prefill_time)
-                total_time_nb = prefill_time_nb + decode_time_nb
-                wall_time_neighbor = time.time() - t_wall1
-                cost.logger._log(f'[PASS{p}] NeighborMap WallTime: {wall_time_neighbor:.3f}s | Prefill(sim): {prefill_time_nb:.6f}s, Decode(sim): {decode_time_nb:.6f}s, Total(sim): {total_time_nb:.6f}s')
-                delta = total_time_nb - total_time
-                accept = delta < 0.0 or random.random() < math.exp(-max(0.0, delta) / max(1e-09, T))
-                fmt_next = neighbor_map if accept else fmt_map
-                chosen_total = total_time_nb if accept else total_time
-                chosen_prefill = prefill_time_nb if accept else prefill_time
-                chosen_decode = decode_time_nb if accept else decode_time
-                prefill_sched_ser = prefill_sched_ser_nb if accept else prefill_sched_ser
-                decode_steps_ser = decode_steps_ser_nb if accept else decode_steps_ser
-                cost.logger._log(f"[PASS{p}] SA decision: {('ACCEPT' if accept else 'REJECT')} (Δ={delta:+.6f}, T={T:.4f})")
+            # ---- weight-format update (between passes) ----
+            if fmt_opt_method in ('bcd', 'block', 'block_cd', 'block-coordinate', 'block_coordinate') and hasattr(sched, 'suggest_weight_storage_formats_bcd'):
+                fmt_suggestion = sched.suggest_weight_storage_formats_bcd(
+                    fmt_map,
+                    max_block_changes=int(cfg.get('format_bcd_max_blocks', 1) or 1),
+                    min_gain_ratio=float(cfg.get('format_bcd_min_gain_ratio', 0.005) or 0.0),
+                    block_mode=str(cfg.get('format_bcd_block_mode', 'coupled') or 'coupled'),
+                    lookahead_beta=float(cfg.get('format_bcd_lookahead_beta', 0.25) or 0.0),
+                )
             else:
-                fmt_next = fmt_suggestion
-                chosen_total = total_time
-                chosen_prefill = prefill_time
-                chosen_decode = decode_time
+                fmt_suggestion = sched.suggest_weight_storage_formats()            
+            wids = sorted(set(list(fmt_suggestion.keys()) + list(fmt_map.keys())))
+            
+            fmt_next = fmt_suggestion
+            chosen_total = total_time
+            chosen_prefill = prefill_time
+            chosen_decode = decode_time
 
             # >>> dump per-op and per-link CSV stats for this pass
             try:

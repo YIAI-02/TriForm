@@ -1,6 +1,6 @@
 {
-  "model_family": "qwen",
-  "model_variant": "1.8b",
+  "model_family": "llama",
+  "model_variant": "7b",
   "dtype": "int8",
   "batch": 8,
   "prefill_len": 128,
@@ -13,10 +13,16 @@
   "result_dir": "./output/evaluate_single_test/hardware_config_scale_down_11pima/",
   "hardware_json": "./examples/hardware_config_scale_down_11pima.json",
   "algo": [
-    "hefthint"
+    "hefthint",
+    "heft"
   ],
   "baselines": [
-    "pd"
+    "pd",
+    "attn_on_pim",
+    "weights_on_pim",
+    "ianus",
+    "facil",
+    "attacc"
   ],
   "split_by": "head",
   "split_shards": 4
