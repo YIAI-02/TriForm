@@ -19,19 +19,19 @@ python plot_trace_gantt.py \
 
 python plot_trace_gantt.py \
   --compare \
-  ../algorithms/output/experiment_scale_down/hw_scale_down_pima/st64/qwen_7b_int8_b8_s64/algo_pd/128x1024_ops_trace.csv \
-  ../algorithms/output/experiment_scale_down/hw_scale_down_pima/st64/qwen_7b_int8_b8_s64/algo_hefthint/hefthint_128x1024_ops_trace.csv \
-  --out_dir ../figs/experiment_scale_down/qwen_7b_int8_b8_s64/gantt_comparison \
+  ../algorithms/output/experiment_scale_down_test/hw_scale_down_11pima/st64/llama_7b_int8_b1_s64/algo_pd/128x1024_ops_trace.csv \
+  ../algorithms/output/experiment_scale_down_test/hw_scale_down_11pima/st64/llama_7b_int8_b1_s64/algo_hefthint/hefthint_128x1024_ops_trace.csv \
+  --out_dir ../figs/experiment_scale_down/llama_7b_int8_b8_s64/gantt_comparison \
   --time_unit ms \
-  --fig_w 15 \
+  --fig_w 25 \
   --comm_lane_mode aggregate
 
 
 python plot_trace_gantt.py \
   --compare \
-  ../algorithms/output/experiment_scale_down/hw_scale_down_pima/st64/qwen_7b_int8_b8_s64/algo_weights_on_pim/128x1024_ops_trace.csv \
-  ../algorithms/output/experiment_scale_down/hw_scale_down_pima/st64/qwen_7b_int8_b8_s64/algo_hefthint/hefthint_128x1024_ops_trace.csv \
-  --out_dir ../figs/experiment_scale_down/qwen_7b_int8_b8_s64/gantt_comparison \
+  ../algorithms/output/experiment_scale_down_test/hw_scale_down_11pima/st64/llama_7b_int8_b1_s64/algo_weights_on_pim/128x1024_ops_trace.csv \
+  ../algorithms/output/experiment_scale_down_test/hw_scale_down_11pima/st64/llama_7b_int8_b1_s64/algo_hefthint/hefthint_128x1024_ops_trace.csv \
+  --out_dir ../figs/experiment_scale_down/llama_7b_int8_b8_s64/gantt_comparison \
   --time_unit ms \
   --fig_w 25 \
   --comm_lane_mode aggregate

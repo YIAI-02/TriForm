@@ -4,6 +4,10 @@
 
 1) 批量（推荐）：
    python speedup.py --output-root ../algorithms/output/lens_eval_sweep --out-dir ../figs/speedup
+   python analyze_speedup_comparison.py \
+  --output-root ../algorithms/output/experiment_scale_down_test/ \
+  --out-dir ../figs/speedup/experiment_scale_down_test/hw_scale_down_11pima
+
 
 2) 指定单个模型目录（目录里有 baseline_compare_*.json）：
    python speedup.py --model-dir ../algorithms/output/lens_eval_sweep/hw_xxx/st64/llama_7b_int8_b1

@@ -5,10 +5,10 @@
 Plot 6 heatmaps (2x3 subplots) for speedup = PD latency / Hefthint latency.
 修改里面的dir
 python3 plot_hw_experiment2.py \
-  --model_glob "qwen_7b_*_b*_s64" \
+  --model_glob "mixtral_8x7b_*_b*_s64" \
   --latency_field total_time_s \
   --shared_scale \
-  --out ../figs/hw_scale/latency_heatmaps_llama_7b.pdf \
+  --out ../figs/hw_scale/latency_heatmaps_mixtral_8x7b.pdf \
   --batches 1,4,8,16,32
 """
 from __future__ import annotations
@@ -204,15 +204,15 @@ def default_specs(base_dir: Path) -> List[PlotSpec]:
     return [
         PlotSpec(
             title="1 NPU 1 PIM",
-            root_dir=base_dir / "../algorithms/output/experiment_scale_down/hw_scale_down_11pima/st64",
+            root_dir=base_dir / "/lustre/home/2501111916/workspace/XPUPIM/TriForm/algorithms/output/experiment_scale_down_test/hw_scale_down_11pima/st64",
         ),
         PlotSpec(
             title="1 NPU 2 PIM",
-            root_dir=base_dir / "../algorithms/output/experiment_scale_down/hw_scale_down_12pima/st64",
+            root_dir=base_dir / "/lustre/home/2501111916/workspace/XPUPIM/TriForm/algorithms/output/experiment_scale_down_test/hw_scale_down_12pima/st64",
         ),
         PlotSpec(
             title="1 NPU 4 PIM",
-            root_dir=base_dir / "../algorithms/output/experiment_scale_down/hw_scale_down_14pima/st64",
+            root_dir=base_dir / "/lustre/home/2501111916/workspace/XPUPIM/TriForm/algorithms/output/experiment_scale_down_test/hw_scale_down_14pima/st64",
         ),
     ]
 

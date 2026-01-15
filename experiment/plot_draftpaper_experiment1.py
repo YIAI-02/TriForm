@@ -20,6 +20,14 @@ python plot_draftpaper_experiment1.py \
   --json ../algorithms/output/experiment_npu/hw_npu_2aim/st64/mixtral_8x7b_int8_b8_s64/baseline_compare_1024x128.json   --label "mixtral-8x7b b8" \
   --out ../figs/draftpaper_exp1/exp1_policy_x_models_1024x128.pdf\
   --linear
+
+python plot_draftpaper_experiment1.py \
+  --json ../algorithms/output/experiment_scale_down_test/hw_scale_down_11pima/st64/qwen_1.8b_int8_b1_s64/baseline_compare_128x1024.json --label "qwen-1.8b b1" \
+  --json ../algorithms/output/experiment_scale_down_test/hw_scale_down_11pima/st64/qwen_7b_int8_b8_s64/baseline_compare_128x1024.json   --label "qwen-7b b8" \
+  --json ../algorithms/output/experiment_scale_down_test/hw_scale_down_11pima/st64/palm_62b_int8_b32_s64/baseline_compare_128x1024.json  --label "palm-62b b32" \
+  --json ../algorithms/output/experiment_scale_down_test/hw_scale_down_11pima/st64/mixtral_8x7b_int8_b8_s64/baseline_compare_128x1024.json   --label "mixtral-8x7b b8" \
+  --out ../figs/experiment_scale_down_test/exp1_policy_x_models_128x1024.pdf\
+  --linear
 '''
 from __future__ import annotations
 
