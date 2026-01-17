@@ -3,7 +3,11 @@ import os
 import re
 from config import attach_local_debug_filter
 from dataclasses import dataclass,field
-from typing import Dict, List, Tuple, Optional, Any, Iterable, OrderedDict, Hashable,override
+from typing import Dict, List, Tuple, Optional, Any, Iterable, OrderedDict, Hashable
+try:  # pragma: no cover
+    from typing import override  # type: ignore
+except Exception:  # pragma: no cover
+    from typing_extensions import override  # type: ignore
 from collections import defaultdict
 from collections import ChainMap
 from collections.abc import Hashable, Mapping
@@ -1368,8 +1372,12 @@ class HEFTScheduler(SchedulerBase):
 
     def set_storage_format_map(self, fmt_map: Dict[str, str]):
         self.storage_fmt_map = dict(fmt_map or {})
+        try:
+            self.buffer.host_format.clear()
+        except Exception:
+            pass
         for k, v in self.storage_fmt_map.items():
-            self.buffer.set_host_fmt(k, v)
+            self.buffer.set_host_fmt(str(k), str(v))
 
     def suggest_weight_storage_formats(self) -> Dict[str, str]:
         Base = ['ND', 'NPU_OPT', 'PIM_OPT']
