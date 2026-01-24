@@ -835,6 +835,13 @@ function mergeShardNodes(nodesByIdRaw, layer){
     return 'other';
   };
 
+  const typeRank = (t) => {
+    const u = String(t || '').toLowerCase();
+    if (u.includes('npu')) return 0;
+    if (u.includes('pim')) return 1;
+    return 2; // cpu / gpu / other / etc.
+  };
+
   for (const [op, arr] of Object.entries(groups)){
     if (arr.length === 1 && !arr[0].n.shard){
       const only = arr[0];
@@ -842,7 +849,10 @@ function mergeShardNodes(nodesByIdRaw, layer){
         ...only.n,
         node_id: only.id,
         mergedFrom: [only.id],
-        shardCount: 1
+        shardCount: 1,
+        hybridTypes: [],
+        hybridReps: [],
+        hybridSizes: []
       };
       origToMerged[only.id] = only.id;
       continue;
@@ -855,6 +865,12 @@ function mergeShardNodes(nodesByIdRaw, layer){
     const devTypeSet = new Set();
     const shardSet = new Set();
 
+    // For HYBRID pie rendering: keep duration breakdown per device type, and
+    // choose a representative device name per type (to pick its assigned color).
+    const devDur = {};          // device name -> total duration
+    const devTypeOfDev = {};    // device name -> normalized type
+    const typeDur = {};         // type -> total duration
+
     for (const it of arr){
       const n = it.n || {};
       const s = Number(n.start);
@@ -866,8 +882,14 @@ function mergeShardNodes(nodesByIdRaw, layer){
       durSum += Number.isFinite(d) ? d : 0;
 
       const devName = normalizeDevice(n.device);
+      const devType = normType(n.device_type, devName);
+
       devNameSet.add(devName);
-      devTypeSet.add(normType(n.device_type, devName));
+      devTypeSet.add(devType);
+
+      devDur[devName] = (devDur[devName] || 0) + (Number.isFinite(d) ? d : 0);
+      devTypeOfDev[devName] = devType;
+      typeDur[devType] = (typeDur[devType] || 0) + (Number.isFinite(d) ? d : 0);
 
       if (n.shard) shardSet.add(n.shard);
 
@@ -879,10 +901,64 @@ function mergeShardNodes(nodesByIdRaw, layer){
     // - otherwise pick a stable representative device name (lexicographically smallest)
     let dev = HYBRID_DEVICE;
     let mergedDeviceType = 'hybrid';
+
+    let hybridTypes = [];
+    let hybridReps = [];
+    let hybridSizes = [];
+
     if (devTypeSet.size <= 1){
       mergedDeviceType = [...devTypeSet][0] || 'other';
       const names = [...devNameSet].filter(Boolean).sort();
       dev = names.length ? names[0] : UNKNOWN_DEVICE;
+    } else {
+      // Build a stable (and interpretable) type ordering: NPU -> PIM -> others,
+      // tie-broken by total duration then lexicographic.
+      hybridTypes = [...devTypeSet].sort((a,b) => {
+        const ra = typeRank(a), rb = typeRank(b);
+        if (ra !== rb) return ra - rb;
+        const da = Number(typeDur[a] || 0);
+        const db = Number(typeDur[b] || 0);
+        if (db !== da) return db - da;
+        return String(a).localeCompare(String(b));
+      });
+
+      const total = Object.values(typeDur).reduce((s,v) => s + Number(v || 0), 0);
+
+      // Percent sizes for Cytoscape pie slices; ensure they sum to 100.
+      let sum = 0;
+      for (let i=0;i<hybridTypes.length;i++){
+        const t = hybridTypes[i];
+
+        let pct = 0;
+        if (total > 1e-12){
+          pct = (Number(typeDur[t] || 0) / total) * 100;
+          pct = Math.round(pct * 10) / 10;
+        } else {
+          pct = 100 / Math.max(1, hybridTypes.length);
+          pct = Math.round(pct * 10) / 10;
+        }
+
+        if (i === hybridTypes.length - 1){
+          pct = clamp(100 - sum, 0, 100);
+        } else {
+          pct = clamp(pct, 0, 100);
+          sum += pct;
+        }
+        hybridSizes.push(pct);
+
+        // Representative device for this type: pick the device with max total duration.
+        let bestDev = null;
+        let bestDur = -Infinity;
+        for (const [dn, dd] of Object.entries(devDur)){
+          if (devTypeOfDev[dn] !== t) continue;
+          const v = Number(dd || 0);
+          if (v > bestDur){
+            bestDur = v;
+            bestDev = dn;
+          }
+        }
+        hybridReps.push(bestDev || UNKNOWN_DEVICE);
+      }
     }
 
     merged[newId] = {
@@ -896,7 +972,12 @@ function mergeShardNodes(nodesByIdRaw, layer){
       duration: durSum,
       mergedFrom: arr.map(x => x.id),
       shardCount: arr.length,
-      shardList: [...shardSet]
+      shardList: [...shardSet],
+
+      // For HYBRID nodes: which types/devices contributed and their slice sizes.
+      hybridTypes,
+      hybridReps,
+      hybridSizes
     };
   }
   return { mergedNodesById: merged, origToMerged };
@@ -1240,10 +1321,12 @@ function makeCy(container){
         style: {
           'background-color': 'rgba(17,24,39,0.9)',
           'pie-size': '100%',
-          'pie-1-background-color': '#0092FE',
-          'pie-1-background-size': 50,
-          'pie-2-background-color': '#FFBF02',
-          'pie-2-background-size': 50
+          'pie-1-background-color': 'data(pie1Color)',
+          'pie-1-background-size': 'data(pie1Size)',
+          'pie-2-background-color': 'data(pie2Color)',
+          'pie-2-background-size': 'data(pie2Size)',
+          'pie-3-background-color': 'data(pie3Color)',
+          'pie-3-background-size': 'data(pie3Size)'
         }
       },
       {
@@ -1388,6 +1471,26 @@ function buildLayerGraph(trace, phase, layer, tokenIdx, modelFamily, deviceColor
 
     const labelShort = (n.shardCount && n.shardCount > 1) ? `${labelBase}×${n.shardCount}` : labelBase;
 
+    const pie = {};
+    if (dev === HYBRID_DEVICE){
+      const reps = Array.isArray(n.hybridReps) ? n.hybridReps : [];
+      const sizes = Array.isArray(n.hybridSizes) ? n.hybridSizes : [];
+
+      const getC = (i) => {
+        const dn = normalizeDevice(reps[i]);
+        return deviceColorMap[dn] || UNKNOWN_COLOR;
+      };
+
+      pie.pie1Color = getC(0);
+      pie.pie1Size  = Number.isFinite(+sizes[0]) ? (+sizes[0]) : 50;
+
+      pie.pie2Color = getC(1);
+      pie.pie2Size  = Number.isFinite(+sizes[1]) ? (+sizes[1]) : (reps.length > 1 ? 50 : 0);
+
+      pie.pie3Color = getC(2);
+      pie.pie3Size  = Number.isFinite(+sizes[2]) ? (+sizes[2]) : 0;
+    }
+
     elements.push({
       data: {
         id,
@@ -1397,7 +1500,8 @@ function buildLayerGraph(trace, phase, layer, tokenIdx, modelFamily, deviceColor
         op_display: opDisp,
         type: typ,
         dev,
-        color
+        color,
+        ...pie
       }
     });
   }

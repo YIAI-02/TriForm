@@ -1452,6 +1452,14 @@ class CostModel:
         if name in ('K_WRITE', 'V_WRITE', 'KV_READ', 'KV_WRITE', 'ROPE', 'ALIBI'):
             return 0.0
 
+        # Generic fallback: if caller provided explicit FLOPs (node.flops) and attached
+        # generic annotations (e.g., ONNX-import), allow sparsity/quant tags to scale it.
+        try:
+            if default > 0 and bool(attrs.get('generic_flops', False)):
+                return float(default) * float(w_den) * float(a_den)
+        except Exception:
+            pass
+
         return default
 
 
@@ -1566,6 +1574,29 @@ class CostModel:
                 read_elems += tokens * moe_top_k * D
             write_elems = tokens * D
             return (to_bytes(read_elems), to_bytes(write_elems))
+        # Generic element-count fallback (e.g., ONNX-imported graphs).
+        # If the graph builder provides explicit activation element counts, use them.
+        in_elems = attrs.get('in_elems', attrs.get('in_elems_total', attrs.get('in_elements', 0)))
+        out_elems = attrs.get('out_elems', attrs.get('out_elems_total', attrs.get('out_elements', 0)))
+        try:
+            ie = float(in_elems or 0.0)
+            oe = float(out_elems or 0.0)
+            if ie > 0.0 or oe > 0.0:
+                rd_e = ie * dens_store
+                wr_e = (oe if oe > 0.0 else ie) * dens_store
+                return (to_bytes(rd_e), to_bytes(wr_e))
+        except Exception:
+            pass
+
+        # Byte-level fallback if a builder already computed read/write bytes.
+        try:
+            rd0 = int(getattr(node, 'bytes_read', 0) or 0)
+            wr0 = int(getattr(node, 'bytes_write', 0) or 0)
+            if rd0 or wr0:
+                return (int(rd0), int(wr0))
+        except Exception:
+            pass
+
         if D > 0:
             elems = b * active_tokens * D
             return (to_bytes(elems), to_bytes(elems))

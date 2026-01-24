@@ -32,11 +32,7 @@ class LRUCache:
         """Mark a key as most-recently-used if it exists."""
         if key not in self.items:
             return
-        try:
-            self.order.remove(key)
-        except ValueError:
-            # order may be out-of-sync if caller mutated structures directly
-            pass
+        self.order.remove(key)
         self.order.append(key)
 
     def pin(self, key: Hashable) -> None:

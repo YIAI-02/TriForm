@@ -63,13 +63,10 @@ def _build_tag(cfg: dict) -> str:
         T = 0
     parts = [f"{S}x{T}"]
     st = cfg.get('decode_sample_stride', None)
-    try:
-        if st is not None:
-            stv = int(st)
-            if stv > 0:
-                parts.append(f"st{stv}")
-    except Exception:
-        pass
+    if st is not None:
+        stv = int(st)
+        if stv > 0:
+            parts.append(f"st{stv}")
     return "_".join(parts)
 
 def _infer_split_by_from_cfg(cfg: Dict) -> str:
@@ -249,19 +246,13 @@ def plan_memory_and_label(cfg: Dict, cluster: Cluster) -> PlanLabel:
 
     # --- expose total model weight bytes to the scheduler (for weight-bias/hints) ---
     # Some PlanLabel implementations may use __slots__/frozen; guard with try/except.
-    try:
-        setattr(label, "total_weight_bytes", int(FC_total_bytes))
-        setattr(label, "fc_total_bytes", int(FC_total_bytes))
-    except Exception:
-        pass
+    setattr(label, "total_weight_bytes", int(FC_total_bytes))
+    setattr(label, "fc_total_bytes", int(FC_total_bytes))
 
-    # Debug log: KV mapping summary
-    try:
-        if kv_in_pim and pima_rr:
-            pretty = {k: int(v) for k, v in kv_bytes_by_pim.items() if int(v) > 0}
-            logger.info("[KV-RR] layers=%d pim_cnt=%d kv_bytes_per_layer=%d kv_bytes_by_pim=%s", layers, len(pima_rr), int(kv_bytes_per_layer), pretty)
-    except Exception:
-        pass
+    if kv_in_pim and pima_rr:
+        pretty = {k: int(v) for k, v in kv_bytes_by_pim.items() if int(v) > 0}
+        logger.info("[KV-RR] layers=%d pim_cnt=%d kv_bytes_per_layer=%d kv_bytes_by_pim=%s", layers, len(pima_rr), int(kv_bytes_per_layer), pretty)
+
     return label
 
 def _serialize_schedule(schedule: List[ScheduledTask], *, phase: str, token_idx: int | None=None) -> List[Dict]:

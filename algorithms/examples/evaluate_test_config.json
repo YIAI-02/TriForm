@@ -1,17 +1,19 @@
 {
   "model_family": "llama",
   "model_variant": "7b",
-  "dtype": "int8",
+  "dtype": "fp16",
   "batch": 8,
-  "prefill_len": 128,
-  "decode_len": 1024,
+  "prefill_len": 4096,
+  "decode_len": 4096,
   "decode_sample_stride": 64,
   "pim_config_path": "./aim_simulator/PIM_AiM.json",
   "gb_config_path": "./aim_simulator/gb.json",
   "ramulator_config_path": "./aim_simulator/example.yaml",
-  "simulation_log_file": "./output/evaluate_single_test/hardware_wright_test_2/pim_simulation.txt",
-  "result_dir": "./output/evaluate_single_test/hardware_wright_test_2/",
-  "hardware_json": "./examples/hardware_config_npu_2aim.json",
+  "simulation_log_file": "./output/evaluate_single_test/hardware_config_scale_down_11pima/pim_simulation.txt",
+  "result_dir": "./output/evaluate_single_test/hardware_config_scale_down_11pima/",
+  "hardware_json": "./examples/hardware_config_scale_down_11pima.json",
+  "dump_graph": true,
+  "dump_graph_dir": "./output/evaluate_single_test/hardware_config_scale_down_11pima/graph_dumps",
   "algo": [
     "hefthint",
     "heft"
@@ -25,5 +27,64 @@
     "attacc"
   ],
   "split_by": "head",
-  "split_shards": 4
+  "split_shards": 4,
+
+  "optimizations": {
+    "quantization": {
+      "enable": true,
+      "mode": "weight_only",
+      "weight_bits": 4,
+      "activation_bits": 16,
+      "activation_io": "fp16",
+      "group_size": 128,
+      "per_channel": true,
+      "scale_dtype_bits": 16,
+      "speedup": {"npu": 1.0, "gpu": 1.0},
+      "apply_to": ["Q", "K", "V", "O", "FFN_"],
+      "exclude": ["LM_HEAD", "EMBED"]
+    },
+    "sparsity": {
+      "weight": {
+        "enable": false,
+        "method": "global",
+        "pattern": "2:4",
+        "sparsity": 0.5,
+        "assume_sparse_compute": true,
+        "storage": "compressed",
+        "metadata_bytes_per_nnz": 0.0,
+        "speedup": {"npu": 1.0},
+        "apply_to": ["Q", "K", "V", "O", "FFN_"],
+        "exclude": []
+      },
+
+      "activation": {
+        "enable": false,
+        "mode": "threshold",
+        "density": 0.8,
+        "density_by_phase": {"prefill": 0.95, "decode": 0.60},
+        "storage": "dense",
+        "assume_sparse_compute": true,
+        "speedup": {"npu": 1.0},
+        "apply_to": ["FFN_", "SWIGLU", "GELU", "ADD"],
+        "exclude": ["LN"]
+      }
+    },
+
+    "attention_sparsity": {
+      "enable": false,
+      "pattern": "local",
+      "window_left": 511,
+      "window_right": 0,
+      "block_size": 128,
+      "blocks_left": 4,
+      "blocks_right": 0,
+      "density": 1.0,
+
+      "apply_to": ["QK", "SOFTMAX", "SV"],
+      "exclude": []
+    },
+
+    "per_layer": {
+    }
+  }
 }
