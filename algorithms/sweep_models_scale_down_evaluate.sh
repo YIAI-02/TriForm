@@ -6,24 +6,24 @@ shopt -s nullglob
 # Single source of truth
 # =========================
 CONFIG_FILE="${CONFIG_FILE:-./examples/evaluate_len_sweep_config.json}"
-OUTPUT_ROOT="${OUTPUT_ROOT:-./output/experiment_scale_down_test}"
+OUTPUT_ROOT="${OUTPUT_ROOT:-./output/experiment_scale_down_test_heads_shards_1}"
 
 # Sweep dims
 MODEL_FAMILY_VARIANTS=(
   "mixtral:8x7b"
   "palm:62b"
   "qwen:1.8b 7b"
-  # "llama:7b 13b"
+  "llama:7b"
 )
 
-PREFILLS=(128 512 1024 2048)
-DECODES=(128 512 1024 2048)
+PREFILLS=(1024 2048 4096 8192)
+DECODES=(1024 2048 4096 8192)
 
 # Hardware sweep (edit here, or use --hardware_glob)
 HARDWARE_CONFIGS=(
   ./examples/hardware_config_scale_down_11pima.json
   ./examples/hardware_config_scale_down_12pima.json
-  ./examples/hardware_config_scale_down_14pima.json
+  # ./examples/hardware_config_scale_down_14pima.json
 )
 
 # Run knobs

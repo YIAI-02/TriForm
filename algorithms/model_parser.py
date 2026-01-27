@@ -10,8 +10,9 @@ from model_definition import ModelShape, make_model_def
 from cost_model import DTYPE_BYTES
 from optimizations import apply_optimizations_to_graph
 from task_graph import TaskGraph, TaskNode
+from config import attach_local_debug_filter
 logger = logging.getLogger(__name__)
-
+attach_local_debug_filter(logger, lambda: False)
 DEFAULT_SHAPE_DIR = Path(__file__).resolve().parent.parent / "configs"
 
 FILE_MAP = {
@@ -268,9 +269,20 @@ def build_graph(cfg: Dict[str, Any], pim_shards: int = None, split_by: str = Non
             pim_shards = int(cfg.get('num_pim', cfg.get('pim_count', 1)) or 1)
         except Exception:
             pim_shards = 1
-    shape.split_by = part_dim  # 'head_num' 会在 model_definition 里 normalize 成 'head'
-    if "head" in part_dim:
-        shape.split_shards = int(pim_shards or 0)
+    try:
+        shape.split_by = part_dim  # 'head_num' 会在 model_definition 里 normalize 成 'head'
+
+        # Legacy: split_shards (single knob)
+        legacy_cap = cfg.get('split_shards', None)
+        if legacy_cap is None:
+            legacy_cap = int(pim_shards or 0)
+        shape.split_shards = int(legacy_cap)
+        
+        shape.qkv_shards = int(cfg.get('qkv_shards', cfg.get('split_shards_qkv', legacy_cap)))
+        shape.ffn_shards = int(cfg.get('ffn_shards', cfg.get('split_shards_ffn', legacy_cap)))
+        shape.kv_cache_shards = int(cfg.get('kv_cache_shards', cfg.get('split_shards_kv_cache', legacy_cap)))
+    except Exception:
+        pass
 
 
     g = md.build(shape, dtype_bytes=dtype_bytes)
@@ -303,9 +315,9 @@ def build_graph(cfg: Dict[str, Any], pim_shards: int = None, split_by: str = Non
         written = dump_task_graph(g, out_dir=out_dir, tag=tag, shape=shape, cfg=cfg)
         # Print paths so user can find them even when logging is off.
         try:
-            print(f"[GRAPH-DUMP] full_json: {written.get('full_json')}")
+            logger.debug(f"[GRAPH-DUMP] full_json: {written.get('full_json')}")
             if written.get("effects_tsv"):
-                print(f"[GRAPH-DUMP] effects_tsv: {written.get('effects_tsv')}")
+                logger.debug(f"[GRAPH-DUMP] effects_tsv: {written.get('effects_tsv')}")
         except Exception:
             pass
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # sweep_hefthint.py
 '''
- python3 sweep_hefthint.py   --mode grid   --gamma 0 0.2 0.4  --lambda_ 0 2 4   --eta 100 200 300 400 --objective total   --outdir ./output/sweep_hefthint_manual_scale_down  --resume
+python3 sweep_hefthint.py   --mode grid   --gamma 0 0.2 0.4  0.6 --lambda_ 0 4 8 12  --eta 0 50 100 200 --objective total   --outdir ./output/sweep_hefthint_manual_scale_down_qwen1.8b  --resume
 '''
 import argparse
 import csv
@@ -205,7 +205,7 @@ def append_result(results_csv: Path, row: dict) -> None:
 def main():
     ap = argparse.ArgumentParser(description="Grid/random sweep for hefthint Total(s)")
     ap.add_argument("--config", default="config.py", help="path to config.py")
-    ap.add_argument("--script", default="./command_single.sh", help="bash script to run")
+    ap.add_argument("--script", default="./command_single_evaluate.sh", help="bash script to run")
     ap.add_argument("--workdir", default=".", help="working directory")
 
     # value generation

@@ -2,7 +2,7 @@
   "model_family": "llama",
   "model_variant": "7b",
   "dtype": "fp16",
-  "batch": 8,
+  "batch": 1,
   "prefill_len": 4096,
   "decode_len": 4096,
   "decode_sample_stride": 64,
@@ -31,7 +31,7 @@
 
   "optimizations": {
     "quantization": {
-      "enable": true,
+      "enable": false,
       "mode": "weight_only",
       "weight_bits": 4,
       "activation_bits": 16,

@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -J 0113_huawei
+#SBATCH -J 0123_huawei
 #SBATCH -p C064M0256G
 #SBATCH --qos=low
 #SBATCH -N 1

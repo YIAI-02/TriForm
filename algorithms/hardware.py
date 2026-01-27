@@ -13,6 +13,9 @@ class DeviceSpec:
     mem_capacity_GB: float
     pim_type: Optional[str] = None
     attached_npu: Optional[str] = None # 若 pim_type 为 'dram'/'hbm'，表明这个 PIM-DRAM 绑定到哪一个 NPU
+    # Optional near-memory access latency (used by CostModel.pim_mem_time in fast-mode)
+    pim_read_latency_ns: float = 0.0
+    pim_write_latency_ns: float = 0.0
 
 class Cluster:
     def __init__(self):
@@ -52,8 +55,54 @@ def demo_cluster(cfg: Dict | None = None) -> Cluster:
             hw_cfg = cfg.get('hardware') or cfg.get('cluster')
     if not hw_cfg:
         print("DEBUG: Using built-in demo hardware config")
-        c.add_device(DeviceSpec("CPU0","cpu",tflops=2.0,mem_bw_GBs=51.2,mem_capacity_GB=0.009,))
-        c.add_device(DeviceSpec("NPU0","npu",tflops=10.0,mem_bw_GBs=51.2,mem_capacity_GB=0.003,))
+        cpu_tflops = 2.0
+        cpu_mem_bw = 51.2
+        cpu_mem_cap = 0.009
+        if isinstance(cfg, dict):
+            try:
+                cpu_tflops = float(cfg.get('cpu_tflops', cpu_tflops) or cpu_tflops)
+            except Exception:
+                pass
+            try:
+                cpu_mem_bw = float(cfg.get('cpu_mem_bw_GBs', cfg.get('cpu_mem_bw', cpu_mem_bw)) or cpu_mem_bw)
+            except Exception:
+                pass
+            try:
+                cpu_mem_cap = float(cfg.get('cpu_mem_capacity_GB', cfg.get('cpu_mem_capacity', cpu_mem_cap)) or cpu_mem_cap)
+            except Exception:
+                pass
+
+        c.add_device(DeviceSpec("CPU0", "cpu", tflops=cpu_tflops, mem_bw_GBs=cpu_mem_bw, mem_capacity_GB=cpu_mem_cap))
+
+        # Whether to include an NPU in the demo topology.
+        use_npu = True
+        if isinstance(cfg, dict):
+            # Accept multiple common flags.
+            if bool(cfg.get('no_npu', False) or cfg.get('disable_npu', False)):
+                use_npu = False
+            try:
+                if int(cfg.get('npu_count', cfg.get('num_npu', 1)) or 1) <= 0:
+                    use_npu = False
+            except Exception:
+                pass
+        if use_npu:
+            npu_tflops = 10.0
+            npu_mem_bw = 51.2
+            npu_mem_cap = 0.003
+            if isinstance(cfg, dict):
+                try:
+                    npu_tflops = float(cfg.get('npu_tflops', npu_tflops) or npu_tflops)
+                except Exception:
+                    pass
+                try:
+                    npu_mem_bw = float(cfg.get('npu_mem_bw_GBs', cfg.get('npu_mem_bw', npu_mem_bw)) or npu_mem_bw)
+                except Exception:
+                    pass
+                try:
+                    npu_mem_cap = float(cfg.get('npu_mem_capacity_GB', cfg.get('npu_mem_capacity', npu_mem_cap)) or npu_mem_cap)
+                except Exception:
+                    pass
+            c.add_device(DeviceSpec("NPU0", "npu", tflops=npu_tflops, mem_bw_GBs=npu_mem_bw, mem_capacity_GB=npu_mem_cap))
 
         # Multi-PIM support (no inter-PIM communication assumed):
         # You can override the number of PIMs by providing cfg['num_pim'] (or 'pim_count').
@@ -71,7 +120,8 @@ def demo_cluster(cfg: Dict | None = None) -> Cluster:
             c.add_device(DeviceSpec(name,"pim",tflops=1.0,mem_bw_GBs=32.0,mem_capacity_GB=1.0,pim_type='accel'))
 
         # Links
-        c.connect("CPU0","NPU0", 32.0)
+        if use_npu:
+            c.connect("CPU0", "NPU0", host_npu_bw)
         for i in range(num_pim):
             c.connect("CPU0", f"PIMA{i}", 32.0)
         return c
@@ -85,7 +135,9 @@ def demo_cluster(cfg: Dict | None = None) -> Cluster:
             mem_bw_GBs=float(d.get('mem_bw_GBs', 0)),
             mem_capacity_GB=float(d.get('mem_capacity_GB', 0)),
             pim_type=d.get('pim_type'),
-            attached_npu=d.get('attached_npu')
+            attached_npu=d.get('attached_npu'),
+            pim_read_latency_ns=float(d.get('pim_read_latency_ns', d.get('read_latency_ns', 0.0)) or 0.0),
+            pim_write_latency_ns=float(d.get('pim_write_latency_ns', d.get('write_latency_ns', 0.0)) or 0.0),
         ))
     for l in hw_cfg.get('links', []):
         c.connect(l['a'], l['b'], float(l['bw_GBs']))

@@ -56,6 +56,18 @@ def _default_split_shards() -> int:
     # 0 means "auto" (use n_heads / n_kv_heads).
     return max(0, _env_int("GRAPH_SPLIT_SHARDS", _env_int("MODEL_SPLIT_SHARDS", 0)))
 
+def _default_qkv_shards() -> int:
+    # Cap for attention projections/attention compute (Q/K/V/O + QK/SV path).
+    return max(0, _env_int("GRAPH_QKV_SHARDS", _env_int("MODEL_QKV_SHARDS", _default_split_shards())))
+
+def _default_ffn_shards() -> int:
+    # Cap for FFN sharding (W1/W3/W2 path).
+    return max(0, _env_int("GRAPH_FFN_SHARDS", _env_int("MODEL_FFN_SHARDS", _default_split_shards())))
+
+def _default_kv_cache_shards() -> int:
+    # Cap for KV-cache sharding (K_write / V_write partitioning).
+    return max(0, _env_int("GRAPH_KV_CACHE_SHARDS", _env_int("MODEL_KV_CACHE_SHARDS", _default_split_shards())))
+
 
 def _partition_ranges(total: int, parts: int) -> List[Tuple[int, int]]:
     """Return contiguous (start, count) ranges that sum to `total`."""
@@ -133,6 +145,9 @@ class ModelShape:
     max_seq_len: int     # Maximum sequence length (for graph structure)
     split_by: str = field(default_factory=_default_split_by)
     split_shards: int = field(default_factory=_default_split_shards)
+    qkv_shards: int = field(default_factory=_default_qkv_shards)
+    ffn_shards: int = field(default_factory=_default_ffn_shards)
+    kv_cache_shards: int = field(default_factory=_default_kv_cache_shards)
 
     @property
     def head_dim(self) -> int:
@@ -161,16 +176,29 @@ def _effective_shards(shape: ModelShape, *, for_q: bool = False, for_kv: bool = 
     """
     Pick a shard count based on shape + optional cap.
 
-    Semantics:
-    - split_shards == 0 : "auto" mode
-        * Q  : use n_heads
-        * KV : use n_kv_heads
-        * FFN: use n_heads (keeps graph smaller by default)
-    - split_shards  > 0 : user-requested *upper bound* (cap)
-        * Q/KV are still bounded by head counts (cannot exceed n_heads / n_kv_heads in head-parallel attention)
-        * FFN uses ffn_dim as the sharding dimension so it can scale beyond n_heads.
+    We support *component-wise* shard caps:
+      - shape.qkv_shards (attention projections + attention compute)
+      - shape.ffn_shards (FFN)
+      - shape.kv_cache_shards (KV-cache writes; handled separately)
+
+    Backward compatible:
+      - If the component-wise fields are not set, we fall back to the legacy
+        shape.split_shards.
+
+    Semantics (for_q / for_kv / for_ffn):
+      - cap == 0 : "auto" mode
+          * Q  : use n_heads
+          * KV : use n_kv_heads
+          * FFN: use n_heads (keeps graph smaller by default)
+      - cap  > 0 : user-requested *upper bound* (cap)
+          * Q/KV are still bounded by head counts (cannot exceed n_heads / n_kv_heads)
+          * FFN uses ffn_dim as the sharding dimension so it can scale beyond n_heads.
     """
-    cap = int(getattr(shape, "split_shards", 0) or 0)
+    # Pick which cap to use.
+    if for_ffn:
+        cap = int(getattr(shape, "ffn_shards", getattr(shape, "split_shards", 0)) or 0)
+    else:
+        cap = int(getattr(shape, "qkv_shards", getattr(shape, "split_shards", 0)) or 0)
 
     # ---- Q shards: bounded by n_heads ----
     if for_q:
@@ -199,6 +227,14 @@ def _effective_shards(shape: ModelShape, *, for_q: bool = False, for_kv: bool = 
 
     # Default: align with Q heads
     total = int(getattr(shape, "n_heads", 1) or 1)
+    if cap > 0:
+        return max(1, min(total, cap))
+    return max(1, total)
+
+
+def _effective_kv_cache_shards(shape: ModelShape) -> int:
+    cap = int(getattr(shape, "kv_cache_shards", getattr(shape, "split_shards", 0)) or 0)
+    total = int(getattr(shape, "n_kv_heads", getattr(shape, "n_heads", 1)) or 1)
     if cap > 0:
         return max(1, min(total, cap))
     return max(1, total)
@@ -452,16 +488,18 @@ def add_llama_block_split_by_heads(g: TaskGraph, l: int, shape: ModelShape, dtyp
     qh, kvh, hd = shape.n_heads, shape.n_kv_heads, shape.head_dim
 
     q_shards = _effective_shards(shape, for_q=True)
-    kv_shards = _effective_shards(shape, for_kv=True)
+    kv_compute_shards = _effective_shards(shape, for_kv=True)
+    kv_cache_shards = _effective_kv_cache_shards(shape)
     ffn_shards = _effective_shards(shape, for_ffn=True)
 
-    kv_ranges = _partition_ranges(kvh, kv_shards)
+    kv_ranges_compute = _partition_ranges(kvh, kv_compute_shards)
+    kv_ranges_cache = _partition_ranges(kvh, kv_cache_shards)
     if kvh > 0 and qh > 0 and kvh <= qh:
-        q_ranges = _partition_q_ranges_from_kv_ranges(kv_ranges, q_heads=qh, kv_heads=kvh)
+        q_ranges = _partition_q_ranges_from_kv_ranges(kv_ranges_compute, q_heads=qh, kv_heads=kvh)
         q_shards = len(q_ranges)
     else:
         q_ranges = _partition_ranges(qh, q_shards)
-    kv_head_to_shard = _make_head_to_shard_map(kv_ranges)
+    kv_head_to_shard = _make_head_to_shard_map(kv_ranges_compute)
 
     base_attr_full = {
         "layer": l,
@@ -482,9 +520,9 @@ def add_llama_block_split_by_heads(g: TaskGraph, l: int, shape: ModelShape, dtyp
 
     # Carry K/V cache writes to next layer input (keep original behavior)
     if l > 0:
-        for kv_sid in range(kv_shards):
-            g.add_edge(f"L{l-1}_K_write_S{kv_sid}", nid_LN1)
-            g.add_edge(f"L{l-1}_V_write_S{kv_sid}", nid_LN1)
+        for cache_sid in range(len(kv_ranges_cache)):
+            g.add_edge(f"L{l-1}_K_write_S{cache_sid}", nid_LN1)
+            g.add_edge(f"L{l-1}_V_write_S{cache_sid}", nid_LN1)
 
     # Residual carry-in
     x_in = f"L{l-1}_Add2" if l > 0 else None
@@ -497,7 +535,7 @@ def add_llama_block_split_by_heads(g: TaskGraph, l: int, shape: ModelShape, dtyp
     # ---- K/V shards (by kv-head groups) ----
     k_nodes: Dict[int, str] = {}
     v_nodes: Dict[int, str] = {}
-    for sid, (kv_st, kv_cnt) in enumerate(kv_ranges):
+    for sid, (kv_st, kv_cnt) in enumerate(kv_ranges_compute):
         kv_dim_s = kv_cnt * hd
         attr_kv = dict(base_attr_full)
         attr_kv.update({
@@ -512,7 +550,7 @@ def add_llama_block_split_by_heads(g: TaskGraph, l: int, shape: ModelShape, dtyp
             "kv_head_id": int(kv_st),
             "kv_head_ids": list(range(int(kv_st), int(kv_st + kv_cnt))),
         })
-        if kv_shards > 1:
+        if kv_compute_shards > 1:
             attr_kv["pim_target_idx"] = int(sid)
 
         nid_K = f"L{l}_K_S{sid}"
@@ -537,14 +575,16 @@ def add_llama_block_split_by_heads(g: TaskGraph, l: int, shape: ModelShape, dtyp
         k_nodes[sid] = nid_K
         v_nodes[sid] = nid_V
 
-    # KV writes (sharded by KV-head groups)
-    for sid, (kv_st, kv_cnt) in enumerate(kv_ranges):
+    # ---- KV-cache writes (partitioned by kv_cache_shards) ----
+    kw_nodes: Dict[int, str] = {}
+    vw_nodes: Dict[int, str] = {}
+    for cache_sid, (kv_st, kv_cnt) in enumerate(kv_ranges_cache):
         kv_dim_s = int(kv_cnt) * int(hd)
         attr_kvw = dict(base_attr_full)
         attr_kvw.update({
-            "is_shard": True,
-            "head_shard": int(sid),
-            "kv_shard": int(sid),
+            "is_shard": bool(len(kv_ranges_cache) > 1),
+            "head_shard": int(cache_sid),
+            "kv_shard": int(cache_sid),
             "kv_heads": int(kv_cnt),
             "kv_dim": int(kv_dim_s),
             "kv_head_start": int(kv_st),
@@ -552,15 +592,27 @@ def add_llama_block_split_by_heads(g: TaskGraph, l: int, shape: ModelShape, dtyp
             "kv_head_id": int(kv_st),
             "kv_head_ids": list(range(int(kv_st), int(kv_st + kv_cnt))),
         })
-        if kv_shards > 1:
-            attr_kvw["pim_target_idx"] = int(sid)
+        if len(kv_ranges_cache) > 1:
+            attr_kvw["pim_target_idx"] = int(cache_sid)
 
-        nid_KW = f"L{l}_K_write_S{sid}"
-        nid_VW = f"L{l}_V_write_S{sid}"
+        nid_KW = f"L{l}_K_write_S{cache_sid}"
+        nid_VW = f"L{l}_V_write_S{cache_sid}"
         g.add_node(TaskNode(nid_KW, "K_write", flops=0.0, attrs=dict(attr_kvw), allowed=get_op_allowed("K_write")))
         g.add_node(TaskNode(nid_VW, "V_write", flops=0.0, attrs=dict(attr_kvw), allowed=get_op_allowed("V_write")))
-        g.add_edge(k_nodes[sid], nid_KW)
-        g.add_edge(v_nodes[sid], nid_VW)
+        kw_nodes[int(cache_sid)] = nid_KW
+        vw_nodes[int(cache_sid)] = nid_VW
+
+    for comp_sid, (c_st, c_cnt) in enumerate(kv_ranges_compute):
+        c_st = int(c_st); c_end = int(c_st + int(c_cnt))
+        for cache_sid, (w_st, w_cnt) in enumerate(kv_ranges_cache):
+            w_st = int(w_st); w_end = int(w_st + int(w_cnt))
+            overlap = int(min(c_end, w_end) - max(c_st, w_st))
+            if overlap <= 0:
+                continue
+            if int(comp_sid) in k_nodes and int(cache_sid) in kw_nodes:
+                g.add_edge(k_nodes[int(comp_sid)], kw_nodes[int(cache_sid)])
+            if int(comp_sid) in v_nodes and int(cache_sid) in vw_nodes:
+                g.add_edge(v_nodes[int(comp_sid)], vw_nodes[int(cache_sid)])
 
     # ---- Q + attention shards (by q-head groups) ----
     o_nodes: List[str] = []
@@ -712,16 +764,18 @@ def add_mpt_block_split_by_heads(g: TaskGraph, l: int, shape: ModelShape, dtype_
     qh, kvh, hd = shape.n_heads, shape.n_kv_heads, shape.head_dim
 
     q_shards = _effective_shards(shape, for_q=True)
-    kv_shards = _effective_shards(shape, for_kv=True)
+    kv_compute_shards = _effective_shards(shape, for_kv=True)
+    kv_cache_shards = _effective_kv_cache_shards(shape)
     ffn_shards = _effective_shards(shape, for_ffn=True)
 
-    kv_ranges = _partition_ranges(kvh, kv_shards)
+    kv_ranges_compute = _partition_ranges(kvh, kv_compute_shards)
+    kv_ranges_cache = _partition_ranges(kvh, kv_cache_shards)
     if kvh > 0 and qh > 0 and kvh <= qh:
-        q_ranges = _partition_q_ranges_from_kv_ranges(kv_ranges, q_heads=qh, kv_heads=kvh)
+        q_ranges = _partition_q_ranges_from_kv_ranges(kv_ranges_compute, q_heads=qh, kv_heads=kvh)
         q_shards = len(q_ranges)
     else:
         q_ranges = _partition_ranges(qh, q_shards)
-    kv_head_to_shard = _make_head_to_shard_map(kv_ranges)
+    kv_head_to_shard = _make_head_to_shard_map(kv_ranges_compute)
 
     base_attr_full = {
         "layer": l,
@@ -740,9 +794,9 @@ def add_mpt_block_split_by_heads(g: TaskGraph, l: int, shape: ModelShape, dtype_
     nid_LN1 = f"L{l}_LN1"
     g.add_node(TaskNode(nid_LN1,"LN",flops=0.0,attrs=dict(base_attr_full),allowed=get_op_allowed("LN")))
     if l > 0:
-        for kv_sid in range(kv_shards):
-            g.add_edge(f"L{l-1}_K_write_S{kv_sid}", nid_LN1)
-            g.add_edge(f"L{l-1}_V_write_S{kv_sid}", nid_LN1)
+        for cache_sid in range(len(kv_ranges_cache)):
+            g.add_edge(f"L{l-1}_K_write_S{cache_sid}", nid_LN1)
+            g.add_edge(f"L{l-1}_V_write_S{cache_sid}", nid_LN1)
 
     x_in = f"L{l-1}_Add2" if l>0 else None
     if x_in:
@@ -750,10 +804,9 @@ def add_mpt_block_split_by_heads(g: TaskGraph, l: int, shape: ModelShape, dtype_
         g.add_node(TaskNode(nid_X,"Identity",flops=0.0,attrs=dict(base_attr_full),allowed=get_op_allowed("Identity")))
         g.add_edge(x_in,nid_X); g.add_edge(nid_X,nid_LN1)
 
-    # K/V shards
     k_nodes: Dict[int, str] = {}
     v_nodes: Dict[int, str] = {}
-    for sid, (kv_st, kv_cnt) in enumerate(kv_ranges):
+    for sid, (kv_st, kv_cnt) in enumerate(kv_ranges_compute):
         kv_dim_s = int(kv_cnt) * int(hd)
         attr_kv = dict(base_attr_full)
         attr_kv.update({
@@ -767,7 +820,7 @@ def add_mpt_block_split_by_heads(g: TaskGraph, l: int, shape: ModelShape, dtype_
             "kv_head_id": int(kv_st),
             "kv_head_ids": list(range(int(kv_st), int(kv_st + kv_cnt))),
         })
-        if kv_shards > 1:
+        if kv_compute_shards > 1:
             attr_kv["pim_target_idx"] = int(sid)
         nid_K = f"L{l}_K_S{sid}"
         nid_V = f"L{l}_V_S{sid}"
@@ -782,14 +835,16 @@ def add_mpt_block_split_by_heads(g: TaskGraph, l: int, shape: ModelShape, dtype_
         k_nodes[int(sid)] = nid_K
         v_nodes[int(sid)] = nid_V
 
-    # KV writes (sharded by KV-head groups)
-    for sid, (kv_st, kv_cnt) in enumerate(kv_ranges):
+    # ---- KV-cache writes (partitioned by kv_cache_shards) ----
+    kw_nodes: Dict[int, str] = {}
+    vw_nodes: Dict[int, str] = {}
+    for cache_sid, (kv_st, kv_cnt) in enumerate(kv_ranges_cache):
         kv_dim_s = int(kv_cnt) * int(hd)
         attr_kvw = dict(base_attr_full)
         attr_kvw.update({
-            "is_shard": True,
-            "head_shard": int(sid),
-            "kv_shard": int(sid),
+            "is_shard": bool(len(kv_ranges_cache) > 1),
+            "head_shard": int(cache_sid),
+            "kv_shard": int(cache_sid),
             "kv_heads": int(kv_cnt),
             "kv_dim": int(kv_dim_s),
             "kv_head_start": int(kv_st),
@@ -797,14 +852,27 @@ def add_mpt_block_split_by_heads(g: TaskGraph, l: int, shape: ModelShape, dtype_
             "kv_head_id": int(kv_st),
             "kv_head_ids": list(range(int(kv_st), int(kv_st + kv_cnt))),
         })
-        if kv_shards > 1:
-            attr_kvw["pim_target_idx"] = int(sid)
-        nid_KW = f"L{l}_K_write_S{sid}"
-        nid_VW = f"L{l}_V_write_S{sid}"
+        if len(kv_ranges_cache) > 1:
+            attr_kvw["pim_target_idx"] = int(cache_sid)
+        nid_KW = f"L{l}_K_write_S{cache_sid}"
+        nid_VW = f"L{l}_V_write_S{cache_sid}"
         g.add_node(TaskNode(nid_KW, "K_write", flops=0.0, attrs=dict(attr_kvw), allowed=get_op_allowed("K_write")))
         g.add_node(TaskNode(nid_VW, "V_write", flops=0.0, attrs=dict(attr_kvw), allowed=get_op_allowed("V_write")))
-        g.add_edge(k_nodes[int(sid)], nid_KW)
-        g.add_edge(v_nodes[int(sid)], nid_VW)
+        kw_nodes[int(cache_sid)] = nid_KW
+        vw_nodes[int(cache_sid)] = nid_VW
+
+    # Connect current-token K/V projections -> KV-cache writes.
+    for comp_sid, (c_st, c_cnt) in enumerate(kv_ranges_compute):
+        c_st = int(c_st); c_end = int(c_st + int(c_cnt))
+        for cache_sid, (w_st, w_cnt) in enumerate(kv_ranges_cache):
+            w_st = int(w_st); w_end = int(w_st + int(w_cnt))
+            overlap = int(min(c_end, w_end) - max(c_st, w_st))
+            if overlap <= 0:
+                continue
+            if int(comp_sid) in k_nodes and int(cache_sid) in kw_nodes:
+                g.add_edge(k_nodes[int(comp_sid)], kw_nodes[int(cache_sid)])
+            if int(comp_sid) in v_nodes and int(cache_sid) in vw_nodes:
+                g.add_edge(v_nodes[int(comp_sid)], vw_nodes[int(cache_sid)])
 
     # Attention shards
     o_nodes: List[str] = []
@@ -843,6 +911,9 @@ def add_mpt_block_split_by_heads(g: TaskGraph, l: int, shape: ModelShape, dtype_
             "kv_shard_ids": sorted(int(s) for s in kv_shard_need),
         })
 
+        nid_QK = f"L{l}_QK_S{sid}"
+        nid_SO = f"L{l}_Softmax_S{sid}"
+        nid_SV = f"L{l}_SV_S{sid}"
         g.add_node(TaskNode(nid_QK,"QK",flops=0.0,attrs=dict(attr_attn),allowed=get_op_allowed("QK")))
         g.add_node(TaskNode(nid_SO,"Softmax",flops=0.0,attrs=dict(attr_attn),allowed=get_op_allowed("Softmax")))
         g.add_node(TaskNode(nid_SV,"SV",flops=0.0,attrs=dict(attr_attn),allowed=get_op_allowed("SV")))
@@ -917,16 +988,18 @@ def add_palm_block_split_by_heads(g: TaskGraph, l: int, shape: ModelShape, dtype
     qh, kvh, hd = shape.n_heads, shape.n_kv_heads, shape.head_dim
 
     q_shards = _effective_shards(shape, for_q=True)
-    kv_shards = _effective_shards(shape, for_kv=True)
+    kv_compute_shards = _effective_shards(shape, for_kv=True)
+    kv_cache_shards = _effective_kv_cache_shards(shape)
     ffn_shards = _effective_shards(shape, for_ffn=True)
 
-    kv_ranges = _partition_ranges(kvh, kv_shards)
+    kv_ranges_compute = _partition_ranges(kvh, kv_compute_shards)
+    kv_ranges_cache = _partition_ranges(kvh, kv_cache_shards)
     if kvh > 0 and qh > 0 and kvh <= qh:
-        q_ranges = _partition_q_ranges_from_kv_ranges(kv_ranges, q_heads=qh, kv_heads=kvh)
+        q_ranges = _partition_q_ranges_from_kv_ranges(kv_ranges_compute, q_heads=qh, kv_heads=kvh)
         q_shards = len(q_ranges)
     else:
         q_ranges = _partition_ranges(qh, q_shards)
-    kv_head_to_shard = _make_head_to_shard_map(kv_ranges)
+    kv_head_to_shard = _make_head_to_shard_map(kv_ranges_compute)
 
     base_attr_full = {
         "layer": l,
@@ -944,9 +1017,9 @@ def add_palm_block_split_by_heads(g: TaskGraph, l: int, shape: ModelShape, dtype
     nid_LN = f"L{l}_LN"
     g.add_node(TaskNode(nid_LN,"LN",flops=0.0,attrs=dict(base_attr_full),allowed=get_op_allowed("LN")))
     if l > 0:
-        for kv_sid in range(kv_shards):
-            g.add_edge(f"L{l-1}_K_write_S{kv_sid}", nid_LN)
-            g.add_edge(f"L{l-1}_V_write_S{kv_sid}", nid_LN)
+        for cache_sid in range(len(kv_ranges_cache)):
+            g.add_edge(f"L{l-1}_K_write_S{cache_sid}", nid_LN)
+            g.add_edge(f"L{l-1}_V_write_S{cache_sid}", nid_LN)
 
     x_in = f"L{l-1}_Add2" if l>0 else None
     if x_in:
@@ -957,7 +1030,7 @@ def add_palm_block_split_by_heads(g: TaskGraph, l: int, shape: ModelShape, dtype
     # K/V shards
     k_nodes: Dict[int, str] = {}
     v_nodes: Dict[int, str] = {}
-    for sid, (kv_st, kv_cnt) in enumerate(kv_ranges):
+    for sid, (kv_st, kv_cnt) in enumerate(kv_ranges_compute):
         kv_dim_s = int(kv_cnt) * int(hd)
         attr_kv = dict(base_attr_full)
         attr_kv.update({
@@ -971,7 +1044,7 @@ def add_palm_block_split_by_heads(g: TaskGraph, l: int, shape: ModelShape, dtype
             "kv_head_id": int(kv_st),
             "kv_head_ids": list(range(int(kv_st), int(kv_st + kv_cnt))),
         })
-        if kv_shards > 1:
+        if kv_compute_shards > 1:
             attr_kv["pim_target_idx"] = int(sid)
         nid_K=f"L{l}_K_S{sid}"; nid_V=f"L{l}_V_S{sid}"
         g.add_node(TaskNode(nid_K,"K",flops=0.0,weight_id=f"L{l}_WK_S{sid}",weight_size=dim*kv_dim_s*dtype_bytes,attrs=dict(attr_kv),allowed=get_op_allowed("K")))
@@ -979,14 +1052,16 @@ def add_palm_block_split_by_heads(g: TaskGraph, l: int, shape: ModelShape, dtype
         g.add_edge(nid_LN, nid_K); g.add_edge(nid_LN, nid_V)
         k_nodes[sid]=nid_K; v_nodes[sid]=nid_V
 
-    # KV writes (sharded by KV-head groups)
-    for sid, (kv_st, kv_cnt) in enumerate(kv_ranges):
+    # ---- KV-cache writes (partitioned by kv_cache_shards) ----
+    kw_nodes: Dict[int, str] = {}
+    vw_nodes: Dict[int, str] = {}
+    for cache_sid, (kv_st, kv_cnt) in enumerate(kv_ranges_cache):
         kv_dim_s = int(kv_cnt) * int(hd)
         attr_kvw = dict(base_attr_full)
         attr_kvw.update({
-            "is_shard": True,
-            "head_shard": int(sid),
-            "kv_shard": int(sid),
+            "is_shard": bool(len(kv_ranges_cache) > 1),
+            "head_shard": int(cache_sid),
+            "kv_shard": int(cache_sid),
             "kv_heads": int(kv_cnt),
             "kv_dim": int(kv_dim_s),
             "kv_head_start": int(kv_st),
@@ -994,13 +1069,25 @@ def add_palm_block_split_by_heads(g: TaskGraph, l: int, shape: ModelShape, dtype
             "kv_head_id": int(kv_st),
             "kv_head_ids": list(range(int(kv_st), int(kv_st + kv_cnt))),
         })
-        if kv_shards > 1:
-            attr_kvw["pim_target_idx"] = int(sid)
-        nid_KW=f"L{l}_K_write_S{sid}"; nid_VW=f"L{l}_V_write_S{sid}"
-        g.add_node(TaskNode(nid_KW,"K_write",flops=0.0,attrs=dict(attr_kvw),allowed=get_op_allowed("K_write")))
-        g.add_node(TaskNode(nid_VW,"V_write",flops=0.0,attrs=dict(attr_kvw),allowed=get_op_allowed("V_write")))
-        g.add_edge(k_nodes[int(sid)], nid_KW)
-        g.add_edge(v_nodes[int(sid)], nid_VW)
+        if len(kv_ranges_cache) > 1:
+            attr_kvw["pim_target_idx"] = int(cache_sid)
+        nid_KW = f"L{l}_K_write_S{cache_sid}"
+        nid_VW = f"L{l}_V_write_S{cache_sid}"
+        g.add_node(TaskNode(nid_KW, "K_write", flops=0.0, attrs=dict(attr_kvw), allowed=get_op_allowed("K_write")))
+        g.add_node(TaskNode(nid_VW, "V_write", flops=0.0, attrs=dict(attr_kvw), allowed=get_op_allowed("V_write")))
+        kw_nodes[int(cache_sid)] = nid_KW
+        vw_nodes[int(cache_sid)] = nid_VW
+
+    # Connect current-token K/V projections -> KV-cache writes.
+    for comp_sid, (c_st, c_cnt) in enumerate(kv_ranges_compute):
+        c_st = int(c_st); c_end = int(c_st + int(c_cnt))
+        for cache_sid, (w_st, w_cnt) in enumerate(kv_ranges_cache):
+            w_st = int(w_st); w_end = int(w_st + int(w_cnt))
+            overlap = int(min(c_end, w_end) - max(c_st, w_st))
+            if overlap <= 0:
+                continue
+            g.add_edge(k_nodes[int(comp_sid)], kw_nodes[int(cache_sid)])
+            g.add_edge(v_nodes[int(comp_sid)], vw_nodes[int(cache_sid)])
 
     # Attention shards
     o_nodes: List[str] = []

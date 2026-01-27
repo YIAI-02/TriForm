@@ -177,6 +177,37 @@ class SchedulerBase:
     def set_seq_len(self, seq_len: int) -> None:
         self.seq_len = int(seq_len)
 
+    def _executor_device_types(self) -> Tuple[str, ...]:
+        try:
+            has_npu = bool(self.cluster.devices_by_type('npu'))
+        except Exception:
+            has_npu = False
+
+        types: List[str] = []
+        if has_npu:
+            types.append('npu')
+        # Always keep PIM as an executor if present.
+        try:
+            if self.cluster.devices_by_type('pim'):
+                types.append('pim')
+        except Exception:
+            pass
+        # Only treat CPU as an executor when NPU is absent.
+        if (not has_npu):
+            try:
+                if self.cluster.devices_by_type('cpu'):
+                    types.append('cpu')
+            except Exception:
+                pass
+
+        # Fallback: never return empty.
+        if not types:
+            try:
+                types = sorted({str(getattr(d, 'type', '')) for d in self.cluster.devices.values() if getattr(d, 'type', None)})
+            except Exception:
+                types = ['cpu']
+        return tuple(types)
+
     def reset_state(self):
         self._node_finish_time.clear()
         self._node_placement.clear()
@@ -764,19 +795,9 @@ class SchedulerBase:
         commit: bool,
     ) -> Tuple[float, float]:
 
-        """
-        Reserve an activation transfer from src_dev -> dst_dev.
 
-        For NPU<->PIM we support two routes:
-          - src -> Host -> dst
-          - src -> dst direct (if topology provides this link)
 
-        During real scheduling, we check the current communication occupancy (per-link timelines)
-        and pick the route that completes earlier.
 
-        Returns:
-          (start_time_on_last_hop, ready_time_on_dst_after_format_conversion)
-        """
 
         dst_fmt = self.cost.device_preferred_fmt(dst_dev)
         size_nd = self.cost.format_size(bytes_nd, 'ND')
@@ -1033,7 +1054,8 @@ class NaiveTopoScheduler(SchedulerBase):
                 raise RuntimeError("kv_in_pim=True but no PIM device available for KV write")
             return pim_devs[0]
 
-        for dev_type in ('npu', 'pim', 'cpu'):
+        # Executor types depend on whether NPU exists in the cluster.
+        for dev_type in self._executor_device_types():
             devs = self.cluster.devices_by_type(dev_type)
             devs = [d for d in devs if self._node_allowed_on(node, d)]
             if devs:
@@ -1049,9 +1071,8 @@ class NaiveTopoScheduler(SchedulerBase):
         if is_kv_write and kv_in_pim:
             candidates = [d for d in self.cluster.devices_by_type('pim') if self._node_allowed_on(node, d)]
         else:
-            # 其他节点：在可运行的 NPU/PIM 里选最早空闲的
             candidates = []
-            for dev_type in ('npu', 'pim'):
+            for dev_type in self._executor_device_types():
                 candidates.extend(d for d in self.cluster.devices_by_type(dev_type) if self._node_allowed_on(node, d))
         
         if not candidates:
@@ -1139,7 +1160,8 @@ class HEFTScheduler(SchedulerBase):
         batch_eff = self._node_batch(g, nid, phase_eff)
         seq_len_eff = self._node_seq_len(g, nid, phase_eff)
 
-        devs = list(self.cluster.devices.values())
+        exec_types = set(self._executor_device_types())
+        devs = [d for d in self.cluster.devices.values() if str(getattr(d, 'type', '')).lower() in exec_types]
         total_compute = 0.0
         total_w = 0.0
         k = 0
@@ -1185,7 +1207,8 @@ class HEFTScheduler(SchedulerBase):
         v_read, _ = self.cost.estimate_activation_bytes(node_v, batch_v, seq_v, phase_v)
         payload_bytes = max(u_write, v_read, 16 * 1024)
 
-        devs = [d for d in self.cluster.devices.values() if d.type in ('npu', 'pim')]
+        exec_types = set(self._executor_device_types())
+        devs = [d for d in self.cluster.devices.values() if str(getattr(d, 'type', '')).lower() in exec_types]
         total = 0.0
         k = 0
         for di in devs:
@@ -1258,9 +1281,7 @@ class HEFTScheduler(SchedulerBase):
             kv_in_pim = getattr(self.label, 'kv_in_pim', False)
             is_kv_write = node.name.upper() in ('K_WRITE', 'V_WRITE', 'KV_WRITE')
 
-            # Compute allow flags by checking actual devices (not just type strings).
-            allow_npu = any(self._node_allowed_on(node, d) for d in self.cluster.devices_by_type('npu'))
-            allow_pim = any(self._node_allowed_on(node, d) for d in self.cluster.devices_by_type('pim'))
+            exec_types = tuple(self._executor_device_types())
 
             pinned_dev: Optional[DeviceSpec] = None
             if is_kv_write:
@@ -1275,39 +1296,24 @@ class HEFTScheduler(SchedulerBase):
                 _, finish = self._earliest_finish_on_device(
                     g, nid, pinned_dev, self.label, phase, commit=False
                 )
-                dev_type = getattr(pinned_dev, "type", "").upper()
-                mode = "NPU" if dev_type == "NPU" else "PIM" if dev_type == "PIM" else dev_type
+                mode = str(getattr(pinned_dev, "type", "") or "").upper() or "DEV"
                 candidates.append((mode, float(finish), pinned_dev))
             else:
-                if allow_npu or (is_kv_write and (not kv_in_pim)):
-                    best_npu_dev = None
-                    best_npu_finish = float('inf')
-                    for dev in self.cluster.devices_by_type('npu'):
+                # Pick the best device within each executor type.
+                for t in exec_types:
+                    best_dev = None
+                    best_finish = float('inf')
+                    for dev in self.cluster.devices_by_type(t):
                         if not self._node_allowed_on(node, dev):
                             continue
                         _, finish = self._earliest_finish_on_device(
                             g, nid, dev, self.label, phase, commit=False
                         )
-                        if finish < best_npu_finish:
-                            best_npu_finish = finish
-                            best_npu_dev = dev
-                    if best_npu_dev is not None:
-                        candidates.append(('NPU', best_npu_finish, best_npu_dev))
-
-                if allow_pim or (is_kv_write and kv_in_pim):
-                    best_pim_dev = None
-                    best_pim_finish = float('inf')
-                    for dev in self.cluster.devices_by_type('pim'):
-                        if not self._node_allowed_on(node, dev):
-                            continue
-                        _, finish = self._earliest_finish_on_device(
-                            g, nid, dev, self.label, phase, commit=False
-                        )
-                        if finish < best_pim_finish:
-                            best_pim_finish = finish
-                            best_pim_dev = dev
-                    if best_pim_dev is not None:
-                        candidates.append(('PIM', best_pim_finish, best_pim_dev))
+                        if float(finish) < float(best_finish):
+                            best_finish = float(finish)
+                            best_dev = dev
+                    if best_dev is not None:
+                        candidates.append((str(t).upper(), float(best_finish), best_dev))
 
 
             if not candidates:
@@ -2208,7 +2214,8 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
 
         # Multi-device selection: when there are multiple executors, don't rely on rank ordering.
         # Instead, pick from the whole READY set by the lookahead chain score.
-        num_exec = len(self.cluster.devices_by_type("npu")) + len(self.cluster.devices_by_type("pim"))
+        exec_types = tuple(self._executor_device_types())
+        num_exec = int(sum(len(self.cluster.devices_by_type(t)) for t in exec_types))
         use_chain_select = bool(use_lookahead) and num_exec > 1
 
         def _candidates_for(nid: str, node: TaskNode) -> Tuple[List[DeviceSpec], bool]:
@@ -2226,7 +2233,7 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
                 return [pinned_dev], is_kv_write
 
             cands: List[DeviceSpec] = []
-            for dev_type in ("npu", "pim"):
+            for dev_type in exec_types:
                 for dev in self.cluster.devices_by_type(dev_type):
                     try:
                         if self._node_allowed_on(node, dev):

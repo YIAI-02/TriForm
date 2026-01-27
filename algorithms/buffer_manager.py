@@ -151,8 +151,10 @@ class PIMRuntimeState:
         PIM runtime budget only tracks activation + weight cache.
     """
     phy_bytes: int                          # physical device capacity (bytes)
-    limit_bytes: int                        # runtime budget for act + weights (bytes)
-    kv_in_pim: bool = False                 # True => KV logically on PIM, but cache not tracked
+    limit_bytes: int                        # runtime budget for kv + act + weights (bytes)
+    kv_in_pim: bool = False                 # True => KV logically on PIM
+    kv_reserved_bytes: int = 0              # bytes reserved for KV on this device
+    kv_used_bytes: int = 0                  # bytes currently used for KV on this device (>= reserved if modeled)
     act_used_bytes: int = 0                 # bytes currently held for activations
 
 
@@ -221,35 +223,44 @@ class GlobalMemoryManager:
 
         phy_bytes = max(0, int(phy_bytes))
         runtime_limit_bytes = max(0, int(runtime_limit_bytes))
+        kv_reserved_bytes = max(0, int(kv_reserved_bytes or 0))
         st = self.pim_state.get(dev_name)
         if st is None:
             st = PIMRuntimeState(
                 phy_bytes=phy_bytes,
                 limit_bytes=runtime_limit_bytes,
                 kv_in_pim=bool(kv_in_pim),
+                kv_reserved_bytes=kv_reserved_bytes,
+                kv_used_bytes=(kv_reserved_bytes if kv_in_pim else 0),
             )
             self.pim_state[dev_name] = st
         else:
             st.phy_bytes = phy_bytes
             st.limit_bytes = runtime_limit_bytes
             st.kv_in_pim = bool(kv_in_pim)
-            # Keep act / kv usage as-is; caller can explicitly reset if needed.
+
+            st.kv_reserved_bytes = kv_reserved_bytes
+            st.kv_used_bytes = (kv_reserved_bytes if kv_in_pim else 0)
+
+        if weight_cache_capacity_bytes is None:
+            weight_cache_capacity_bytes = max(0, int(runtime_limit_bytes - (kv_reserved_bytes if kv_in_pim else 0)))
 
         self.ensure_device_cache(dev_name, int(weight_cache_capacity_bytes))
 
     def pim_used_bytes(self, dev_name: str) -> Tuple[int, int, int, int, int]:
-        """Return (phy_bytes, kv_used=0, act_used, weight_used, total_used)."""
+        """Return (phy_bytes, kv_used, act_used, weight_used, total_used)."""
         st = self.pim_state.get(dev_name)
         if st is None:
             return (0, 0, 0, 0, 0)
         cache = self.device_cache.get(dev_name)
         weight_used = int(cache.used) if cache else 0
         act_used = int(st.act_used_bytes)
-        total = act_used + weight_used
-        return (int(st.phy_bytes), 0, act_used, weight_used, total)
+        kv_used = int(st.kv_used_bytes) if bool(st.kv_in_pim) else 0
+        total = kv_used + act_used + weight_used
+        return (int(st.phy_bytes), kv_used, act_used, weight_used, total)
 
     def reset_runtime_state(self) -> None:
-        """Clear dynamic PIM runtime state (KV/activations). Does not change budgets."""
+        """Clear dynamic PIM runtime state (activations only). Does not change KV reservation/budgets."""
         for st in self.pim_state.values():
             st.act_used_bytes = 0
 
@@ -303,18 +314,19 @@ class GlobalMemoryManager:
         if limit <= 0:
             return False
 
+        kv_used = int(st.kv_used_bytes) if bool(st.kv_in_pim) else 0
         act_before = int(st.act_used_bytes)
         act_after = act_before + bytes_needed
         weight_used = self._pim_weight_used(dev_name)
 
         # Simple fast-path: enough room without evictions
-        if act_after + weight_used <= limit:
+        if kv_used + act_after + weight_used <= limit:
             if commit:
                 st.act_used_bytes = act_after
             return True
 
         # Need to evict some weights
-        need_free = act_after + weight_used - limit
+        need_free = kv_used + act_after + weight_used - limit
         freed = self._pim_evict_weights_bytes(dev_name, need_free, commit=commit)
 
         if not commit:
@@ -323,7 +335,7 @@ class GlobalMemoryManager:
 
         # Commit path: recompute and decide
         weight_after = self._pim_weight_used(dev_name)
-        if act_after + weight_after <= limit:
+        if kv_used + act_after + weight_after <= limit:
             st.act_used_bytes = act_after
             return True
 
@@ -347,16 +359,18 @@ class GlobalMemoryManager:
     def pim_cache_weight(self, dev_name: str, wid: str, size: int, *, pinned: bool, commit: bool) -> bool:
         st = self.pim_state.get(dev_name)
         if st is None:
+            # Non-PIM path (or unregistered PIM): treat as a generic weight LRU.
+            cache = self.device_cache.get(dev_name)
             if cache is None:
                 # Best-effort default: at least large enough to hold this single weight.
-                self.ensure_device_cache(dev_name, capacity_bytes=int(size))
+                self.ensure_device_cache(dev_name, capacity_bytes=max(0, int(size)))
                 cache = self.device_cache[dev_name]
-            ok = cache.add(wid, int(size), pinned=pinned)
+            ok = cache.add(wid, int(size), pinned=bool(pinned))
             if ok:
                 cache.touch(wid)
                 if pinned:
                     cache.pin(wid)
-            return ok
+            return bool(ok)
 
         size = max(0, int(size))
         if size == 0:
@@ -374,12 +388,13 @@ class GlobalMemoryManager:
             self.ensure_device_cache(dev_name, capacity_bytes=limit)
             cache = self.device_cache[dev_name]
 
+        kv_used = int(st.kv_used_bytes) if bool(st.kv_in_pim) else 0
         act_used = int(st.act_used_bytes)
         weight_used = int(cache.used)
 
         # Quick check: is there enough room *without* extra evictions?
-        if act_used + weight_used + size > limit:
-            need_free = act_used + weight_used + size - limit
+        if kv_used + act_used + weight_used + size > limit:
+            need_free = kv_used + act_used + weight_used + size - limit
             freed = self._pim_evict_weights_bytes(dev_name, need_free, commit=commit)
             if not commit:
                 # dry-run: success iff we *could* free enough
@@ -388,7 +403,7 @@ class GlobalMemoryManager:
             else:
                 # commit path: recompute used weight after eviction
                 weight_used = self._pim_weight_used(dev_name)
-                if act_used + weight_used + size > limit:
+                if kv_used + act_used + weight_used + size > limit:
                     # Still cannot fit even after evicting everything.
                     return False
 

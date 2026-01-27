@@ -1619,6 +1619,35 @@ class CostModel:
         u_name = str(getattr(u_node, 'name', '') or '').upper()
         v_name = str(getattr(v_node, 'name', '') or '').upper()
 
+        if (u_name, v_name) in (('K', 'K_WRITE'), ('V', 'V_WRITE')):
+            try:
+                ua = getattr(u_node, 'attrs', {}) or {}
+                va = getattr(v_node, 'attrs', {}) or {}
+
+                u_ids = ua.get('kv_head_ids', None)
+                v_ids = va.get('kv_head_ids', None)
+                # Fallback to contiguous range if explicit lists are absent.
+                if not u_ids and ua.get('kv_heads', 0):
+                    u0 = int(ua.get('kv_head_id', 0) or 0)
+                    uc = int(ua.get('kv_heads', 0) or 0)
+                    u_ids = list(range(u0, u0 + max(0, uc)))
+                if not v_ids and va.get('kv_heads', 0):
+                    v0 = int(va.get('kv_head_id', 0) or 0)
+                    vc = int(va.get('kv_heads', 0) or 0)
+                    v_ids = list(range(v0, v0 + max(0, vc)))
+
+                if isinstance(u_ids, (list, tuple)) and isinstance(v_ids, (list, tuple)) and u_ids and v_ids:
+                    u_set = set(int(x) for x in u_ids)
+                    v_set = set(int(x) for x in v_ids)
+                    overlap = int(len(u_set.intersection(v_set)))
+                    u_kv_heads = int(ua.get('kv_heads', len(u_set)) or len(u_set))
+                    if overlap > 0 and u_kv_heads > 0 and int(u_write) > 0:
+                        scaled = int(max(0, int(u_write) * overlap // u_kv_heads))
+                        # Override the default (which used full u_write) with the scaled amount.
+                        payload = int(max(int(scaled), int(v_read), int(min_bytes)))
+            except Exception:
+                pass
+
         if u_name == 'K' and v_name == 'QK':
             hist = self.estimate_kv_cache_read_bytes(v_node, batch_v, seq_v, str(phase_v))
             payload = int(max(payload, int(hist) + int(u_write), int(min_bytes)))
@@ -1631,7 +1660,6 @@ class CostModel:
 
     def node_device_cost(self, node: TaskNode, dev: DeviceSpec, label: PlanLabel, batch: int, seq_len: int, phase: str) -> float:
         attrs = getattr(node, 'attrs', {}) or {}
-
         time_scale = float(self._time_scale_hint(node, getattr(dev, 'type', '')))
         dim = int(attrs.get('dim', 0) or 0)
         is_shard = bool(attrs.get('is_shard', False))
@@ -1643,6 +1671,20 @@ class CostModel:
         ffn_dim_total = int(attrs.get('ffn_dim_total', attrs.get('hidden_dim_total', 0)) or 0)
         ffn_dim_mul = float(attrs.get('ffn_dim_mul', 4.0))
         kv_in_pim = getattr(label, 'kv_in_pim', False)
+        if str(getattr(dev, 'type', '')).lower() == 'cpu':
+            if ffn_dim == 0 and dim > 0:
+                ffn_dim = int(ffn_dim_mul * dim)
+
+            rd, wr = self.estimate_activation_bytes(node, batch, seq_len, phase)
+            mem_t = float(self.mem_time(int(rd + wr), dev))
+
+            flops = float(self.estimate_flops(node, batch, seq_len, phase))
+            tflops = float(getattr(dev, 'tflops', 0.0) or 0.0)
+            if tflops <= 0.0:
+                # Fallback: treat as very slow (1 GFLOP/s equivalent) instead of free.
+                tflops = 1e-3
+            compute_t = float(flops) / (tflops * 1e12)
+            return float(max(compute_t, mem_t))
 
         if dev.type == 'npu':
             if ffn_dim == 0 and dim > 0:
@@ -1654,7 +1696,7 @@ class CostModel:
                 rd, wr = self.estimate_activation_bytes(node, batch, seq_len, phase)
                 mem_t = self.mem_time(rd + wr, dev)
                 flops = self.estimate_flops(node, batch, seq_len, phase)
-                return float(max(self.flop_time(flops, dev), mem_t)) * time_scale
+                return max(self.flop_time(flops, dev), mem_t)
             
             keys = self._resolve_pim_key(node)
             op_key = (keys[0].lower() if keys else None)
