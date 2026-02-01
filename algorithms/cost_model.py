@@ -250,10 +250,6 @@ def _make_shared_model_dict(dim: int, n_heads: int, n_kv_heads: int, ffn_dim: in
     return {'TP_param': torch.tensor(TP_param), 'dim': torch.tensor(dim), 'n_heads': torch.tensor(n_heads), 'n_kv_heads': torch.tensor(n_kv_heads), 'x': torch.zeros((1, 1, dim)), 'SANorm': torch.zeros(dim), 'FFNNorm': torch.zeros(dim), 'sa': torch.zeros((1, 1, dim)), 'h': torch.zeros((1, 1, dim)), 'out': torch.zeros((1, 1, dim)), 'wq': torch.zeros((dim // TP_param, dim)), 'wk': torch.zeros(head_dim * n_kv_heads, dim), 'wv': torch.zeros(head_dim * n_kv_heads, dim), 'xq': torch.zeros((1, 1, dim)), 'xk': torch.zeros((1, 1, head_dim * n_heads)), 'xv': torch.zeros((1, 1, head_dim * n_heads)), 'start_pos': torch.tensor(max(1, seqlen) - 1), 'cache_k': torch.zeros((1, seqlen, n_kv_heads, head_dim)), 'cache_v': torch.zeros((1, seqlen, n_kv_heads, head_dim)), 'scores': torch.zeros((1, n_heads, 1, seqlen)), 'output': torch.zeros((1, 1, dim)), 'wo': torch.zeros((dim // TP_param, dim)), 'w1': torch.zeros((ffn_dim // TP_param, dim)), 'w3': torch.zeros((ffn_dim // TP_param, dim)), 'w2': torch.zeros((dim // TP_param, ffn_dim)), 'ffn': torch.zeros((1, 1, dim))}
 
 def _generate_weight_read_trace(trace_path: Path, weight_bytes: int, dtype_bytes: int=2, gb_config: Optional[Dict[str, any]]=None, model_dict: Optional[Dict]=None) -> None:
-    """
-    生成从 Global Buffer 读取权重的 trace
-    使用独立的 Global Buffer DRAM 配置（不是 PIM 配置）
-    """
     if gb_config is None:
         raise ValueError('Global Buffer config (gb_config) must be provided for weight read trace generation')
     if model_dict is None:
@@ -348,13 +344,6 @@ def _generate_weight_write_trace_to_pim(trace_path: Path, weight_bytes: int, pim
         temp_trace.unlink()
 
 def _simulate_weight_loading_latency(weight_bytes: int, pim_config_path: Path, gb_config_path: Path, ramulator_config_path: Path, dtype_bytes: int=2, use_cache: bool=True, keep_traces: bool=False, model_dict: Optional[Dict]=None) -> Tuple[float, float]:
-    """
-    仿真 weight 加载延迟：
-    1. 从 Global Buffer 读取 (READ trace) - 使用 GB 配置
-    2. 写入 PIM banks (WRITE trace) - 使用 PIM 配置
-    
-    返回: (read_latency, write_latency) in seconds
-    """
     if model_dict is None:
         raise ValueError('Model dictionary must be provided for weight loading simulation')
     cache_key = f'weight_load_{weight_bytes}_{pim_config_path.name}_{gb_config_path.name}_{ramulator_config_path.name}'
@@ -594,9 +583,6 @@ def _ceil_div(a: int, b: int) -> int:
     return (a + b - 1) // b
 
 def _compute_feature_vector(M: int, N: int, K: int, block_size: int, feature_names: list) -> Tuple[list, list]:
-    """
-    根据 JSON 中的 feature 名称（如 ["tiles","mn","sum_b"]）计算对应特征向量。
-    """
     MB = _ceil_div(M, block_size)
     NB = _ceil_div(N, block_size)
     KB = _ceil_div(K, block_size)
@@ -605,9 +591,6 @@ def _compute_feature_vector(M: int, N: int, K: int, block_size: int, feature_nam
     return (feats, [MB, NB, KB])
 
 def _predict_mmad_latency_us_from_json(M: int, N: int, K: int) -> Optional[float]:
-    """
-    用运行时 JSON 模型预测单次 MMAD 的总延迟（μs），包含 SplitA/SplitB/SplitBias/Compute 四阶段。
-    """
     model = _load_mmad_model_json()
     if model is None:
         logger.error(str('[MMAD-MODEL] ✗ Model loading failed, returning None'))
@@ -700,7 +683,6 @@ def _predict_layernorm_latency_us_from_json(rows: int, width: int) -> Optional[f
         B = float(rows); D = float(width)
         T_us = a*x + b*B + d*D + t*max(0.0, x - c) + bias
         return float(max(0.0, T_us))
-    # 线性回退
     alpha = float(model.get('alpha', 0.0)); beta = float(model.get('beta', 0.0))
     T_us = alpha * x + beta
     return float(max(0.0, T_us))
@@ -722,20 +704,17 @@ class SimulationLogger:
         self._log(f"{'=' * 80}\n")
 
     def _log(self, message: str):
-        """写入日志文件并打印到控制台"""
         logger.debug(str(message))
         self._log_handle.write(message + '\n')
         self._log_handle.flush()
 
     def start_simulation(self):
-        """开始计时"""
         self.start_time = time.time()
         self._log(f"\n{'=' * 80}")
         self._log(f"Simulation Started at {datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")
         self._log(f"{'=' * 80}\n")
 
     def end_simulation(self):
-        """结束计时并统计"""
         self.end_time = time.time()
         elapsed = self.end_time - self.start_time if self.start_time else 0.0
         self._log(f"\n{'=' * 80}")
@@ -745,7 +724,6 @@ class SimulationLogger:
         self._print_statistics()
 
     def record_simulation(self, op: str, dim: int, n_heads: int, n_kv_heads: int, ffn_dim: int, seqlen: Optional[int]):
-        """记录一次仿真"""
         with self.lock:
             config = (dim, n_heads, n_kv_heads, ffn_dim, seqlen or 0)
             self.simulated_ops[op].add(config)
@@ -830,9 +808,288 @@ def _get_pim_latency_via_trace(op: str, pim_config: Path, ramulator_config: Path
         except Exception as e:
             sim_logger._log(f'[PIM] Warning: Failed to cleanup temp dir {temp_dir}: {e}')
 
+# ---- LLMCompass integration (git submodule: submodules/LLMCompass) ----
+def _ensure_llmcompass_on_path(start: Optional[Path]=None) -> Tuple[Path, Path]:
+    """Add submodules/LLMCompass to sys.path so we can import `hardware_model` / `software_model`."""
+    here = (start or Path(__file__)).resolve()
+    for p in [here.parent] + list(here.parents):
+        cand = p / 'submodules' / 'LLMCompass'
+        if cand.exists():
+            if str(cand) not in sys.path:
+                sys.path.insert(0, str(cand))
+            return (cand, p)
+    raise RuntimeError(f"Cannot find 'submodules/LLMCompass' above {here}")
+
+def _normalize_npu_backend(backend: Optional[str]) -> Optional[str]:
+    if backend is None:
+        return None
+    b = str(backend).strip().lower().replace('-', '_')
+    b = b.replace(' ', '_')
+    if b in ('fast_mode'):
+        return 'fast'
+    if b in ('ascend_310b_json', 'ascend310b_json', 'ascend_310b'):
+        return 'ascend_310b_json'
+    if b in ('llmcompass'):
+        return 'llmcompass'
+    raise ValueError(f"Unknown npu_backend='{backend}'. Expected one of: fast, ascend_310b_json, llmcompass")
+
+_LLMCOMPASS_MODS: Optional[Dict[str, Any]] = None
+_LLMCOMPASS_DEVICE_CACHE: Dict[str, Any] = {}
+_LLMCOMPASS_LAT_CACHE_S: Dict[Tuple[Any, ...], float] = {}
+
+def _initialize_llmcompass_modules() -> Dict[str, Any]:
+    """Lazy-import LLMCompass modules; only used when npu_backend == 'llmcompass'."""
+    llm_root, _ = _ensure_llmcompass_on_path()
+    try:
+        # Software models (single-op simulators)
+        from software_model.matmul import Matmul
+        from software_model.softmax import Softmax
+        from software_model.layernorm import LayerNorm
+        from software_model.gelu import GeLU
+        from software_model.utils import Tensor, DataType, data_type_dict
+
+        # Hardware models / device database
+        import hardware_model.device as device_mod
+    except Exception as e:
+        raise RuntimeError(
+            "Failed to import LLMCompass. "
+            "Make sure you added it as a git submodule at submodules/LLMCompass and installed its dependencies (e.g., scalesim). "
+            f"Inner error: {e}"
+        )
+    return {
+        'llm_root': llm_root,
+        'Matmul': Matmul,
+        'Softmax': Softmax,
+        'LayerNorm': LayerNorm,
+        'GeLU': GeLU,
+        'Tensor': Tensor,
+        'DataType': DataType,
+        'data_type_dict': data_type_dict,
+        'device_mod': device_mod,
+    }
+
+def _get_llmcompass_mods() -> Dict[str, Any]:
+    global _LLMCOMPASS_MODS
+    if _LLMCOMPASS_MODS is None:
+        _LLMCOMPASS_MODS = _initialize_llmcompass_modules()
+    return _LLMCOMPASS_MODS
+
+def _llmcompass_dtype(dtype: str):
+    mods = _get_llmcompass_mods()
+    dt_dict = mods.get('data_type_dict', None)
+    if not isinstance(dt_dict, dict) or not dt_dict:
+        raise RuntimeError("LLMCompass data_type_dict not found or empty (software_model/utils.py).")
+
+    s = (dtype or '').strip().lower()
+    alias = {
+        'float16': 'fp16',
+        'f16': 'fp16',
+        'fp16': 'fp16',
+        'float32': 'fp32',
+        'f32': 'fp32',
+        'fp32': 'fp32',
+        'int8': 'int8',
+        'i8': 'int8',
+    }
+    key = alias.get(s, s)
+    if key not in dt_dict:
+        supported = ', '.join(sorted(dt_dict.keys()))
+        raise RuntimeError(
+            f"LLMCompass does not support dtype='{dtype}' (normalized='{key}'). "
+            f"Supported: {supported}."
+        )
+    return dt_dict[key]
+
+def _llmcompass_guess_device_key(dev: DeviceSpec) -> str:
+    # Allow explicit override in hardware json -> DeviceSpec.
+    for k in (
+        'llmcompass_kind',
+        'llmcompass_device',
+        'llmcompass_device_name',
+        'llmcompass_arch',
+        'arch',
+    ):
+        v = getattr(dev, k, None)
+        if v:
+            return str(v)
+    return str(getattr(dev, 'name', ''))
+
+def _llmcompass_normalize_device_key(device_key: str) -> str:
+    s = (device_key or '').strip()
+    sl = s.lower()
+    if 'a100' in sl:
+        return 'A100'
+    if 'tpu' in sl and 'v3' in sl:
+        return 'TPUv3'
+    if sl in ('tpuv3', 'tpuv3'):
+        return 'TPUv3'
+    return s or 'A100'
+
+def _llmcompass_get_device(device_key: str):
+    device_key = _llmcompass_normalize_device_key(device_key)
+    if device_key in _LLMCOMPASS_DEVICE_CACHE:
+        return _LLMCOMPASS_DEVICE_CACHE[device_key]
+    mods = _get_llmcompass_mods()
+    device_mod = mods['device_mod']
+
+    # Try a few common registries / factories in LLMCompass.
+    dict_candidates = [
+        'device_dict',
+        'devices',
+        'DEVICE_DICT',
+        'device_module_dict',
+        'DEVICE_MODULE_DICT',
+    ]
+    key_l = device_key.lower()
+    for dname in dict_candidates:
+        d = getattr(device_mod, dname, None)
+        if isinstance(d, dict) and d:
+            # Exact / case-insensitive
+            for k, v in d.items():
+                if str(k).lower() == key_l:
+                    _LLMCOMPASS_DEVICE_CACHE[device_key] = v
+                    return v
+            # Fuzzy match (e.g., 'gpu_a100_80gb')
+            for k, v in d.items():
+                kl = str(k).lower()
+                if key_l in kl or kl in key_l:
+                    _LLMCOMPASS_DEVICE_CACHE[device_key] = v
+                    return v
+
+    # Factory functions
+    for fname in ('get_device', 'get', 'get_device_by_name', 'create_device', 'make_device'):
+        fn = getattr(device_mod, fname, None)
+        if callable(fn):
+            try:
+                v = fn(device_key)
+                if v is not None:
+                    _LLMCOMPASS_DEVICE_CACHE[device_key] = v
+                    return v
+            except Exception:
+                pass
+
+    raise RuntimeError(
+        f"Unable to obtain LLMCompass Device for device_key='{device_key}'. "
+        "Consider adding `llmcompass_device` in your hardware JSON device entry (e.g., 'A100' or 'TPUv3')."
+    )
+
+def _llmcompass_default_compile_mode(device_key: str) -> str:
+    dk = (device_key or '').lower()
+    if 'tpu' in dk:
+        return 'heuristic-TPU'
+    return 'heuristic-GPU'
+
+def _llmcompass_simulate_matmul_s(device_key: str, dtype: str, M: int, N: int, K: int, compile_mode: Optional[str]=None) -> float:
+    device_key = _llmcompass_normalize_device_key(device_key)
+    compile_mode = str(compile_mode or _llmcompass_default_compile_mode(device_key))
+    key = ('matmul', device_key, str(dtype).lower(), compile_mode, int(M), int(N), int(K))
+    if key in _LLMCOMPASS_LAT_CACHE_S:
+        return _LLMCOMPASS_LAT_CACHE_S[key]
+    mods = _get_llmcompass_mods()
+    Matmul = mods['Matmul']
+    Tensor = mods['Tensor']
+    dt = _llmcompass_dtype(dtype)
+    dev_obj = _llmcompass_get_device(device_key)
+    op = Matmul(dt)
+    a = Tensor([int(M), int(K)], dt)
+    b = Tensor([int(K), int(N)], dt)
+    op(a, b)
+    try:
+        lat = op.compile_and_simulate(dev_obj, compile_mode=compile_mode)
+    except TypeError:
+        lat = op.compile_and_simulate(dev_obj, compile_mode)
+    except Exception as e:
+        # Best-effort fallback: roofline (still LLMCompass-native).
+        try:
+            lat = op.roofline_model(dev_obj)
+        except Exception:
+            raise RuntimeError(f"LLMCompass matmul simulation failed: {e}")
+    lat_s = float(lat)
+    _LLMCOMPASS_LAT_CACHE_S[key] = lat_s
+    return lat_s
+
+def _llmcompass_simulate_softmax_s(device_key: str, dtype: str, M: int, N: int, compile_mode: Optional[str]=None) -> float:
+    device_key = _llmcompass_normalize_device_key(device_key)
+    compile_mode = str(compile_mode or _llmcompass_default_compile_mode(device_key))
+    key = ('softmax', device_key, str(dtype).lower(), compile_mode, int(M), int(N))
+    if key in _LLMCOMPASS_LAT_CACHE_S:
+        return _LLMCOMPASS_LAT_CACHE_S[key]
+    mods = _get_llmcompass_mods()
+    Softmax = mods['Softmax']
+    Tensor = mods['Tensor']
+    dt = _llmcompass_dtype(dtype)
+    dev_obj = _llmcompass_get_device(device_key)
+    op = Softmax(dt)
+    x = Tensor([int(M), int(N)], dt)
+    op(x)
+    try:
+        lat = op.compile_and_simulate(dev_obj, compile_mode=compile_mode)
+    except TypeError:
+        lat = op.compile_and_simulate(dev_obj)
+    except Exception as e:
+        try:
+            lat = op.roofline_model(dev_obj)
+        except Exception:
+            raise RuntimeError(f"LLMCompass softmax simulation failed: {e}")
+    lat_s = float(lat)
+    _LLMCOMPASS_LAT_CACHE_S[key] = lat_s
+    return lat_s
+
+def _llmcompass_simulate_layernorm_s(device_key: str, dtype: str, M: int, N: int, compile_mode: Optional[str]=None) -> float:
+    device_key = _llmcompass_normalize_device_key(device_key)
+    compile_mode = str(compile_mode or _llmcompass_default_compile_mode(device_key))
+    key = ('layernorm', device_key, str(dtype).lower(), compile_mode, int(M), int(N))
+    if key in _LLMCOMPASS_LAT_CACHE_S:
+        return _LLMCOMPASS_LAT_CACHE_S[key]
+    mods = _get_llmcompass_mods()
+    LayerNorm = mods['LayerNorm']
+    Tensor = mods['Tensor']
+    dt = _llmcompass_dtype(dtype)
+    dev_obj = _llmcompass_get_device(device_key)
+    op = LayerNorm(dt)
+    x = Tensor([int(M), int(N)], dt)
+    op(x)
+    try:
+        lat = op.compile_and_simulate(dev_obj, compile_mode)
+    except Exception as e:
+        try:
+            lat = op.roofline_model(dev_obj)
+        except Exception:
+            raise RuntimeError(f"LLMCompass layernorm simulation failed: {e}")
+    lat_s = float(lat)
+    _LLMCOMPASS_LAT_CACHE_S[key] = lat_s
+    return lat_s
+
+def _llmcompass_simulate_gelu_s(device_key: str, dtype: str, data_len: int, compile_mode: Optional[str]=None) -> float:
+    device_key = _llmcompass_normalize_device_key(device_key)
+    compile_mode = str(compile_mode or _llmcompass_default_compile_mode(device_key))
+    key = ('gelu', device_key, str(dtype).lower(), compile_mode, int(data_len))
+    if key in _LLMCOMPASS_LAT_CACHE_S:
+        return _LLMCOMPASS_LAT_CACHE_S[key]
+    mods = _get_llmcompass_mods()
+    GeLU = mods['GeLU']
+    Tensor = mods['Tensor']
+    dt = _llmcompass_dtype(dtype)
+    dev_obj = _llmcompass_get_device(device_key)
+    op = GeLU(dt)
+    x = Tensor([int(data_len)], dt)
+    op(x)
+    try:
+        lat = op.compile_and_simulate(dev_obj, compile_mode)
+    except Exception as e:
+        try:
+            lat = op.roofline_model(dev_obj)
+        except Exception:
+            raise RuntimeError(f"LLMCompass GeLU simulation failed: {e}")
+    lat_s = float(lat)
+    _LLMCOMPASS_LAT_CACHE_S[key] = lat_s
+    return lat_s
+
+# ---------------------------------------------------------------------------
+
 class CostModel:
 
-    def __init__(self, cluster: Cluster, dtype: str='fp16', pim_config_path: Optional[Path]=None, gb_config_path: Optional[Path]=None, ramulator_config_path: Optional[Path]=None, simulation_log_file: Optional[Path]=None, debug_traces: bool=False, model_dict: Optional[Dict]=None, pim_fast_mode: bool=False, npu_fast_mode: bool=False):
+    def __init__(self, cluster: Cluster, dtype: str='fp16', pim_config_path: Optional[Path]=None, gb_config_path: Optional[Path]=None, ramulator_config_path: Optional[Path]=None, simulation_log_file: Optional[Path]=None, debug_traces: bool=False, model_dict: Optional[Dict]=None, pim_fast_mode: bool=False,npu_backend: Optional[str]=None):
         self.cluster = cluster
         self.dtype = dtype
         self.pim_config_path = pim_config_path
@@ -840,7 +1097,7 @@ class CostModel:
         self.ramulator_config_path = ramulator_config_path
         self.debug_traces = debug_traces
         self.pim_fast_mode = pim_fast_mode  # When True, skip all trace simulations
-        self.npu_fast_mode = npu_fast_mode  # When True, skip all trace simulations
+        self.npu_backend = _normalize_npu_backend(npu_backend) if npu_backend is not None else (_normalize_npu_backend('fast'))
         global _sim_logger
         if _sim_logger is None:
             _sim_logger = get_simulation_logger(simulation_log_file)
@@ -861,20 +1118,17 @@ class CostModel:
                 raise ValueError(f'Ramulator config not found: {ramulator_config_path}')
 
     def set_model_dict(self, model_dict: Dict):
-        """设置统一的模型字典"""
         if model_dict is None:
             raise ValueError('model_dict cannot be None')
         self._shared_model_dict = model_dict
         logger.debug(str(f'[CostModel] Model dictionary set with keys: {list(model_dict.keys())[:5]}...'))
 
     def get_model_dict(self) -> Dict:
-        """获取统一的模型字典"""
         if self._shared_model_dict is None:
             raise RuntimeError('Model dictionary not set. You must call set_model_dict() or provide model_dict during initialization before using PIM operations.')
         return self._shared_model_dict
 
     def has_model_dict(self) -> bool:
-        """检查是否已设置模型字典"""
         return self._shared_model_dict is not None
 
     def flop_time(self, flops: float, dev: DeviceSpec) -> float:
@@ -913,12 +1167,30 @@ class CostModel:
         return t_rd + t_wr
 
     def link_time(self, bytes_amount: int, src: DeviceSpec, dst: DeviceSpec) -> float:
-        bw = self.cluster.get_link_bw(src.name, dst.name) * 1024 * 1024 * 1024.0
-        if bw <= 0:
-            if src.name != dst.name and int(bytes_amount) > 0:
-                return float('inf')
+        """
+            T = L + O + n_hat / B
+            n_hat = n + ceil(n / MaxPayload) * FlitSize
+        """
+        bytes_amount = int(bytes_amount or 0)
+        if bytes_amount <= 0 or src.name == dst.name:
             return 0.0
-        return float(bytes_amount) / bw
+
+        spec = self.cluster.get_link_spec(src.name, dst.name)
+        bw_Bps = float(getattr(spec, "bw_GBs", 0.0) or 0.0) * (1024**3)
+        if bw_Bps <= 0.0:
+            return float("inf")
+
+        flit = int(getattr(spec, "flit_size_B", 0) or 0)
+        maxp = int(getattr(spec, "max_payload_B", 0) or 0)
+
+        n_hat = int(bytes_amount)
+        if flit > 0 and maxp > 0:
+            packets = (int(bytes_amount) + int(maxp) - 1) // int(maxp)
+            n_hat = int(bytes_amount) + int(packets) * int(flit)
+
+        L = float(getattr(spec, "latency_s", 0.0) or 0.0)
+        O = float(getattr(spec, "overhead_s", 0.0) or 0.0)
+        return float(L + O + float(n_hat) / bw_Bps)
 
     def comm_cost(self, src: DeviceSpec, dst: DeviceSpec, bytes_amount: int) -> float:
         if src.name == dst.name:
@@ -1438,22 +1710,20 @@ class CostModel:
             # 2) softmax over experts
             gate_softmax = b * active_tokens * moe_experts * C_SOFTMAX
 
-            # 3) top-k selection （线性近似）
+            # 3) top-k selection
             C_TOPK = 2.0
             gate_topk = b * active_tokens * moe_experts * C_TOPK
 
             # 4) combine K expert outputs: sum_{i=1..K} p_i * y_i
-            # 修正：去掉原来的 /2.0，保持与 C_MATMUL=2.0 一致（mul+add）
             combine = C_MATMUL * D * max(1, moe_top_k) * b * active_tokens
 
             return float(gate_linear + gate_softmax + gate_topk + combine)
 
-        # 13) KV cache / 位置编码视为 0 成本
+        # 13)
         if name in ('K_WRITE', 'V_WRITE', 'KV_READ', 'KV_WRITE', 'ROPE', 'ALIBI'):
             return 0.0
 
         return default
-
 
     def estimate_activation_bytes(self, node, batch: int, seq_len: int, phase: str):
         attrs = getattr(node, 'attrs', {}) or {}
@@ -1671,7 +1941,7 @@ class CostModel:
         ffn_dim_total = int(attrs.get('ffn_dim_total', attrs.get('hidden_dim_total', 0)) or 0)
         ffn_dim_mul = float(attrs.get('ffn_dim_mul', 4.0))
         kv_in_pim = getattr(label, 'kv_in_pim', False)
-        if str(getattr(dev, 'type', '')).lower() == 'cpu':
+        if dev.type == 'cpu':
             if ffn_dim == 0 and dim > 0:
                 ffn_dim = int(ffn_dim_mul * dim)
 
@@ -1686,12 +1956,14 @@ class CostModel:
             compute_t = float(flops) / (tflops * 1e12)
             return float(max(compute_t, mem_t))
 
-        if dev.type == 'npu':
+        elif dev.type == 'npu':
             if ffn_dim == 0 and dim > 0:
                 ffn_dim = int(ffn_dim_mul * dim)
+            backend = _normalize_npu_backend(self.npu_backend)
+            if backend is None:
+                raise ValueError("Missing required config: npu_backend. Choose from: fast, ascend_310b_json, llmcompass")
             
-            # Fast mode: skip all JSON model lookups, use FLOPs only
-            if self.npu_fast_mode or is_shard:
+            if backend == 'fast' or is_shard:
                 logger.debug(str(f"[FAST MODE] Skipping NPU JSON model for node {getattr(node,'name','?')}"))
                 rd, wr = self.estimate_activation_bytes(node, batch, seq_len, phase)
                 mem_t = self.mem_time(rd + wr, dev)
@@ -1728,10 +2000,19 @@ class CostModel:
                         K_cols = max(1, int(math.ceil(pairs / max(1, active_tokens))))
                     else:
                         K_cols = max(1, int(pairs))
-                us = _predict_softmax_latency_us_from_json(M_rows, K_cols, phase=phase, causal=causal)
-                logger.debug(str(f'[NPU-SOFTMAX] Inputs: M={M_rows}, K={K_cols}, phase={phase}, causal={causal}; us={us}'))
-                if us is not None:
-                    return float(max(us * 1e-06, mem_t)) * time_scale
+                if backend == 'ascend_310b_json':
+                    us = _predict_softmax_latency_us_from_json(M_rows, K_cols, phase=phase, causal=causal)
+                    logger.debug(str(f'[NPU-SOFTMAX][JSON] Inputs: M={M_rows}, K={K_cols}, phase={phase}, causal={causal}; us={us}'))
+                    if us is not None:
+                        return float(max(us * 1e-06, mem_t)) * time_scale
+                elif backend == 'llmcompass':
+                    device_key = _llmcompass_guess_device_key(dev)
+                    lat_s = _llmcompass_simulate_softmax_s(device_key, self.dtype, M_rows, K_cols)
+                    logger.debug(str(f'[NPU-SOFTMAX][LLMCompass] device={device_key} Inputs: M={M_rows}, K={K_cols}, phase={phase}, causal={causal}; s={lat_s}'))
+                    return float(max(lat_s, mem_t)) * time_scale
+                else:
+                    raise ValueError(f"Unsupported npu_backend='{backend}' for softmax")
+ 
 
             # 2) Activation
             if op_key in ACT_KEYS:
@@ -1740,20 +2021,37 @@ class CostModel:
                 width = int(attrs.get('ffn_dim', attrs.get('hidden_dim', ffn_dim)) or 0)
                 if not width or width <= 0: width = dim
                 data_len = max(1, b) * max(1, active_tokens) * max(1, int(width))
-                us = _predict_gelu_latency_us_from_json(data_len)
-                logger.debug(str(f'[NPU-ACT] Inputs: data_len={data_len}; us={us}'))
-                if us is not None:
-                    return float(max(us * 1e-06, mem_t)) * time_scale
+                if backend == 'ascend_310b_json':
+                    us = _predict_gelu_latency_us_from_json(data_len)
+                    logger.debug(str(f'[NPU-ACT][JSON] Inputs: data_len={data_len}; us={us}'))
+                    if us is not None:
+                        return float(max(us * 1e-06, mem_t)) * time_scale
+                elif backend == 'llmcompass':
+                    device_key = _llmcompass_guess_device_key(dev)
+                    lat_s = _llmcompass_simulate_gelu_s(device_key, self.dtype, data_len)
+                    logger.debug(str(f'[NPU-ACT][LLMCompass] device={device_key} Inputs: data_len={data_len}; s={lat_s}'))
+                    return float(max(lat_s, mem_t)) * time_scale
+                else:
+                    raise ValueError(f"Unsupported npu_backend='{backend}' for activation")
+ 
 
             # 3) Norm
             if op_key in NORM_KEYS:
                 b = int(batch or 1)
                 rows = max(1, b) * (seq_len if phase == 'prefill' else 1)
                 width = int(attrs.get('dim', attrs.get('hidden_dim', dim)) or dim)
-                us = _predict_layernorm_latency_us_from_json(rows, width)
-                logger.debug(str(f'[NPU-NORM] Inputs: rows={rows}, width={width}; us={us}'))
-                if us is not None:
-                    return float(max(us * 1e-06, mem_t)) * time_scale
+                if backend == 'ascend_310b_json':
+                    us = _predict_layernorm_latency_us_from_json(rows, width)
+                    logger.debug(str(f'[NPU-NORM][JSON] Inputs: rows={rows}, width={width}; us={us}'))
+                    if us is not None:
+                        return float(max(us * 1e-06, mem_t)) * time_scale
+                elif backend == 'llmcompass':
+                    device_key = _llmcompass_guess_device_key(dev)
+                    lat_s = _llmcompass_simulate_layernorm_s(device_key, self.dtype, rows, width)
+                    logger.debug(str(f'[NPU-NORM][LLMCompass] device={device_key} Inputs: rows={rows}, width={width}; s={lat_s}'))
+                    return float(max(lat_s, mem_t)) * time_scale
+                else:
+                    raise ValueError(f"Unsupported npu_backend='{backend}' for norm")
 
             # 4) MMAD
             dims = _map_op_to_mmad_dims(op_key, dim, n_heads_total, n_kv_heads_total, ffn_dim if ffn_dim > 0 else ffn_dim_total, seq_len) if op_key else None
@@ -1780,17 +2078,26 @@ class CostModel:
                 except Exception as _e:
                     logger.debug(str(f'[NPU-MMAD] phase-aware adjust skipped due to: {_e}'))
                 # -------------------------------------------------------------------------
-                us = _predict_mmad_latency_us_from_json(M, N, K)
-                logger.debug(str(f'[NPU-MMAD] Inputs: M={M}, N={N}, K={K}, reps={reps}; us={us}'))
-                if us is not None:
-                    t_us = us * max(1, reps) * max(1, batch)
-                    return float(max(t_us * 1e-06, mem_t)) * time_scale
+                if backend == 'ascend_310b_json':
+                    us = _predict_mmad_latency_us_from_json(M, N, K)
+                    logger.debug(str(f'[NPU-MMAD][JSON] Inputs: M={M}, N={N}, K={K}, reps={reps}; us={us}'))
+                    if us is not None:
+                        t_us = us * max(1, reps) * max(1, batch)
+                        return float(max(t_us * 1e-06, mem_t)) * time_scale
+                elif backend == 'llmcompass':
+                    device_key = _llmcompass_guess_device_key(dev)
+                    lat_single = _llmcompass_simulate_matmul_s(device_key, self.dtype, M, N, K)
+                    t_s = float(lat_single) * max(1, reps) * max(1, batch)
+                    logger.debug(str(f'[NPU-MMAD][LLMCompass] device={device_key} Inputs: M={M}, N={N}, K={K}, reps={reps}, batch={batch}; single_s={lat_single}, total_s={t_s}'))
+                    return float(max(t_s, mem_t)) * time_scale
+                else:
+                    raise ValueError(f"Unsupported npu_backend='{backend}' for MMAD")
 
             # 5) back
             flops = self.estimate_flops(node, batch, seq_len, phase)
             return float(max(self.flop_time(flops, dev), mem_t)) * time_scale
  
-        if dev.type == 'pim':
+        elif dev.type == 'pim':
             # Device allowance check from config.py
             if ffn_dim == 0 and dim > 0:
                 ffn_dim = int(ffn_dim_mul * dim)

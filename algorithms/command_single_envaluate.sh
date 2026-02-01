@@ -2,7 +2,7 @@
 set -e
 
 # Evaluate mode: run multiple algos + baselines, derive outputs from result_dir
-python main.py evaluate --config ./examples/evaluate_test_config.json --debug --npu_fast_mode --pim_fast_mode
+python main.py evaluate --config ./examples/evaluate_test_config.json --debug --pim_fast_mode --npu_backend llmcompass
 
 echo "Evaluate mode done."
 

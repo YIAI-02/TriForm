@@ -9,11 +9,11 @@
   "pim_config_path": "./aim_simulator/PIM_AiM.json",
   "gb_config_path": "./aim_simulator/gb.json",
   "ramulator_config_path": "./aim_simulator/example.yaml",
-  "simulation_log_file": "./output/evaluate_single_test/hardware_config_scale_down_11pima/pim_simulation.txt",
-  "result_dir": "./output/evaluate_single_test/hardware_config_scale_down_11pima/",
-  "hardware_json": "./examples/hardware_config_scale_down_11pima.json",
+  "simulation_log_file": "./output/evaluate_single_test/hardware_config_gpu_aim/pim_simulation.txt",
+  "result_dir": "./output/evaluate_single_test/hardware_config_gpu_aim/",
+  "hardware_json": "./examples/hardware_config_gpu_aim.json",
   "dump_graph": true,
-  "dump_graph_dir": "./output/evaluate_single_test/hardware_config_scale_down_11pima/graph_dumps",
+  "dump_graph_dir": "./output/evaluate_single_test/hardware_config_gpu_aim/graph_dumps",
   "algo": [
     "hefthint",
     "heft"
@@ -83,8 +83,8 @@
       "apply_to": ["QK", "SOFTMAX", "SV"],
       "exclude": []
     },
-
     "per_layer": {
-    }
+    },
+    "npu_backend": "llmcompass"
   }
 }

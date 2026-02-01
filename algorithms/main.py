@@ -114,17 +114,7 @@ def _make_label_given_kv(
 
     part_dim_cfg = str(cfg.get('split_by', 'head')).strip().lower()
 
-    pim_all = cluster.devices_by_type("pim")
-    pima_devs = [d for d in pim_all if (getattr(d, "pim_type", "accel") or "accel").lower() == "accel"]
-    pimd_devs = [
-        d for d in pim_all
-        if (getattr(d, "pim_type", "accel") or "accel").lower() in ("dram", "hbm", "pimd")
-    ]
-    if pimd_devs:
-        names = ",".join(d.name for d in pimd_devs)
-        raise ValueError(
-            f"PIMD not supported for memory planning; found: {names}. Please switch to PIMA devices."
-        )
+    pim_devs = list(cluster.devices_by_type("pim") or [])
 
     # If split_by=head_num requested but graph is not head-sharded, fall back.
     requested_head = part_dim_cfg in ("head_num", "head", "heads", "headnum")
@@ -160,7 +150,7 @@ def _make_label_given_kv(
     for n in graph.nodes.values():
         FC_total_bytes += int(getattr(n, "weight_size", 0) or 0)
 
-    pim_bytes = sum(int(d.mem_capacity_GB * (1024**3)) for d in pima_devs)
+    pim_bytes = sum(int(d.mem_capacity_GB * (1024**3)) for d in pim_devs)
     if pim_bytes <= 0:
         label = PlanLabel(pim_mode="none", kv_in_pim=False, kv_total_bytes=0, pim_weight_capacity_bytes=0)
         setattr(label, "total_weight_bytes", int(FC_total_bytes))
@@ -168,22 +158,22 @@ def _make_label_given_kv(
         return label, False
 
     # KV placement across PIM devices (RR by layer or contiguous head ranges).
-    pima_rr = sorted(pima_devs, key=lambda d: str(d.name))
-    pim_bytes_by_name = {d.name: int(d.mem_capacity_GB * (1024**3)) for d in pima_rr}
+    pim_rr = sorted(pim_devs, key=lambda d: str(d.name))
+    pim_bytes_by_name = {d.name: int(d.mem_capacity_GB * (1024**3)) for d in pim_rr}
     kv_layer_to_pim: Dict[int, str] = {}
     kv_head_to_pim: Dict[int, str] = {}
-    kv_bytes_by_pim: Dict[str, int] = {d.name: 0 for d in pima_rr}
+    kv_bytes_by_pim: Dict[str, int] = {d.name: 0 for d in pim_rr}
 
     is_head = part_dim in ("head", "heads", "head_num", "headnum")
-    if pima_rr:
+    if pim_rr:
         if is_head:
-            kv_shards = max(1, min(int(n_kv_heads), len(pima_rr)))
+            kv_shards = max(1, min(int(n_kv_heads), len(pim_rr)))
             kv_sizes = split_even(int(n_kv_heads), int(kv_shards))
             h0 = 0
             for sid, sz in enumerate(kv_sizes):
                 if int(sz) <= 0:
                     continue
-                pname = pima_rr[int(sid) % len(pima_rr)].name
+                pname = pim_rr[int(sid) % len(pim_rr)].name
                 for h in range(int(h0), int(h0 + sz)):
                     kv_head_to_pim[int(h)] = str(pname)
                 kv_bytes_by_pim[str(pname)] = int(
@@ -192,24 +182,24 @@ def _make_label_given_kv(
                 h0 += int(sz)
         else:
             for l in range(layers):
-                pname = pima_rr[l % len(pima_rr)].name
+                pname = pim_rr[l % len(pim_rr)].name
                 kv_layer_to_pim[int(l)] = str(pname)
                 kv_bytes_by_pim[str(pname)] = int(kv_bytes_by_pim.get(str(pname), 0) + kv_bytes_per_layer)
 
     # Feasibility for KV-on-PIM.
-    feasible = True
+    feasible                 = True
     if kv_in_pim:
         if KV_total_bytes > pim_bytes:
-            feasible = False
+            feasible         = False
         else:
-            for d in pima_rr:
-                need = int(kv_bytes_by_pim.get(d.name, 0))
-                cap = int(pim_bytes_by_name.get(d.name, 0))
+            for d in pim_rr:
+                need         = int(kv_bytes_by_pim.get(d.name, 0))
+                cap          = int(pim_bytes_by_name.get(d.name, 0))
                 if need > cap:
                     feasible = False
                     break
     logger.debug(f"[KV-on-PIM] KV-on-PIM is {feasible}")
-    kv_bytes_in_pim = KV_total_bytes if (kv_in_pim and feasible) else 0
+    kv_bytes_in_pim          = KV_total_bytes if (kv_in_pim and feasible) else 0
 
     # Weight budget: remaining capacity * PIM_STATIC_ALLOC_RATIO.
     leftover_bytes = max(0, pim_bytes - kv_bytes_in_pim)
@@ -296,6 +286,21 @@ def _estimate_total_time_for_label(
     t_prefill, _ = simulate_prefill(sched, cfg, g_prefill)
     t_decode, _ = simulate_decode_progressive(sched, cfg, g_decode, prefill_end=t_prefill)
     return float(t_prefill), float(t_decode), float(t_prefill + t_decode)
+
+ 
+def _normalize_npu_backend(backend):
+    """Normalize npu_backend strings to canonical: fast / ascend_310b_json / llmcompass."""
+    if backend is None:
+        return None
+    b = str(backend).strip().lower().replace('-', '_')
+    b = b.replace(' ', '_')
+    if b in ('fast', 'fastmode', 'fast_mode'):
+        return 'fast'
+    if b in ('ascend_310b_json', 'ascend310b_json', 'ascend_json', 'json', 'runtime_json', 'ascend_310b'):
+        return 'ascend_310b_json'
+    if b in ('llmcompass', 'llm_compass'):
+        return 'llmcompass'
+    raise ValueError(f"Unknown npu_backend='{backend}'. Expected one of: fast, ascend_310b_json, llmcompass")
 
 
 def auto_select_kv_policy(
@@ -560,11 +565,11 @@ def run(cfg: Dict):
     graph, shape = build_graph(cfg, pim_shards=_graph_pim_shards_arg(cfg, cluster),split_by=cfg.get('split_by', "head"))
     model_dict = _make_shared_model_dict(dim=int(getattr(shape, 'dim', 128)), n_heads=int(getattr(shape, 'n_heads', 1)), n_kv_heads=int(getattr(shape, 'n_kv_heads', 1)), ffn_dim=int(getattr(shape, 'ffn_dim', 512)), seqlen=prefill_len)
     sim_log_file = cfg.get('simulation_log_file', str(result_dir / 'pim_simulation.txt'))
-    npu_fast_mode = bool(cfg.get('npu_fast_mode', False))
+    npu_backend = _normalize_npu_backend(cfg.get('npu_backend', None))
     if _cluster_type_count(cluster, 'npu') <= 0:
-        npu_fast_mode = False
+        npu_backend = None
     pim_fast_mode = bool(cfg.get('pim_fast_mode', False))
-    cost = CostModel(cluster, dtype=cfg.get('dtype', 'fp16'), pim_config_path=pim_config_path, gb_config_path=gb_config_path, ramulator_config_path=ramulator_config_path,  simulation_log_file=sim_log_file, debug_traces=False, model_dict=model_dict, npu_fast_mode=npu_fast_mode, pim_fast_mode=pim_fast_mode)
+    cost = CostModel(cluster, dtype=cfg.get('dtype', 'fp16'), pim_config_path=pim_config_path, gb_config_path=gb_config_path, ramulator_config_path=ramulator_config_path,  simulation_log_file=sim_log_file, debug_traces=False, model_dict=model_dict, npu_backend=npu_backend, pim_fast_mode=pim_fast_mode)
     cost.logger.start_simulation()
     fmt_map: Dict[str, str] = {}
     prev_total: float|None = None
@@ -1048,7 +1053,7 @@ def _clone_graph(g: TaskGraph) -> TaskGraph:
                 new_g.add_edge(u, v)
     else:
         try:
-            _ = g.topological()  # 若实现存在，触发拓扑构建；没有也不影响
+            _ = g.topological()
         except Exception:
             pass
     return new_g
@@ -1101,6 +1106,42 @@ def _fallback_npu_to_cpu_if_needed(g: TaskGraph, cluster: Cluster, *, verbose: b
     if verbose or touched > 0:
         logger.warning('[HW] No NPU detected; falling back NPU ops to CPU (touched %d/%d nodes).', touched, total)
     return g
+
+def _fallback_pim_to_cpu_if_needed(g: TaskGraph, cluster: Cluster, *, verbose: bool=False) -> TaskGraph:
+    pim_cnt = _cluster_type_count(cluster, 'pim')
+    cpu_cnt = _cluster_type_count(cluster, 'cpu')
+    npu_cnt = _cluster_type_count(cluster, 'npu')
+    if pim_cnt > 0 or cpu_cnt <= 0:
+        return g
+
+    touched = 0
+    total = 0
+    for _, n in getattr(g, 'nodes', {}).items():
+        total += 1
+        try:
+            allowed = getattr(n, 'allowed', None)
+            if not isinstance(allowed, dict):
+                allowed = {}
+                setattr(n, 'allowed', allowed)
+        except Exception:
+            continue
+
+        # If this op is pinned to PIM-only (CPU/NPU both disabled), allow CPU so the
+        # graph remains schedulable on a non-PIM topology.
+        try:
+            pim_only = bool(allowed.get('pim', False)) and (not bool(allowed.get('cpu', False)))
+            if npu_cnt > 0:
+                pim_only = pim_only and (not bool(allowed.get('npu', False)))
+        except Exception:
+            pim_only = False
+        if pim_only:
+            allowed['cpu'] = True
+            touched += 1
+            
+    if verbose or touched > 0:
+        logger.warning('[HW] No PIM detected; falling back PIM-only ops to CPU (touched %d/%d nodes).', touched, total)
+    return g
+
 def _apply_policy_on_graph(g: TaskGraph, policy: str, *, phase: str) -> TaskGraph:
     g2 = _clone_graph(g)
     if policy == 'pd':
@@ -1139,7 +1180,6 @@ from typing import Callable
 
 _BASELINE_REGISTRY: Dict[str, Callable[[TaskGraph], TaskGraph]] = {}
 PD_BASELINES = {'pd','ianus','neupims','attacc','facil',}
-
 
 def register_baseline(name: str):
     name = (name or "").strip().lower()
@@ -1263,9 +1303,9 @@ def _eval_one_baseline(cfg: Dict, policy: str) -> Dict:
         algo_dir / "pim_simulation.txt",
     ))
 
-    npu_fast_mode = bool(cfg.get('npu_fast_mode', False))
+    npu_backend = _normalize_npu_backend(cfg.get('npu_backend', None))
     if _cluster_type_count(cluster, 'npu') <= 0:
-        npu_fast_mode = False
+        npu_backend = None
     pim_fast_mode = bool(cfg.get('pim_fast_mode', False))
     cost = CostModel(
         cluster=cluster,
@@ -1276,7 +1316,7 @@ def _eval_one_baseline(cfg: Dict, policy: str) -> Dict:
         simulation_log_file=sim_log_path,
         model_dict=model_dict,
         pim_fast_mode=pim_fast_mode,
-        npu_fast_mode=npu_fast_mode,
+        npu_backend=npu_backend,
     )
 
     try:
@@ -1295,6 +1335,8 @@ def _eval_one_baseline(cfg: Dict, policy: str) -> Dict:
 
     _fallback_npu_to_cpu_if_needed(g_prefill, cluster)
     _fallback_npu_to_cpu_if_needed(g_decode, cluster)
+    _fallback_pim_to_cpu_if_needed(g_prefill, cluster)
+    _fallback_pim_to_cpu_if_needed(g_decode, cluster)
 
     is_pd = pol in PD_BASELINES
 
@@ -1446,9 +1488,9 @@ def _run_strategy_once(strategy: str, cfg: Dict, *, shared_graph=None, shared_sh
         "./output/pim_simulation.txt",
     ))
 
-    npu_fast_mode = bool(cfg.get('npu_fast_mode', False))
+    npu_backend = _normalize_npu_backend(cfg.get('npu_backend', None))
     if _cluster_type_count(cluster, 'npu') <= 0:
-        npu_fast_mode = False
+        npu_backend = None
     pim_fast_mode = bool(cfg.get('pim_fast_mode', False))
     cost = CostModel(
         cluster=cluster,
@@ -1458,7 +1500,7 @@ def _run_strategy_once(strategy: str, cfg: Dict, *, shared_graph=None, shared_sh
         ramulator_config_path=Path(cfg.get("ramulator_config_path")),
         simulation_log_file=sim_log_path,
         model_dict=model_dict,
-        npu_fast_mode=npu_fast_mode,
+        npu_backend=npu_backend,
         pim_fast_mode=pim_fast_mode,
     )
 
@@ -1523,7 +1565,6 @@ def _run_strategy_once(strategy: str, cfg: Dict, *, shared_graph=None, shared_sh
     best_decode_ser = decode_ser
     best_label = label
 
-    # 把这次 strategy+PIM 策略组合的统计信息导出
     try:
         if best_sched is not None and hasattr(best_sched, "stats"):
             tag = f"{prefill_len}x{decode_len}"
@@ -1723,7 +1764,9 @@ def parse_args():
                          help='Algo list, e.g. "heft,sa,ga" or single name')
     sp_eval.add_argument('--baselines', type=str,
                          help='Baseline list, e.g. "pd,weights_on_pim,attn_on_pim"')
-    sp_eval.add_argument('--npu_fast_mode', action='store_true',default=None)
+    sp_eval.add_argument('--npu_backend', type=str, default=None,
+                         choices=['fast_mode', 'ascend_310b_json', 'llmcompass'],
+                         help='NPU operator-latency backend: fast/ascend_310b_json/llmcompass. Must be explicitly specified (in config JSON or CLI).')
     sp_eval.add_argument('--pim_fast_mode', action='store_true',default=None)
 
     # Graph/tensor-parallel controls
@@ -1751,7 +1794,9 @@ def parse_args():
     sp_ws.add_argument('--all_passes_json', type=str, help='Override path for all passes JSON.')
     sp_ws.add_argument('--best_summary_json', type=str, help='Override path for best pass summary JSON.')
     sp_ws.add_argument('--weight_format_json', type=str, help='Override path for accepted weight format JSON.')
-    sp_ws.add_argument('--npu_fast_mode', action='store_true')
+    sp_ws.add_argument('--npu_backend', type=str, default=None,
+                        choices=['fast_mode', 'ascend_310b_json', 'llmcompass'],
+                        help='NPU operator-latency backend: fast/ascend_310b_json/llmcompass. Must be explicitly specified (in config JSON or CLI).')
     sp_ws.add_argument('--pim_fast_mode', action='store_true')   
     # Graph/tensor-parallel controls
     sp_ws.add_argument('--split_by', type=str, help='Partition dim: head|layer (default: from JSON).')
@@ -1831,7 +1876,7 @@ def main():
             'all_passes_json',
             'best_summary_json',
             'weight_format_json',
-            'npu_fast_mode',
+            'npu_backend',
             'pim_fast_mode',
             'split_by',
             'split_shards',
@@ -1853,6 +1898,11 @@ def main():
             val = getattr(args, key, None)
             if val is not None:
                 cfg[key] = val
+
+        # npu_backend is mandatory: must be explicitly specified in config or CLI
+        if cfg.get('npu_backend', None) is None:
+            raise ValueError("Missing required config key: 'npu_backend'. Choose from: fast, ascend_310b_json, llmcompass")
+        cfg['npu_backend'] = _normalize_npu_backend(cfg.get('npu_backend'))
 
         # result_dir always encodes batch: <base>/<family>_<variant>_<dtype>_b<batch>
         result_dir = str(_build_result_dir(cfg, cfg.get('result_dir') or './output'))

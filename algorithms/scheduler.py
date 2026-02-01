@@ -38,7 +38,7 @@ import itertools
 from stats_recorder import StatsRecorder
 
 _MISSING = object()
-DEBUG_SCHEDULER = False
+DEBUG_SCHEDULER = True
 logger = logging.getLogger(__name__)
 attach_local_debug_filter(logger, lambda: DEBUG_SCHEDULER)
 
@@ -70,28 +70,72 @@ class CommManager:
         self.timeline_end: Dict[Tuple[str, str], float] = {}
         self.stats = stats
 
-    def reserve(self, src: str, dst: str, bytes_amount: int, earliest: float, commit: bool=True, tag: str | None = None):
-        key = (src, dst)
-        bw = self.cluster.get_link_bw(src, dst) * 1024**3
-        ch_end = self.timeline_end.get(key, 0.0)
+    def reserve(
+        self,
+        src: str,
+        dst: str,
+        bytes_amount: int,
+        earliest: float,
+        commit: bool = True,
+        tag: str | None = None,
+    ):
+        """
+        This implements the LogGP/AHEAD-style model used by LLMCompass:
+
+            T = L + O + n_hat / B
+            n_hat = n + ceil(n / MaxPayload) * FlitSize
+        """
+        key = (str(src), str(dst))
+        bytes_amount = int(bytes_amount or 0)
+        earliest = float(earliest or 0.0)
+
+        ch_end = float(self.timeline_end.get(key, 0.0))
         start = max(ch_end, earliest)
-        if bw <= 0 and src != dst and bytes_amount > 0:
-            # Invalid direct reservation on a missing link: model as impossible.
+
+        # Intra-device and empty transfers: do not consume the link.
+        if src == dst or bytes_amount <= 0:
+            end = float(start)
+            if commit:
+                self.timeline_end[key] = float(end)
+            return (float(start), float(end))
+
+        spec = self.cluster.get_link_spec(src, dst)
+        bw_Bps = float(getattr(spec, "bw_GBs", 0.0) or 0.0) * (1024**3)
+
+        if bw_Bps <= 0.0:
+            # Missing link: impossible to transfer.
             dt = float("inf")
         else:
-            dt = 0.0 if bw <= 0 else bytes_amount / bw
-        end = start + dt
-        if commit:
-            self.timeline_end[key] = end
-            src_dev = self.cluster.devices.get(src)
-            dst_dev = self.cluster.devices.get(dst)
+            flit = int(getattr(spec, "flit_size_B", 0) or 0)
+            maxp = int(getattr(spec, "max_payload_B", 0) or 0)
 
+            n_hat = int(bytes_amount)
+            if flit > 0 and maxp > 0:
+                packets = (int(bytes_amount) + int(maxp) - 1) // int(maxp)
+                n_hat = int(bytes_amount) + int(packets) * int(flit)
+
+            L = float(getattr(spec, "latency_s", 0.0) or 0.0)
+            O = float(getattr(spec, "overhead_s", 0.0) or 0.0)
+            dt = float(L + O + float(n_hat) / bw_Bps)
+
+        end = float(start + dt)
+
+        if commit:
+            self.timeline_end[key] = float(end)
             if self.stats is not None:
                 try:
-                    self.stats.log_comm(src=src, dst=dst, bytes=bytes_amount,start=float(start), end=float(end),tag=tag or 'comm')
+                    self.stats.log_comm(
+                        src=str(src),
+                        dst=str(dst),
+                        bytes=int(bytes_amount),
+                        start=float(start),
+                        end=float(end),
+                        tag=tag or "comm",
+                    )
                 except AttributeError:
                     pass
-        return (start, end)
+
+        return (float(start), float(end))
 
 
 class SchedulerBase:
@@ -106,11 +150,12 @@ class SchedulerBase:
         self.comm = CommManager(cluster, stats=self.stats)
 
         # runtime state (PIM runtime is managed by buffer manager)
-        self._node_host_store_end: Dict[str, float] = {}  # 节点输出在 host 上的可用时间
-        self._runtime_cap: Dict[str, int] = {}            # 非-PIM 设备用于激活的容量上限（字节）
-        self._act_used: Dict[str, int] = defaultdict(int) # 非-PIM 设备当前激活占用字节数
+        self._node_host_store_end: Dict[str, float] = {}
+        self._runtime_cap: Dict[str, int] = {} 
+        self._act_used: Dict[str, int] = defaultdict(int)
         self._act_resident: Dict[Tuple[str, str], int] = {}# (dev_name, nid) -> bytes retained on device
         self._act_refcnt: Dict[str, int] = {}
+        self._collective_output_devs: Dict[str, set[str]] = {}  # collective node -> replica devices
 
         # Register PIM runtime budgets to buffer manager (unify all PIM-space checks there)
         pim_devs = [d for d in self.cluster.devices.values() if d.type == 'pim']
@@ -226,6 +271,7 @@ class SchedulerBase:
         self._act_used.clear()
         self._act_resident.clear()
         self._act_refcnt.clear()
+        self._collective_output_devs.clear()
 
         # KV/activation runtime states on PIM are centrally managed in buffer manager
         self.buffer.reset_runtime_state()
@@ -603,6 +649,11 @@ class SchedulerBase:
                     self._node_out_fmt[nid] = "ND"
                 return float(conv_start), float(finish)
 
+        #---------------------1b. Collective communication primitive (ring all-reduce)
+        attrs = getattr(node, "attrs", {}) or {}
+        if str(attrs.get("collective", "")).lower() == "allreduce":
+            return self._earliest_finish_allreduce(g, nid, label, phase_eff, commit)
+
         ready = self._ready_time_for_device(g, nid, dev, phase_eff, commit)
 
         #---------------------2.  If this node consumes cached KV (QK/SV), add KV load before compute
@@ -748,6 +799,157 @@ class SchedulerBase:
                     self._ensure_host_store(nid, dev, out_nd, src_fmt, finish, commit=True)
         return float(start), float(finish)
 
+
+
+    def _earliest_finish_allreduce(
+        self,
+        g: TaskGraph,
+        nid: str,
+        label: PlanLabel,
+        phase: str,
+        commit: bool,
+    ) -> Tuple[float, float]:
+        """Schedule a all-reduce collective.
+        """
+        node = g.nodes[nid]
+        phase_v = self._node_phase(g, nid, phase)
+        batch_v = self._node_batch(g, nid, phase_v)
+        seq_v = self._node_seq_len(g, nid, phase_v)
+
+        # Message size (bytes) for the reduced tensor.
+        rd_b, wr_b = self.cost.estimate_activation_bytes(node, batch_v, seq_v, phase_v)
+        tensor_bytes = int(max(int(rd_b), int(wr_b), 0))
+
+        # Collect participant devices from predecessor placements.
+        dev_ready: Dict[str, float] = {}
+        participants: List[str] = []
+        for u in g.predecessors(nid):
+            dname = self._node_placement.get(u)
+            if not dname:
+                # Fallback: treat as the first known device.
+                dname = str(next(iter(self.cluster.devices.keys()), "CPU0"))
+            dname = str(dname)
+            t_ready = float(self._node_finish_time.get(u, 0.0))
+            if dname not in dev_ready:
+                dev_ready[dname] = t_ready
+                participants.append(dname)
+            else:
+                dev_ready[dname] = max(float(dev_ready[dname]), t_ready)
+
+        # If no predecessors or empty tensor, treat as no-op.
+        if not participants or tensor_bytes <= 0:
+            start = float(max(dev_ready.values(), default=0.0))
+            end = float(start)
+            if commit:
+                canon = participants[0] if participants else str(next(iter(self.cluster.devices.keys()), "CPU0"))
+                self._node_finish_time[nid] = float(end)
+                self._node_placement[nid] = str(canon)
+                self._node_out_fmt[nid] = "ND"
+                self._collective_output_devs[nid] = set(participants or [canon])
+            return (float(start), float(end))
+
+        # Canonical ring order for determinism.
+        ring = sorted(set(participants))
+        p = int(len(ring))
+
+        start = float(max(dev_ready.get(d, 0.0) for d in ring))
+        start = float(max(start, max(float(self.avail.get(d, 0.0)) for d in ring)))
+
+        if p <= 1:
+            end = float(start)
+            if commit:
+                canon = ring[0]
+                self._node_finish_time[nid] = float(end)
+                self._node_placement[nid] = str(canon)
+                self._node_out_fmt[nid] = "ND"
+                self._collective_output_devs[nid] = set(ring)
+                # Block the participant device until the collective completes.
+                self.avail[canon] = max(float(self.avail.get(canon, 0.0)), float(end))
+            return (float(start), float(end))
+
+        # Per-step chunk (ring all-reduce).
+        chunk = int((tensor_bytes + p - 1) // p)
+
+        host_dev = self.cost.get_host_device()
+        host_name = str(getattr(host_dev, "name", "CPU0") or "CPU0")
+
+        # Local timeline simulation for commit=False (to correctly serialize steps on a channel).
+        local_tl: Dict[Tuple[str, str], float] = dict(self.comm.timeline_end) if not commit else {}
+
+        def _reserve_p2p(src: str, dst: str, nbytes: int, earliest: float) -> Tuple[float, float]:
+            """Reserve a single directed transfer (src->dst) on the communication timeline."""
+            if commit:
+                return self.comm.reserve(src, dst, nbytes, earliest=earliest, commit=True, tag="allreduce")
+            key = (str(src), str(dst))
+            ch_end = float(local_tl.get(key, 0.0))
+            s = float(max(ch_end, float(earliest)))
+            spec = self.cluster.get_link_spec(str(src), str(dst))
+            bw_Bps = float(getattr(spec, "bw_GBs", 0.0) or 0.0) * (1024**3)
+            if str(src) == str(dst) or int(nbytes) <= 0:
+                e = float(s)
+            elif bw_Bps <= 0.0:
+                e = float("inf")
+            else:
+                flit = int(getattr(spec, "flit_size_B", 0) or 0)
+                maxp = int(getattr(spec, "max_payload_B", 0) or 0)
+                n_hat = int(nbytes)
+                if flit > 0 and maxp > 0:
+                    packets = (int(nbytes) + int(maxp) - 1) // int(maxp)
+                    n_hat = int(nbytes) + int(packets) * int(flit)
+                L = float(getattr(spec, "latency_s", 0.0) or 0.0)
+                O = float(getattr(spec, "overhead_s", 0.0) or 0.0)
+                e = float(s + float(L + O + float(n_hat) / bw_Bps))
+            local_tl[key] = float(e)
+            return (float(s), float(e))
+
+        def _reserve_step(src: str, dst: str, nbytes: int, earliest: float) -> Tuple[float, float]:
+            """Reserve one all-reduce hop. If src->dst link is missing, route via host."""
+            src = str(src); dst = str(dst)
+            nbytes = int(nbytes or 0)
+            earliest = float(earliest or 0.0)
+            if src == dst or nbytes <= 0:
+                return (float(earliest), float(earliest))
+
+            # Direct link exists?
+            if float(self.cluster.get_link_bw(src, dst)) > 0.0:
+                return _reserve_p2p(src, dst, nbytes, earliest)
+
+            # Fallback: src -> host -> dst (host-centric star topology).
+            # If one endpoint is already the host, this degenerates to a single hop.
+            if src == host_name or dst == host_name:
+                return _reserve_p2p(src, dst, nbytes, earliest)
+
+            s1, e1 = _reserve_p2p(src, host_name, nbytes, earliest)
+            s2, e2 = _reserve_p2p(host_name, dst, nbytes, float(e1))
+            return (float(s1), float(e2))
+
+        t = float(start)
+        steps = int(2 * (p - 1))
+        for _ in range(steps):
+            ends: List[float] = []
+            for i in range(p):
+                src = ring[i]
+                dst = ring[(i + 1) % p]
+                _, e = _reserve_step(src, dst, chunk, t)
+                ends.append(float(e))
+            # Barrier between steps (ring algorithm).
+            t = float(max(ends, default=t))
+
+        end = float(t)
+
+        if commit:
+            canon = ring[0]
+            self._node_finish_time[nid] = float(end)
+            self._node_placement[nid] = str(canon)
+            self._node_out_fmt[nid] = "ND"
+            self._collective_output_devs[nid] = set(ring)
+            # Conservative: block all participant devices.
+            for d in ring:
+                self.avail[d] = max(float(self.avail.get(d, 0.0)), float(end))
+
+        return (float(start), float(end))
+
+
     def _after_commit_consume_predecessors(self, g: TaskGraph, nid: str) -> None:
         for u in g.predecessors(nid):
             if u not in self._act_refcnt:
@@ -874,6 +1076,60 @@ class SchedulerBase:
             seq_u = self._node_seq_len(g, u, phase_u)
             _, pred_write = self.cost.estimate_activation_bytes(pred_node, batch_u, seq_u, phase_u)
             
+            # Collective predecessor (e.g., tensor-parallel all-reduce):
+            # its output is replicated on all participating devices.
+            pred_attrs = getattr(pred_node, "attrs", {}) or {}
+            if str(pred_attrs.get("collective", "")).lower() == "allreduce":
+                replica_devs = self._collective_output_devs.get(u, None)
+                if replica_devs and dev.name in replica_devs:
+                    inbound_start_times.append(pred_finish)
+                    inbound_end_times.append(pred_finish)
+                    continue
+
+                # Otherwise, pick the best replica source to fetch from.
+                cand_src_names = list(replica_devs) if replica_devs else [pred_dev_name]
+                best_s = float("inf")
+                best_e = float("inf")
+                best_src_dev: Optional[DeviceSpec] = None
+
+                # All-reduce outputs are assumed in ND format.
+                src_fmt_collective = self._node_out_fmt.get(u, "ND")
+
+                for src_name in cand_src_names:
+                    if src_name is None:
+                        continue
+                    src_name = str(src_name)
+                    src_dev = self.cluster.devices.get(src_name)
+                    if src_dev is None:
+                        continue
+                    s0, e0 = self._reserve_activation_transfer_best_path(
+                        prod_nid=u,
+                        src_dev=src_dev,
+                        dst_dev=dev,
+                        bytes_nd=int(pred_write),
+                        src_fmt=str(src_fmt_collective),
+                        pred_finish=float(pred_finish),
+                        commit=False,
+                    )
+                    if float(e0) < float(best_e):
+                        best_s, best_e = float(s0), float(e0)
+                        best_src_dev = src_dev
+
+                if commit and best_src_dev is not None and math.isfinite(float(best_e)):
+                    best_s, best_e = self._reserve_activation_transfer_best_path(
+                        prod_nid=u,
+                        src_dev=best_src_dev,
+                        dst_dev=dev,
+                        bytes_nd=int(pred_write),
+                        src_fmt=str(src_fmt_collective),
+                        pred_finish=float(pred_finish),
+                        commit=True,
+                    )
+
+                inbound_start_times.append(float(best_s))
+                inbound_end_times.append(float(best_e))
+                continue
+
             pred_dev = self.cluster.devices[pred_dev_name]
             src_fmt = self._node_out_fmt.get(u, self.cost.device_preferred_fmt(pred_dev))
 

@@ -67,34 +67,29 @@ PIM_RUNTIME_LRU_THRESHOLD: float = 0.95
 # =========================
 # Operator device constraints
 # =========================
-# 定义哪些算子类型可以在哪些设备上运行
-# True 表示允许，False 表示禁止
 OPERATOR_DEVICE_ALLOWED = {
-    # 1) 线性 / GEMM：PIMA / PIMD 都支持
-    "Q":       {"cpu": True, "npu": True, "pima": True, "pimd": True},
-    "K":       {"cpu": True, "npu": True, "pima": True, "pimd": True},
-    "V":       {"cpu": True, "npu": True, "pima": True, "pimd": True},
-    "O":       {"cpu": True, "npu": True, "pima": True, "pimd": True},
-    "FFN_W1":  {"cpu": True, "npu": True, "pima": True, "pimd": True},
-    "FFN_W2":  {"cpu": True, "npu": True, "pima": True, "pimd": True},
-    "FFN_W3":  {"cpu": True, "npu": True, "pima": True, "pimd": True},
+    "Q":       {"cpu": True, "npu": True, "pim": True},
+    "K":       {"cpu": True, "npu": True, "pim": True},
+    "V":       {"cpu": True, "npu": True, "pim": True},
+    "O":       {"cpu": True, "npu": True, "pim": True},
+    "FFN_W1":  {"cpu": True, "npu": True, "pim": True},
+    "FFN_W2":  {"cpu": True, "npu": True, "pim": True},
+    "FFN_W3":  {"cpu": True, "npu": True, "pim": True},
 
-    # 2) Attention 里的 matmul：
-    "QK":      {"cpu": True, "npu": True, "pima": True, "pimd": True},
-    "SV":      {"cpu": True, "npu": True, "pima": True, "pimd": True},
-    "SOFTMAX": {"cpu": True, "npu": True, "pima": True, "pimd": True},
+    "QK":      {"cpu": True, "npu": True, "pim": True},
+    "SV":      {"cpu": True, "npu": True, "pim": True},
+    "SOFTMAX": {"cpu": True, "npu": True, "pim": True},
 
-    # 3) 逐元素：
-    "ADD":     {"cpu": True, "npu": True, "pima": True, "pimd": True},
-    "LN":      {"cpu": True, "npu": True, "pima": True, "pimd": True},
-    "SWIGLU":  {"cpu": True, "npu": True, "pima": True, "pimd": True},
-    "GELU":    {"cpu": True, "npu": True, "pima": True, "pimd": True},
-    "ACT":     {"cpu": True, "npu": True, "pima": True, "pimd": True},
+    "ADD":     {"cpu": True, "npu": True, "pim": True},
+    "LN":      {"cpu": True, "npu": True, "pim": True},
+    "SWIGLU":  {"cpu": True, "npu": True, "pim": True},
+    "GELU":    {"cpu": True, "npu": True, "pim": True},
+    "ACT":     {"cpu": True, "npu": True, "pim": True},
 
-    # 4) 其它
-    "IDENTITY": {"cpu": True, "npu": True, "pima": True, "pimd": True},
-    "K_WRITE": {"cpu": True, "npu": True, "pima": True, "pimd": True},
-    "V_WRITE": {"cpu": True, "npu": True, "pima": True, "pimd": True},
+    "IDENTITY": {"cpu": True, "npu": True, "pim": True},
+    "K_WRITE": {"cpu": True, "npu": True, "pim": True},
+    "V_WRITE": {"cpu": True, "npu": True, "pim": True},
+    "ALLREDUCE": {"cpu": True, "npu": True, "pim": True},
 }
 
 

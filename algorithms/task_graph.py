@@ -277,27 +277,21 @@ class JointTaskGraph:
             return joint
 
         first = positions[0]
-
-        # Prefill -> 第一个 decode step 的跨图边
         if decode_seq_mode == "context":
-            # 有真实激活依赖
             for p_snk in snksP:
                 for d_src in srcsD:
                     joint.add_edge(f"P::{p_snk}", f"D{first}::{d_src}", barrier=False)
         else:
-            # 仅仅是顺序约束（例如 KV 已在别处建模），不产生激活搬运
             for p_snk in snksP:
                 for d_src in srcsD:
                     joint.add_edge(f"P::{p_snk}", f"D{first}::{d_src}", barrier=True)
 
-        # 3) 对每个采样的 decode 位置复制一份 decode 图
         for idx, t in enumerate(positions):
             if decode_seq_mode == "one":
                 seq_len = 1
             elif decode_seq_mode == "full":
                 seq_len = int(prefill_len + t)
             else:
-                # "context"：decode 用 prefill_len 作为有效 seq_len
                 seq_len = int(prefill_len)
 
             # 节点

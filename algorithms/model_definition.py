@@ -684,9 +684,20 @@ def add_llama_block_split_by_heads(g: TaskGraph, l: int, shape: ModelShape, dtyp
         g.add_edge(nid_SV, nid_O)
         o_nodes.append(nid_O)
 
-    # Merge O shards -> full attention output
-    nid_Omerge = f"L{l}_O_merge"
-    g.add_node(TaskNode(nid_Omerge, "Identity", flops=0.0, attrs=dict(base_attr_full), allowed=get_op_allowed("Identity")))
+    # Merge O shards -> full attention output (ALLREDUCE-SUM)
+    nid_Omerge = f"L{l}_O_allreduce"
+    attr_o_allreduce = dict(base_attr_full)
+    # Tensor-parallel merge is a SUM-reduction over shard outputs.
+    attr_o_allreduce.update({"collective": "allreduce", "reduce_op": "sum"})
+    g.add_node(
+        TaskNode(
+            nid_Omerge,
+            "AllReduce",
+            flops=0.0,
+            attrs=attr_o_allreduce,
+            allowed=get_op_allowed("Identity"),
+        )
+    )
     for nid_O in o_nodes:
         g.add_edge(nid_O, nid_Omerge)
 
@@ -740,11 +751,18 @@ def add_llama_block_split_by_heads(g: TaskGraph, l: int, shape: ModelShape, dtyp
         g.add_edge(nid_ACT, nid_W2)
         w2_nodes.append(nid_W2)
 
-    nid_FFNmerge = f"L{l}_FFN_merge"
+    nid_FFNmerge = f"L{l}_FFN_allreduce"
     attr_ffn_merge = dict(base_attr_full)
-    # Tensor-parallel merge is a SUM-reduction over shard outputs (ALLREDUCE).
     attr_ffn_merge.update({"collective": "allreduce", "reduce_op": "sum"})
-    g.add_node(TaskNode(nid_FFNmerge, "Identity", flops=0.0, attrs=attr_ffn_merge, allowed=get_op_allowed("Identity")))
+    g.add_node(
+        TaskNode(
+            nid_FFNmerge,
+            "AllReduce",
+            flops=0.0,
+            attrs=attr_ffn_merge,
+            allowed=get_op_allowed("Identity"),
+        )
+    )
     for nid_W2 in w2_nodes:
         g.add_edge(nid_W2, nid_FFNmerge)
 
@@ -930,10 +948,10 @@ def add_mpt_block_split_by_heads(g: TaskGraph, l: int, shape: ModelShape, dtype_
         g.add_edge(nid_SV, nid_O)
         o_nodes.append(nid_O)
 
-    nid_Omerge=f"L{l}_O_merge"
+    nid_Omerge=f"L{l}_O_allreduce"
     attr_merge = dict(base_attr_full)
     attr_merge.update({"collective": "allreduce", "reduce_op": "sum"})
-    g.add_node(TaskNode(nid_Omerge,"Identity",flops=0.0,attrs=attr_merge,allowed=get_op_allowed("Identity")))
+    g.add_node(TaskNode(nid_Omerge,"AllReduce",flops=0.0,attrs=attr_merge,allowed=get_op_allowed("Identity")))
     for n in o_nodes: g.add_edge(n, nid_Omerge)
 
     nid_Add1=f"L{l}_Add1"
@@ -967,10 +985,10 @@ def add_mpt_block_split_by_heads(g: TaskGraph, l: int, shape: ModelShape, dtype_
         g.add_edge(nid_LN2, nid_W1); g.add_edge(nid_W1, nid_G); g.add_edge(nid_G, nid_W2)
         w2_nodes.append(nid_W2)
 
-    nid_FFNmerge=f"L{l}_FFN_merge"
+    nid_FFNmerge=f"L{l}_FFN_allreduce"
     attr_ffn_merge = dict(base_attr_full)
     attr_ffn_merge.update({"collective": "allreduce", "reduce_op": "sum"})
-    g.add_node(TaskNode(nid_FFNmerge,"Identity",flops=0.0,attrs=attr_ffn_merge,allowed=get_op_allowed("Identity")))
+    g.add_node(TaskNode(nid_FFNmerge,"AllReduce",flops=0.0,attrs=attr_ffn_merge,allowed=get_op_allowed("Identity")))
     for n in w2_nodes: g.add_edge(n, nid_FFNmerge)
 
     nid_Add2=f"L{l}_Add2"
@@ -1143,10 +1161,10 @@ def add_palm_block_split_by_heads(g: TaskGraph, l: int, shape: ModelShape, dtype
         g.add_edge(nid_SV, nid_O)
         o_nodes.append(nid_O)
 
-    nid_Omerge=f"L{l}_O_merge"
+    nid_Omerge=f"L{l}_O_allreduce"
     attr_merge = dict(base_attr_full)
     attr_merge.update({"collective": "allreduce", "reduce_op": "sum"})
-    g.add_node(TaskNode(nid_Omerge,"Identity",flops=0.0,attrs=attr_merge,allowed=get_op_allowed("Identity")))
+    g.add_node(TaskNode(nid_Omerge,"AllReduce",flops=0.0,attrs=attr_merge,allowed=get_op_allowed("Identity")))
     for n in o_nodes: g.add_edge(n, nid_Omerge)
 
     # FFN shards: W1 -> GELU -> W2
@@ -1170,10 +1188,10 @@ def add_palm_block_split_by_heads(g: TaskGraph, l: int, shape: ModelShape, dtype
         g.add_edge(nid_LN, nid_W1); g.add_edge(nid_W1, nid_G); g.add_edge(nid_G, nid_W2)
         w2_nodes.append(nid_W2)
 
-    nid_FFNmerge=f"L{l}_FFN_merge"
+    nid_FFNmerge=f"L{l}_FFN_allreduce"
     attr_ffn_merge = dict(base_attr_full)
     attr_ffn_merge.update({"collective": "allreduce", "reduce_op": "sum"})
-    g.add_node(TaskNode(nid_FFNmerge,"Identity",flops=0.0,attrs=attr_ffn_merge,allowed=get_op_allowed("Identity")))
+    g.add_node(TaskNode(nid_FFNmerge,"AllReduce",flops=0.0,attrs=attr_ffn_merge,allowed=get_op_allowed("Identity")))
     for n in w2_nodes: g.add_edge(n, nid_FFNmerge)
 
     # Merge: X + Attn + MLP
