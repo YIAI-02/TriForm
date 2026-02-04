@@ -104,7 +104,7 @@ class NpuLlmCompassBackend(NpuBackendBase):
     name = 'llmcompass'
 
     def estimate_s(self, cm: "CostModel", node: TaskNode, dev: DeviceSpec, ctx: NpuOpContext) -> float:
-        device_key = _llmcompass_guess_device_key(dev)
+        device_key = (getattr(cm, 'llmcompass_device', None) or _llmcompass_guess_device_key(dev))
 
         # (a) Softmax
         if ctx.op_key == 'softmax':
@@ -443,7 +443,7 @@ def build_pim_backend(pim_fast_mode: bool) -> PimBackendBase:
 
 
 class CostModel:
-    def __init__(self, cluster: Cluster, dtype: str='fp16', pim_config_path: Optional[Path]=None, gb_config_path: Optional[Path]=None, ramulator_config_path: Optional[Path]=None, simulation_log_file: Optional[Path]=None, debug_traces: bool=False, model_dict: Optional[Dict]=None, pim_fast_mode: bool=False,npu_backend: Optional[str]=None):
+    def __init__(self, cluster: Cluster, dtype: str='fp16', pim_config_path: Optional[Path]=None, gb_config_path: Optional[Path]=None, ramulator_config_path: Optional[Path]=None, simulation_log_file: Optional[Path]=None, debug_traces: bool=False, model_dict: Optional[Dict]=None, pim_fast_mode: bool=False,npu_backend: Optional[str]=None, llmcompass_device: Optional[str]=None):
         self.cluster = cluster
         self.dtype = dtype
         self.pim_config_path = pim_config_path
@@ -452,6 +452,7 @@ class CostModel:
         self.debug_traces = debug_traces
         self.pim_fast_mode = pim_fast_mode  # When True, skip all trace simulations
         self.npu_backend = _normalize_npu_backend(npu_backend) if npu_backend is not None else (_normalize_npu_backend('fast'))
+        self.llmcompass_device = llmcompass_device  # override for LLMCompass backend
         self.logger = get_simulation_logger(simulation_log_file)
         self.pim_cache_enabled = True
         self._shared_model_dict: Optional[Dict] = model_dict
@@ -504,6 +505,14 @@ class CostModel:
 
     def has_model_dict(self) -> bool:
         return self._shared_model_dict is not None
+
+    def set_llmcompass_device(self, device_key: Optional[str]) -> None:
+        """Override the device key used by the LLMCompass NPU backend.
+
+        If set to None/empty, the backend will fall back to per-device fields
+        like dev.llmcompass_device / dev.arch.
+        """
+        self.llmcompass_device = device_key
 
     def get_host_device(self) -> DeviceSpec:    
         if HOST_NAME in self.cluster.devices:

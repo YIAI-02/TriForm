@@ -5,6 +5,12 @@ from typing import Optional, List, Dict, Any, Tuple
 from collections import defaultdict
 from pathlib import Path
 import csv
+import logging
+import time
+from datetime import datetime
+from threading import Lock
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class StatsRecorder:
@@ -406,3 +412,114 @@ class StatsRecorder:
             w.writeheader()
             for r in sum_rows:
                 w.writerow({k: r.get(k) for k in sum_fields})
+
+
+# ---------------------------------------------------------------------------
+#  PIM / Simulation logging
+# ---------------------------------------------------------------------------
+class SimulationLogger:
+    """A lightweight logger for trace-based simulations (e.g., PIM/Ramulator).
+
+    Notes:
+      - Writes to both python logging (debug) and a dedicated log file.
+      - Tracks unique simulated op configurations for quick coverage summaries.
+    """
+
+    def __init__(self, log_file: Optional[Path | str] = None):
+        self.log_file: Path = Path(log_file) if (log_file is not None) else Path("pim_simulation.log")
+        self.start_time: Optional[float] = None
+        self.end_time: Optional[float] = None
+        self.simulated_ops: Dict[str, set[Tuple[int, int, int, int, int]]] = defaultdict(set)
+        self.lock = Lock()
+
+        self.log_file.parent.mkdir(parents=True, exist_ok=True)
+        self._log_handle = self.log_file.open("w", encoding="utf-8")
+
+        self._log("=" * 80)
+        self._log(f"PIM Simulation Log - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        self._log("=" * 80 + "\n")
+
+    def _log(self, message: str) -> None:
+        with self.lock:
+            logger.debug(str(message))
+            self._log_handle.write(str(message) + "\n")
+            self._log_handle.flush()
+
+    def start_simulation(self) -> None:
+        self.start_time = time.time()
+        self._log("\n" + "=" * 80)
+        self._log(f"Simulation Started at {datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")
+        self._log("=" * 80 + "\n")
+
+    def end_simulation(self) -> None:
+        self.end_time = time.time()
+        elapsed = (self.end_time - self.start_time) if (self.start_time is not None) else 0.0
+        self._log("\n" + "=" * 80)
+        self._log(f"Simulation Completed at {datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")
+        self._log(f"Total Simulation Time: {elapsed:.3f} seconds ({elapsed / 60.0:.2f} minutes)")
+        self._log("=" * 80 + "\n")
+        self._print_statistics()
+
+    def record_simulation(
+        self,
+        op: str,
+        dim: int,
+        n_heads: int,
+        n_kv_heads: int,
+        ffn_dim: int,
+        seqlen: Optional[int],
+    ) -> None:
+        with self.lock:
+            cfg = (int(dim), int(n_heads), int(n_kv_heads), int(ffn_dim), int(seqlen or 0))
+            self.simulated_ops[str(op)].add(cfg)
+
+    def _print_statistics(self) -> None:
+        self._log("\n" + "=" * 80)
+        self._log("Simulated Operations Summary")
+        self._log("=" * 80)
+
+        total_unique = sum(len(v) for v in self.simulated_ops.values())
+        self._log(f"\nTotal unique operations simulated: {total_unique}")
+        self._log(f"Total operation types: {len(self.simulated_ops)}\n")
+
+        for op in sorted(self.simulated_ops.keys()):
+            configs = self.simulated_ops[op]
+            self._log(f"\n{op.upper()}:")
+            self._log(f"  - Unique configurations: {len(configs)}")
+            for cfg in sorted(configs):
+                dim, n_heads, n_kv_heads, ffn_dim, seqlen = cfg
+                self._log(
+                    "    * "
+                    f"dim={dim}, heads={n_heads}, kv_heads={n_kv_heads}, "
+                    f"ffn_dim={ffn_dim}, seqlen={(seqlen if seqlen > 0 else 'None')}"
+                )
+
+        self._log("\n" + "=" * 80 + "\n")
+
+    def close(self) -> None:
+        if getattr(self, "_log_handle", None) and (not self._log_handle.closed):
+            self._log_handle.close()
+
+
+_sim_logger: Optional[SimulationLogger] = None
+
+def get_simulation_logger(log_file: Optional[Path | str] = None) -> SimulationLogger:
+    """Get a process-wide singleton SimulationLogger.
+
+    Keeping this here (instead of cost_model) prevents mixing *instrumentation*
+    with *latency/cost modeling logic*.
+    """
+    global _sim_logger
+    if _sim_logger is None:
+        _sim_logger = SimulationLogger(log_file)
+    return _sim_logger
+
+
+def reset_simulation_logger() -> None:
+    """Close and reset the global SimulationLogger (use between runs/tests)."""
+    global _sim_logger
+    if _sim_logger is not None:
+        try:
+            _sim_logger.close()
+        finally:
+            _sim_logger = None

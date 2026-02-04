@@ -9,11 +9,11 @@ import random
 import re
 from typing import Dict, List, Callable, Any
 from hardware import demo_cluster, Cluster
-from cost_model import CostModel, DTYPE_BYTES, _make_shared_model_dict, reset_simulation_logger
+from cost_model import CostModel, DTYPE_BYTES
+from cost_model_pim_backend import _make_shared_model_dict
 from buffer_manager import GlobalMemoryManager
 from model_parser import build_graph
 from model_definition import split_even
-
 from config import FORMAT_TUNING_MAX_PASSES, FORMAT_TUNING_TIME_EPS, FORMAT_TUNING_MAP_EPS, PIM_STATIC_ALLOC_RATIO,setup_logging
 from plan_label import PlanLabel
 from scheduler import (
@@ -29,6 +29,7 @@ except Exception:  # pragma: no cover
 from pathlib import Path
 import logging
 from task_graph import TaskGraph, TaskNode
+from stats_recorder import reset_simulation_logger
 logger = logging.getLogger(__name__)
 attach_local_debug_filter(logger, lambda: True)
 

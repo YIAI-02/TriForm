@@ -4,5 +4,6 @@
         "deque": "cpp",
         "vector": "cpp"
     },
-    "python.languageServer": "None"
+    "python.languageServer": "None",
+    "cmake.sourceDirectory": "/Users/yangjiaqi/WW/project_1/python/TriForm/measurements/ascendc/layernorm_v2/kernel_launch_method_by_framework/op_kernel"
 }

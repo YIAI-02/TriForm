@@ -14,7 +14,6 @@ def _env_str(name: str, default: str) -> str:
     except Exception:
         return str(default)
 
-
 def _env_int(name: str, default: int) -> int:
     try:
         v = os.environ.get(name, None)
@@ -44,16 +43,10 @@ def _normalize_split_by(v: str) -> str:
 
 
 def _default_split_by() -> str:
-    # Can be overridden without touching code:
-    #   GRAPH_SPLIT_BY=head_num   (or: head)
-    #   GRAPH_SPLIT_BY=layer
     return _normalize_split_by(_env_str("GRAPH_SPLIT_BY", _env_str("MODEL_SPLIT_BY", "head")))
 
 
 def _default_split_shards() -> int:
-    # Optional: limit shard count when split_by=head to avoid huge graphs.
-    #   GRAPH_SPLIT_SHARDS=8
-    # 0 means "auto" (use n_heads / n_kv_heads).
     return max(0, _env_int("GRAPH_SPLIT_SHARDS", _env_int("MODEL_SPLIT_SHARDS", 0)))
 
 def _default_qkv_shards() -> int:
@@ -391,13 +384,18 @@ def add_mpt_block(g: TaskGraph, l: int, shape: ModelShape, dtype_bytes: int):
     g.add_edge(nid_LN1,nid_Q); g.add_edge(nid_LN1,nid_K); g.add_edge(nid_LN1,nid_V)
     g.add_edge(nid_Q,nid_QK); g.add_edge(nid_K,nid_QK)
     g.add_edge(nid_QK,nid_SO); g.add_edge(nid_SO,nid_SV)
-    g.add_edge(nid_V, nid_SV);
+    g.add_edge(nid_V, nid_SV)
     g.add_edge(nid_SV,nid_O)
     g.add_edge(nid_K,nid_KW); g.add_edge(nid_V,nid_VW)
-    g.add_edge(nid_O,nid_Add1);
+    g.add_edge(nid_O,nid_Add1)
     if x_in: g.add_edge(x_in,nid_Add1)
 
-    g.add_edge(nid_Add1,nid_LN2); g.add_edge(nid_LN2,nid_W1); g.add_edge(nid_LN2,nid_G); g.add_edge(nid_G,nid_W2); g.add_edge(nid_W2,nid_Add2); g.add_edge(nid_Add1,nid_Add2)
+    g.add_edge(nid_Add1,nid_LN2)
+    g.add_edge(nid_LN2,nid_W1)
+    g.add_edge(nid_W1, nid_G);
+    g.add_edge(nid_G, nid_W2);
+    g.add_edge(nid_W2,nid_Add2)
+    g.add_edge(nid_Add1,nid_Add2)
 
 
 def add_palm_block(g: TaskGraph, l: int, shape: ModelShape, dtype_bytes: int):

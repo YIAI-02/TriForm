@@ -38,7 +38,7 @@ import itertools
 from stats_recorder import StatsRecorder
 
 _MISSING = object()
-DEBUG_SCHEDULER = True
+DEBUG_SCHEDULER = False
 logger = logging.getLogger(__name__)
 attach_local_debug_filter(logger, lambda: DEBUG_SCHEDULER)
 
@@ -61,12 +61,10 @@ class ScheduledTask:
     finish: float
 
 class CommManager:
-    """
-    Maintain independent timelines per (src, dst) channel.
-    """
 
-    def __init__(self, cluster: Cluster, stats: StatsRecorder | None = None):
+    def __init__(self, cluster: Cluster, cost: CostModel, stats: StatsRecorder | None = None):
         self.cluster = cluster
+        self.cost = cost
         self.timeline_end: Dict[Tuple[str, str], float] = {}
         self.stats = stats
 
@@ -79,12 +77,7 @@ class CommManager:
         commit: bool = True,
         tag: str | None = None,
     ):
-        """
-        This implements the LogGP/AHEAD-style model used by LLMCompass:
-
-            T = L + O + n_hat / B
-            n_hat = n + ceil(n / MaxPayload) * FlitSize
-        """
+        """Reserve a single directed transfer (src->dst) on the comm timeline."""
         key = (str(src), str(dst))
         bytes_amount = int(bytes_amount or 0)
         earliest = float(earliest or 0.0)
@@ -99,24 +92,12 @@ class CommManager:
                 self.timeline_end[key] = float(end)
             return (float(start), float(end))
 
-        spec = self.cluster.get_link_spec(src, dst)
-        bw_Bps = float(getattr(spec, "bw_GBs", 0.0) or 0.0) * (1024**3)
-
-        if bw_Bps <= 0.0:
-            # Missing link: impossible to transfer.
+        src_dev = self.cluster.devices.get(str(src))
+        dst_dev = self.cluster.devices.get(str(dst))
+        if src_dev is None or dst_dev is None:
             dt = float("inf")
         else:
-            flit = int(getattr(spec, "flit_size_B", 0) or 0)
-            maxp = int(getattr(spec, "max_payload_B", 0) or 0)
-
-            n_hat = int(bytes_amount)
-            if flit > 0 and maxp > 0:
-                packets = (int(bytes_amount) + int(maxp) - 1) // int(maxp)
-                n_hat = int(bytes_amount) + int(packets) * int(flit)
-
-            L = float(getattr(spec, "latency_s", 0.0) or 0.0)
-            O = float(getattr(spec, "overhead_s", 0.0) or 0.0)
-            dt = float(L + O + float(n_hat) / bw_Bps)
+            dt = float(self.cost.comm_cost(src_dev, dst_dev, int(bytes_amount)))
 
         end = float(start + dt)
 
@@ -147,7 +128,7 @@ class SchedulerBase:
         self.seq_len = seq_len
         self.buffer = buffer or GlobalMemoryManager()
         self.stats = StatsRecorder()
-        self.comm = CommManager(cluster, stats=self.stats)
+        self.comm = CommManager(cluster, cost, stats=self.stats)
 
         # runtime state (PIM runtime is managed by buffer manager)
         self._node_host_store_end: Dict[str, float] = {}
@@ -730,17 +711,17 @@ class SchedulerBase:
 
                                 size_share_nd = int(self.cost.format_size(int(share), "ND"))
                                 dst_fmt = self.cost.device_preferred_fmt(dev)
-                                bw_direct = float(self.cluster.get_link_bw(src.name, dev.name))
+                                t_direct = float(self.cost.comm_cost(src, dev, int(size_share_nd)))
 
-                                if bw_direct > 0.0:
+                                if math.isfinite(float(t_direct)) and float(t_direct) > 0.0:
                                     # Direct KV movement
                                     l2s, l2e = self.comm.reserve(
                                         src.name, dev.name, size_share_nd,
                                         earliest=send_ready, commit=commit, tag="kv_load",
                                     )
-                                    conv2 = float(self.cost.format_conversion_time(size_share_nd, "ND", dst_fmt, dev))
-                                    dt_xfer = float(l2e) - float(l2s)
-                                    ready = float(l2s) + float(self.cost.combine_transfer_and_convert(dt_xfer, conv2))
+                                    ready = float(l2s) + float(
+                                        self.cost.combine_transfer_and_convert(src, dev, int(size_share_nd), "ND", str(dst_fmt))
+                                    )
                                     kv_ready = max(kv_ready, float(ready))                                    
                                 else:
                                     # Via-host KV movement
@@ -753,18 +734,19 @@ class SchedulerBase:
                                         host.name, dev.name, size_share_nd,
                                         earliest=float(t1), commit=commit, tag="kv_load",
                                     )
-                                    conv2 = float(self.cost.format_conversion_time(size_share_nd, "ND", dst_fmt, dev))
-                                    dt_xfer = float(t2e) - float(t2s)
-                                    ready = float(t2s) + float(self.cost.combine_transfer_and_convert(dt_xfer, conv2))
+                                    ready = float(t2s) + float(
+                                        self.cost.combine_transfer_and_convert(host, dev, int(size_share_nd), "ND", str(dst_fmt))
+                                    )
                                     kv_ready = max(kv_ready, float(ready))
                     else:
                         kv_ready = float(ready)
                 else:
                     host = self.cost.get_host_device()
                     l2s, l2e = self.comm.reserve(host.name, dev.name, size_nd, earliest=float(ready), commit=commit, tag="kv_load")
-                    conv2 = float(self.cost.format_conversion_time(size_nd, "ND", self.cost.device_preferred_fmt(dev), dev))
-                    dt_xfer = float(l2e) - float(l2s)
-                    kv_ready = max(kv_ready, float(l2s) + float(self.cost.combine_transfer_and_convert(dt_xfer, conv2)))
+                    kv_ready = max(kv_ready, float(l2s)
+                        + float(self.cost.combine_transfer_and_convert(host, dev, int(size_nd), "ND", str(self.cost.device_preferred_fmt(dev)),)
+                        ),
+                    )
                 logger.debug("[kv-load] node=%s target=%s kv_ready=%.4f", nid, dev.name, kv_ready)
 
         #---------------------3. normal weight load + compute + activation handling
@@ -883,22 +865,16 @@ class SchedulerBase:
             key = (str(src), str(dst))
             ch_end = float(local_tl.get(key, 0.0))
             s = float(max(ch_end, float(earliest)))
-            spec = self.cluster.get_link_spec(str(src), str(dst))
-            bw_Bps = float(getattr(spec, "bw_GBs", 0.0) or 0.0) * (1024**3)
             if str(src) == str(dst) or int(nbytes) <= 0:
                 e = float(s)
-            elif bw_Bps <= 0.0:
-                e = float("inf")
             else:
-                flit = int(getattr(spec, "flit_size_B", 0) or 0)
-                maxp = int(getattr(spec, "max_payload_B", 0) or 0)
-                n_hat = int(nbytes)
-                if flit > 0 and maxp > 0:
-                    packets = (int(nbytes) + int(maxp) - 1) // int(maxp)
-                    n_hat = int(nbytes) + int(packets) * int(flit)
-                L = float(getattr(spec, "latency_s", 0.0) or 0.0)
-                O = float(getattr(spec, "overhead_s", 0.0) or 0.0)
-                e = float(s + float(L + O + float(n_hat) / bw_Bps))
+                src_dev = self.cluster.devices.get(str(src))
+                dst_dev = self.cluster.devices.get(str(dst))
+                if src_dev is None or dst_dev is None:
+                    dt = float("inf")
+                else:
+                    dt = float(self.cost.comm_cost(src_dev, dst_dev, int(nbytes)))
+                e = float(s + float(dt))
             local_tl[key] = float(e)
             return (float(s), float(e))
 
@@ -911,7 +887,12 @@ class SchedulerBase:
                 return (float(earliest), float(earliest))
 
             # Direct link exists?
-            if float(self.cluster.get_link_bw(src, dst)) > 0.0:
+            src_dev = self.cluster.devices.get(str(src))
+            dst_dev = self.cluster.devices.get(str(dst))
+            t_direct = float("inf")
+            if src_dev is not None and dst_dev is not None:
+                t_direct = float(self.cost.comm_cost(src_dev, dst_dev, int(nbytes)))
+            if math.isfinite(float(t_direct)) and float(t_direct) > 0.0:
                 return _reserve_p2p(src, dst, nbytes, earliest)
 
             # Fallback: src -> host -> dst (host-centric star topology).
@@ -997,10 +978,6 @@ class SchedulerBase:
         commit: bool,
     ) -> Tuple[float, float]:
 
-
-
-
-
         dst_fmt = self.cost.device_preferred_fmt(dst_dev)
         size_nd = self.cost.format_size(bytes_nd, 'ND')
         host = self.cost.get_host_device()
@@ -1012,19 +989,16 @@ class SchedulerBase:
                 host.name, dst_dev.name, size_nd,
                 earliest=host_ready, commit=commit_flag, tag='act_move'
             )
-            conv2 = float(self.cost.format_conversion_time(size_nd, 'ND', dst_fmt, dst_dev))
-            dt_xfer = float(l2e) - float(l2s)
-            ready = float(l2s) + float(self.cost.combine_transfer_and_convert(dt_xfer, conv2))
+            ready = float(l2s) + float(
+                self.cost.combine_transfer_and_convert(host, dst_dev, int(size_nd), "ND", str(dst_fmt))
+            )
             return (float(l2s), float(ready))
         
         def _direct(commit_flag: bool) -> Tuple[float, float]:
             # Only consider direct transfer if link exists.
-            try:
-                t_direct = self.cost.link_time(size_nd, src_dev, dst_dev)
-            except Exception:
-                t_direct = 0.0
-            if (not math.isfinite(float(t_direct))) or t_direct <= 0:
-                return (float('inf'), float('inf'))
+            t_direct = float(self.cost.comm_cost(src_dev, dst_dev, int(size_nd)))
+            if (not math.isfinite(float(t_direct))) or float(t_direct) <= 0.0:
+                return (float("inf"), float("inf"))
 
             # If source is PIM, require activation still resident on that PIM.
             if src_dev.type == 'pim' and (src_dev.name, prod_nid) not in self._act_resident:
@@ -1042,9 +1016,9 @@ class SchedulerBase:
                 src_dev.name, dst_dev.name, size_nd,
                 earliest=earliest, commit=commit_flag, tag='act_move'
             )
-            conv2 = float(self.cost.format_conversion_time(size_nd, 'ND', dst_fmt, dst_dev))
-            dt_xfer = float(l2e) - float(l2s)
-            ready = float(l2s) + float(self.cost.combine_transfer_and_convert(dt_xfer, conv2))
+            ready = float(l2s) + float(
+                self.cost.combine_transfer_and_convert(src_dev, dst_dev, int(size_nd), "ND", str(dst_fmt))
+            )
             return float(l2s), float(ready)
 
         # Decide best route by completion time.
@@ -1147,12 +1121,11 @@ class SchedulerBase:
                         l2s, l2e = self.comm.reserve(
                             self.cost.get_host_device().name, dev.name, size_nd, earliest=host_ready, commit=commit
                         )
-                        conv2 = self.cost.format_conversion_time(
-                            size_nd, 'ND', self.cost.device_preferred_fmt(dev), dev
-                        )
                         inbound_start_times.append(float(l2s))
-                        dt_xfer = float(l2e) - float(l2s)
-                        ready = float(l2s) + float(self.cost.combine_transfer_and_convert(dt_xfer, float(conv2)))
+                        host_dev = self.cost.get_host_device()
+                        ready = float(l2s) + float(
+                            self.cost.combine_transfer_and_convert(host_dev, dev, int(size_nd), "ND", str(self.cost.device_preferred_fmt(dev)),)
+                        )
                         inbound_end_times.append(float(ready))
                 else:
                     inbound_start_times.append(pred_finish)
@@ -1238,9 +1211,9 @@ class SchedulerBase:
         rd_bytes = int(self.cost.format_size(need_nd, from_fmt))
         l2s, l2e = self.comm.reserve(host.name, dev.name, rd_bytes, earliest=earliest, commit=commit)
 
-        conv_t = float(self.cost.format_conversion_time(rd_bytes, from_fmt, to_fmt, dev))
-        dt_xfer = float(l2e) - float(l2s)
-        ready = float(l2s) + float(self.cost.combine_transfer_and_convert(dt_xfer, conv_t))
+        ready = float(l2s) + float(
+            self.cost.combine_transfer_and_convert(host, dev, int(rd_bytes), str(from_fmt), str(to_fmt))
+        )
         end = max(float(ready), float(earliest))
 
         if commit:
@@ -1432,16 +1405,17 @@ class HEFTScheduler(SchedulerBase):
             total_compute += device_compute
             if RANKU_INCLUDE_AVG_WEIGHT_LOAD and wid and (node_weight_size > 0):
                 stored_fmt = self.storage_fmt_map.get(wid, 'ND')
-                size_src = self.cost.format_size(int(node_weight_size), stored_fmt)
+                host = self.cost.get_host_device()
+                size_src = int(self.cost.format_size(int(node_weight_size), str(stored_fmt)))
                 weight_cost = float(
-                    self.cost.host_to_device_weight_load_time(
-                        d,
-                        int(node_weight_size),
-                        str(stored_fmt),
-                        dst_fmt=str(self.cost.device_preferred_fmt(d)),
-                        include_pim_internal=True,
+                    self.cost.combine_transfer_and_convert(host, d, int(size_src), str(stored_fmt), str(self.cost.device_preferred_fmt(d)),
                     )
                 )
+                if str(getattr(d, 'type', '')).lower() == 'pim':
+                    try:
+                        weight_cost += float(self.cost.weight_load_time_pim(int(node_weight_size)))
+                    except Exception:
+                        pass
                 total_w += weight_cost
         avg_compute = total_compute / k if k else 0.0
         avg_w = total_w / k if k and RANKU_INCLUDE_AVG_WEIGHT_LOAD and wid else 0.0
@@ -1473,15 +1447,29 @@ class HEFTScheduler(SchedulerBase):
                     continue
                 src_fmt = str(self.cost.device_preferred_fmt(di))
                 dst_fmt = str(self.cost.device_preferred_fmt(dj))
-                bd = self.cost.activation_transfer_breakdown_no_contention(
-                    di,
-                    dj,
-                    int(payload_bytes),
-                    src_fmt,
-                    dst_fmt=dst_fmt,
-                    allow_via_host=True,
-                )
-                total += float(self.cost.effective_total(bd))
+                if di.name == dj.name:
+                    total += 0.0
+                    k += 1
+                    continue
+
+                host = self.cost.get_host_device()
+                size_nd = int(self.cost.format_size(int(payload_bytes), 'ND'))
+
+                # Source-side conversion (preferred -> ND) is serialized before transfer.
+                t_conv_src = 0.0
+                if src_fmt != 'ND':
+                    size_src = int(self.cost.format_size(int(payload_bytes), str(src_fmt)))
+                    t_conv_src = float(self.cost.format_conversion_time(size_src, str(src_fmt), 'ND', di))
+
+                # Direct: transfer ND and convert ND -> dst_fmt on destination.
+                t_direct = float(self.cost.combine_transfer_and_convert(di, dj, int(size_nd), 'ND', str(dst_fmt)))
+
+                # Via host: di -> host (ND) then host -> dj (ND + dst conversion).
+                t_to_host = float(self.cost.comm_cost(di, host, int(size_nd)))
+                t_from_host = float(self.cost.combine_transfer_and_convert(host, dj, int(size_nd), 'ND', str(dst_fmt)))
+                t_path = float(min(t_direct, float(t_to_host + t_from_host)))
+
+                total += float(t_conv_src + t_path)
                 k += 1
         return total / k if k else 0.0
 
@@ -1672,15 +1660,15 @@ class HEFTScheduler(SchedulerBase):
                     if not devs:
                         continue
                     d = devs[0]
-                    total += float(cnt) * float(
-                        self.cost.host_to_device_weight_load_time(
-                            d,
-                            int(w_bytes_nd),
-                            str(fmt),
-                            dst_fmt=str(self.cost.device_preferred_fmt(d)),
-                            include_pim_internal=True,
-                        )
-                     )
+                    host = self.cost.get_host_device()
+                    size_src = int(self.cost.format_size(int(w_bytes_nd), str(fmt)))
+                    w_cost = float(self.cost.combine_transfer_and_convert( host,d,int(size_src),str(fmt),str(self.cost.device_preferred_fmt(d)),))
+                    if str(getattr(d, 'type', '')).lower() == 'pim':
+                        try:
+                            w_cost += float(self.cost.weight_load_time_pim(int(w_bytes_nd)))
+                        except Exception:
+                            pass
+                    total += float(cnt) * float(w_cost)
                 if total + EPS < best_t or (abs(total - best_t) < EPS and fmt == native):
                     best_t, best_fmt = total, fmt
             sugg[wid] = best_fmt
@@ -1782,15 +1770,15 @@ class HEFTScheduler(SchedulerBase):
             if not devs:
                 continue
             d = devs[0]
-            total += float(cnt) * float(
-                self.cost.host_to_device_weight_load_time(
-                    d,
-                    int(w_bytes_nd),
-                    str(fmt),
-                    dst_fmt=str(self.cost.device_preferred_fmt(d)),
-                    include_pim_internal=True,
-                )                
-            )
+            host = self.cost.get_host_device()
+            size_src = int(self.cost.format_size(int(w_bytes_nd), str(fmt)))
+            w_cost = float(self.cost.combine_transfer_and_convert(host, d, int(size_src), str(fmt), str(self.cost.device_preferred_fmt(d)), ))
+            if str(getattr(d, 'type', '')).lower() == 'pim':
+                try:
+                    w_cost += float(self.cost.weight_load_time_pim(int(w_bytes_nd)))
+                except Exception:
+                    pass
+            total += float(cnt) * float(w_cost)
         return float(factor * total)
 
     def suggest_weight_storage_formats_bcd(
@@ -1966,12 +1954,7 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
         # Via-host route
         t_via_host = float(self.cost.comm_cost(src, host, size_nd) + self.cost.comm_cost(host, dst, size_nd))
         # Direct route (if topology provides)
-        try:
-            t_direct = float(self.cost.link_time(size_nd, src, dst))
-            if t_direct <= 0:
-                t_direct = float("inf")
-        except Exception:
-            t_direct = float("inf")
+        t_direct = float(self.cost.comm_cost(src, dst, size_nd))
         return float(min(t_via_host, t_direct))
 
     def _rep_device_by_type(self, dev_type: str) -> Optional[DeviceSpec]:
@@ -2003,15 +1986,14 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
 
         from_fmt = self.buffer.get_host_fmt(wid) or "ND"
         to_fmt = self.cost.device_preferred_fmt(dev)
-        t = float(
-            self.cost.host_to_device_weight_load_time(
-                dev,
-                int(wsize_nd),
-                str(from_fmt),
-                dst_fmt=str(to_fmt),
-                include_pim_internal=True,
-            )
-        )
+        host = self.cost.get_host_device()
+        size_src = int(self.cost.format_size(int(wsize_nd), str(from_fmt)))
+        t = float(self.cost.combine_transfer_and_convert(host, dev, size_src, str(from_fmt), str(to_fmt)))
+        if str(getattr(dev, "type", "")).lower() == "pim":
+            try:
+                t += float(self.cost.weight_load_time_pim(int(wsize_nd)))
+            except Exception:
+                pass
         return float(t)
 
     def _representative_activation_bytes(self, g: TaskGraph, nid: str, phase: str) -> int:
