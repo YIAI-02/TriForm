@@ -11,23 +11,24 @@ BuildDirectory: /lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT
 CostDataFile: 
 
 # Site is something like machine.domain, i.e. pragmatic.crd
-Site: wm2-login01
+Site: wm2-data01
 
 # Build name is osname-revision-compiler, i.e. Linux-2.4.2-2smp-c++
-BuildName: Linux-g++
+BuildName: Linux-c++
 
 # Subprojects
 LabelsForSubprojects: 
 
 # Submission information
 SubmitURL: http://
+SubmitInactivityTimeout: 
 
 # Dashboard start time
 NightlyStartTime: 00:00:00 EDT
 
 # Commands for the build/test/submit cycle
-ConfigureCommand: "/usr/bin/cmake" "/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/ext/yaml-cpp"
-MakeCommand: /usr/bin/cmake --build . --config "${CTEST_CONFIGURATION_TYPE}"
+ConfigureCommand: "/lustre/software/cmake/3.31.9/bin/cmake" "/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/ext/yaml-cpp"
+MakeCommand: /lustre/software/cmake/3.31.9/bin/cmake --build . --config "${CTEST_CONFIGURATION_TYPE}"
 DefaultCTestConfigurationType: Release
 
 # version control
@@ -62,7 +63,7 @@ UpdateOptions:
 UpdateType: git
 
 # Compiler info
-Compiler: /lustre/software/gcc/12.2.0/bin/g++
+Compiler: /lustre/software/gcc/12.2.0/bin/c++
 CompilerVersion: 12.2.0
 
 # Dynamic analysis (MemCheck)
@@ -93,6 +94,9 @@ TimeOut: 1500
 # During parallel testing CTest will not start a new test if doing
 # so would cause the system load to exceed this value.
 TestLoad: 
+
+TLSVerify: 
+TLSVersion: 
 
 UseLaunchers: 
 CurlOptions: 

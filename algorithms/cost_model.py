@@ -25,7 +25,12 @@ from config import HOST_NAME, DEVICE_PREFERRED_FORMAT, FORMAT_SIZE_MULTIPLIER, F
 import logging
 from stats_recorder import SimulationLogger, get_simulation_logger, reset_simulation_logger
 from abc import ABC, abstractmethod
-from cost_model_pim_backend import _get_pim_latency_via_trace, _simulate_weight_loading_latency
+from cost_model_pim_backend import (
+    _get_pim_latency_via_trace,
+    _simulate_weight_loading_latency,
+    _normalize_pim_op,
+    PIM_TRACE_SUPPORTED_OPS,
+)
 from cost_model_npu_llmcompass_backend import (
     _normalize_npu_backend,
     _llmcompass_guess_device_key,
@@ -43,7 +48,7 @@ from cost_model_npu_json_backend import (
 )
 
 logger = logging.getLogger(__name__)
-attach_local_debug_filter(logger, lambda: True)
+attach_local_debug_filter(logger, lambda: False)
 DTYPE_BYTES: Dict[str, float] = {'fp32': 4, 'fp16': 2, 'bf16': 2, 'int8': 1, 'int4': 0.5}
 
 # Canonical op-key sets for NPU backends
@@ -58,6 +63,26 @@ NPU_NORM_KEYS = {
 NPU_GEMM_KEYS = {
     'q_proj','k_proj','v_proj','wo_proj','ffn_up','ffn_gate','ffn_down','score','output',
 }
+
+def _is_norm_like(op_key: str) -> bool:
+    s = (op_key or '').strip().lower()
+    if not s:
+        return False
+    if s in NPU_NORM_KEYS:
+        return True
+    s = s.replace('-', '_')
+    # Common fused / variant spellings
+    if ('rmsnorm' in s) or ('layernorm' in s):
+        return True
+    if s.startswith('ln') and (len(s) == 2 or s[2:].isdigit()):
+        return True
+    if s.endswith('norm'):
+        return True
+    if 'norm' in s:
+        # tokenized match: _norm / _layernorm / _rmsnorm ...
+        if re.search(r'(^|_)(ln|layernorm|rmsnorm|groupnorm|instancenorm|batchnorm|norm)($|_)', s):
+            return True
+    return False
 
 @dataclass(frozen=True)
 class NpuOpContext:
@@ -133,9 +158,13 @@ class NpuLlmCompassBackend(NpuBackendBase):
             return float(lat_s + float(ctx.mem_s))
 
         # (c) Norm
-        if ctx.op_key in NPU_NORM_KEYS:
+        if _is_norm_like(ctx.op_key):
             rows = max(1, int(ctx.batch)) * max(1, int(ctx.q_len))
-            lat_s = _llmcompass_simulate_layernorm_s(device_key, cm.dtype, int(rows), int(ctx.dim))
+            try:
+                lat_s = _llmcompass_simulate_layernorm_s(device_key, cm.dtype, int(rows), int(ctx.dim))
+            except Exception as e:
+                logger.debug(str(f'[NPU-NORM][LLMCompass] layernorm simulation failed for op={ctx.op_key}: {e}'))
+                return float(self._fallback_fast_s(cm, node, dev, ctx))
             logger.debug(str(f'[NPU-NORM][LLMCompass] device={device_key} rows={rows} dim={ctx.dim} s={lat_s}'))
             return float(lat_s + float(ctx.mem_s))
 
@@ -222,10 +251,10 @@ class NpuAscend310BJsonBackend(NpuBackendBase):
             return float(self._fallback_fast_s(cm, node, dev, ctx))
 
         # (c) Norm
-        if ctx.op_key in NPU_NORM_KEYS:
+        if _is_norm_like(ctx.op_key):
             rows = max(1, int(ctx.batch)) * (int(ctx.seq_len) if str(ctx.phase) == 'prefill' else 1)
-            us = _predict_layernorm_latency_us_from_json(int(rows), int(ctx.ffn_dim))
-            logger.debug(str(f'[NPU-NORM][JSON] rows={rows} width={ctx.ffn_dim} us={us}'))
+            us = _predict_layernorm_latency_us_from_json(int(rows), int(ctx.dim))
+            logger.debug(str(f'[NPU-NORM][JSON] op={ctx.op_key} rows={rows} width={ctx.dim} us={us}'))
             if us is not None:
                 return float(max(float(us) * 1e-06, float(ctx.mem_s)))
             return float(self._fallback_fast_s(cm, node, dev, ctx))
@@ -347,27 +376,43 @@ class PimTraceBackend(PimBackendBase):
             logger.debug(str(f'[PIM] Warning: PIM configs not set, returning 0 for {getattr(node, "name", "?")}'))
             return 0.0
 
+        op_in = str(ctx.op_key) if ctx.op_key is not None else ''
+        op_norm = _normalize_pim_op(op_in) if op_in else ''
+        traceable = bool(op_norm) and (op_norm in PIM_TRACE_SUPPORTED_OPS)
+
         compute_time = 0.0
-        if ctx.op_key and int(ctx.dim) > 0 and (int(ctx.n_heads) > 0):
-            try:
-                model_dict = cm.get_model_dict()
-                compute_time = float(
-                    _get_pim_latency_via_trace(
-                        op=str(ctx.op_key),
-                        pim_config=cm.pim_config_path,
-                        ramulator_config=cm.ramulator_config_path,
-                        dim=int(ctx.dim),
-                        n_heads=int(ctx.n_heads),
-                        n_kv_heads=int(ctx.n_kv_heads),
-                        ffn_dim=int(ctx.ffn_dim),
-                        seqlen=int(ctx.seq_len) if int(ctx.seq_len) > 0 else None,
-                        model_dict=model_dict,
-                        use_cache=bool(cm.pim_cache_enabled),
+        if op_in and int(ctx.dim) > 0 and (int(ctx.n_heads) > 0):
+            if traceable:
+                try:
+                    model_dict = cm.get_model_dict()
+                    compute_time = float(
+                        _get_pim_latency_via_trace(
+                            op=str(op_norm),
+                            pim_config=cm.pim_config_path,
+                            ramulator_config=cm.ramulator_config_path,
+                            dim=int(ctx.dim),
+                            n_heads=int(ctx.n_heads),
+                            n_kv_heads=int(ctx.n_kv_heads),
+                            ffn_dim=int(ctx.ffn_dim),
+                            seqlen=int(ctx.seq_len) if int(ctx.seq_len) > 0 else None,
+                            model_dict=model_dict,
+                            use_cache=bool(cm.pim_cache_enabled),
+                        )
                     )
-                )
-            except Exception as e:
-                logger.debug(str(f'[PIM] ERROR: Failed to compute latency for {getattr(node,"name","?")}: {e}'))
-                raise RuntimeError(f'PIM latency computation failed for {getattr(node,"name","?")}: {e}')
+                except Exception as e:
+                    # Do not fail scheduling when trace simulation cannot run.
+                    # Fall back to mem-only cost.
+                    logger.debug(str(
+                        f"[PIM] Trace backend failed for {getattr(node,'name','?')}: "
+                        f"op='{op_in}' normalized='{op_norm}' err={e}. "
+                        f"Falling back to mem-only cost."
+                    ))
+                    compute_time = 0.0
+            else:
+                logger.debug(str(
+                    f"[PIM] Trace backend: skip unsupported op for {getattr(node,'name','?')}: "
+                    f"op='{op_in}' normalized='{op_norm}'. Using mem-only cost."
+                ))
         else:
             logger.debug(str(
                 f'[PIM] Warning: Insufficient parameters for {getattr(node,"name","?")} '
@@ -375,14 +420,16 @@ class PimTraceBackend(PimBackendBase):
             ))
 
         ATTENTION_DATAFLOW = {'QK', 'SV', 'SOFTMAX', 'K_READ', 'V_READ', 'K_WRITE', 'V_WRITE', 'KV_READ', 'KV_WRITE'}
-        if bool(ctx.kv_in_pim) and ((getattr(node, 'name', '') or '').upper() in ATTENTION_DATAFLOW):
+        node_name_upper = ((getattr(node, 'name', '') or '').upper())
+        # When KV is assumed to live in PIM, attention dataflow ops are already modeled inside trace.
+        # If the op is not traceable, fall back to the bandwidth model to avoid silently charging 0.
+        if bool(ctx.kv_in_pim) and (node_name_upper in ATTENTION_DATAFLOW) and traceable:
             mem_time = 0.0
         else:
             rd, wr = cm.estimate_activation_bytes(node, ctx.batch, ctx.seq_len, ctx.phase)
             mem_time = float(cm.pim_mem_time(int(rd), int(wr), dev))
 
         return float(compute_time + mem_time)
-
     def weight_load_s(self, cm: "CostModel", weight_bytes: int) -> float:
         """Trace-based PIM weight loading latency (read+write)."""
         # Keep the original behavior: fast-mode bypass
@@ -1009,7 +1056,7 @@ class CostModel:
             )
         if name in ('GELU', 'RELU'):
             width = Hf if Hf > 0 else D
-            return (to_bytes(dens_store * (b * active_toq_lenkens * width)), to_bytes(dens_store * (b * q_len * width)))
+            return (to_bytes(dens_store * (b * q_len * width)), to_bytes(dens_store * (b * q_len * width)))
         if name == 'ADD' and D > 0:
             read_elems = dens_store * (b * q_len * D * 2)
             write_elems = dens_store * (b * q_len * D)

@@ -1,0 +1,404 @@
+
+---
+events:
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/lustre/software/cmake/3.31.9/share/cmake-3.31/Modules/CMakeDetermineSystem.cmake:205 (message)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      The system is: Linux - 4.18.0-425.3.1.el8.x86_64 - x86_64
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/lustre/software/cmake/3.31.9/share/cmake-3.31/Modules/CMakeDetermineCompilerId.cmake:17 (message)"
+      - "/lustre/software/cmake/3.31.9/share/cmake-3.31/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/lustre/software/cmake/3.31.9/share/cmake-3.31/Modules/CMakeDetermineCXXCompiler.cmake:126 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Compiling the CXX compiler identification source file "CMakeCXXCompilerId.cpp" succeeded.
+      Compiler: /lustre/software/gcc/12.2.0/bin/c++ 
+      Build flags: 
+      Id flags:  
+      
+      The output was:
+      0
+      
+      
+      Compilation of the CXX compiler identification source "CMakeCXXCompilerId.cpp" produced "a.out"
+      
+      The CXX compiler identification is GNU, found in:
+        /lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/3.31.9/CompilerIdCXX/a.out
+      
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/lustre/software/cmake/3.31.9/share/cmake-3.31/Modules/CMakeDetermineCompilerABI.cmake:74 (try_compile)"
+      - "/lustre/software/cmake/3.31.9/share/cmake-3.31/Modules/CMakeTestCXXCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:3 (project)"
+    checks:
+      - "Detecting CXX compiler ABI info"
+    directories:
+      source: "/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeScratch/TryCompile-6RqBvn"
+      binary: "/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeScratch/TryCompile-6RqBvn"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_CXX_FLAGS_DEBUG: "-g"
+      CMAKE_CXX_SCAN_FOR_MODULES: "OFF"
+      CMAKE_EXE_LINKER_FLAGS: ""
+    buildResult:
+      variable: "CMAKE_CXX_ABI_COMPILED"
+      cached: true
+      stdout: |
+        Change Dir: '/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeScratch/TryCompile-6RqBvn'
+        
+        Run Build Command(s): /lustre/software/cmake/3.31.9/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_e4e12/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_e4e12.dir/build.make CMakeFiles/cmTC_e4e12.dir/build
+        gmake[1]: Entering directory '/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeScratch/TryCompile-6RqBvn'
+        Building CXX object CMakeFiles/cmTC_e4e12.dir/CMakeCXXCompilerABI.cpp.o
+        /lustre/software/gcc/12.2.0/bin/c++   -v -o CMakeFiles/cmTC_e4e12.dir/CMakeCXXCompilerABI.cpp.o -c /lustre/software/cmake/3.31.9/share/cmake-3.31/Modules/CMakeCXXCompilerABI.cpp
+        Using built-in specs.
+        COLLECT_GCC=/lustre/software/gcc/12.2.0/bin/c++
+        Target: x86_64-linux
+        Configured with: ./configure --prefix=/lustre/software/gcc/12.2.0 --enable-languages=c,c++,fortran --build=x86_64-linux --disable-multilib
+        Thread model: posix
+        Supported LTO compression algorithms: zlib zstd
+        gcc version 12.2.0 (GCC) 
+        COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_e4e12.dir/CMakeCXXCompilerABI.cpp.o' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'CMakeFiles/cmTC_e4e12.dir/'
+         /lustre/software/gcc/12.2.0/libexec/gcc/x86_64-linux/12.2.0/cc1plus -quiet -v -D_GNU_SOURCE /lustre/software/cmake/3.31.9/share/cmake-3.31/Modules/CMakeCXXCompilerABI.cpp -quiet -dumpdir CMakeFiles/cmTC_e4e12.dir/ -dumpbase CMakeCXXCompilerABI.cpp.cpp -dumpbase-ext .cpp -mtune=generic -march=x86-64 -version -o /tmp/ccOQvveN.s
+        GNU C++17 (GCC) version 12.2.0 (x86_64-linux)
+        	compiled by GNU C version 12.2.0, GMP version 6.2.1, MPFR version 4.1.0, MPC version 1.2.1, isl version isl-0.24-GMP
+        
+        GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072
+        ignoring nonexistent directory "/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/../../../../x86_64-linux/include"
+        ignoring duplicate directory "/lustre/software/gcc/12.2.0/include"
+          as it is a non-system directory that duplicates a system directory
+        #include "..." search starts here:
+        #include <...> search starts here:
+         /lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/../../../../include/c++/12.2.0
+         /lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/../../../../include/c++/12.2.0/x86_64-linux
+         /lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/../../../../include/c++/12.2.0/backward
+         /lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/include
+         /usr/local/include
+         /lustre/software/gcc/12.2.0/include
+         /lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/include-fixed
+         /usr/include
+        End of search list.
+        GNU C++17 (GCC) version 12.2.0 (x86_64-linux)
+        	compiled by GNU C version 12.2.0, GMP version 6.2.1, MPFR version 4.1.0, MPC version 1.2.1, isl version isl-0.24-GMP
+        
+        GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072
+        Compiler executable checksum: 1ae79d48e091a0a71c4f99344fcaeece
+        COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_e4e12.dir/CMakeCXXCompilerABI.cpp.o' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'CMakeFiles/cmTC_e4e12.dir/'
+         as -v --64 -o CMakeFiles/cmTC_e4e12.dir/CMakeCXXCompilerABI.cpp.o /tmp/ccOQvveN.s
+        GNU assembler version 2.30 (x86_64-redhat-linux) using BFD version version 2.30-117.el8
+        COMPILER_PATH=/lustre/software/gcc/12.2.0/libexec/gcc/x86_64-linux/12.2.0/:/lustre/software/gcc/12.2.0/libexec/gcc/x86_64-linux/12.2.0/:/lustre/software/gcc/12.2.0/libexec/gcc/x86_64-linux/:/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/:/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/
+        LIBRARY_PATH=/lustre/software/gcc/12.2.0/lib64/../lib64/:/lustre/software/gcc/12.2.0/lib/../lib64/:/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/:/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/../../../../lib64/:/lib/../lib64/:/usr/lib/../lib64/:/lustre/software/gcc/12.2.0/lib64/:/lustre/software/gcc/12.2.0/lib/:/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/../../../:/lib/:/usr/lib/
+        COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_e4e12.dir/CMakeCXXCompilerABI.cpp.o' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'CMakeFiles/cmTC_e4e12.dir/CMakeCXXCompilerABI.cpp.'
+        Linking CXX executable cmTC_e4e12
+        /lustre/software/cmake/3.31.9/bin/cmake -E cmake_link_script CMakeFiles/cmTC_e4e12.dir/link.txt --verbose=1
+        Using built-in specs.
+        COLLECT_GCC=/lustre/software/gcc/12.2.0/bin/c++
+        COLLECT_LTO_WRAPPER=/lustre/software/gcc/12.2.0/libexec/gcc/x86_64-linux/12.2.0/lto-wrapper
+        Target: x86_64-linux
+        Configured with: ./configure --prefix=/lustre/software/gcc/12.2.0 --enable-languages=c,c++,fortran --build=x86_64-linux --disable-multilib
+        Thread model: posix
+        Supported LTO compression algorithms: zlib zstd
+        gcc version 12.2.0 (GCC) 
+        COMPILER_PATH=/lustre/software/gcc/12.2.0/libexec/gcc/x86_64-linux/12.2.0/:/lustre/software/gcc/12.2.0/libexec/gcc/x86_64-linux/12.2.0/:/lustre/software/gcc/12.2.0/libexec/gcc/x86_64-linux/:/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/:/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/
+        LIBRARY_PATH=/lustre/software/gcc/12.2.0/lib64/../lib64/:/lustre/software/gcc/12.2.0/lib/../lib64/:/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/:/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/../../../../lib64/:/lib/../lib64/:/usr/lib/../lib64/:/lustre/software/gcc/12.2.0/lib64/:/lustre/software/gcc/12.2.0/lib/:/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/../../../:/lib/:/usr/lib/
+        COLLECT_GCC_OPTIONS='-v' '-o' 'cmTC_e4e12' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'cmTC_e4e12.'
+         /lustre/software/gcc/12.2.0/libexec/gcc/x86_64-linux/12.2.0/collect2 -plugin /lustre/software/gcc/12.2.0/libexec/gcc/x86_64-linux/12.2.0/liblto_plugin.so -plugin-opt=/lustre/software/gcc/12.2.0/libexec/gcc/x86_64-linux/12.2.0/lto-wrapper -plugin-opt=-fresolution=/tmp/ccgncNhi.res -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lc -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc --eh-frame-hdr -m elf_x86_64 -dynamic-linker /lib64/ld-linux-x86-64.so.2 -o cmTC_e4e12 /lib/../lib64/crt1.o /lib/../lib64/crti.o /lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/crtbegin.o -L/lustre/software/gcc/12.2.0/lib64/../lib64 -L/lustre/software/gcc/12.2.0/lib/../lib64 -L/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0 -L/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/../../../../lib64 -L/lib/../lib64 -L/usr/lib/../lib64 -L/lustre/software/gcc/12.2.0/lib64 -L/lustre/software/gcc/12.2.0/lib -L/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/../../.. -v CMakeFiles/cmTC_e4e12.dir/CMakeCXXCompilerABI.cpp.o -lstdc++ -lm -lgcc_s -lgcc -lc -lgcc_s -lgcc /lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/crtend.o /lib/../lib64/crtn.o
+        collect2 version 12.2.0
+        /usr/bin/ld -plugin /lustre/software/gcc/12.2.0/libexec/gcc/x86_64-linux/12.2.0/liblto_plugin.so -plugin-opt=/lustre/software/gcc/12.2.0/libexec/gcc/x86_64-linux/12.2.0/lto-wrapper -plugin-opt=-fresolution=/tmp/ccgncNhi.res -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lc -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc --eh-frame-hdr -m elf_x86_64 -dynamic-linker /lib64/ld-linux-x86-64.so.2 -o cmTC_e4e12 /lib/../lib64/crt1.o /lib/../lib64/crti.o /lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/crtbegin.o -L/lustre/software/gcc/12.2.0/lib64/../lib64 -L/lustre/software/gcc/12.2.0/lib/../lib64 -L/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0 -L/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/../../../../lib64 -L/lib/../lib64 -L/usr/lib/../lib64 -L/lustre/software/gcc/12.2.0/lib64 -L/lustre/software/gcc/12.2.0/lib -L/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/../../.. -v CMakeFiles/cmTC_e4e12.dir/CMakeCXXCompilerABI.cpp.o -lstdc++ -lm -lgcc_s -lgcc -lc -lgcc_s -lgcc /lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/crtend.o /lib/../lib64/crtn.o
+        GNU ld version 2.30-117.el8
+        COLLECT_GCC_OPTIONS='-v' '-o' 'cmTC_e4e12' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'cmTC_e4e12.'
+        /lustre/software/gcc/12.2.0/bin/c++  -v -Wl,-v CMakeFiles/cmTC_e4e12.dir/CMakeCXXCompilerABI.cpp.o -o cmTC_e4e12
+        gmake[1]: Leaving directory '/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeScratch/TryCompile-6RqBvn'
+        
+      exitCode: 0
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/lustre/software/cmake/3.31.9/share/cmake-3.31/Modules/CMakeDetermineCompilerABI.cmake:182 (message)"
+      - "/lustre/software/cmake/3.31.9/share/cmake-3.31/Modules/CMakeTestCXXCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Parsed CXX implicit include dir info: rv=done
+        found start of include info
+        found start of implicit include info
+          add: [/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/../../../../include/c++/12.2.0]
+          add: [/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/../../../../include/c++/12.2.0/x86_64-linux]
+          add: [/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/../../../../include/c++/12.2.0/backward]
+          add: [/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/include]
+          add: [/usr/local/include]
+          add: [/lustre/software/gcc/12.2.0/include]
+          add: [/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/include-fixed]
+          add: [/usr/include]
+        end of search list found
+        collapse include dir [/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/../../../../include/c++/12.2.0] ==> [/lustre/software/gcc/12.2.0/include/c++/12.2.0]
+        collapse include dir [/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/../../../../include/c++/12.2.0/x86_64-linux] ==> [/lustre/software/gcc/12.2.0/include/c++/12.2.0/x86_64-linux]
+        collapse include dir [/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/../../../../include/c++/12.2.0/backward] ==> [/lustre/software/gcc/12.2.0/include/c++/12.2.0/backward]
+        collapse include dir [/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/include] ==> [/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/include]
+        collapse include dir [/usr/local/include] ==> [/usr/local/include]
+        collapse include dir [/lustre/software/gcc/12.2.0/include] ==> [/lustre/software/gcc/12.2.0/include]
+        collapse include dir [/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/include-fixed] ==> [/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/include-fixed]
+        collapse include dir [/usr/include] ==> [/usr/include]
+        implicit include dirs: [/lustre/software/gcc/12.2.0/include/c++/12.2.0;/lustre/software/gcc/12.2.0/include/c++/12.2.0/x86_64-linux;/lustre/software/gcc/12.2.0/include/c++/12.2.0/backward;/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/include;/usr/local/include;/lustre/software/gcc/12.2.0/include;/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/include-fixed;/usr/include]
+      
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/lustre/software/cmake/3.31.9/share/cmake-3.31/Modules/CMakeDetermineCompilerABI.cmake:218 (message)"
+      - "/lustre/software/cmake/3.31.9/share/cmake-3.31/Modules/CMakeTestCXXCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Parsed CXX implicit link information:
+        link line regex: [^( *|.*[/\\])(ld[0-9]*(\\.[a-z]+)?|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\\]+-)?ld|collect2)[^/\\]*( |$)]
+        linker tool regex: [^[ 	]*(->|")?[ 	]*(([^"]*[/\\])?(ld[0-9]*(\\.[a-z]+)?))("|,| |$)]
+        ignore line: [Change Dir: '/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeScratch/TryCompile-6RqBvn']
+        ignore line: []
+        ignore line: [Run Build Command(s): /lustre/software/cmake/3.31.9/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_e4e12/fast]
+        ignore line: [/usr/bin/gmake  -f CMakeFiles/cmTC_e4e12.dir/build.make CMakeFiles/cmTC_e4e12.dir/build]
+        ignore line: [gmake[1]: Entering directory '/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeScratch/TryCompile-6RqBvn']
+        ignore line: [Building CXX object CMakeFiles/cmTC_e4e12.dir/CMakeCXXCompilerABI.cpp.o]
+        ignore line: [/lustre/software/gcc/12.2.0/bin/c++   -v -o CMakeFiles/cmTC_e4e12.dir/CMakeCXXCompilerABI.cpp.o -c /lustre/software/cmake/3.31.9/share/cmake-3.31/Modules/CMakeCXXCompilerABI.cpp]
+        ignore line: [Using built-in specs.]
+        ignore line: [COLLECT_GCC=/lustre/software/gcc/12.2.0/bin/c++]
+        ignore line: [Target: x86_64-linux]
+        ignore line: [Configured with: ./configure --prefix=/lustre/software/gcc/12.2.0 --enable-languages=c c++ fortran --build=x86_64-linux --disable-multilib]
+        ignore line: [Thread model: posix]
+        ignore line: [Supported LTO compression algorithms: zlib zstd]
+        ignore line: [gcc version 12.2.0 (GCC) ]
+        ignore line: [COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_e4e12.dir/CMakeCXXCompilerABI.cpp.o' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'CMakeFiles/cmTC_e4e12.dir/']
+        ignore line: [ /lustre/software/gcc/12.2.0/libexec/gcc/x86_64-linux/12.2.0/cc1plus -quiet -v -D_GNU_SOURCE /lustre/software/cmake/3.31.9/share/cmake-3.31/Modules/CMakeCXXCompilerABI.cpp -quiet -dumpdir CMakeFiles/cmTC_e4e12.dir/ -dumpbase CMakeCXXCompilerABI.cpp.cpp -dumpbase-ext .cpp -mtune=generic -march=x86-64 -version -o /tmp/ccOQvveN.s]
+        ignore line: [GNU C++17 (GCC) version 12.2.0 (x86_64-linux)]
+        ignore line: [	compiled by GNU C version 12.2.0  GMP version 6.2.1  MPFR version 4.1.0  MPC version 1.2.1  isl version isl-0.24-GMP]
+        ignore line: []
+        ignore line: [GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072]
+        ignore line: [ignoring nonexistent directory "/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/../../../../x86_64-linux/include"]
+        ignore line: [ignoring duplicate directory "/lustre/software/gcc/12.2.0/include"]
+        ignore line: [  as it is a non-system directory that duplicates a system directory]
+        ignore line: [#include "..." search starts here:]
+        ignore line: [#include <...> search starts here:]
+        ignore line: [ /lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/../../../../include/c++/12.2.0]
+        ignore line: [ /lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/../../../../include/c++/12.2.0/x86_64-linux]
+        ignore line: [ /lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/../../../../include/c++/12.2.0/backward]
+        ignore line: [ /lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/include]
+        ignore line: [ /usr/local/include]
+        ignore line: [ /lustre/software/gcc/12.2.0/include]
+        ignore line: [ /lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/include-fixed]
+        ignore line: [ /usr/include]
+        ignore line: [End of search list.]
+        ignore line: [GNU C++17 (GCC) version 12.2.0 (x86_64-linux)]
+        ignore line: [	compiled by GNU C version 12.2.0  GMP version 6.2.1  MPFR version 4.1.0  MPC version 1.2.1  isl version isl-0.24-GMP]
+        ignore line: []
+        ignore line: [GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072]
+        ignore line: [Compiler executable checksum: 1ae79d48e091a0a71c4f99344fcaeece]
+        ignore line: [COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_e4e12.dir/CMakeCXXCompilerABI.cpp.o' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'CMakeFiles/cmTC_e4e12.dir/']
+        ignore line: [ as -v --64 -o CMakeFiles/cmTC_e4e12.dir/CMakeCXXCompilerABI.cpp.o /tmp/ccOQvveN.s]
+        ignore line: [GNU assembler version 2.30 (x86_64-redhat-linux) using BFD version version 2.30-117.el8]
+        ignore line: [COMPILER_PATH=/lustre/software/gcc/12.2.0/libexec/gcc/x86_64-linux/12.2.0/:/lustre/software/gcc/12.2.0/libexec/gcc/x86_64-linux/12.2.0/:/lustre/software/gcc/12.2.0/libexec/gcc/x86_64-linux/:/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/:/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/]
+        ignore line: [LIBRARY_PATH=/lustre/software/gcc/12.2.0/lib64/../lib64/:/lustre/software/gcc/12.2.0/lib/../lib64/:/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/:/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/../../../../lib64/:/lib/../lib64/:/usr/lib/../lib64/:/lustre/software/gcc/12.2.0/lib64/:/lustre/software/gcc/12.2.0/lib/:/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/../../../:/lib/:/usr/lib/]
+        ignore line: [COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_e4e12.dir/CMakeCXXCompilerABI.cpp.o' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'CMakeFiles/cmTC_e4e12.dir/CMakeCXXCompilerABI.cpp.']
+        ignore line: [Linking CXX executable cmTC_e4e12]
+        ignore line: [/lustre/software/cmake/3.31.9/bin/cmake -E cmake_link_script CMakeFiles/cmTC_e4e12.dir/link.txt --verbose=1]
+        ignore line: [Using built-in specs.]
+        ignore line: [COLLECT_GCC=/lustre/software/gcc/12.2.0/bin/c++]
+        ignore line: [COLLECT_LTO_WRAPPER=/lustre/software/gcc/12.2.0/libexec/gcc/x86_64-linux/12.2.0/lto-wrapper]
+        ignore line: [Target: x86_64-linux]
+        ignore line: [Configured with: ./configure --prefix=/lustre/software/gcc/12.2.0 --enable-languages=c c++ fortran --build=x86_64-linux --disable-multilib]
+        ignore line: [Thread model: posix]
+        ignore line: [Supported LTO compression algorithms: zlib zstd]
+        ignore line: [gcc version 12.2.0 (GCC) ]
+        ignore line: [COMPILER_PATH=/lustre/software/gcc/12.2.0/libexec/gcc/x86_64-linux/12.2.0/:/lustre/software/gcc/12.2.0/libexec/gcc/x86_64-linux/12.2.0/:/lustre/software/gcc/12.2.0/libexec/gcc/x86_64-linux/:/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/:/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/]
+        ignore line: [LIBRARY_PATH=/lustre/software/gcc/12.2.0/lib64/../lib64/:/lustre/software/gcc/12.2.0/lib/../lib64/:/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/:/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/../../../../lib64/:/lib/../lib64/:/usr/lib/../lib64/:/lustre/software/gcc/12.2.0/lib64/:/lustre/software/gcc/12.2.0/lib/:/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/../../../:/lib/:/usr/lib/]
+        ignore line: [COLLECT_GCC_OPTIONS='-v' '-o' 'cmTC_e4e12' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'cmTC_e4e12.']
+        link line: [ /lustre/software/gcc/12.2.0/libexec/gcc/x86_64-linux/12.2.0/collect2 -plugin /lustre/software/gcc/12.2.0/libexec/gcc/x86_64-linux/12.2.0/liblto_plugin.so -plugin-opt=/lustre/software/gcc/12.2.0/libexec/gcc/x86_64-linux/12.2.0/lto-wrapper -plugin-opt=-fresolution=/tmp/ccgncNhi.res -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lc -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc --eh-frame-hdr -m elf_x86_64 -dynamic-linker /lib64/ld-linux-x86-64.so.2 -o cmTC_e4e12 /lib/../lib64/crt1.o /lib/../lib64/crti.o /lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/crtbegin.o -L/lustre/software/gcc/12.2.0/lib64/../lib64 -L/lustre/software/gcc/12.2.0/lib/../lib64 -L/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0 -L/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/../../../../lib64 -L/lib/../lib64 -L/usr/lib/../lib64 -L/lustre/software/gcc/12.2.0/lib64 -L/lustre/software/gcc/12.2.0/lib -L/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/../../.. -v CMakeFiles/cmTC_e4e12.dir/CMakeCXXCompilerABI.cpp.o -lstdc++ -lm -lgcc_s -lgcc -lc -lgcc_s -lgcc /lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/crtend.o /lib/../lib64/crtn.o]
+          arg [/lustre/software/gcc/12.2.0/libexec/gcc/x86_64-linux/12.2.0/collect2] ==> ignore
+          arg [-plugin] ==> ignore
+          arg [/lustre/software/gcc/12.2.0/libexec/gcc/x86_64-linux/12.2.0/liblto_plugin.so] ==> ignore
+          arg [-plugin-opt=/lustre/software/gcc/12.2.0/libexec/gcc/x86_64-linux/12.2.0/lto-wrapper] ==> ignore
+          arg [-plugin-opt=-fresolution=/tmp/ccgncNhi.res] ==> ignore
+          arg [-plugin-opt=-pass-through=-lgcc_s] ==> ignore
+          arg [-plugin-opt=-pass-through=-lgcc] ==> ignore
+          arg [-plugin-opt=-pass-through=-lc] ==> ignore
+          arg [-plugin-opt=-pass-through=-lgcc_s] ==> ignore
+          arg [-plugin-opt=-pass-through=-lgcc] ==> ignore
+          arg [--eh-frame-hdr] ==> ignore
+          arg [-m] ==> ignore
+          arg [elf_x86_64] ==> ignore
+          arg [-dynamic-linker] ==> ignore
+          arg [/lib64/ld-linux-x86-64.so.2] ==> ignore
+          arg [-o] ==> ignore
+          arg [cmTC_e4e12] ==> ignore
+          arg [/lib/../lib64/crt1.o] ==> obj [/lib/../lib64/crt1.o]
+          arg [/lib/../lib64/crti.o] ==> obj [/lib/../lib64/crti.o]
+          arg [/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/crtbegin.o] ==> obj [/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/crtbegin.o]
+          arg [-L/lustre/software/gcc/12.2.0/lib64/../lib64] ==> dir [/lustre/software/gcc/12.2.0/lib64/../lib64]
+          arg [-L/lustre/software/gcc/12.2.0/lib/../lib64] ==> dir [/lustre/software/gcc/12.2.0/lib/../lib64]
+          arg [-L/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0] ==> dir [/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0]
+          arg [-L/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/../../../../lib64] ==> dir [/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/../../../../lib64]
+          arg [-L/lib/../lib64] ==> dir [/lib/../lib64]
+          arg [-L/usr/lib/../lib64] ==> dir [/usr/lib/../lib64]
+          arg [-L/lustre/software/gcc/12.2.0/lib64] ==> dir [/lustre/software/gcc/12.2.0/lib64]
+          arg [-L/lustre/software/gcc/12.2.0/lib] ==> dir [/lustre/software/gcc/12.2.0/lib]
+          arg [-L/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/../../..] ==> dir [/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/../../..]
+          arg [-v] ==> ignore
+          arg [CMakeFiles/cmTC_e4e12.dir/CMakeCXXCompilerABI.cpp.o] ==> ignore
+          arg [-lstdc++] ==> lib [stdc++]
+          arg [-lm] ==> lib [m]
+          arg [-lgcc_s] ==> lib [gcc_s]
+          arg [-lgcc] ==> lib [gcc]
+          arg [-lc] ==> lib [c]
+          arg [-lgcc_s] ==> lib [gcc_s]
+          arg [-lgcc] ==> lib [gcc]
+          arg [/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/crtend.o] ==> obj [/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/crtend.o]
+          arg [/lib/../lib64/crtn.o] ==> obj [/lib/../lib64/crtn.o]
+        ignore line: [collect2 version 12.2.0]
+        ignore line: [/usr/bin/ld -plugin /lustre/software/gcc/12.2.0/libexec/gcc/x86_64-linux/12.2.0/liblto_plugin.so -plugin-opt=/lustre/software/gcc/12.2.0/libexec/gcc/x86_64-linux/12.2.0/lto-wrapper -plugin-opt=-fresolution=/tmp/ccgncNhi.res -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lc -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc --eh-frame-hdr -m elf_x86_64 -dynamic-linker /lib64/ld-linux-x86-64.so.2 -o cmTC_e4e12 /lib/../lib64/crt1.o /lib/../lib64/crti.o /lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/crtbegin.o -L/lustre/software/gcc/12.2.0/lib64/../lib64 -L/lustre/software/gcc/12.2.0/lib/../lib64 -L/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0 -L/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/../../../../lib64 -L/lib/../lib64 -L/usr/lib/../lib64 -L/lustre/software/gcc/12.2.0/lib64 -L/lustre/software/gcc/12.2.0/lib -L/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/../../.. -v CMakeFiles/cmTC_e4e12.dir/CMakeCXXCompilerABI.cpp.o -lstdc++ -lm -lgcc_s -lgcc -lc -lgcc_s -lgcc /lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/crtend.o /lib/../lib64/crtn.o]
+        linker tool for 'CXX': /usr/bin/ld
+        collapse obj [/lib/../lib64/crt1.o] ==> [/lib64/crt1.o]
+        collapse obj [/lib/../lib64/crti.o] ==> [/lib64/crti.o]
+        collapse obj [/lib/../lib64/crtn.o] ==> [/lib64/crtn.o]
+        collapse library dir [/lustre/software/gcc/12.2.0/lib64/../lib64] ==> [/lustre/software/gcc/12.2.0/lib64]
+        collapse library dir [/lustre/software/gcc/12.2.0/lib/../lib64] ==> [/lustre/software/gcc/12.2.0/lib64]
+        collapse library dir [/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0] ==> [/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0]
+        collapse library dir [/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/../../../../lib64] ==> [/lustre/software/gcc/12.2.0/lib64]
+        collapse library dir [/lib/../lib64] ==> [/lib64]
+        collapse library dir [/usr/lib/../lib64] ==> [/usr/lib64]
+        collapse library dir [/lustre/software/gcc/12.2.0/lib64] ==> [/lustre/software/gcc/12.2.0/lib64]
+        collapse library dir [/lustre/software/gcc/12.2.0/lib] ==> [/lustre/software/gcc/12.2.0/lib]
+        collapse library dir [/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/../../..] ==> [/lustre/software/gcc/12.2.0/lib]
+        implicit libs: [stdc++;m;gcc_s;gcc;c;gcc_s;gcc]
+        implicit objs: [/lib64/crt1.o;/lib64/crti.o;/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/crtbegin.o;/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0/crtend.o;/lib64/crtn.o]
+        implicit dirs: [/lustre/software/gcc/12.2.0/lib64;/lustre/software/gcc/12.2.0/lib/gcc/x86_64-linux/12.2.0;/lib64;/usr/lib64;/lustre/software/gcc/12.2.0/lib]
+        implicit fwks: []
+      
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/lustre/software/cmake/3.31.9/share/cmake-3.31/Modules/Internal/CMakeDetermineLinkerId.cmake:40 (message)"
+      - "/lustre/software/cmake/3.31.9/share/cmake-3.31/Modules/CMakeDetermineCompilerABI.cmake:255 (cmake_determine_linker_id)"
+      - "/lustre/software/cmake/3.31.9/share/cmake-3.31/Modules/CMakeTestCXXCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Running the CXX compiler's linker: "/usr/bin/ld" "-v"
+      GNU ld version 2.30-117.el8
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/lustre/software/cmake/3.31.9/share/cmake-3.31/Modules/Internal/CheckSourceCompiles.cmake:108 (try_compile)"
+      - "/lustre/software/cmake/3.31.9/share/cmake-3.31/Modules/CheckCXXSourceCompiles.cmake:58 (cmake_check_source_compiles)"
+      - "/lustre/software/cmake/3.31.9/share/cmake-3.31/Modules/FindThreads.cmake:99 (CHECK_CXX_SOURCE_COMPILES)"
+      - "/lustre/software/cmake/3.31.9/share/cmake-3.31/Modules/FindThreads.cmake:163 (_threads_check_libc)"
+      - "ext/spdlog/CMakeLists.txt:142 (find_package)"
+    checks:
+      - "Performing Test CMAKE_HAVE_LIBC_PTHREAD"
+    directories:
+      source: "/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeScratch/TryCompile-jyqdEb"
+      binary: "/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeScratch/TryCompile-jyqdEb"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: " -g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "CMAKE_HAVE_LIBC_PTHREAD"
+      cached: true
+      stdout: |
+        Change Dir: '/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeScratch/TryCompile-jyqdEb'
+        
+        Run Build Command(s): /lustre/software/cmake/3.31.9/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_c7ceb/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_c7ceb.dir/build.make CMakeFiles/cmTC_c7ceb.dir/build
+        gmake[1]: Entering directory '/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeScratch/TryCompile-jyqdEb'
+        Building CXX object CMakeFiles/cmTC_c7ceb.dir/src.cxx.o
+        /lustre/software/gcc/12.2.0/bin/c++ -DCMAKE_HAVE_LIBC_PTHREAD  -g  -fPIE -o CMakeFiles/cmTC_c7ceb.dir/src.cxx.o -c /lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeScratch/TryCompile-jyqdEb/src.cxx
+        Linking CXX executable cmTC_c7ceb
+        /lustre/software/cmake/3.31.9/bin/cmake -E cmake_link_script CMakeFiles/cmTC_c7ceb.dir/link.txt --verbose=1
+        CMakeFiles/cmTC_c7ceb.dir/src.cxx.o: In function `main':
+        /lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeScratch/TryCompile-jyqdEb/src.cxx:11: undefined reference to `pthread_create'
+        /lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeScratch/TryCompile-jyqdEb/src.cxx:12: undefined reference to `pthread_detach'
+        /lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeScratch/TryCompile-jyqdEb/src.cxx:13: undefined reference to `pthread_cancel'
+        /lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeScratch/TryCompile-jyqdEb/src.cxx:14: undefined reference to `pthread_join'
+        collect2: error: ld returned 1 exit status
+        /lustre/software/gcc/12.2.0/bin/c++  -g  CMakeFiles/cmTC_c7ceb.dir/src.cxx.o -o cmTC_c7ceb
+        gmake[1]: *** [CMakeFiles/cmTC_c7ceb.dir/build.make:102: cmTC_c7ceb] Error 1
+        gmake[1]: Leaving directory '/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeScratch/TryCompile-jyqdEb'
+        gmake: *** [Makefile:134: cmTC_c7ceb/fast] Error 2
+        
+      exitCode: 2
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/lustre/software/cmake/3.31.9/share/cmake-3.31/Modules/CheckLibraryExists.cmake:78 (try_compile)"
+      - "/lustre/software/cmake/3.31.9/share/cmake-3.31/Modules/FindThreads.cmake:112 (CHECK_LIBRARY_EXISTS)"
+      - "/lustre/software/cmake/3.31.9/share/cmake-3.31/Modules/FindThreads.cmake:175 (_threads_check_lib)"
+      - "ext/spdlog/CMakeLists.txt:142 (find_package)"
+    checks:
+      - "Looking for pthread_create in pthreads"
+    directories:
+      source: "/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeScratch/TryCompile-YisHmP"
+      binary: "/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeScratch/TryCompile-YisHmP"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: " -g"
+      CMAKE_CXX_FLAGS_DEBUG: "-g -DRAMULATOR_DEBUG -g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "CMAKE_HAVE_PTHREADS_CREATE"
+      cached: true
+      stdout: |
+        Change Dir: '/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeScratch/TryCompile-YisHmP'
+        
+        Run Build Command(s): /lustre/software/cmake/3.31.9/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_28384/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_28384.dir/build.make CMakeFiles/cmTC_28384.dir/build
+        gmake[1]: Entering directory '/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeScratch/TryCompile-YisHmP'
+        Building CXX object CMakeFiles/cmTC_28384.dir/CheckFunctionExists.cxx.o
+        /lustre/software/gcc/12.2.0/bin/c++   -g -DCHECK_FUNCTION_EXISTS=pthread_create -std=c++20 -fPIE -o CMakeFiles/cmTC_28384.dir/CheckFunctionExists.cxx.o -c /lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeScratch/TryCompile-YisHmP/CheckFunctionExists.cxx
+        Linking CXX executable cmTC_28384
+        /lustre/software/cmake/3.31.9/bin/cmake -E cmake_link_script CMakeFiles/cmTC_28384.dir/link.txt --verbose=1
+        /usr/bin/ld: cannot find -lpthreads
+        collect2: error: ld returned 1 exit status
+        /lustre/software/gcc/12.2.0/bin/c++  -g -DCHECK_FUNCTION_EXISTS=pthread_create CMakeFiles/cmTC_28384.dir/CheckFunctionExists.cxx.o -o cmTC_28384  -lpthreads
+        gmake[1]: *** [CMakeFiles/cmTC_28384.dir/build.make:102: cmTC_28384] Error 1
+        gmake[1]: Leaving directory '/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeScratch/TryCompile-YisHmP'
+        gmake: *** [Makefile:134: cmTC_28384/fast] Error 2
+        
+      exitCode: 2
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/lustre/software/cmake/3.31.9/share/cmake-3.31/Modules/CheckLibraryExists.cmake:78 (try_compile)"
+      - "/lustre/software/cmake/3.31.9/share/cmake-3.31/Modules/FindThreads.cmake:112 (CHECK_LIBRARY_EXISTS)"
+      - "/lustre/software/cmake/3.31.9/share/cmake-3.31/Modules/FindThreads.cmake:176 (_threads_check_lib)"
+      - "ext/spdlog/CMakeLists.txt:142 (find_package)"
+    checks:
+      - "Looking for pthread_create in pthread"
+    directories:
+      source: "/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeScratch/TryCompile-i64W8n"
+      binary: "/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeScratch/TryCompile-i64W8n"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: " -g"
+      CMAKE_CXX_FLAGS_DEBUG: "-g -DRAMULATOR_DEBUG -g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "CMAKE_HAVE_PTHREAD_CREATE"
+      cached: true
+      stdout: |
+        Change Dir: '/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeScratch/TryCompile-i64W8n'
+        
+        Run Build Command(s): /lustre/software/cmake/3.31.9/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_821bb/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_821bb.dir/build.make CMakeFiles/cmTC_821bb.dir/build
+        gmake[1]: Entering directory '/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeScratch/TryCompile-i64W8n'
+        Building CXX object CMakeFiles/cmTC_821bb.dir/CheckFunctionExists.cxx.o
+        /lustre/software/gcc/12.2.0/bin/c++   -g -DCHECK_FUNCTION_EXISTS=pthread_create -std=c++20 -fPIE -o CMakeFiles/cmTC_821bb.dir/CheckFunctionExists.cxx.o -c /lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeScratch/TryCompile-i64W8n/CheckFunctionExists.cxx
+        Linking CXX executable cmTC_821bb
+        /lustre/software/cmake/3.31.9/bin/cmake -E cmake_link_script CMakeFiles/cmTC_821bb.dir/link.txt --verbose=1
+        /lustre/software/gcc/12.2.0/bin/c++  -g -DCHECK_FUNCTION_EXISTS=pthread_create CMakeFiles/cmTC_821bb.dir/CheckFunctionExists.cxx.o -o cmTC_821bb  -lpthread
+        gmake[1]: Leaving directory '/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/CMakeFiles/CMakeScratch/TryCompile-i64W8n'
+        
+      exitCode: 0
+...

@@ -8,5 +8,3 @@ __pycache__/
 *.py[cod]
 # OS
 .DS_Store
-.submodulessubmodules/CENT/aim_simulator/*.so
-submodules/CENT/aim_simulator/libramulator.so

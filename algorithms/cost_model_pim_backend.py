@@ -30,6 +30,95 @@ from stats_recorder import get_simulation_logger
 logger = logging.getLogger(__name__)
 attach_local_debug_filter(logger, lambda: False)
 
+_PIM_NORM_ALIASES = {
+    'ln', 'layernorm', 'layer_norm',
+    'rmsnorm', 'rms_norm',
+    'norm',
+    'groupnorm', 'group_norm',
+    'instancenorm', 'instance_norm',
+    'batchnorm', 'batch_norm',
+}
+
+_PIM_NORM_TOKEN_RE = re.compile(r'(^|_)(ln|layernorm|layer_norm|rmsnorm|rms_norm|groupnorm|group_norm|instancenorm|instance_norm|batchnorm|batch_norm|norm)($|_)')
+
+# Map graph node labels / aliases to canonical ops supported by the PIM trace backend.
+_PIM_OP_ALIASES = {
+    # Attention projections
+    'q': 'q_proj',
+    'k': 'k_proj',
+    'v': 'v_proj',
+    'o': 'wo_proj',
+    'wo': 'wo_proj',
+
+    # Attention core
+    'qk': 'score',
+    'score': 'score',
+    'softmax': 'softmax',
+    'sv': 'output',
+    'output': 'output',
+
+    # FFN / MLP
+    'ffn_w1': 'ffn_gate',
+    'ffn_w3': 'ffn_up',
+    'ffn_w2': 'ffn_down',
+    'w1': 'ffn_gate',
+    'w3': 'ffn_up',
+    'w2': 'ffn_down',
+    'mlp_w1': 'ffn_gate',
+    'mlp_w3': 'ffn_up',
+    'mlp_w2': 'ffn_down',
+
+    # Residual / elementwise
+    'add': 'residual',
+    'residual': 'residual',
+
+    # Activations
+    'gelu': 'gelu',
+    'silu': 'silu',
+    'swiglu': 'silu',
+    'swi_glu': 'silu',
+    'act': 'silu',
+
+    # Positional
+    'rope': 'rope',
+}
+
+# Canonical ops currently supported by the trace generator / CENT(AiM) simulator.
+PIM_TRACE_SUPPORTED_OPS = frozenset({
+    'q_proj', 'k_proj', 'v_proj', 'wo_proj',
+    'ffn_up', 'ffn_gate', 'ffn_down',
+    'score', 'softmax', 'output',
+    'rmsnorm', 'rope',
+    'silu', 'gelu',
+    'residual',
+})
+
+
+def _normalize_pim_op(op: str) -> str:
+    """Normalize op names for the PIM trace backend.
+
+    If an op label looks like a normalization operator (LN / LayerNorm /
+    RMSNorm / *Norm / fused-*norm), return 'rmsnorm' since that is the only
+    norm op currently traceable by the CENT/AiM simulator.
+    """
+    s = (op or '').strip().lower()
+    if not s:
+        return s
+    s = s.replace('-', '_')
+    if s in _PIM_NORM_ALIASES:
+        return 'rmsnorm'
+    # Common embedded/fused names: add_rmsnorm, rmsnorm_add, skip_layernorm, ...
+    if ('rmsnorm' in s) or ('layernorm' in s) or s.endswith('norm'):
+        return 'rmsnorm'
+    # Some graphs may name norms like ln1 / ln2
+    if s.startswith('ln') and (len(s) == 2 or s[2:].isdigit()):
+        return 'rmsnorm'
+    if _PIM_NORM_TOKEN_RE.search(s):
+        return 'rmsnorm'
+    # Non-norm ops: map aliases to canonical trace ops (if known)
+    s = _PIM_OP_ALIASES.get(s, s)
+    return s
+
 # ---- AiM simulator intergeration (git submodule: submodules/CENT) ----
 def _ensure_cent_on_path(start: Optional[Path]=None) -> Tuple[Path, Path]:
     here = (start or Path(__file__)).resolve()
@@ -249,6 +338,7 @@ def _emit_single_op_trace(block, op: str, dim: int, n_heads: int, n_kv_heads: in
         block.file.flush()
 
 def _generate_pim_trace(op: str, pim_config: Path, dim: int, n_heads: int, n_kv_heads: int, ffn_dim: int, seqlen: Optional[int], trace_file: Path, model_dict: Optional[Dict]=None) -> None:
+    op = _normalize_pim_op(op)
     if model_dict is None:
         raise ValueError('Model dictionary must be provided for PIM trace generation')
     TransformerBlock = _get_transformer_block()
@@ -525,10 +615,15 @@ def _get_pim_latency_via_trace(op: str, pim_config: Path, ramulator_config: Path
     Generate trace and run Ramulator, returning the latency (in seconds).
     This function blocks until Ramulator finishes the simulation and returns the result.
     """
+    orig_op = op
+    op = _normalize_pim_op(op)
+
     if model_dict is None:
         raise ValueError('Model dictionary must be provided for PIM latency computation')
     sim_logger = get_simulation_logger()
     sim_logger.record_simulation(op, dim, n_heads, n_kv_heads, ffn_dim, seqlen)
+    if orig_op != op:
+        sim_logger._log(f"[PIM] normalize op '{orig_op}' -> '{op}'")
     if use_cache:
         cached = _pim_cache.get(op, dim, n_heads, n_kv_heads, ffn_dim, seqlen, pim_config, ramulator_config)
         if cached is not None:

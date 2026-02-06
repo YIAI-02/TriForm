@@ -1,6 +1,6 @@
 file(REMOVE_RECURSE
-  "../libramulator.pdb"
-  "../libramulator.so"
+  "/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/libramulator.pdb"
+  "/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/libramulator.so"
 )
 
 # Per-language clean rules from dependency scanning.

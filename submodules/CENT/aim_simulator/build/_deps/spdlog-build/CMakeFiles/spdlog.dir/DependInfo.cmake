@@ -17,8 +17,12 @@ set(CMAKE_DEPENDS_DEPENDENCY_FILES
   "/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/ext/spdlog/src/stdout_sinks.cpp" "_deps/spdlog-build/CMakeFiles/spdlog.dir/src/stdout_sinks.cpp.o" "gcc" "_deps/spdlog-build/CMakeFiles/spdlog.dir/src/stdout_sinks.cpp.o.d"
   )
 
-# Targets to which this target links.
-set(CMAKE_TARGET_LINKED_INFO_FILES
+# Targets to which this target links which contain Fortran sources.
+set(CMAKE_Fortran_TARGET_LINKED_INFO_FILES
+  )
+
+# Targets to which this target links which contain Fortran sources.
+set(CMAKE_Fortran_TARGET_FORWARD_LINKED_INFO_FILES
   )
 
 # Fortran module output directory.

@@ -17,8 +17,12 @@ set(CMAKE_DEPENDS_DEPENDENCY_FILES
   "/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/src/frontend/impl/processor/simpleO3/trace.cpp" "src/frontend/CMakeFiles/ramulator-frontend.dir/impl/processor/simpleO3/trace.cpp.o" "gcc" "src/frontend/CMakeFiles/ramulator-frontend.dir/impl/processor/simpleO3/trace.cpp.o.d"
   )
 
-# Targets to which this target links.
-set(CMAKE_TARGET_LINKED_INFO_FILES
+# Targets to which this target links which contain Fortran sources.
+set(CMAKE_Fortran_TARGET_LINKED_INFO_FILES
+  )
+
+# Targets to which this target links which contain Fortran sources.
+set(CMAKE_Fortran_TARGET_FORWARD_LINKED_INFO_FILES
   )
 
 # Fortran module output directory.
