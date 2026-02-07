@@ -579,7 +579,6 @@ class PIMLatencyCache:
             try:
                 with open(self.cache_file, 'rb') as f:
                     self.cache = pickle.load(f)
-                logger.debug(str(f'[PIM Cache] Loaded {len(self.cache)} entries from {self.cache_file}'))
             except Exception as e:
                 logger.debug(str(f'[PIM Cache] Failed to load cache: {e}'))
                 self.cache = {}
@@ -627,8 +626,6 @@ def _get_pim_latency_via_trace(op: str, pim_config: Path, ramulator_config: Path
     if use_cache:
         cached = _pim_cache.get(op, dim, n_heads, n_kv_heads, ffn_dim, seqlen, pim_config, ramulator_config)
         if cached is not None:
-            msg = f'[PIM Cache] Hit for {op} (dim={dim}, heads={n_heads}, seq={seqlen})'
-            sim_logger._log(msg)
             return cached
     msg = f'[PIM] Computing latency for {op} (dim={dim}, heads={n_heads}, seq={seqlen})'
     sim_logger._log(msg)

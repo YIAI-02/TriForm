@@ -1,0 +1,234 @@
+{
+  "config": {
+    "model_family": "llama",
+    "model_variant": "7b",
+    "dtype": "int8",
+    "batch": 1,
+    "prefill_len": 4096,
+    "decode_len": 4096,
+    "decode_sample_stride": 64,
+    "pim_config_path": "./aim_simulator/PIM_AiM.json",
+    "gb_config_path": "./aim_simulator/gb.json",
+    "ramulator_config_path": "./aim_simulator/example.yaml",
+    "simulation_log_file": "./output/evaluate_single_test/hardware_config_gpu_7aim.json/pim_simulation.txt",
+    "result_dir": "output/evaluate_single_test/hardware_config_gpu_7aim.json/llama_7b_int8_b1_s64",
+    "hardware_json": "./examples/hardware_config_gpu_7aim.json",
+    "dump_graph": true,
+    "dump_graph_dir": "./output/evaluate_single_test/hardware_config_gpu_7aim.json/graph_dumps",
+    "algo": [
+      "hefthint",
+      "heft"
+    ],
+    "baselines": [
+      "pd",
+      "attn_on_pim",
+      "weights_on_pim",
+      "ianus",
+      "facil",
+      "attacc"
+    ],
+    "split_by": "head",
+    "qkv_shards": 8,
+    "ffn_shards": 8,
+    "kv_cache_shards": 8,
+    "optimizations": {
+      "quantization": {
+        "enable": false,
+        "mode": "weight_only",
+        "weight_bits": 4,
+        "activation_bits": 16,
+        "activation_io": "fp16",
+        "group_size": 128,
+        "per_channel": true,
+        "scale_dtype_bits": 16,
+        "speedup": {
+          "npu": 1.0,
+          "gpu": 1.0
+        },
+        "apply_to": [
+          "Q",
+          "K",
+          "V",
+          "O",
+          "FFN_"
+        ],
+        "exclude": [
+          "LM_HEAD",
+          "EMBED"
+        ]
+      },
+      "sparsity": {
+        "weight": {
+          "enable": false,
+          "method": "global",
+          "pattern": "2:4",
+          "sparsity": 0.5,
+          "assume_sparse_compute": true,
+          "storage": "compressed",
+          "metadata_bytes_per_nnz": 0.0,
+          "speedup": {
+            "npu": 1.0
+          },
+          "apply_to": [
+            "Q",
+            "K",
+            "V",
+            "O",
+            "FFN_"
+          ],
+          "exclude": []
+        },
+        "activation": {
+          "enable": false,
+          "mode": "threshold",
+          "density": 0.8,
+          "density_by_phase": {
+            "prefill": 0.95,
+            "decode": 0.6
+          },
+          "storage": "dense",
+          "assume_sparse_compute": true,
+          "speedup": {
+            "npu": 1.0
+          },
+          "apply_to": [
+            "FFN_",
+            "SWIGLU",
+            "GELU",
+            "ADD"
+          ],
+          "exclude": [
+            "LN"
+          ]
+        }
+      },
+      "attention_sparsity": {
+        "enable": false,
+        "pattern": "local",
+        "window_left": 511,
+        "window_right": 0,
+        "block_size": 128,
+        "blocks_left": 4,
+        "blocks_right": 0,
+        "density": 1.0,
+        "apply_to": [
+          "QK",
+          "SOFTMAX",
+          "SV"
+        ],
+        "exclude": []
+      },
+      "per_layer": {},
+      "npu_backend": "llmcompass"
+    },
+    "debug": true,
+    "npu_backend": "llmcompass",
+    "pim_fast_mode": true
+  },
+  "results": [
+    {
+      "policy": "algo:pd",
+      "pim_strategy": "pim_by_capacity",
+      "kv_in_pim": true,
+      "kv_total_bytes": 2147483648,
+      "pim_weight_capacity_bytes": 6476005376,
+      "prefill_time_s": 171.82821138431385,
+      "decode_time_s": 1905.0461164195367,
+      "total_time_s": 2076.8743278038505
+    },
+    {
+      "policy": "algo:attn_on_pim",
+      "pim_strategy": "pim_by_capacity",
+      "kv_in_pim": true,
+      "kv_total_bytes": 2147483648,
+      "pim_weight_capacity_bytes": 6476005376,
+      "prefill_time_s": 426.83992284108876,
+      "decode_time_s": 1385.084071655554,
+      "total_time_s": 1811.9239944966428
+    },
+    {
+      "policy": "algo:weights_on_pim",
+      "pim_strategy": "pim_by_capacity",
+      "kv_in_pim": true,
+      "kv_total_bytes": 2147483648,
+      "pim_weight_capacity_bytes": 6476005376,
+      "prefill_time_s": 774.116734322235,
+      "decode_time_s": 1153.6830511108528,
+      "total_time_s": 1927.799785433088
+    },
+    {
+      "policy": "algo:ianus",
+      "pim_strategy": "pim_by_capacity",
+      "kv_in_pim": true,
+      "kv_total_bytes": 2147483648,
+      "pim_weight_capacity_bytes": 6476005376,
+      "prefill_time_s": 171.82821138431385,
+      "decode_time_s": 800.279774699175,
+      "total_time_s": 972.1079860834889
+    },
+    {
+      "policy": "algo:facil",
+      "pim_strategy": "pim_by_capacity",
+      "kv_in_pim": true,
+      "kv_total_bytes": 2147483648,
+      "pim_weight_capacity_bytes": 6476005376,
+      "prefill_time_s": 171.82821138431385,
+      "decode_time_s": 1732.61710507323,
+      "total_time_s": 1904.4453164575439
+    },
+    {
+      "policy": "algo:attacc",
+      "pim_strategy": "pim_by_capacity",
+      "kv_in_pim": true,
+      "kv_total_bytes": 2147483648,
+      "pim_weight_capacity_bytes": 6476005376,
+      "prefill_time_s": 171.82821138431385,
+      "decode_time_s": 1267.0306910534382,
+      "total_time_s": 1438.858902437752
+    },
+    {
+      "policy": "algo:hefthint",
+      "pim_strategy": "host",
+      "pim_strategy_scores": {
+        "host": {
+          "prefill_s": 165.17301631203807,
+          "decode_s": 445.21000878252414,
+          "total_s": 610.3830250945622
+        },
+        "pim": {
+          "prefill_s": 165.130097338507,
+          "decode_s": 534.2905581890128,
+          "total_s": 699.4206555275198
+        }
+      },
+      "kv_in_pim": false,
+      "kv_total_bytes": 0,
+      "pim_weight_capacity_bytes": 6476005376,
+      "prefill_time_s": 165.17301631203807,
+      "decode_time_s": 445.21000878252414,
+      "total_time_s": 610.3830250945622
+    },
+    {
+      "policy": "algo:heft",
+      "pim_strategy": "host",
+      "pim_strategy_scores": {
+        "host": {
+          "prefill_s": 162.76522137931588,
+          "decode_s": 487.39809672401987,
+          "total_s": 650.1633181033358
+        },
+        "pim": {
+          "prefill_s": 162.72513830505937,
+          "decode_s": 678.5027933461138,
+          "total_s": 841.2279316511731
+        }
+      },
+      "kv_in_pim": false,
+      "kv_total_bytes": 0,
+      "pim_weight_capacity_bytes": 6476005376,
+      "prefill_time_s": 162.76522137931588,
+      "decode_time_s": 487.39809672401987,
+      "total_time_s": 650.1633181033358
+    }
+  ]
+}

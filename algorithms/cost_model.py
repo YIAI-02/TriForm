@@ -114,7 +114,10 @@ class NpuBackendBase(ABC):
 
     def _fallback_fast_s(self, cm: "CostModel", node: TaskNode, dev: DeviceSpec, ctx: NpuOpContext) -> float:
         flops = float(cm.estimate_flops(node, ctx.batch, ctx.seq_len, ctx.phase))
-        return float(cm.flop_time(flops, dev) + float(ctx.mem_s))
+        compute_s = cm.flop_time(flops, dev)
+        mem_s = ctx.mem_s
+        return max(compute_s, mem_s)
+
 
 
 class NpuFastBackend(NpuBackendBase):
@@ -350,7 +353,8 @@ class PimFastBackend(PimBackendBase):
         rd, wr = cm.estimate_activation_bytes(node, ctx.batch, ctx.seq_len, ctx.phase)
         mem_t = float(cm.pim_mem_time(int(rd), int(wr), dev))
         flops = float(cm.estimate_flops(node, ctx.batch, ctx.seq_len, ctx.phase))
-        return float(cm.flop_time(flops, dev) + mem_t)
+        compute_s = cm.flop_time(flops, dev)
+        return max(compute_s, mem_t)
 
     def weight_load_s(self, cm: "CostModel", weight_bytes: int) -> float:
         logger.debug(str(f"[PIM][FAST] weight_load bytes={weight_bytes}"))
@@ -846,6 +850,27 @@ class CostModel:
             return 1.0
 
 # ---------------------------------------------------------------------
+    def estimate_kv_cache_read_bytes(self, node, batch: int, seq_len: int, phase: str) -> int:
+        """
+        Estimate bytes of historical KV cache (per K or per V) that must be read during decode.
+
+        This matches the previous explicit K_READ/V_READ operator volume. It is used when KV cache
+        reads are modeled implicitly on the K->QK and V->SV edges (i.e., K_read/V_read nodes are removed).
+        """
+        attrs = getattr(node, 'attrs', {}) or {}
+        dtype_bytes = float(self._kv_dtype_bytes(node, phase))
+        if phase == 'prefill' or seq_len <= 0:
+            return 0
+
+        kv_len = int(self._effective_kv_len_for_decode(node, seq_len, phase))
+        qh = int(attrs.get('q_heads', attrs.get('n_heads', 0)) or 0)
+        kvh = int(attrs.get('n_kv_heads', attrs.get('kv_heads', qh)) or 0)
+        hd = int(attrs.get('head_dim', 0) or 0)
+        if kvh <= 0 or hd <= 0:
+            return 0
+        elems = batch * kvh * hd * kv_len
+        return int(math.ceil(float(elems) * float(dtype_bytes)))
+        
     def estimate_flops(self, node, batch: int, seq_len: int, phase: str) -> float:
         attrs = getattr(node, 'attrs', {}) or {}
         default = float(getattr(node, 'flops', 0.0) or 0.0)
@@ -1091,27 +1116,6 @@ class CostModel:
             elems = b * q_len * D
             return (to_bytes(elems), to_bytes(elems))
         return (0, 0)
-
-    def estimate_kv_cache_read_bytes(self, node, batch: int, seq_len: int, phase: str) -> int:
-        """
-        Estimate bytes of historical KV cache (per K or per V) that must be read during decode.
-
-        This matches the previous explicit K_READ/V_READ operator volume. It is used when KV cache
-        reads are modeled implicitly on the K->QK and V->SV edges (i.e., K_read/V_read nodes are removed).
-        """
-        attrs = getattr(node, 'attrs', {}) or {}
-        dtype_bytes = float(self._kv_dtype_bytes(node, phase))
-        if phase == 'prefill' or seq_len <= 0:
-            return 0
-
-        kv_len = int(self._effective_kv_len_for_decode(node, seq_len, phase))
-        qh = int(attrs.get('q_heads', attrs.get('n_heads', 0)) or 0)
-        kvh = int(attrs.get('n_kv_heads', attrs.get('kv_heads', qh)) or 0)
-        hd = int(attrs.get('head_dim', 0) or 0)
-        if kvh <= 0 or hd <= 0:
-            return 0
-        elems = batch * kvh * hd * kv_len
-        return int(math.ceil(float(elems) * float(dtype_bytes)))
     
     def node_device_cost(self, node: TaskNode, dev: DeviceSpec, label: PlanLabel, batch: int, seq_len: int, phase: str) -> float:
         attrs = getattr(node, 'attrs', {}) or {}
@@ -1156,7 +1160,7 @@ class CostModel:
                 # Fallback: treat as very slow (1 GFLOP/s equivalent) instead of free.
                 tflops = 1e-3
             compute_t = float(flops) / (tflops * 1e12)
-            return float(compute_t + mem_t) * time_scale
+            return max(compute_t, mem_t) * time_scale
 
         # ------------------------------------------------------------------
         # NPU 

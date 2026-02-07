@@ -168,6 +168,25 @@ def _make_label_given_kv(
     is_head = part_dim in ("head", "heads", "head_num", "headnum")
     if pim_rr:
         if is_head:
+            # --------------------------------------------------------------
+            # STRICT head-based KV cache placement
+            # --------------------------------------------------------------
+            n_q_heads = int(getattr(shape, 'n_heads', n_kv_heads) or n_kv_heads)
+
+            if int(n_kv_heads) <= 0:
+                raise ValueError("[TP] n_kv_heads must be > 0 for head partition")
+            if int(n_q_heads) <= 0:
+                n_q_heads = int(n_kv_heads)
+            if int(n_kv_heads) > int(n_q_heads):
+                raise ValueError(
+                    f"[TP] invalid GQA config: n_kv_heads({n_kv_heads}) > n_heads({n_q_heads})"
+                )
+            if (int(n_q_heads) % int(n_kv_heads)) != 0:
+                raise ValueError(
+                    f"[TP] invalid GQA config: n_heads({n_q_heads}) must be divisible by n_kv_heads({n_kv_heads})"
+                )
+            # Build {kv_shard_id -> set(kv_head_ids)} from graph K_write shards.
+            shard_to_heads: Dict[int, set[int]] = {}
             kv_shards = max(1, min(int(n_kv_heads), len(pim_rr)))
             kv_sizes = split_even(int(n_kv_heads), int(kv_shards))
             h0 = 0
@@ -1767,7 +1786,7 @@ def parse_args():
                          help='Baseline list, e.g. "pd,weights_on_pim,attn_on_pim"')
     sp_eval.add_argument('--npu_backend', type=str, default=None,
                          choices=['fast_mode', 'ascend_310b_json', 'llmcompass'],
-                         help='NPU operator-latency backend: fast/ascend_310b_json/llmcompass. Must be explicitly specified (in config JSON or CLI).')
+                         help='NPU operator-latency backend: fast_mode/ascend_310b_json/llmcompass. Must be explicitly specified (in config JSON or CLI).')
     sp_eval.add_argument('--pim_fast_mode', action='store_true',default=None)
 
     # Graph/tensor-parallel controls

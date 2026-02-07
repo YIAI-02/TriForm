@@ -8,3 +8,8 @@ __pycache__/
 *.py[cod]
 # OS
 .DS_Store
+# generated results (do not commit)
+**/*_comms_trace.csv
+**/best_summary_*.json
+**/debug_*.txt
+**/pim_sim_*.txt

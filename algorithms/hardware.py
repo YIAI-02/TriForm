@@ -14,10 +14,6 @@ class LinkSpec:
         n_hat = n + ceil(n / MaxPayload) * FlitSize
 
     All sizes are in bytes, time in seconds.
-
-    Notes:
-    - `bw_GBs` is in GB/s (GiB/s) to match the rest of this framework.
-    - When `flit_size_B <= 0` or `max_payload_B <= 0`, packetization overhead is disabled.
     """
 
     bw_GBs: float
@@ -113,82 +109,10 @@ def demo_cluster(cfg: Dict | None = None) -> Cluster:
         if hw_cfg is None:
             hw_cfg = cfg.get('hardware') or cfg.get('cluster')
     if not hw_cfg:
-        print("DEBUG: Using built-in demo hardware config")
-        cpu_tflops = 2.0
-        cpu_mem_bw = 51.2
-        cpu_mem_cap = 0.009
-        if isinstance(cfg, dict):
-            try:
-                cpu_tflops = float(cfg.get('cpu_tflops', cpu_tflops) or cpu_tflops)
-            except Exception:
-                pass
-            try:
-                cpu_mem_bw = float(cfg.get('cpu_mem_bw_GBs', cfg.get('cpu_mem_bw', cpu_mem_bw)) or cpu_mem_bw)
-            except Exception:
-                pass
-            try:
-                cpu_mem_cap = float(cfg.get('cpu_mem_capacity_GB', cfg.get('cpu_mem_capacity', cpu_mem_cap)) or cpu_mem_cap)
-            except Exception:
-                pass
-
-        c.add_device(DeviceSpec("CPU0", "cpu", tflops=cpu_tflops, mem_bw_GBs=cpu_mem_bw, mem_capacity_GB=cpu_mem_cap))
-
-        # Whether to include an NPU in the demo topology.
-        use_npu = True
-        if isinstance(cfg, dict):
-            # Accept multiple common flags.
-            if bool(cfg.get('no_npu', False) or cfg.get('disable_npu', False)):
-                use_npu = False
-            try:
-                if int(cfg.get('npu_count', cfg.get('num_npu', 1)) or 1) <= 0:
-                    use_npu = False
-            except Exception:
-                pass
-        if use_npu:
-            npu_tflops = 10.0
-            npu_mem_bw = 51.2
-            npu_mem_cap = 0.003
-            if isinstance(cfg, dict):
-                try:
-                    npu_tflops = float(cfg.get('npu_tflops', npu_tflops) or npu_tflops)
-                except Exception:
-                    pass
-                try:
-                    npu_mem_bw = float(cfg.get('npu_mem_bw_GBs', cfg.get('npu_mem_bw', npu_mem_bw)) or npu_mem_bw)
-                except Exception:
-                    pass
-                try:
-                    npu_mem_cap = float(cfg.get('npu_mem_capacity_GB', cfg.get('npu_mem_capacity', npu_mem_cap)) or npu_mem_cap)
-                except Exception:
-                    pass
-            c.add_device(DeviceSpec("NPU0", "npu", tflops=npu_tflops, mem_bw_GBs=npu_mem_bw, mem_capacity_GB=npu_mem_cap))
-
-        # Multi-PIM support (no inter-PIM communication assumed):
-        # You can override the number of PIMs by providing cfg['num_pim'] (or 'pim_count').
-        num_pim = 1
-        if isinstance(cfg, dict):
-            try:
-                num_pim = int(cfg.get('num_pim', cfg.get('pim_count', 1)) or 1)
-            except Exception:
-                num_pim = 1
-        num_pim = max(1, num_pim)
-        
-        for i in range(num_pim):
-            name = f"PIM{i}"
-            c.add_device(DeviceSpec(name,"pim",tflops=1.0,mem_bw_GBs=32.0,mem_capacity_GB=1.0,pim_type='accel'))
-
-        # Links
-        host_npu_bw = 32.0
-        if isinstance(cfg, dict):
-            try:
-                host_npu_bw = float(cfg.get('host_npu_bw_GBs', cfg.get('host_npu_bw', host_npu_bw)) or host_npu_bw)
-            except Exception:
-                pass
-        if use_npu:
-            c.connect("CPU0", "NPU0", host_npu_bw)
-        for i in range(num_pim):
-            c.connect("CPU0", f"PIM{i}", 32.0)
-        return c
+        raise ValueError(
+            "Missing hardware config. "
+            "Provide cfg['hardware'] or cfg['cluster'], or set cfg['hardware_json'] to a valid JSON file path."
+        )
 
     # Parse loaded hw_cfg
     for d in hw_cfg.get('devices', []):

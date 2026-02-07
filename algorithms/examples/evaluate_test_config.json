@@ -1,7 +1,7 @@
 {
   "model_family": "llama",
   "model_variant": "7b",
-  "dtype": "fp16",
+  "dtype": "int8",
   "batch": 1,
   "prefill_len": 4096,
   "decode_len": 4096,
@@ -9,11 +9,11 @@
   "pim_config_path": "./aim_simulator/PIM_AiM.json",
   "gb_config_path": "./aim_simulator/gb.json",
   "ramulator_config_path": "./aim_simulator/example.yaml",
-  "simulation_log_file": "./output/evaluate_single_test/hardware_config_gpu_aim/pim_simulation.txt",
-  "result_dir": "./output/evaluate_single_test/hardware_config_gpu_aim/",
-  "hardware_json": "./examples/hardware_config_gpu_aim.json",
+  "simulation_log_file": "./output/evaluate_single_test/hardware_config_gpu_7aim.json/pim_simulation.txt",
+  "result_dir": "./output/evaluate_single_test/hardware_config_gpu_7aim.json/",
+  "hardware_json": "./examples/hardware_config_gpu_7aim.json",
   "dump_graph": true,
-  "dump_graph_dir": "./output/evaluate_single_test/hardware_config_gpu_aim/graph_dumps",
+  "dump_graph_dir": "./output/evaluate_single_test/hardware_config_gpu_7aim.json/graph_dumps",
   "algo": [
     "hefthint",
     "heft"
@@ -27,7 +27,9 @@
     "attacc"
   ],
   "split_by": "head",
-  "split_shards": 4,
+  "qkv_shards": 8,
+  "ffn_shards": 8,
+  "kv_cache_shards": 8,
 
   "optimizations": {
     "quantization": {

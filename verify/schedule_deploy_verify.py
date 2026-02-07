@@ -9,12 +9,12 @@
      * <prefix>.pim_tasks.json
 
     python ./verify/schedule_deploy_verify.py export \
-        --schedule ./algorithms/output/evaluate_single_test/hardware_config_scale_down_11pima/llama_7b_fp16_b8_s64/algo_hefthint/hefthint_128x128_ops_trace.csv \
+        --schedule ./algorithms/output/evaluate_single_test/hardware_config_gpu_7aim.json/llama_7b_int8_b1_s64/algo_hefthint/hefthint_4096x4096_ops_trace.csv \
         --out-dir ./verify/out \
         --prefix hefthint_seg \
         --segment-scope layer \
-        --prefill-len 128 \
-        --dim 4096 --ffn-dim 11008 --n-heads 32 --shards 4
+        --prefill-len 4096 \
+        --dim 4096 --ffn-dim 11008 --n-heads 32 --shards 8
 
 2) run-gpu
    - 读取 gpu_tasks.json，把每个 segment 的算子序列连续执行并计时
@@ -32,11 +32,11 @@
   python ./verify/schedule_deploy_verify.py run-pim \
   --tasks ./verify/out/hefthint_seg.pim_tasks.json \
   --out ./verify/out/hefthint_seg.pim_results.json \
-  --cent-sim-root /Users/yangjiaqi/WW/project_1/python/TriForm/submodules/CENT/cent_simulation \
+  --cent-sim-root ./submodules/CENT/cent_simulation \
   --pim-ramulator-config ./algorithms/aim_simulator/example.yaml \
   --pim-ramulator-bin ./algorithms/ramulator2 \
   --pim-freq-ghz 1.6 \
-  --pim-num-channels 4 --pim-num-banks 8 --pim-num-devices 1
+  --pim-num-channels 4 --pim-num-banks 8 --pim-num-devices 7
 
   python ./verify/schedule_deploy_verify.py run-pim \
   --tasks ./verify/out/hefthint_seg.pim_tasks.json \
@@ -85,6 +85,7 @@ except Exception:
     torch = None
     F = None
 
+_COMM_OPS = {"Identity", "K_write", "V_write"}
 
 # ==========================================================
 # GPU env / spec report helpers
@@ -302,12 +303,67 @@ def import_aim_pim(cent_sim_root: Optional[str] = None):
     except Exception as e:
         raise RuntimeError(f"Failed to import aim_sim.PIM from {root}: {e}") from e
     return PIM
-    
-# ==========================================================
-# Schedule parsing
-# ==========================================================
 
-_COMM_OPS = {"Identity", "K_write", "V_write"} #communication ops will be skip
+
+def import_aim_transformer_block(cent_sim_root: Optional[str] = None):
+    """Import TransformerBlockLlama (preferred) from CENT/AiM simulator.
+    """
+    root = None
+    if cent_sim_root:
+        root = Path(cent_sim_root).expanduser().resolve()
+    elif os.environ.get("CENT_SIM_ROOT"):
+        root = Path(os.environ["CENT_SIM_ROOT"]).expanduser().resolve()
+    else:
+        root = find_cent_sim_root()
+
+    if root is None or not root.exists():
+        raise RuntimeError(
+            "Cannot locate cent_simulation. Please pass --cent-sim-root "
+        )
+    _add_sys_path(root)
+
+    import importlib.util
+    prev_utils = sys.modules.get("utils", None)
+    cent_utils_path = (Path(root) / "utils.py").resolve()
+    cent_utils_mod = None
+
+    if cent_utils_path.exists():
+        spec = importlib.util.spec_from_file_location("_cent_utils_for_aim", str(cent_utils_path))
+        if spec and spec.loader:
+            cent_utils_mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(cent_utils_mod)  # type: ignore[attr-defined]
+            sys.modules["utils"] = cent_utils_mod
+
+    try:
+        # Prefer Llama wrapper (has memory_mapping()) but accept different casings.
+        for mod_name in ("Llama", "llama"):
+            try:
+                mod = __import__(mod_name, fromlist=["TransformerBlockLlama"])
+                if hasattr(mod, "TransformerBlockLlama"):
+                    return getattr(mod, "TransformerBlockLlama")
+            except Exception:
+                pass
+
+        # Fallback to raw TransformerBlock (also accept different casings)
+        for mod_name in ("TransformerBlock", "transformerblock"):
+            try:
+                mod = __import__(mod_name, fromlist=["TransformerBlock"])
+                if hasattr(mod, "TransformerBlock"):
+                    return getattr(mod, "TransformerBlock")
+            except Exception:
+                pass
+
+        raise RuntimeError(f"Neither TransformerBlockLlama nor TransformerBlock could be imported from {root}")
+    finally:
+        if prev_utils is not None:
+            sys.modules["utils"] = prev_utils
+        else:
+            if "utils" in sys.modules and sys.modules["utils"] is cent_utils_mod:
+                try:
+                    del sys.modules["utils"]
+                except Exception:
+                    pass
+
 
 def parse_layer(node_id: str) -> int:
     m = re.match(r"L(\d+)_", str(node_id))
@@ -742,16 +798,17 @@ class GPUBackend:
 
 class PIMBackend:
     """
-    PIM backend:
-      1) Use aim_sim.PIM only_trace primitives to emit an AiM instruction trace.
+    PIM backend (trace-based):
+      1) Use CENT(AiM) simulator's TransformerBlock trace generators to emit an AiM instruction trace.
       2) Run AiM-enabled ramulator2 on that trace and parse "memory_system_cycles".
     """
+
     def __init__(self, cfg: WorkloadConfig, *, cent_sim_root: Optional[str] = None):
-        PIM = import_aim_pim(cent_sim_root)
         if torch is None:
-            raise RuntimeError("PyTorch is required for aim_sim (even on CPU).")
+            raise RuntimeError("PyTorch is required for AiM simulator.")
+
         self.cfg = cfg
-        self._PIM_cls = PIM
+        self._TB_cls = import_aim_transformer_block(cent_sim_root)
 
         self._validate_hw_cfg()
 
@@ -763,9 +820,11 @@ class PIMBackend:
         if not self._ramulator_config_base.exists():
             raise FileNotFoundError(f"Ramulator config not found: {self._ramulator_config_base}")
 
-        # Optionally rewrite the ramulator config so channels/banks/devices are explicitly specified
         self._ramulator_config = self._ramulator_config_base
 
+    # ---------------------------------------------------------------------
+    # Config / helpers
+    # ---------------------------------------------------------------------
     def _validate_hw_cfg(self) -> None:
         cfg = self.cfg
         required_pos_int = [
@@ -785,32 +844,8 @@ class PIMBackend:
         if cfg.pim_freq_ghz is None or float(cfg.pim_freq_ghz) <= 0:
             raise ValueError(f"pim_freq_ghz must be > 0, got {cfg.pim_freq_ghz!r}")
 
-    def _make_pim(self, trace_file: str):
-        import types
-        args = types.SimpleNamespace()
-        # topology (explicit)
-        args.DRAM_column = int(self.cfg.pim_dram_column)
-        args.DRAM_row = int(self.cfg.pim_dram_row)
-        args.burst_length = int(self.cfg.pim_burst_length)
-        args.num_banks = int(self.cfg.pim_num_banks)
-        args.num_channels = int(self.cfg.pim_num_channels)
-        args.threads = int(self.cfg.pim_threads)
-        args.reuse_size = int(self.cfg.pim_reuse_size)
-
-        # device count (explicit)
-        args.model_parallel = bool(int(self.cfg.pim_num_devices) > 1)
-        args.FC_devices = int(self.cfg.pim_num_devices)
-
-        # tracing
-        args.only_trace = True
-        args.op_trace = False
-        args.trace_file = str(trace_file)
-        return self._PIM_cls(args)
-
-
     def _ramulator_cmd(self, trace_path: Path) -> List[str]:
         exe = str(self.cfg.pim_ramulator_bin or "ramulator2")
-        # Prefer local ./ramulator2 if user passes plain name and it exists
         if ("/" not in exe and "\\" not in exe) and (Path.cwd() / exe).exists():
             exe = str((Path.cwd() / exe).resolve())
         return [exe, "-f", str(self._ramulator_config), "-t", str(trace_path)]
@@ -843,17 +878,16 @@ class PIMBackend:
         out = (result.stdout or "") + "\n" + (result.stderr or "")
         m = re.search(r"(?mi)^\s*memory_system_cycles\s*:\s*([0-9]+)\s*$", out)
         if not m:
-            raise RuntimeError(f"Failed to parse ramulator output for memory_system_cycles.\nCommand: {' '.join(cmd)}\nOutput:\n{out}")
+            raise RuntimeError(
+                "Failed to parse ramulator output for memory_system_cycles.\n"
+                f"Command: {' '.join(cmd)}\nOutput:\n{out}"
+            )
         cycles = int(m.group(1))
         if cycles <= 0:
             raise RuntimeError(f"Invalid cycle count from ramulator: {cycles}")
         return cycles
 
     def _alloc_trace_dir(self) -> Tuple[Path, bool]:
-        """
-        Returns (trace_dir, should_cleanup).
-        If cfg.pim_keep_traces is True, traces are kept and should_cleanup is False.
-        """
         if self.cfg.pim_keep_traces:
             base = Path(self.cfg.pim_trace_dir or "./pim_traces").expanduser().resolve()
             base.mkdir(parents=True, exist_ok=True)
@@ -861,148 +895,366 @@ class PIMBackend:
         tmp = Path(tempfile.mkdtemp(prefix="pim_trace_")).resolve()
         return tmp, True
 
-    # ---- internal approximation (still used to generate AiM trace) ----
-    def _channels(self) -> List[int]:
-        return list(range(int(self.cfg.pim_num_channels)))
+    def _max_seq_len(self) -> int:
+        # Prefer decoded context lens from tasks.json if available; else fall back.
+        m = 0
+        if self.cfg.decode_context_lens:
+            try:
+                m = int(max(self.cfg.decode_context_lens))
+            except Exception:
+                m = 0
+        if m <= 0:
+            # prefill_len + decode_steps is a safe upper bound if schedule is standard.
+            try:
+                m = int(self.cfg.prefill_len) + int(self.cfg.decode_steps)
+            except Exception:
+                m = int(self.cfg.prefill_len)
+        return max(1, int(m))
 
-    def _simulate_gemv_once(self, pim, vector_dim: int, matrix_col: int, timing_key: str = "MAC_ABK") -> None:
-        ch = self._channels()
-        if timing_key not in pim.time:
-            pim.time[timing_key] = 0
+    def _make_tb_args(self, *, trace_file: str, seqlen: int) -> Any:
+        import types
+        args = types.SimpleNamespace()
 
-        total_banks = pim.num_channels * pim.num_banks
-        burst = pim.burst_length
+        args.DRAM_column = int(self.cfg.pim_dram_column)
+        args.DRAM_row = int(self.cfg.pim_dram_row)
+        args.burst_length = int(self.cfg.pim_burst_length)
+        args.num_banks = int(self.cfg.pim_num_banks)
+        args.num_channels = int(self.cfg.pim_num_channels)
+        args.threads = int(self.cfg.pim_threads)
+        args.reuse_size = int(self.cfg.pim_reuse_size)
 
-        col_per_bank = (matrix_col + total_banks - 1) // total_banks
-        utilized_banks = (matrix_col + col_per_bank - 1) // col_per_bank
+        # Most CENT traces assume channels_per_block exists.
+        args.channels_per_block = int(getattr(self.cfg, 'pim_channels_per_block', 0) or args.num_channels)
 
-        op_size = (vector_dim + burst - 1) // burst
-        # write vector to GB (rough)
-        pim.WR_GB_only_trace(ch, op_size)
+        # Device count
+        args.model_parallel = bool(int(self.cfg.pim_num_devices) > 1)
+        args.FC_devices = int(self.cfg.pim_num_devices)
 
-        pim.WR_BIAS_only_trace(ch)
-        pim.MAC_ABK_only_trace(ch, row_index=0, op_size=op_size, timing=timing_key)
-        pim.RD_MAC_only_trace(ch)
+        # PIM simulator flags
+        args.only_trace = True
+        args.op_trace = True   # ensure trace_* flags are enabled if any path checks them
+        args.trace_file = str(trace_file)
+        args.pim_compute = True
 
-        # read / store output (rough): proportionate to utilized banks
-        pim.time["RD_SBK"] += pim.timing_constant["RD_SBK"] + (utilized_banks * col_per_bank) / burst
-        pim.time["WR_SBK"] += pim.timing_constant["WR_SBK"] + (utilized_banks * col_per_bank) / burst
+        # Model meta (not used by trace-only ops heavily, but required by the class)
+        args.model = 'llama_like'
+        args.embedding = 'rope'
+        args.seqlen = int(seqlen)
+        args.max_seq_len = int(self._max_seq_len())
 
-    def _simulate_elementwise(self, pim, num_elements: int, kind: str) -> None:
-        ch = self._channels()
-        burst = pim.burst_length
-        op_size = (num_elements + burst - 1) // burst
-        if kind == "mul":
-            pim.EWMUL_only_trace(ch, row_index=0, op_size=op_size)
-        elif kind == "add":
-            pim.EWADD_only_trace(op_size)
+        # Parallelism flags
+        args.pipeline_parallel = False
+        args.inter_device_attention = False
+        args.only_FC = False
+
+        # Trace knobs
+        args.trace_prepare = True
+        args.trace_norm = True
+        args.trace_fc_kqvo = True
+        args.trace_attention = True
+        args.trace_softmax = True
+        args.trace_fc_ffn = True
+        args.trace_activation = True
+
+        # GEMV mode used by TransformerBlock's trace generator
+        args.GEMV = 'reuse-GB'
+
+        return args
+
+    def _make_dummy_model_dict(self, *, dim: int, n_heads: int, ffn_dim: int, seqlen: int) -> Dict[str, Any]:
+        """Create a minimal model_dict compatible with TransformerBlockLlama.memory_mapping()."""
+        D = int(dim)
+        H = int(max(1, n_heads))
+        F = int(ffn_dim)
+        S = int(max(1, seqlen))
+
+        hd = int(max(1, D // H))
+        nkv = H
+
+        model_dict: Dict[str, Any] = {
+            'TP_param': torch.tensor(1),
+            'dim': torch.tensor(D),
+            'n_heads': torch.tensor(H),
+            'n_kv_heads': torch.tensor(nkv),
+
+            'x': torch.zeros((1, 1, D)),
+            'SANorm': torch.zeros((D,)),
+            'FFNNorm': torch.zeros((D,)),
+
+            'sa': torch.zeros((1, 1, D)),
+            'h': torch.zeros((1, 1, D)),
+            'out': torch.zeros((1, 1, D)),
+
+            'wq': torch.zeros((D, D)),
+            'wk': torch.zeros((D, D)),
+            'wv': torch.zeros((D, D)),
+            'xq': torch.zeros((1, 1, D)),
+            'xk': torch.zeros((1, 1, D)),
+            'xv': torch.zeros((1, 1, D)),
+
+            'start_pos': torch.tensor(S - 1),
+            'cache_k': torch.zeros((1, S, nkv, hd)),
+            'cache_v': torch.zeros((1, S, nkv, hd)),
+            'scores': torch.zeros((1, H, 1, S)),
+            'output': torch.zeros((1, 1, D)),
+            'wo': torch.zeros((D, D)),
+
+            'w1': torch.zeros((F, D)),
+            'w3': torch.zeros((F, D)),
+            'w2': torch.zeros((D, F)),
+            'ffn': torch.zeros((1, 1, D)),
+        }
+        return model_dict
+
+    def _calc_channels(self, block) -> Tuple[int, List[int], int]:
+        total_banks = int(block.total_banks)
+        if getattr(block, 'model_parallel', False):
+            FC_total_banks = int(total_banks * int(getattr(block, 'FC_devices', 1)))
+            channels_required = int(getattr(block, 'num_channels', self.cfg.pim_num_channels))
         else:
-            pim.EWMUL_only_trace(ch, row_index=0, op_size=op_size)
+            FC_total_banks = int(total_banks)
+            channels_required = int(getattr(block, 'channels_per_block', self.cfg.pim_num_channels))
 
-    def _simulate_softmax_row(self, pim, klen: int) -> None:
-        # Simplified: two EWMUL passes + some RD/WR (trace only includes EWMUL lines)
-        ch = self._channels()
-        burst = pim.burst_length
-        op_size = (klen + burst - 1) // burst
-        pim.EWMUL_only_trace(ch, row_index=0, op_size=op_size)
-        pim.time["RD_SBK"] += pim.timing_constant["RD_SBK"] + klen / burst
-        pim.time["WR_SBK"] += pim.timing_constant["WR_SBK"] + klen / burst
-        pim.EWMUL_only_trace(ch, row_index=0, op_size=op_size)
+        num_channels = int(getattr(block, 'num_channels', channels_required))
+        channel_multi_required = (num_channels // channels_required) * channels_required if channels_required > 0 else num_channels
+        channel_lst_multi = [c for c in range(max(1, channel_multi_required))]
+        return channels_required, channel_lst_multi, FC_total_banks
 
-    def simulate_one(self, pim, sig: OpSig) -> None:
-        sh = infer_op_shape(sig, self.cfg)
-        D = sh.dim
-        Sd = sh.shard_dim
-        Fsd = sh.ffn_shard_dim
-        T = sh.query_len
-        H = sh.heads_per_shard
-        Hd = sh.head_dim
-        K = sh.key_len
-
-        op = sig.op
-        # LN
-        if op == "LN":
-            # rmsnorm roughly: pow + ew mul
-            self._simulate_gemv_once(pim, vector_dim=D, matrix_col=D, timing_key="breakdown_sa_pow")
-            self._simulate_elementwise(pim, D, "mul")
+    def _time_add(self, block, key: str, delta: float) -> None:
+        if not hasattr(block, 'time'):
             return
+        try:
+            block.time[key] = float(block.time.get(key, 0.0)) + float(delta)
+        except Exception:
+            try:
+                block.time[key] = block.time.get(key, 0) + delta
+            except Exception:
+                pass
 
-        # linear projections
-        elif op in ("Q", "K", "V"):
-            self._simulate_gemv_once(pim, vector_dim=D, matrix_col=Sd, timing_key="breakdown_sa_weight")
-            return
+    # ---------------------------------------------------------------------
+    # Trace emitters
+    # ---------------------------------------------------------------------
+    def _emit_rmsnorm(self, block, channels_required: int, channel_lst: List[int]) -> None:
+        dim = int(block.dim)
+        burst = int(block.burst_length)
+        total_banks = int(block.total_banks)
 
-        elif op == "O":
-            self._simulate_gemv_once(pim, vector_dim=Sd, matrix_col=D, timing_key="breakdown_sa_weight")
-            return
+        input_len = (dim - 1) // max(1, (total_banks // 2)) + 1
+        block.WR_BIAS_only_trace(channel_lst)
+        block.MAC_ABK_only_trace(channel_lst, block.x_row_index, (input_len - 1) // burst + 1, 'breakdown_sa_pow')
+        block.RD_MAC_only_trace(channel_lst)
 
-        elif op in ("FFN_W1", "FFN_W3"):
-            self._simulate_gemv_once(pim, vector_dim=D, matrix_col=Fsd, timing_key="breakdown_ffn_weight")
-            return
+        ew_len = (dim - 1) // max(1, (total_banks // 4)) + 1
+        ew_banks = (dim - 1) // ew_len + 1
 
-        elif op == "FFN_W2":
-            self._simulate_gemv_once(pim, vector_dim=Fsd, matrix_col=D, timing_key="breakdown_ffn_weight")
-            return
+        self._time_add(block, 'WR_SBK', float(getattr(block, 'timing_constant', {}).get('WR_SBK', 0)) + dim / burst)
+        block.store_for_EWMUL_input_only_trace(channels_required, ew_banks, 1, block.x_copy_row_index, ew_len)
+        block.EWMUL_only_trace(channel_lst, block.x_copy_row_index, (ew_len - 1) // burst + 1)
 
-        elif op == "SwiGLU":
-            self._simulate_elementwise(pim, T * Fsd, "mul")
-            return
+        for bank in range(int(block.num_banks)):
+            if bank % 4 == 2:
+                block.COPY_BK_GB_only_trace(channel_lst, bank, block.x_copy_row_index, (ew_len - 1) // burst + 1)
+                block.COPY_GB_BK_only_trace(channel_lst, bank - 1, block.SANorm_row_index, (ew_len - 1) // burst + 1)
 
-        elif op == "Add":
-            self._simulate_elementwise(pim, T * D, "add")
-            return
+        block.EWMUL_only_trace(channel_lst, block.SANorm_row_index, (ew_len - 1) // burst + 1)
 
-        elif op == "QK":
-            # q: [H,T,Hd], k: [H,Hd,K] => [H,T,K]
-            for _ in range(max(1, H * T)):
-                self._simulate_gemv_once(pim, vector_dim=Hd, matrix_col=K, timing_key="breakdown_sa_score")
-            return
+        self._time_add(block, 'RD_SBK', float(getattr(block, 'timing_constant', {}).get('RD_SBK', 0)) + dim / burst)
+        block.load_from_EWMUL_input_only_trace(channels_required, ew_banks, 2, block.SANorm_row_index, ew_len)
+        block.SYNC_only_trace()
 
-        elif op == "Softmax":
-            for _ in range(max(1, H * T)):
-                self._simulate_softmax_row(pim, K)
-            return
+    def _emit_softmax(self, block, channels_required: int, channel_lst: List[int], seqlen: int) -> None:
+        burst = int(block.burst_length)
+        num_banks = int(block.num_banks)
+        total_banks = int(block.total_banks)
+        S = int(max(1, seqlen))
 
-        elif op == "SV":
-            # score: [H,T,K], v: [H,K,Hd] => [H,T,Hd]
-            for _ in range(max(1, H * T)):
-                self._simulate_gemv_once(pim, vector_dim=K, matrix_col=Hd, timing_key="breakdown_sa_output")
-            return
+        rows_per_score = (S - 1) // int(block.DRAM_column) + 1
+        input_vector_EWMUL_length = (S - 1) // max(1, (total_banks // 4)) + 1
+        input_vector_EWMUL_utilized_banks = (S - 1) // input_vector_EWMUL_length + 1
 
-        # Identity / K/V writes are comm-only in schedules; skip
+        for row in range(rows_per_score):
+            if row == rows_per_score - 1:
+                ew_len = (S - row * int(block.DRAM_column) - 1) // max(1, (total_banks // 4)) + 1
+                ew_banks = (S - row * int(block.DRAM_column) - 1) // ew_len + 1
+            else:
+                ew_len = (int(block.DRAM_column) - 1) // max(1, (total_banks // 4)) + 1
+                ew_banks = (int(block.DRAM_column) - 1) // ew_len + 1
+
+            self._time_add(block, 'WR_SBK', float(getattr(block, 'timing_constant', {}).get('WR_SBK', 0)) + ew_banks * ew_len / burst)
+            block.store_for_EWMUL_score_only_trace(channels_required, input_vector_EWMUL_utilized_banks, 1, block.scores_row_index, input_vector_EWMUL_length, row)
+            block.EWMUL_only_trace(channel_lst, block.scores_row_index, (ew_len - 1) // burst + 1)
+
+            for bank in range(num_banks):
+                if bank % 4 == 2:
+                    block.COPY_BK_GB_only_trace(channel_lst, bank, block.scores_row_index, (ew_len - 1) // burst + 1)
+                    block.COPY_GB_BK_only_trace(channel_lst, bank - 1, block.xk_row_index, (ew_len - 1) // burst + 1)
+
+            block.EWMUL_only_trace(channel_lst, block.xk_row_index, (ew_len - 1) // burst + 1)
+
+            self._time_add(block, 'RD_SBK', float(getattr(block, 'timing_constant', {}).get('RD_SBK', 0)) + ew_banks * ew_len / burst)
+            block.load_from_EWMUL_score_only_trace(channels_required, input_vector_EWMUL_utilized_banks, 2, block.xk_row_index, input_vector_EWMUL_length, row)
+            block.SYNC_only_trace()
+
+    def _emit_silu(self, block, channel_lst: List[int]) -> None:
+        ffn_dim = int(block.w1.shape[0])
+        burst = int(block.burst_length)
+        total_banks = int(block.total_banks)
+
+        ew_len = (ffn_dim - 1) // max(1, (total_banks // 4)) + 1
+        ew_banks = (ffn_dim - 1) // ew_len + 1
+
+        self._time_add(block, 'WR_SBK', float(getattr(block, 'timing_constant', {}).get('WR_SBK', 0)) + ffn_dim / burst)
+        block.store_for_EWMUL_input_only_trace(int(block.channels_per_block), ew_banks, 1, block.ffn_row_index, ew_len)
+        block.EWMUL_only_trace(channel_lst, block.ffn_row_index, (ew_len - 1) // burst + 1)
+
+        for bank in range(int(block.num_banks)):
+            if bank % 4 == 2:
+                block.COPY_BK_GB_only_trace(channel_lst, bank, block.ffn_row_index, (ew_len - 1) // burst + 1)
+                block.COPY_GB_BK_only_trace(channel_lst, bank - 1, block.SANorm_row_index, (ew_len - 1) // burst + 1)
+
+        block.EWMUL_only_trace(channel_lst, block.SANorm_row_index, (ew_len - 1) // burst + 1)
+
+        self._time_add(block, 'RD_SBK', float(getattr(block, 'timing_constant', {}).get('RD_SBK', 0)) + ffn_dim / burst)
+        block.SYNC_only_trace()
+
+    def _emit_residual(self, block) -> None:
+        op_size = int(block.dim) // int(block.burst_length)
+        block.EWADD_only_trace(op_size)
+
+    def _emit_weight_gemv(self, block, channel_lst: List[int], row_index: int, V: int, N: int, FC_total_banks: int, timing: str, *, with_af: bool = False) -> None:
+        if with_af and hasattr(block, 'Vector_Matrix_Mul_weight_af_pim_only_trace'):
+            block.Vector_Matrix_Mul_weight_af_pim_only_trace(channel_lst, row_index, int(V), int(N), int(FC_total_banks), timing)
         else:
-            raise ValueError(f"Unknown op for GPUBackend: {op}")
-            return
+            block.Vector_Matrix_Mul_weight_pim_only_trace(channel_lst, row_index, int(V), int(N), int(FC_total_banks), timing)
 
+    # ---------------------------------------------------------------------
+    # Public: simulate a whole segment as one continuous trace
+    # ---------------------------------------------------------------------
     def benchmark_segment(self, seg: SegmentSig) -> float:
+        # Find a representative shape to build the TB
+        first = None
+        for op, shard in seg.ops:
+            if op in _COMM_OPS:
+                continue
+            first = OpSig(device_type=seg.device_type, phase=seg.phase, step=seg.step, op=op, shard=shard)
+            break
+        if first is None:
+            return 0.0
+
+        sh0 = infer_op_shape(first, self.cfg)
+
+        # LOCAL dims (single-shard modeling)
+        dim_local = int(sh0.shard_dim if int(self.cfg.shards) > 1 else sh0.dim)
+        n_heads_local = int(sh0.heads_per_shard if int(self.cfg.shards) > 1 else sh0.n_heads)
+        ffn_local = int(sh0.ffn_shard_dim if int(self.cfg.shards) > 1 else sh0.ffn_dim)
+        seqlen = int(sh0.key_len)
+
         trace_dir, cleanup = self._alloc_trace_dir()
         trace_name = f"{seg.phase}_step{seg.step}_{uuid.uuid4().hex}.trace"
         trace_path = trace_dir / trace_name
 
-        pim = self._make_pim(str(trace_path))
+        args = self._make_tb_args(trace_file=str(trace_path), seqlen=seqlen)
+        model_dict = self._make_dummy_model_dict(dim=dim_local, n_heads=n_heads_local, ffn_dim=ffn_local, seqlen=seqlen)
+
+        block = self._TB_cls(model_dict, args)
+
         try:
+            if hasattr(block, 'memory_mapping'):
+                block.memory_mapping()
+
+            channels_required, channel_lst, FC_total_banks = self._calc_channels(block)
+
             for op, shard in seg.ops:
                 if op in _COMM_OPS:
                     continue
-                sig = OpSig(device_type=seg.device_type, phase=seg.phase, step=seg.step, op=op, shard=shard)
-                self.simulate_one(pim, sig)
 
-            # Finish trace
-            if hasattr(pim, "finish"):
-                pim.finish()
-            if getattr(pim, "file", None):
+                sig = OpSig(device_type=seg.device_type, phase=seg.phase, step=seg.step, op=op, shard=shard)
+                sh = infer_op_shape(sig, self.cfg)
+                T = int(max(1, sh.query_len))
+
+                if seg.phase == 'prefill' and T > 1:
+                    seqlens_list = list(range(1, int(sh.key_len) + 1))
+                else:
+                    seqlens_list = [int(sh.key_len)]
+
+                if op == 'LN':
+                    for _ in range(T):
+                        self._emit_rmsnorm(block, channels_required, channel_lst)
+
+                elif op == 'Q':
+                    for _ in range(T):
+                        self._emit_weight_gemv(block, channel_lst, int(block.wq_row_index), dim_local, dim_local, FC_total_banks, 'breakdown_sa_weight')
+
+                elif op == 'K':
+                    for _ in range(T):
+                        self._emit_weight_gemv(block, channel_lst, int(block.wk_row_index), dim_local, dim_local, FC_total_banks, 'breakdown_sa_weight')
+
+                elif op == 'V':
+                    for _ in range(T):
+                        self._emit_weight_gemv(block, channel_lst, int(block.wv_row_index), dim_local, dim_local, FC_total_banks, 'breakdown_sa_weight')
+
+                elif op == 'O':
+                    for _ in range(T):
+                        self._emit_weight_gemv(block, channel_lst, int(block.wo_row_index), dim_local, dim_local, FC_total_banks, 'breakdown_sa_weight')
+
+                elif op == 'FFN_W1':
+                    for _ in range(T):
+                        self._emit_weight_gemv(block, channel_lst, int(block.w1_row_index), dim_local, ffn_local, FC_total_banks, 'breakdown_ffn_weight', with_af=True)
+
+                elif op == 'FFN_W3':
+                    for _ in range(T):
+                        self._emit_weight_gemv(block, channel_lst, int(block.w3_row_index), dim_local, ffn_local, FC_total_banks, 'breakdown_ffn_weight')
+
+                elif op == 'FFN_W2':
+                    for _ in range(T):
+                        self._emit_weight_gemv(block, channel_lst, int(block.w2_row_index), ffn_local, dim_local, FC_total_banks, 'breakdown_ffn_weight')
+
+                elif op == 'SwiGLU':
+                    for _ in range(T):
+                        self._emit_silu(block, channel_lst)
+
+                elif op == 'Add':
+                    for _ in range(T):
+                        self._emit_residual(block)
+
+                elif op == 'QK':
+                    for S in seqlens_list:
+                        block.Vector_Matrix_Mul_score_pim_only_trace(int(block.cache_k_row_index), int(S), 'breakdown_sa_score')
+
+                elif op == 'Softmax':
+                    for S in seqlens_list:
+                        self._emit_softmax(block, channels_required, channel_lst, int(S))
+
+                elif op == 'SV':
+                    for S in seqlens_list:
+                        block.Vector_Matrix_Mul_output_pim_only_trace(int(block.cache_v_row_index), int(S), 'breakdown_sa_output')
+
+                else:
+                    raise ValueError(f"Unknown / unsupported PIM op in schedule: {op}")
+
+            if hasattr(block, 'finish'):
+                block.finish()
+            else:
+                if getattr(block, 'file', None):
+                    try:
+                        block.file.write('AiM EOC\n')
+                    except Exception:
+                        pass
+
+            if getattr(block, 'file', None):
                 try:
-                    pim.file.flush()
+                    block.file.flush()
                 except Exception:
                     pass
                 try:
-                    pim.file.close()
+                    block.file.close()
                 except Exception:
                     pass
 
             cycles = self._run_ramulator(trace_path)
             sec = float(cycles) / (float(self.cfg.pim_freq_ghz) * 1_000_000_000.0)
             return sec
+
         finally:
             if cleanup:
                 try:

@@ -551,6 +551,28 @@ class SchedulerBase:
             if mapped is not None:
                 return str(getattr(dev, "name", "")) == str(getattr(mapped, "name", ""))
 
+            # If this attention shard needs KV heads that live on *multiple* PIMs,
+            # we must not schedule it on any PIM (PIM<->PIM KV fetch is forbidden).
+            # GPU/NPU is still allowed to pull KV from PIMs.
+            try:
+                part_dim = str(getattr(self.label, "kv_partition_dim", "layer") or "layer").lower()
+            except Exception:
+                part_dim = "layer"
+
+            if part_dim in ("head", "heads", "head_num", "headnum"):
+                kv_head_ids = None
+                if isinstance(attrs, Mapping):
+                    kv_head_ids = attrs.get("kv_head_ids")
+
+                if isinstance(kv_head_ids, (list, tuple, set)) and kv_head_ids:
+                    pim_names = set()
+                    for hid in kv_head_ids:
+                        pn = self._kv_mapped_pim_name_for_head(int(hid))
+                        if pn is not None:
+                            pim_names.add(str(pn))
+                    if len(pim_names) > 1:
+                        return False
+
         return True
 
     def _node_weight_id(self, node: TaskNode) -> Optional[str]:
