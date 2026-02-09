@@ -9,12 +9,12 @@
      * <prefix>.pim_tasks.json
 
     python ./verify/schedule_deploy_verify.py export \
-        --schedule ./algorithms/output/evaluate_single_test/hardware_config_gpu_7aim.json/llama_7b_int8_b1_s64/algo_hefthint/hefthint_4096x4096_ops_trace.csv \
+        --schedule ./algorithms/output/evaluate_single_test/hardware_gpu_8aim_merge/qwen_7b_int8_b1_s128/algo_hefthint/hefthint_2048x2048_ops_trace.csv \
         --out-dir ./verify/out \
         --prefix hefthint_seg \
         --segment-scope layer \
-        --prefill-len 4096 \
-        --dim 4096 --ffn-dim 11008 --n-heads 32 --shards 8
+        --prefill-len 2048 \
+        --dim 3584 --ffn-dim 18944 --n-heads 28 --shards 1
 
 2) run-gpu
    - 读取 gpu_tasks.json，把每个 segment 的算子序列连续执行并计时
@@ -48,11 +48,12 @@
    - 输入：schedule CSV + gpu_results.json + pim_results.json
    - 重新按同样规则切 segment，统计每个 segment 出现次数，做求和/聚合，给出总 latency + speedup 对比。
    python ./verify/schedule_deploy_verify.py merge \
-  --schedule ./algorithms/output/evaluate_single_test/hardware_config_scale_down_11pima/llama_7b_fp16_b8_s64/algo_hefthint/hefthint_128x128_ops_trace.csv \
+  --schedule ./algorithms/output/evaluate_single_test/hardware_config_gpu_7aim.json/llama_7b_int8_b1_s64/algo_hefthint/hefthint_4096x4096_ops_trace.csv \
   --gpu-results ./verify/out/hefthint_seg.gpu_results.json \
   --pim-results ./verify/out/hefthint_seg.pim_results.json \
   --comm-model schedule \
-  --agg sum
+  --decode-stride 64 \
+  --out-csv ./verify/out/merge_report.csv
 
 decode 有多少个 token（多少个 step）：由 schedule 的 decode 行数决定
 """
@@ -78,6 +79,7 @@ from pathlib import Path
 from collections import Counter
 
 import pandas as pd
+import numpy as np
 try:
     import torch
     import torch.nn.functional as F
@@ -85,7 +87,17 @@ except Exception:
     torch = None
     F = None
 
-_COMM_OPS = {"Identity", "K_write", "V_write"}
+_COMM_OPS = {
+    "k_write",
+    "v_write",
+    "identity",
+    "allreduce",
+    "allgather",
+    "reducescatter",
+    "send",
+    "recv",
+}
+
 
 # ==========================================================
 # GPU env / spec report helpers
@@ -284,27 +296,6 @@ def find_cent_sim_root(start: Optional[Path] = None) -> Optional[Path]:
             return cand.resolve()
     return None
 
-def import_aim_pim(cent_sim_root: Optional[str] = None):
-    root = None
-    if cent_sim_root:
-        root = Path(cent_sim_root).expanduser().resolve()
-    elif os.environ.get("CENT_SIM_ROOT"):
-        root = Path(os.environ["CENT_SIM_ROOT"]).expanduser().resolve()
-    else:
-        root = find_cent_sim_root()
-
-    if root is None or not root.exists():
-        raise RuntimeError(
-            "Cannot locate cent_simulation. Please pass --cent-sim-root "
-        )
-    _add_sys_path(root)
-    try:
-        from aim_sim import PIM  # type: ignore
-    except Exception as e:
-        raise RuntimeError(f"Failed to import aim_sim.PIM from {root}: {e}") from e
-    return PIM
-
-
 def import_aim_transformer_block(cent_sim_root: Optional[str] = None):
     """Import TransformerBlockLlama (preferred) from CENT/AiM simulator.
     """
@@ -374,6 +365,8 @@ def parse_shard(node_id: str) -> int:
     return int(m.group(1)) if m else -1
 
 def infer_decode_steps(df: pd.DataFrame) -> int:
+    #TODO
+    # infer decode step from the lines of op.csv "
     d = df[df["phase"] == "decode"]
     if len(d) == 0:
         return 0
@@ -427,6 +420,7 @@ class WorkloadConfig:
     # schedule lengths
     prefill_len: int = 128
     decode_context_lens: Optional[List[int]] = None  # length = decode steps
+    decode_stride: int = 1
     # gpu bench
     device: str = "cuda"
     gpu_dtype: str = "fp16"
@@ -496,8 +490,10 @@ def infer_op_shape(sig: OpSig, cfg: WorkloadConfig) -> OpShape:
         K = int(cfg.prefill_len)
     else:
         if cfg.decode_context_lens is None:
-            # default: growing by 1
-            K = int(cfg.prefill_len + 1 + sig.step)
+            stride = int(getattr(cfg, "decode_stride", 1) or 1)
+            if stride <= 0:
+                stride = 1
+            K = int(cfg.prefill_len + 1 + int(sig.step) * stride)
         else:
             if sig.step < 0 or sig.step >= len(cfg.decode_context_lens):
                 K = int(cfg.decode_context_lens[-1]) if cfg.decode_context_lens else int(cfg.prefill_len + 1 + sig.step)
@@ -575,13 +571,13 @@ def extract_segments(df: pd.DataFrame, segment_scope: str) -> Tuple[Dict[str, Se
     if segment_scope == "layer":
         # One segment per (phase, step, layer, device) excluding comm ops
         group_cols = ["phase","step","layer","device"]
-        for (phase, step, layer, device), g in df.groupby(group_cols, sort=False):
+        for (phase, step, layer, device), g in df.groupby(group_cols, sort=False): #groupby(group_cols) divide by different cols
             g = g.sort_values(["start","_row"])
             dev_type = str(g["device_type"].iloc[0])
             ops: List[Tuple[str,int]] = []
             for _, r in g.iterrows():
-                op = str(r["op"])
-                if op in _COMM_OPS:
+                op = str(r["op"]).strip()
+                if op.lower() in _COMM_OPS:
                     continue
                 shard = int(r["shard"]) if pd.notna(r["shard"]) else -1
                 ops.append((op, shard))
@@ -600,8 +596,9 @@ def extract_segments(df: pd.DataFrame, segment_scope: str) -> Tuple[Dict[str, Se
             dev_type = str(g["device_type"].iloc[0])
             cur: List[Tuple[str,int]] = []
             for _, r in g.iterrows():
-                op = str(r["op"])
-                if op in _COMM_OPS:
+                op = str(r["op"]).strip()
+                if op.lower() in _COMM_OPS:
+
                     if cur:
                         seg = SegmentSig(device_type=dev_type, phase=str(phase), step=int(step), ops=tuple(cur))
                         k = seg.to_key()
@@ -810,8 +807,6 @@ class PIMBackend:
         self.cfg = cfg
         self._TB_cls = import_aim_transformer_block(cent_sim_root)
 
-        self._validate_hw_cfg()
-
         if not cfg.pim_ramulator_config:
             raise RuntimeError(
                 "PIM ramulator mode requires a config file.\n"
@@ -825,24 +820,6 @@ class PIMBackend:
     # ---------------------------------------------------------------------
     # Config / helpers
     # ---------------------------------------------------------------------
-    def _validate_hw_cfg(self) -> None:
-        cfg = self.cfg
-        required_pos_int = [
-            ("pim_dram_column", cfg.pim_dram_column),
-            ("pim_dram_row", cfg.pim_dram_row),
-            ("pim_burst_length", cfg.pim_burst_length),
-            ("pim_num_banks", cfg.pim_num_banks),
-            ("pim_num_channels", cfg.pim_num_channels),
-            ("pim_threads", cfg.pim_threads),
-            ("pim_reuse_size", cfg.pim_reuse_size),
-            ("pim_num_devices", cfg.pim_num_devices),
-        ]
-        for name, val in required_pos_int:
-            if val is None or int(val) <= 0:
-                raise ValueError(f"{name} must be a positive integer, got {val!r}")
-
-        if cfg.pim_freq_ghz is None or float(cfg.pim_freq_ghz) <= 0:
-            raise ValueError(f"pim_freq_ghz must be > 0, got {cfg.pim_freq_ghz!r}")
 
     def _ramulator_cmd(self, trace_path: Path) -> List[str]:
         exe = str(self.cfg.pim_ramulator_bin or "ramulator2")
@@ -1009,7 +986,7 @@ class PIMBackend:
     def _calc_channels(self, block) -> Tuple[int, List[int], int]:
         total_banks = int(block.total_banks)
         if getattr(block, 'model_parallel', False):
-            FC_total_banks = int(total_banks * int(getattr(block, 'FC_devices', 1)))
+            FC_total_banks = int(total_banks * int(getattr(block, 'FC_devices', 1))) #todo
             channels_required = int(getattr(block, 'num_channels', self.cfg.pim_num_channels))
         else:
             FC_total_banks = int(total_banks)
@@ -1081,7 +1058,7 @@ class PIMBackend:
                 ew_banks = (int(block.DRAM_column) - 1) // ew_len + 1
 
             self._time_add(block, 'WR_SBK', float(getattr(block, 'timing_constant', {}).get('WR_SBK', 0)) + ew_banks * ew_len / burst)
-            block.store_for_EWMUL_score_only_trace(channels_required, input_vector_EWMUL_utilized_banks, 1, block.scores_row_index, input_vector_EWMUL_length, row)
+            block.store_for_EWMUL_score_only_trace(channels_required, block.scores_row_index, input_vector_EWMUL_utilized_banks, 1,  input_vector_EWMUL_length)
             block.EWMUL_only_trace(channel_lst, block.scores_row_index, (ew_len - 1) // burst + 1)
 
             for bank in range(num_banks):
@@ -1092,7 +1069,7 @@ class PIMBackend:
             block.EWMUL_only_trace(channel_lst, block.xk_row_index, (ew_len - 1) // burst + 1)
 
             self._time_add(block, 'RD_SBK', float(getattr(block, 'timing_constant', {}).get('RD_SBK', 0)) + ew_banks * ew_len / burst)
-            block.load_from_EWMUL_score_only_trace(channels_required, input_vector_EWMUL_utilized_banks, 2, block.xk_row_index, input_vector_EWMUL_length, row)
+            block.load_from_EWMUL_score_only_trace(channels_required, block.xk_row_index, input_vector_EWMUL_utilized_banks, 2,  input_vector_EWMUL_length)
             block.SYNC_only_trace()
 
     def _emit_silu(self, block, channel_lst: List[int]) -> None:
@@ -1172,7 +1149,7 @@ class PIMBackend:
                 sh = infer_op_shape(sig, self.cfg)
                 T = int(max(1, sh.query_len))
 
-                if seg.phase == 'prefill' and T > 1:
+                if seg.phase == 'prefill' and T > 1: #todo
                     seqlens_list = list(range(1, int(sh.key_len) + 1))
                 else:
                     seqlens_list = [int(sh.key_len)]
@@ -1372,12 +1349,15 @@ def export_tasks(schedule_paths: List[str], cfg: WorkloadConfig, out_dir: str, p
 
     # auto-fill decode_context_lens if None
     if cfg.decode_context_lens is None:
-        cfg.decode_context_lens = [cfg.prefill_len + 1 + i for i in range(max_decode_steps)] if max_decode_steps > 0 else []
+        stride = int(getattr(cfg, "decode_stride", 1) or 1)
+        if stride <= 0:
+            stride = 1
+        cfg.decode_context_lens = [int(cfg.prefill_len + 1 + i * stride) for i in range(max_decode_steps)] if max_decode_steps > 0 else []
 
     # collect unique segments over all schedules
     uniq: Dict[str, SegmentSig] = {}
     ctr: Counter = Counter()
-    for df in dfs:
+    for df in dfs: # all schedules merge into one uniq dict and update counter
         u, c = extract_segments(df, cfg.segment_scope)
         uniq.update(u)
         ctr.update(c)
@@ -1559,7 +1539,7 @@ def run_pim(tasks_json: str, out_json: str, *,
 
 def _comm_latency_from_df(df: pd.DataFrame, comm_model: str, pcie_lanes: int = 16) -> float:
     comm_model = comm_model.lower()
-    comm_df = df[df["op"].isin(_COMM_OPS)]
+    comm_df = df[df["op"].astype(str).str.strip().str.lower().isin(_COMM_OPS)]
     if comm_model == "none":
         return 0.0
     if comm_model == "schedule":
@@ -1590,92 +1570,362 @@ def _comm_latency_from_df(df: pd.DataFrame, comm_model: str, pcie_lanes: int = 1
     raise ValueError(f"Unknown comm_model: {comm_model}")
 
 
-def merge(schedule_paths: List[str], gpu_results_json: Optional[str], pim_results_json: Optional[str],
-          *, comm_model: str = "schedule", pcie_lanes: int = 16, agg: str = "sum",
-          allow_missing: bool = False, segment_scope: Optional[str] = None) -> None:
+
+def _comm_latency_from_row(r: Any, comm_model: str, *, pcie_lanes: int = 16,
+                           dim: int = 4096, shards: int = 4, dtype_bytes: int = 2) -> float:
+    """Per-row COMM latency (seconds)."""
+    comm_model = str(comm_model).lower()
+    if comm_model == "none":
+        return 0.0
+    if comm_model == "schedule":
+        return float(r["duration"])
+    if comm_model == "cxl":
+        if cxl_latency is None:
+            raise RuntimeError("cxl_latency.py not importable; cannot use --comm-model cxl")
+        op = str(r["op"])
+        shard = int(r.get("shard", -1)) if pd.notna(r.get("shard", -1)) else -1
+        shard_dim = max(1, int(dim) // max(1, int(shards)))
+        if op in ("K_write", "V_write"):
+            bytes_ = shard_dim * dtype_bytes
+        else:
+            bytes_ = int(dim) * dtype_bytes
+        return float(cxl_latency.cxl_memcpy_latency(bytes_, lanes=pcie_lanes))
+    raise ValueError(f"Unknown comm_model: {comm_model}")
+
+
+def _try_lookup_segment_latency(seg: SegmentSig, res: Dict[str, float]) -> Optional[float]:
+    k = seg.to_key()
+    v = res.get(k, None)
+    if v is not None:
+        return float(v)
+    return None
+
+
+def _build_row_durations_layer_scope(
+    df: pd.DataFrame,
+    *,
+    gpu_res: Dict[str, float],
+    pim_res: Dict[str, float],
+    comm_model: str,
+    pcie_lanes: int,
+    decode_stride: int,
+    dim: int,
+    shards: int,
+    allow_missing: bool,
+) -> Tuple[np.ndarray, int]:
+    """
+    Build per-row durations (seconds) for the whole trace, aligned to df.index.
+
+    - COMM rows: per-row comm model latency
+    - compute rows: segment total latency (from *_results.json) distributed to ops
+      proportionally to their original trace 'duration' within each (phase, step, layer, device).
+    - decode scaling: multiply all decode-phase rows by decode_stride.
+
+    Returns:
+      (dur_s: np.ndarray, missing_segments: int)
+    """
+    n = len(df)
+    dur_s = np.zeros(n, dtype=np.float64)
+
+    op_l = df["op"].astype(str).str.strip().str.lower()
+    is_comm = op_l.isin(_COMM_OPS).to_numpy()
+
+    # 1) COMM rows
+    if comm_model.lower() == "schedule":
+        dur_s[is_comm] = df.loc[is_comm, "duration"].astype(float).to_numpy()
+    elif comm_model.lower() == "none":
+        pass
+    else:
+        # cxl (or any future row-level model)
+        comm_idx = df.index[is_comm].to_list()
+        for i in comm_idx:
+            r = df.loc[i]
+            dur_s[i] = _comm_latency_from_row(r, comm_model, pcie_lanes=pcie_lanes, dim=dim, shards=shards)
+
+    # 2) Compute rows (layer scope)
+    compute_df = df.loc[~is_comm, ["phase", "step", "layer", "device", "device_type", "op", "shard", "start", "_row", "duration"]].copy()
+
+    # Sort to match extract_segments() ordering: per group sorted by (start, _row)
+    compute_df = compute_df.sort_values(["phase", "step", "layer", "device", "start", "_row"], kind="mergesort")
+
+    missing = 0
+    group_cols = ["phase", "step", "layer", "device"]
+    for (phase, step, layer, device), g in compute_df.groupby(group_cols, sort=False):
+        # build segment signature (NOTE: step uses *token index* when decode_stride > 1)
+        dev_type = str(g["device_type"].iloc[0])
+        ops: List[Tuple[str, int]] = []
+        for _, rr in g.iterrows():
+            op = str(rr["op"]).strip()
+            shard = int(rr["shard"]) if pd.notna(rr["shard"]) else -1
+            ops.append((op, shard))
+
+        step_key = int(step)
+        if str(phase) == "decode":
+            # decode token index modeling: token_idx = 1 + step*stride
+            # (step here is the sampled-step id computed from the trace)
+            step_key = 1 + int(step) * int(decode_stride)
+
+        seg_tok = SegmentSig(device_type=dev_type, phase=str(phase), step=step_key, ops=tuple(ops))
+
+        # lookup latency
+        total_lat = None
+        if dev_type == "npu":
+            total_lat = _try_lookup_segment_latency(seg_tok, gpu_res)
+        elif dev_type == "pim":
+            total_lat = _try_lookup_segment_latency(seg_tok, pim_res)
+
+        # backward compatible: if results were generated with step=0..N-1 (sample step),
+        # try the legacy key as fallback.
+        if total_lat is None and str(phase) == "decode" and int(decode_stride) != 1:
+            seg_legacy = SegmentSig(device_type=dev_type, phase=str(phase), step=int(step), ops=tuple(ops))
+            if dev_type == "npu":
+                total_lat = _try_lookup_segment_latency(seg_legacy, gpu_res)
+            elif dev_type == "pim":
+                total_lat = _try_lookup_segment_latency(seg_legacy, pim_res)
+
+        if total_lat is None:
+            if allow_missing:
+                total_lat = 0.0
+            else:
+                missing += 1
+                total_lat = 0.0
+
+        w = g["duration"].astype(float).to_numpy()
+        wsum = float(w.sum())
+        idxs = g.index.to_numpy()
+        if len(idxs) == 0:
+            continue
+        if wsum > 0:
+            dur_s[idxs] = float(total_lat) * (w / wsum)
+        else:
+            dur_s[idxs] = float(total_lat) / float(len(idxs))
+
+    # 3) decode scaling
+    if int(decode_stride) != 1:
+        dmask = (df["phase"].astype(str) == "decode").to_numpy()
+        dur_s[dmask] *= float(decode_stride)
+
+    return dur_s, int(missing)
+
+
+def _simulate_block_overlap(df_block: pd.DataFrame, dur_s: np.ndarray) -> float:
+    """
+    Simulate one "block" (either prefill or one decode sampled step) with:
+      - layer-by-layer sequential dependency (Transformer layers are sequential)
+      - within each layer: sharded ops (S0..Sk) can overlap; shardless ops (S=-1) sync with all shards
+      - per-resource serialization: each device is a resource; COMM is a separate resource
+
+    df_block must be in the original trace order (strictly follow ops_trace.csv row order).
+    """
+    if df_block.empty:
+        return 0.0
+
+    # Precompute comm mask for block
+    op_l = df_block["op"].astype(str).str.strip().str.lower()
+    is_comm = op_l.isin(_COMM_OPS).to_numpy()
+
+    idxs = df_block.index.to_numpy()
+    layers = df_block["layer"].astype(int).to_numpy()
+    shards = df_block["shard"].astype(int).to_numpy()
+    devices = df_block["device"].astype(str).to_numpy()
+
+    # Resource timelines
+    res_t: Dict[str, float] = {}
+
+    def get_res_time(res: str) -> float:
+        return float(res_t.get(res, 0.0))
+
+    def set_res_time(res: str, t: float) -> None:
+        res_t[res] = float(t)
+
+    prev_layer_done = 0.0
+    cur_layer: Optional[int] = None
+    layer_max = 0.0
+    global_chain = 0.0
+    shard_chain: Dict[int, float] = {}
+
+    for i in range(len(idxs)):
+        idx = int(idxs[i])
+        layer = int(layers[i])
+        shard = int(shards[i])
+
+        # layer boundary
+        if cur_layer is None:
+            cur_layer = layer
+            global_chain = prev_layer_done
+            shard_chain.clear()
+            layer_max = prev_layer_done
+        elif layer != cur_layer:
+            prev_layer_done = layer_max
+            cur_layer = layer
+            global_chain = prev_layer_done
+            shard_chain.clear()
+            layer_max = prev_layer_done
+
+        # resource
+        res = "COMM" if bool(is_comm[i]) else str(devices[i])
+
+        d = float(dur_s[idx])
+
+        # dependency inside layer
+        if shard < 0:
+            shard_max = max(shard_chain.values()) if shard_chain else prev_layer_done
+            deps = max(global_chain, shard_max)
+        else:
+            deps = max(global_chain, shard_chain.get(shard, prev_layer_done))
+
+        st = max(get_res_time(res), deps)
+        et = st + d
+        set_res_time(res, et)
+
+        if shard < 0:
+            global_chain = et
+        else:
+            shard_chain[shard] = et
+
+        if et > layer_max:
+            layer_max = et
+
+    # finish last layer
+    prev_layer_done = max(prev_layer_done, layer_max)
+    return float(prev_layer_done)
+
+
+def merge(
+    schedule_paths: List[str],
+    gpu_results_json: Optional[str],
+    pim_results_json: Optional[str],
+    *,
+    comm_model: str = "schedule",
+    pcie_lanes: int = 16,
+    decode_stride: int,
+    out_csv: str,
+    out_steps_csv: Optional[str] = None,
+    allow_missing: bool = False,
+    segment_scope: Optional[str] = None,
+) -> None:
+    """
+    Merge schedule trace(s) + measured segment latencies into an overlapped end-to-end latency.
+    """
+    if decode_stride is None:
+        raise ValueError("--decode-stride is required")
+    decode_stride = int(decode_stride)
+    if decode_stride <= 0:
+        raise ValueError("--decode-stride must be positive")
+
     # load results
     gpu_res: Dict[str, float] = {}
     pim_res: Dict[str, float] = {}
     scope_from_results: Optional[str] = None
+    cfg_dim = 4096
+    cfg_shards = 4
+    cfg_prefill_len = None
 
     if gpu_results_json:
         data = _load_json(gpu_results_json)
-        gpu_res = {k: float(v) for k,v in data.get("results", {}).items()}
+        gpu_res = {k: float(v) for k, v in data.get("results", {}).items()}
         scope_from_results = data.get("segment_scope", scope_from_results)
+        cfg = data.get("config", {}) or {}
+        cfg_dim = int(cfg.get("dim", cfg_dim))
+        cfg_shards = int(cfg.get("shards", cfg_shards))
+        if "prefill_len" in cfg:
+            cfg_prefill_len = int(cfg.get("prefill_len"))
 
     if pim_results_json:
         data = _load_json(pim_results_json)
-        pim_res = {k: float(v) for k,v in data.get("results", {}).items()}
+        pim_res = {k: float(v) for k, v in data.get("results", {}).items()}
         scope_from_results = data.get("segment_scope", scope_from_results)
+        cfg = data.get("config", {}) or {}
+        cfg_dim = int(cfg.get("dim", cfg_dim))
+        cfg_shards = int(cfg.get("shards", cfg_shards))
+        if cfg_prefill_len is None and "prefill_len" in cfg:
+            cfg_prefill_len = int(cfg.get("prefill_len"))
 
     # choose segment scope
     seg_scope = (segment_scope or scope_from_results or "layer")
-    print(f"[merge] segment_scope={seg_scope} comm_model={comm_model} agg={agg}")
+    seg_scope = str(seg_scope).lower()
+    if seg_scope != "layer":
+        raise ValueError(f"New merge implementation currently supports segment_scope=layer only (got: {seg_scope})")
 
-    totals: List[Tuple[str, Dict[str, float]]] = []
+    results_rows: List[Dict[str, Any]] = []
+    steps_rows: List[Dict[str, Any]] = []
+
     for sp in schedule_paths:
         p = resolve_existing_path(sp)
         df = load_schedule_csv(str(p))
 
-        if agg == "trace_end":
-            total = float(df["end"].max())
-            totals.append((str(p), {"TOTAL": total, "GPU": 0.0, "PIM": 0.0, "COMM": 0.0}))
-            continue
+        # build per-row durations (seconds)
+        dur_s, missing_cnt = _build_row_durations_layer_scope(
+            df,
+            gpu_res=gpu_res,
+            pim_res=pim_res,
+            comm_model=comm_model,
+            pcie_lanes=pcie_lanes,
+            decode_stride=decode_stride,
+            dim=cfg_dim,
+            shards=cfg_shards,
+            allow_missing=allow_missing,
+        )
 
-        # segment counters
-        _, ctr = extract_segments(df, seg_scope)
+        # busy-time breakdown (already includes decode stride scaling)
+        op_l = df["op"].astype(str).str.strip().str.lower()
+        is_comm = op_l.isin(_COMM_OPS).to_numpy()
+        gpu_busy = float(dur_s[(~is_comm) & (df["device_type"].astype(str) == "npu").to_numpy()].sum())
+        pim_busy = float(dur_s[(~is_comm) & (df["device_type"].astype(str) == "pim").to_numpy()].sum())
+        comm_busy = float(dur_s[is_comm].sum())
 
-        gpu_t = 0.0
-        pim_t = 0.0
-        missing: List[str] = []
-        for k, c in ctr.items():
-            dev = k.split("|", 1)[0]  # device_type
-            if dev == "npu":
-                if k in gpu_res:
-                    gpu_t += float(c) * float(gpu_res[k])
-                else:
-                    if not allow_missing:
-                        missing.append(k)
-            elif dev == "pim":
-                if k in pim_res:
-                    pim_t += float(c) * float(pim_res[k])
-                else:
-                    if not allow_missing:
-                        missing.append(k)
+        # prefill block
+        prefill_df = df[df["phase"].astype(str) == "prefill"]
+        prefill_time = _simulate_block_overlap(prefill_df, dur_s)
 
-        if missing and not allow_missing:
-            raise RuntimeError(
-                f"Missing {len(missing)} segment keys in results. "
-                f"Example: {missing[0]}. "
-                f"Hint: export with union of schedules, then run-gpu/run-pim again; or use --allow-missing."
-            )
+        # decode blocks (one per sampled step), strictly sequential across steps
+        decode_time = 0.0
+        decode_df = df[df["phase"].astype(str) == "decode"]
+        steps = sorted(decode_df["step"].unique().tolist()) if len(decode_df) else []
+        for s in steps:
+            blk = decode_df[decode_df["step"] == s]
+            t = _simulate_block_overlap(blk, dur_s)
+            decode_time += float(t)
 
-        comm_t = _comm_latency_from_df(df, comm_model, pcie_lanes=pcie_lanes)
+            # step detail row (token index + context len for traceability)
+            tok_idx = 1 + int(s) * int(decode_stride)
+            ctx_len = (int(cfg_prefill_len) + tok_idx) if cfg_prefill_len is not None else None
+            steps_rows.append({
+                "schedule": str(Path(p).name),
+                "phase": "decode",
+                "sample_step": int(s),
+                "decode_stride": int(decode_stride),
+                "decode_token_index": int(tok_idx),
+                "decode_context_len": int(ctx_len) if ctx_len is not None else "",
+                "block_time_s": float(t),
+            })
 
-        if agg == "sum":
-            total = gpu_t + pim_t + comm_t
-        elif agg == "parallel_max":
-            total = max(gpu_t, pim_t) + comm_t
-        else:
-            raise ValueError(f"Unknown agg: {agg}")
+        total_time = float(prefill_time + decode_time)
 
-        totals.append((str(p), {"GPU": gpu_t, "PIM": pim_t, "COMM": comm_t, "TOTAL": total}))
+        results_rows.append({
+            "schedule": str(Path(p).name),
+            "segment_scope": seg_scope,
+            "comm_model": str(comm_model),
+            "pcie_lanes": int(pcie_lanes),
+            "decode_stride": int(decode_stride),
+            "prefill_time_s": float(prefill_time),
+            "decode_time_s": float(decode_time),
+            "total_time_s": float(total_time),
+            "gpu_busy_s": float(gpu_busy),
+            "pim_busy_s": float(pim_busy),
+            "comm_busy_s": float(comm_busy),
+            "missing_segments": int(missing_cnt),
+        })
 
-    # print report
-    print("\n=== Merge Report (seconds) ===")
-    for path, d in totals:
-        print(f"- {Path(path).name}")
-        print(f"    GPU  : {d['GPU']:.6f}")
-        print(f"    PIM  : {d['PIM']:.6f}")
-        print(f"    COMM : {d['COMM']:.6f}")
-        print(f"    TOTAL: {d['TOTAL']:.6f}")
+    # save CSV (no console print)
+    out_csv_p = Path(out_csv)
+    out_csv_p.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(results_rows).to_csv(str(out_csv_p), index=False)
 
-    if len(totals) >= 2:
-        base = totals[0][1]["TOTAL"]
-        print(f"\n=== Speedup vs {Path(totals[0][0]).name} ===")
-        for path, d in totals[1:]:
-            spd = (base / d["TOTAL"]) if d["TOTAL"] > 0 else float("inf")
-            print(f"  {Path(path).name}: {spd:.3f} x")
+    if out_steps_csv:
+        out_steps_p = Path(out_steps_csv)
+        out_steps_p.parent.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame(steps_rows).to_csv(str(out_steps_p), index=False)
 
 
 # ==========================================================
@@ -1791,7 +2041,6 @@ def main(argv: Optional[List[str]] = None) -> None:
     p_pim.add_argument("--pim-hw-json", type=str, required=True,
                        help="PIM HW spec JSON, e.g. PIM_AiM.json")
 
-
     # merge
     p_m = sub.add_parser("merge", help="merge schedule(s) with gpu_results.json + pim_results.json (segment-level)")
     p_m.add_argument("--schedule", type=str, default=None, help="single schedule csv path")
@@ -1800,7 +2049,12 @@ def main(argv: Optional[List[str]] = None) -> None:
     p_m.add_argument("--pim-results", type=str, default=None)
     p_m.add_argument("--comm-model", type=str, default="schedule", choices=["schedule","cxl","none"])
     p_m.add_argument("--pcie-lanes", type=int, default=16)
-    p_m.add_argument("--agg", type=str, default="sum", choices=["sum","parallel_max","trace_end"])
+    p_m.add_argument("--decode-stride", type=int, required=True,
+                     help="decode stride used in simulation; decode_token_index = 1 + step*stride")
+    p_m.add_argument("--out-csv", type=str, required=True,
+                     help="where to save merged latency report (csv)")
+    p_m.add_argument("--out-steps-csv", type=str, default=None,
+                     help="(optional) save per-decode-step block latency (csv)")
     p_m.add_argument("--allow-missing", action="store_true",
                      help="if a segment key is missing in results, treat its cost as 0 instead of error")
     p_m.add_argument("--segment-scope", type=str, default=None, choices=["layer","device_step"],
@@ -1817,7 +2071,12 @@ def main(argv: Optional[List[str]] = None) -> None:
     p_all.add_argument("--cent-sim-root", type=str, default=None)
     p_all.add_argument("--comm-model", type=str, default="schedule", choices=["schedule","cxl","none"])
     p_all.add_argument("--pcie-lanes", type=int, default=16)
-    p_all.add_argument("--agg", type=str, default="sum", choices=["sum","parallel_max","trace_end"])
+    p_all.add_argument("--decode-stride", type=int, required=True,
+                       help="decode stride used in simulation; decode_token_index = 1 + step*stride")
+    p_all.add_argument("--merge-out-csv", type=str, default=None,
+                       help="where to save merged latency report (csv); default: <out-dir>/<prefix>.merge.csv")
+    p_all.add_argument("--merge-out-steps-csv", type=str, default=None,
+                       help="(optional) save per-decode-step block latency (csv)")
     p_all.add_argument("--allow-missing", action="store_true")
     add_common_model_args(p_all)
 
@@ -1846,13 +2105,16 @@ def main(argv: Optional[List[str]] = None) -> None:
         return
 
     if args.cmd == "merge":
-        if args.agg != "trace_end" and (args.gpu_results is None and args.pim_results is None):
-            raise SystemExit("merge requires --gpu-results and/or --pim-results unless --agg trace_end")
+        if (args.gpu_results is None and args.pim_results is None):
+            raise SystemExit("merge requires --gpu-results and/or --pim-results")
         schedule_paths = ([args.schedule] if getattr(args, "schedule", None) else (args.schedules or []))
         if not schedule_paths:
             raise SystemExit("merge requires --schedule or --schedules")
         merge(schedule_paths, args.gpu_results, args.pim_results,
-              comm_model=args.comm_model, pcie_lanes=args.pcie_lanes, agg=args.agg,
+              comm_model=args.comm_model, pcie_lanes=args.pcie_lanes,
+              decode_stride=args.decode_stride,
+              out_csv=args.out_csv,
+              out_steps_csv=args.out_steps_csv,
               allow_missing=args.allow_missing, segment_scope=args.segment_scope)
         return
 
@@ -1884,7 +2146,10 @@ def main(argv: Optional[List[str]] = None) -> None:
         merge(schedule_paths,
               str(gpu_res_path) if gpu_res_path else None,
               str(pim_res_path) if pim_res_path else None,
-              comm_model=args.comm_model, pcie_lanes=args.pcie_lanes, agg=args.agg,
+              comm_model=args.comm_model, pcie_lanes=args.pcie_lanes,
+              decode_stride=args.decode_stride,
+              out_csv=(args.merge_out_csv or str(Path(out_dir)/f"{prefix}.merge.csv")),
+              out_steps_csv=(args.merge_out_steps_csv),
               allow_missing=args.allow_missing, segment_scope=cfg.segment_scope)
         return
 

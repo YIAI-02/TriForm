@@ -19,7 +19,7 @@ echo "[slurm] CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-unset}"
 nvidia-smi
 
 source ~/.bashrc
-conda activate triform
+conda activate triform310
 
 python - << 'PY'
 import torch

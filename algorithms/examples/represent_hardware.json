@@ -1,0 +1,37 @@
+{
+    "hardware": {
+      "devices": [
+        {
+          "name": "Ascend",
+          "type": "cpu",
+          "tflops": 24.0,
+          "mem_bw_GBs":45,
+          "mem_capacity_GB": 1000000.0
+        },
+        {
+          "name": "AiM",
+          "type": "pim",
+          "pim_type": "accel",
+          "tflops": 1.6,
+          "mem_bw_GBs": 300.0,
+          "mem_capacity_GB": 1.6,
+          "pim_read_latency_ns": 5.0,
+          "pim_write_latency_ns": 30.0
+        },
+        {
+            "name": "GA100",
+            "type": "npu",
+            "tflops": 312.0,
+            "mem_bw_GBs": 2048.0,
+            "mem_capacity_GB": 80.0
+        },
+        {
+            "name": "TPUv4",
+            "type": "npu",
+            "tflops": 275.0,
+            "mem_bw_GBs": 1200,
+            "mem_capacity_GB": 32.0
+        }
+      ]
+    }
+  }

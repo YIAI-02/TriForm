@@ -6,14 +6,14 @@ shopt -s nullglob
 # Single source of truth
 # =========================
 CONFIG_FILE="${CONFIG_FILE:-./examples/evaluate_len_sweep_config.json}"
-OUTPUT_ROOT="${OUTPUT_ROOT:-./output/experiment_scale_down_test_heads_shards_1}"
+OUTPUT_ROOT="${OUTPUT_ROOT:-./output/experiment_scale_down_4pim_merge}"
 
 # Sweep dims
 MODEL_FAMILY_VARIANTS=(
-  "mixtral:8x7b"
+  # "mixtral:8x7b"
   "palm:62b"
-  "qwen:1.8b 7b"
-  "llama:7b"
+  "qwen:1.8b"
+  "llama:7b 70b"
 )
 
 PREFILLS=(1024 2048 4096 8192)
@@ -21,8 +21,9 @@ DECODES=(1024 2048 4096 8192)
 
 # Hardware sweep (edit here, or use --hardware_glob)
 HARDWARE_CONFIGS=(
-  ./examples/hardware_config_scale_down_11pima.json
-  ./examples/hardware_config_scale_down_12pima.json
+  ./examples/hardware_config_scale_down_4pim_merge.json
+  # ./examples/hardware_config_scale_down_11pima.json
+  # ./examples/hardware_config_scale_down_12pima.json
   # ./examples/hardware_config_scale_down_14pima.json
 )
 
@@ -30,13 +31,13 @@ HARDWARE_CONFIGS=(
 STRIDE="${STRIDE:-64}"
 DTYPE="${DTYPE:-int8}"
 # Keep raw string, then parse once args are handled to avoid space issues
-BATCHES_STR="${BATCHES:-${BATCH:-"1 4 8 16 32"}}"
+BATCHES_STR="${BATCHES:-${BATCH:-"1 4 8"}}"
 
 declare -a BATCHES
 
 NPU_FAST=1
 PIM_FAST=1
-DEBUG=0
+DEBUG=1
 HARDWARE_GLOB=""
 JOBS="${JOBS:-}"
 
@@ -230,7 +231,7 @@ run_one() {
   )
 
   if (( DEBUG )); then cmd+=(--debug); fi
-  if (( NPU_FAST )); then cmd+=(--npu_fast_mode); fi
+  if (( NPU_FAST )); then cmd+=("--npu_backend" "fast_mode"); fi
   if (( PIM_FAST )); then cmd+=(--pim_fast_mode); fi
 
   (

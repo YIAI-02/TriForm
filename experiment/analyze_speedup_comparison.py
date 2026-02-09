@@ -2,15 +2,14 @@
 # -*- coding: utf-8 -*-
 """
 
-1) 批量（推荐）：
-   python speedup.py --output-root ../algorithms/output/lens_eval_sweep --out-dir ../figs/speedup
+1) 批量：
    python analyze_speedup_comparison.py \
-  --output-root ../algorithms/output/experiment_scale_down_test/ \
-  --out-dir ../figs/speedup/experiment_scale_down_test/hw_scale_down_11pima
+  --output-root ../algorithms/output/experiment_scale_down_test_heads_shards_1/ \
+  --out-dir ../figs/speedup/experiment_scale_down_test_heads_shards_1_no_weight_load/
 
 
 2) 指定单个模型目录（目录里有 baseline_compare_*.json）：
-   python speedup.py --model-dir ../algorithms/output/lens_eval_sweep/hw_xxx/st64/llama_7b_int8_b1
+   python analyze_speedup_comparison.py --model-dir ../algorithms/output/evaluate_single_test/hardware_config_scale_down_11pima/llama_7b_int8_b1_s64
 
 3) 只画某个目录，并把 PDF 输出到指定目录：
    python speedup.py --model-dir ... --out-dir ./figs
@@ -35,8 +34,8 @@ import matplotlib.pyplot as plt  # noqa: E402
 
 
 # ===== 颜色（按你的要求） =====
-COL_PREFILL = "#ffbf02"
-COL_DECODE = "#006cfe"
+COL_PREFILL = "#326568"
+COL_DECODE = "#A2D091"
 COL_SPEEDUP = "#000000"
 
 # ===== 算法排序（按你的要求）=====

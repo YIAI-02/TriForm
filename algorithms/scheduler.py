@@ -256,7 +256,29 @@ class SchedulerBase:
 
         # KV/activation runtime states on PIM are centrally managed in buffer manager
         self.buffer.reset_runtime_state()
-    
+
+    # ------------------------------------------------------------------
+    # Weight residency policy
+    # ------------------------------------------------------------------
+    def _weights_preloaded_on_pim(self) -> bool:
+
+        lb = getattr(self, 'label', None)
+        if lb is None:
+            return False
+        for a in (
+            'weights_preloaded_on_pim',
+            'weights_in_pim',
+            'all_weights_in_pim',
+            'weights_on_pim',
+            'weights_resident_on_pim',
+        ):
+            try:
+                if bool(getattr(lb, a, False)):
+                    return True
+            except Exception:
+                pass
+        return False
+
     # -------- Node/graph abstraction hooks --------
 
     def _node_phase(self, g: Any, nid: str, default_phase: str) -> str:
@@ -550,29 +572,7 @@ class SchedulerBase:
         if name_up in ("QK", "SV") and str(getattr(dev, "type", "")).lower() == "pim":
             if mapped is not None:
                 return str(getattr(dev, "name", "")) == str(getattr(mapped, "name", ""))
-
-            # If this attention shard needs KV heads that live on *multiple* PIMs,
-            # we must not schedule it on any PIM (PIM<->PIM KV fetch is forbidden).
-            # GPU/NPU is still allowed to pull KV from PIMs.
-            try:
-                part_dim = str(getattr(self.label, "kv_partition_dim", "layer") or "layer").lower()
-            except Exception:
-                part_dim = "layer"
-
-            if part_dim in ("head", "heads", "head_num", "headnum"):
-                kv_head_ids = None
-                if isinstance(attrs, Mapping):
-                    kv_head_ids = attrs.get("kv_head_ids")
-
-                if isinstance(kv_head_ids, (list, tuple, set)) and kv_head_ids:
-                    pim_names = set()
-                    for hid in kv_head_ids:
-                        pn = self._kv_mapped_pim_name_for_head(int(hid))
-                        if pn is not None:
-                            pim_names.add(str(pn))
-                    if len(pim_names) > 1:
-                        return False
-
+                
         return True
 
     def _node_weight_id(self, node: TaskNode) -> Optional[str]:
@@ -1181,6 +1181,16 @@ class SchedulerBase:
         if wsize_nd <= 0:
             return 0.0
 
+        # skip any host->PIM link load and skip PIM-side weight-loading latency.
+        if str(getattr(dev, 'type', '')).lower() == 'pim' and self._weights_preloaded_on_pim():
+            if commit:
+                try:
+                    if wid not in self._weight_sizes:
+                        self._weight_sizes[wid] = int(wsize_nd)
+                except Exception:
+                    pass
+            return 0.0
+
         # --- size-aware cache lookup (ND bytes) ---
         cached_nd = 0
         cache = None
@@ -1425,20 +1435,30 @@ class HEFTScheduler(SchedulerBase):
             k += 1
             device_compute = self.cost.flop_time(node_flops, d)
             total_compute += device_compute
+
             if RANKU_INCLUDE_AVG_WEIGHT_LOAD and wid and (node_weight_size > 0):
-                stored_fmt = self.storage_fmt_map.get(wid, 'ND')
-                host = self.cost.get_host_device()
-                size_src = int(self.cost.format_size(int(node_weight_size), str(stored_fmt)))
-                weight_cost = float(
-                    self.cost.combine_transfer_and_convert(host, d, int(size_src), str(stored_fmt), str(self.cost.device_preferred_fmt(d)),
+                if str(getattr(d, 'type', '')).lower() == 'pim' and self._weights_preloaded_on_pim():
+                    weight_cost = 0.0
+                else:
+                    stored_fmt = self.storage_fmt_map.get(wid, 'ND')
+                    host = self.cost.get_host_device()
+                    size_src = int(self.cost.format_size(int(node_weight_size), str(stored_fmt)))
+                    weight_cost = float(
+                        self.cost.combine_transfer_and_convert(
+                            host,
+                            d,
+                            int(size_src),
+                            str(stored_fmt),
+                            str(self.cost.device_preferred_fmt(d)),
+                        )
                     )
-                )
-                if str(getattr(d, 'type', '')).lower() == 'pim':
-                    try:
-                        weight_cost += float(self.cost.weight_load_time_pim(int(node_weight_size)))
-                    except Exception:
-                        pass
-                total_w += weight_cost
+                    if str(getattr(d, 'type', '')).lower() == 'pim':
+                        try:
+                            weight_cost += float(self.cost.weight_load_time_pim(int(node_weight_size)))
+                        except Exception:
+                            pass
+                total_w += float(weight_cost)
+
         avg_compute = total_compute / k if k else 0.0
         avg_w = total_w / k if k and RANKU_INCLUDE_AVG_WEIGHT_LOAD and wid else 0.0
         return avg_compute + avg_w
@@ -2002,6 +2022,9 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
     def _estimate_weight_reload_time(self, wid: str, wsize_nd: int, dev: DeviceSpec) -> float:
         """Contention-free estimate of loading (and converting) a weight to `dev`."""
         if not wid or wsize_nd <= 0:
+            return 0.0
+        # If weights are preloaded on PIM, there is no reload cost for PIM.
+        if str(getattr(dev, 'type', '')).lower() == 'pim' and self._weights_preloaded_on_pim():
             return 0.0
         if self.buffer.is_cached(dev.name, wid):
             return 0.0

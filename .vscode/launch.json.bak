@@ -4,23 +4,21 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
-        
-
         {
             "name": "Python Debugger: Python File",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/algorithms/main.py",
+            "program": "${workspaceFolder}/verify/schedule_deploy_verify.py",
             "args": [
-                "evaluate",
-                "--config",
-                "./examples/evaluate_test_config.json",
-                "--debug",
-                "--pim_fast_mode",
-                "--npu_backend",
-                "llmcompass",
+                "run-pim",
+                "--tasks",
+                "./verify/out/hefthint_seg.pim_tasks.json",
+                "--out",
+                "./verify/out/hefthint_seg.pim_results.json",
+                "--cent-sim-root",
+                "/Users/yangjiaqi/WW/project_1/python/TriForm/submodules/CENT/cent_simulation",
             ],
-            "cwd": "${workspaceFolder}/algorithms",            
+            "cwd": "${workspaceFolder}",            
         }
     ]
 }

@@ -1,0 +1,239 @@
+{
+  "version": 1,
+  "palette": [
+    "#505180",
+    "#ADC1E4",
+    "#CED8E8",
+    "#DFD5E5",
+    "#D5E5D1",
+    "#A0C3BB",
+    "#A2D091",
+    "#D8E69C"
+  ],
+  "strategies": [
+    {
+      "name": "baseline",
+      "description": "All optimizations disabled (your uploaded baseline).",
+      "config": {
+        "quantization": {
+          "enable": false,
+          "mode": "weight_only",
+          "weight_bits": 4,
+          "activation_bits": 16,
+          "activation_io": "fp16",
+          "group_size": 128,
+          "per_channel": true,
+          "scale_dtype_bits": 16,
+          "speedup": { "npu": 1.0, "gpu": 1.0 },
+          "apply_to": ["Q", "K", "V", "O", "FFN_"],
+          "exclude": ["LM_HEAD", "EMBED"]
+        },
+        "sparsity": {
+          "weight": {
+            "enable": false,
+            "method": "global",
+            "pattern": "2:4",
+            "sparsity": 0.5,
+            "assume_sparse_compute": true,
+            "storage": "compressed",
+            "metadata_bytes_per_nnz": 0.0,
+            "speedup": { "npu": 1.0 },
+            "apply_to": ["Q", "K", "V", "O", "FFN_"],
+            "exclude": []
+          },
+          "activation": {
+            "enable": false,
+            "mode": "threshold",
+            "density": 0.8,
+            "density_by_phase": { "prefill": 0.95, "decode": 0.60 },
+            "storage": "dense",
+            "assume_sparse_compute": true,
+            "speedup": { "npu": 1.0 },
+            "apply_to": ["FFN_", "SWIGLU", "GELU", "ADD"],
+            "exclude": ["LN"]
+          }
+        },
+        "attention_sparsity": {
+          "enable": false,
+          "pattern": "local",
+          "window_left": 511,
+          "window_right": 0,
+          "block_size": 128,
+          "blocks_left": 4,
+          "blocks_right": 0,
+          "density": 1.0,
+          "apply_to": ["QK", "SOFTMAX", "SV"],
+          "exclude": []
+        }
+      }
+    },
+    {
+      "name": "w4a16_weight_only",
+      "description": "Classic W4A16 weight-only quantization (group=128). Affects weight bytes strongly.",
+      "config": {
+        "quantization": {
+          "enable": true,
+          "mode": "w4a16",
+          "weight_bits": 4,
+          "activation_bits": 16,
+          "activation_io": "fp16",
+          "group_size": 128,
+          "per_channel": true,
+          "scale_dtype_bits": 16,
+          "speedup": { "npu": 1.0, "gpu": 1.0 },
+          "apply_to": ["Q", "K", "V", "O", "FFN_"],
+          "exclude": ["LM_HEAD", "EMBED"]
+        },
+        "sparsity": {
+          "weight": {
+            "enable": false,
+            "method": "global",
+            "pattern": "2:4",
+            "sparsity": 0.5,
+            "assume_sparse_compute": true,
+            "storage": "compressed",
+            "metadata_bytes_per_nnz": 0.0,
+            "speedup": { "npu": 1.0 },
+            "apply_to": ["Q", "K", "V", "O", "FFN_"],
+            "exclude": []
+          },
+          "activation": {
+            "enable": false,
+            "mode": "threshold",
+            "density": 0.8,
+            "density_by_phase": { "prefill": 0.95, "decode": 0.60 },
+            "storage": "dense",
+            "assume_sparse_compute": true,
+            "speedup": { "npu": 1.0 },
+            "apply_to": ["FFN_", "SWIGLU", "GELU", "ADD"],
+            "exclude": ["LN"]
+          }
+        },
+        "attention_sparsity": {
+          "enable": false,
+          "pattern": "local",
+          "window_left": 511,
+          "window_right": 0,
+          "block_size": 128,
+          "blocks_left": 4,
+          "blocks_right": 0,
+          "density": 1.0,
+          "apply_to": ["QK", "SOFTMAX", "SV"],
+          "exclude": []
+        }
+      }
+    },
+    {
+      "name": "w8a8",
+      "description": "Classic W8A8 quantization. Triggers activation_quant (int8) and reduces activation bytes.",
+      "config": {
+        "quantization": {
+          "enable": true,
+          "mode": "w8a8",
+          "weight_bits": 8,
+          "activation_bits": 8,
+          "activation_io": "int8",
+          "group_size": 128,
+          "per_channel": true,
+          "scale_dtype_bits": 16,
+          "speedup": { "npu": 1.0, "gpu": 1.0 },
+          "apply_to": ["Q", "K", "V", "O", "FFN_"],
+          "exclude": ["LM_HEAD", "EMBED"]
+        },
+        "sparsity": {
+          "weight": {
+            "enable": false,
+            "method": "global",
+            "pattern": "2:4",
+            "sparsity": 0.5,
+            "assume_sparse_compute": true,
+            "storage": "compressed",
+            "metadata_bytes_per_nnz": 0.0,
+            "speedup": { "npu": 1.0 },
+            "apply_to": ["Q", "K", "V", "O", "FFN_"],
+            "exclude": []
+          },
+          "activation": {
+            "enable": false,
+            "mode": "threshold",
+            "density": 0.8,
+            "density_by_phase": { "prefill": 0.95, "decode": 0.60 },
+            "storage": "dense",
+            "assume_sparse_compute": true,
+            "speedup": { "npu": 1.0 },
+            "apply_to": ["FFN_", "SWIGLU", "GELU", "ADD"],
+            "exclude": ["LN"]
+          }
+        },
+        "attention_sparsity": {
+          "enable": false,
+          "pattern": "local",
+          "window_left": 511,
+          "window_right": 0,
+          "block_size": 128,
+          "blocks_left": 4,
+          "blocks_right": 0,
+          "density": 1.0,
+          "apply_to": ["QK", "SOFTMAX", "SV"],
+          "exclude": []
+        }
+      }
+    },
+    {
+      "name": "attn_local512",
+      "description": "Local attention sparsity (window_left=511,right=0) on QK/Softmax/SV.",
+      "config": {
+        "quantization": {
+          "enable": false,
+          "mode": "weight_only",
+          "weight_bits": 4,
+          "activation_bits": 16,
+          "activation_io": "fp16",
+          "group_size": 128,
+          "per_channel": true,
+          "scale_dtype_bits": 16,
+          "speedup": { "npu": 1.0, "gpu": 1.0 },
+          "apply_to": ["Q", "K", "V", "O", "FFN_"],
+          "exclude": ["LM_HEAD", "EMBED"]
+        },
+        "sparsity": {
+          "weight": {
+            "enable": false,
+            "method": "global",
+            "pattern": "2:4",
+            "sparsity": 0.5,
+            "assume_sparse_compute": true,
+            "storage": "compressed",
+            "metadata_bytes_per_nnz": 0.0,
+            "speedup": { "npu": 1.0 },
+            "apply_to": ["Q", "K", "V", "O", "FFN_"],
+            "exclude": []
+          },
+          "activation": {
+            "enable": false,
+            "mode": "threshold",
+            "density": 0.8,
+            "density_by_phase": { "prefill": 0.95, "decode": 0.60 },
+            "storage": "dense",
+            "assume_sparse_compute": true,
+            "speedup": { "npu": 1.0 },
+            "apply_to": ["FFN_", "SWIGLU", "GELU", "ADD"],
+            "exclude": ["LN"]
+          }
+        },
+        "attention_sparsity": {
+          "enable": true,
+          "pattern": "local",
+          "window_left": 511,
+          "window_right": 0,
+          "block_size": 128,
+          "blocks_left": 4,
+          "blocks_right": 0,
+          "density": 1.0,
+          "apply_to": ["QK", "SOFTMAX", "SV"],
+          "exclude": []
+        }
+      }
+    }
+  ]
+}

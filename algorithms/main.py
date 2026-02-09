@@ -152,10 +152,17 @@ def _make_label_given_kv(
         FC_total_bytes += int(getattr(n, "weight_size", 0) or 0)
 
     pim_bytes = sum(int(d.mem_capacity_GB * (1024**3)) for d in pim_devs)
+    weights_preloaded_on_pim = bool(
+        pim_bytes > 0 and (int(FC_total_bytes) + int(KV_total_bytes)) <= int(pim_bytes)
+    )
+    logger.debug(f"[Preload] Preload is {weights_preloaded_on_pim}")
     if pim_bytes <= 0:
         label = PlanLabel(pim_mode="none", kv_in_pim=False, kv_total_bytes=0, pim_weight_capacity_bytes=0)
         setattr(label, "total_weight_bytes", int(FC_total_bytes))
         setattr(label, "fc_total_bytes", int(FC_total_bytes))
+        setattr(label, "kv_total_bytes_raw", int(KV_total_bytes))
+        setattr(label, "pim_total_capacity_bytes", int(pim_bytes))
+        setattr(label, "weights_preloaded_on_pim", bool(weights_preloaded_on_pim))
         return label, False
 
     # KV placement across PIM devices (RR by layer or contiguous head ranges).
@@ -224,6 +231,8 @@ def _make_label_given_kv(
     # Weight budget: remaining capacity * PIM_STATIC_ALLOC_RATIO.
     leftover_bytes = max(0, pim_bytes - kv_bytes_in_pim)
     weight_budget = int(min(FC_total_bytes, leftover_bytes * PIM_STATIC_ALLOC_RATIO))
+    if bool(weights_preloaded_on_pim):
+        weight_budget = int(FC_total_bytes)
 
     label = PlanLabel(
         pim_mode=("kv_pim_head" if (kv_in_pim and feasible and is_head) else ("kv_pim_rr" if (kv_in_pim and feasible) else "kv_host")),
@@ -239,6 +248,9 @@ def _make_label_given_kv(
 
     setattr(label, "total_weight_bytes", int(FC_total_bytes))
     setattr(label, "fc_total_bytes", int(FC_total_bytes))
+    setattr(label, "kv_total_bytes_raw", int(KV_total_bytes))
+    setattr(label, "pim_total_capacity_bytes", int(pim_bytes))
+    setattr(label, "weights_preloaded_on_pim", bool(weights_preloaded_on_pim))
     return label, bool(kv_in_pim and feasible)
 
 def _fmt_kv_policy_scores(scores: Any) -> str:

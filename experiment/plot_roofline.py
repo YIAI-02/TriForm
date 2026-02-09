@@ -2,27 +2,62 @@
 # -*- coding: utf-8 -*-
 
 """
-Roofline plotter.
-- Device: roofline curve (dashed)
-- Operator: arithmetic intensity vertical line (solid), plus optional roofline-bound points
-- Multi-strategy overlay from optimization JSONs (enable true/false)
+PYTHONPATH=$PWD/algorithms:$PYTHONPATH \
+python ./experiment/plot_roofline.py \
+  --devices GPU0 PIM0 \
+  --strategies-json ./experiment/roofline_configs/opt_methods.json \
+  --outdir ./figs/roofline_multiops
 
-Uses:
-- ./algorithms/cost_model.py : CostModel.estimate_flops / estimate_activation_bytes
-- ./algorithms/optimizations.py : apply_optimizations_to_graph (tags node.attrs['opt'])
+Inputs:
+- cost_model.py (imports config.py as "config", located under ./algorithms/config.py)
+- optimizations.py (imports task_graph.py as "task_graph")
+So we MUST add both repo_root and ./algorithms to sys.path.
+
+Output:
+- For each device, phase, batch, seqlen => one PNG.
+
+Bytes mode:
+- default: activation+weight (so quantization / weight compression affects intensity)
+- optional: activation only (matches "estimate_activation_bytes" only)
+
+PYTHONPATH=$PWD/algorithms:$PYTHONPATH \
+python ./experiment/plot_roofline.py \
+  --devices GPU0 PIM0 \
+  --strategies-json ./experiment/roofline_configs/opt_methods.json \
+  --batches 1 32 \
+  --prefill-seqlens 4096 \
+  --decode-seqlens 8192 \
+  --groups QKV_GEN SCORE CONTEXT FFN\
+  --phases prefill decode \
+  --bytes-mode activation+weight \
+  --outdir ./figs/roofline/paper
 
 python ./experiment/plot_roofline.py \
-  --ops Q K V O QK SOFTMAX SV FFN_W1 FFN_W2 \
-  --devices GPU0 PIM0 \
-  --opt-json ./experiment/roofline_configs/opt_baseline.json \
-  --opt-json ./experiment/roofline_configs/opt_sparse.json \
-  --phase prefill \
-  --batch 1 \
-  --seq-len 4096 \
-  --outdir ./figs/roofline_plots
+  --hardware-json ./algorithms/examples/hardware_config_scale_down_11pima.json \
+  --devices CPU0 PIM0 \
+  --strategies-json ./experiment/roofline_configs/opt_methods.json \
+  --batches 1\
+  --prefill-seqlens 1024 8192 \
+  --decode-seqlens 1024 8192 \
+  --groups QKV_GEN SCORE CONTEXT FFN \
+  --phases prefill decode \
+  --bytes-mode activation+weight \
+  --outdir ./figs/roofline/hw_hardware_weight
 
+python ./experiment/plot_roofline.py \
+  --hardware-json ./algorithms/examples/represent_hardware.json \
+  --devices Ascend AiM GA100 TPUv4 \
+  --strategies-json ./experiment/roofline_configs/opt_methods.json \
+  --batches 1\
+  --prefill-seqlens 1024 8192 \
+  --decode-seqlens 1024 8192 \
+  --groups QKV_GEN SCORE CONTEXT FFN \
+  --phases prefill decode \
+  --bytes-mode activation+weight \
+  --outdir ./figs/roofline/paper_represent
 """
-
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 from __future__ import annotations
 
 import argparse
@@ -30,48 +65,92 @@ import copy
 import importlib.util
 import json
 import math
-import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import matplotlib
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib import colors as mcolors
 from matplotlib.lines import Line2D
 
 
-# ---------------------------------------------------------
-# Strategy palette (you provided)
-# ---------------------------------------------------------
-STRATEGY_COLORS = [
-    "#505180",  "#ADC1E4",  "#CED8E8", "#DFD5E5",
-    "#D5E5D1",  "#A0C3BB", "#A2D091", "#D8E69C",
+# ---------------------------
+# Palette (strategies)
+# ---------------------------
+# Strategy colors (marker facecolor). Keep a small, soft palette.
+# NOTE: Device colors are configured separately below.
+PALETTE = [
+    "#505180", "#ADC1E4", "#CED8E8", "#DFD5E5",
+    "#D5E5D1",
 ]
 
-# Device curve styles (keep dashed; vary dash pattern + gray level)
+# ---------------------------
+# Device styles (user specified)
+# ---------------------------
+# Four devices -> four colors (in the same order as devices are loaded).
+DEVICE_EDGE_COLORS = ["black", "#A0C3BB", "#A2D091", "#D8E69C"]
+
+# Keep line styles subtle (color is the primary device differentiator)
 DEVICE_LINE_STYLES = [
-    (0, (6, 3)),
-    (0, (3, 2)),
-    (0, (2, 2)),
-    (0, (8, 3, 2, 3)),
-    (0, (10, 4)),
+    (0, (1, 0)),          # solid
+    (0, (1, 0)),
+    (0, (1, 0)),
+    (0, (1, 0)),
 ]
-DEVICE_GRAY = ["black", "dimgray", "gray", "darkgray", "slategray", "black"]
 
-DEVICE_MARKERS = ["o", "s", "^", "D", "P", "X", "v", "<", ">", "*"]
+# Operator groups (keys are CLI-friendly; display_name is what appears in legend)
+OP_GROUPS: Dict[str, Dict[str, Any]] = {
+    "QKV_GEN": {
+        "display": "QKV generation",
+        "ops": ["Q", "K", "V"],
+        "marker": "o",
+    },
+    "SCORE": {
+        "display": "Score",
+        "ops": ["QK"],
+        "marker": "^",
+    },
+    "SOFTMAX": {
+        "display": "Softmax",
+        "ops": ["SOFTMAX"],
+        "marker": "D",
+    },
+    "CONTEXT": {
+        "display": "Context",
+        "ops": ["SV"],
+        "marker": "v",
+    },
+    "PROJECTION": {
+        "display": "Projection",
+        "ops": ["O"],
+        "marker": "s",
+    },
+    "FFN": {
+        "display": "FFN",
+        "ops": ["FFN_W1", "FFN_W2"],
+        "marker": "P",
+    },
+}
+
+# Underlying ops we need to build nodes for (union of all group members)
+UNDERLYING_OPS = sorted({op for g in OP_GROUPS.values() for op in g["ops"]})
 
 
-# ---------------------------------------------------------
-# Minimal graph/node objects (enough for optimizations + cost_model)
-# ---------------------------------------------------------
+# ---------------------------
+# Minimal graph/node objects
+# ---------------------------
 @dataclass
 class MiniNode:
     id: str
     name: str
     attrs: Dict[str, Any] = field(default_factory=dict)
     weight_id: Optional[str] = None
-    weight_size: int = 0   # bytes
-    flops: float = 0.0     # fallback, CostModel will compute when it knows op+attrs
+    weight_size: int = 0  # bytes
+    flops: float = 0.0
 
 
 @dataclass
@@ -80,10 +159,8 @@ class MiniGraph:
 
 
 class DummyCluster:
-    """
-    CostModel wants a 'cluster' object in __init__.
-    For estimate_flops/estimate_activation_bytes we don't need real cluster info.
-    """
+    """CostModel needs a cluster in __init__, but estimate_* doesn't rely on it."""
+
     def __init__(self) -> None:
         self.devices = {}
 
@@ -97,44 +174,45 @@ class DummyCluster:
             max_payload_B = 256
             latency_s = 0.0
             overhead_s = 0.0
+
         return _Spec()
 
 
-# ---------------------------------------------------------
+# ---------------------------
 # Helpers
-# ---------------------------------------------------------
+# ---------------------------
+
+def load_json(path: Path) -> Dict[str, Any]:
+    with Path(path).open("r", encoding="utf-8") as f:
+        return json.load(f)
+
+
 def import_module_from_path(module_name: str, file_path: Path):
     file_path = Path(file_path)
-    if not file_path.exists():
-        raise FileNotFoundError(f"Module file not found: {file_path}")
     spec = importlib.util.spec_from_file_location(module_name, str(file_path))
     if spec is None or spec.loader is None:
-        raise ImportError(f"Cannot import module {module_name} from {file_path}")
+        raise ImportError(f"Cannot import {module_name} from {file_path}")
     mod = importlib.util.module_from_spec(spec)
     sys.modules[module_name] = mod
     spec.loader.exec_module(mod)  # type: ignore
     return mod
 
 
-def load_json(path: Path) -> Dict[str, Any]:
-    path = Path(path)
-    with path.open("r", encoding="utf-8") as f:
-        return json.load(f)
+def setup_syspath(cost_model_path: Path) -> Tuple[Path, Path]:
+    """Ensure `import config` (algorithms/config.py) works for cost_model.py.
 
+    Add both repo_root and algorithms/ to sys.path.
+    """
 
-def sanitize_filename(s: str) -> str:
-    s = s.strip().replace(" ", "_")
-    out = []
-    for ch in s:
-        if ch.isalnum() or ch in ("_", "-", "."):
-            out.append(ch)
-        else:
-            out.append("_")
-    return "".join(out)
+    cm_path = Path(cost_model_path).resolve()
+    alg_dir = cm_path.parent.resolve()
+    repo_root = alg_dir.parent.resolve()
 
+    for p in (str(repo_root), str(alg_dir)):
+        if p not in sys.path:
+            sys.path.insert(0, p)
 
-def clamp(v: float, lo: float, hi: float) -> float:
-    return max(lo, min(hi, v))
+    return repo_root, alg_dir
 
 
 def safe_int(x: Any, default: int = 0) -> int:
@@ -161,57 +239,97 @@ def safe_float(x: Any, default: float = 0.0) -> float:
         return default
 
 
-# ---------------------------------------------------------
-# Known operators (you can extend freely)
-# ---------------------------------------------------------
-KNOWN_OPS = [
-    "LN",
-    "Q", "K", "V",
-    "QK", "SOFTMAX", "SV",
-    "O",
-    "FFN_W1", "FFN_W3", "SWIGLU", "FFN_W2",
-    "GELU",
-    "ADD",
-    # You can add: "FFN_UP", "FFN_GATE", "FFN_DOWN", "IDENTITY", ...
-]
-
-
-def expand_ops(tokens: List[str]) -> List[str]:
-    """
-    Allow:
-    - exact op name (e.g., QK)
-    - prefix token ending with '_' (e.g., FFN_) -> all known ops containing that substring
-    """
-    out: List[str] = []
-    for t in tokens:
-        t = str(t).strip().upper()
-        if not t:
-            continue
-        if t.endswith("_"):
-            # substring match like optimizations.py does
-            for k in KNOWN_OPS:
-                if t in k:
-                    out.append(k)
+def sanitize_filename(s: str) -> str:
+    s = s.strip().replace(" ", "_")
+    out = []
+    for ch in s:
+        if ch.isalnum() or ch in ("_", "-", "."):
+            out.append(ch)
         else:
-            out.append(t)
-    # dedup while preserving order
-    seen = set()
-    uniq = []
-    for x in out:
-        if x not in seen:
-            uniq.append(x)
-            seen.add(x)
-    return uniq
+            out.append("_")
+    return "".join(out)
 
 
-# ---------------------------------------------------------
-# Build node attrs/weights from model shape
-# ---------------------------------------------------------
-def build_common_dims(shape: Dict[str, Any]) -> Tuple[int, int, int, int, int, int, int]:
-    """
-    Returns:
-      D, Hf, qh, kvh, hd, q_dim, kv_dim
-    """
+def format_seqlen(S: int) -> str:
+    if S % 1024 == 0:
+        return f"{S // 1024}k"
+    return str(S)
+
+
+# ---------------------------
+# Device roofline
+# ---------------------------
+@dataclass
+class DeviceInfo:
+    name: str
+    peak_tflops: float
+    mem_bw_GBs: float
+    line_style: Tuple[int, Tuple[int, ...]]
+    edge_color: str
+
+    @property
+    def knee_intensity(self) -> float:
+        # peak(TF/s)*1e12 = I*(BW(GB/s)*1e9) => I = peak*1000/BW
+        if self.mem_bw_GBs <= 0:
+            return float("inf")
+        return float(self.peak_tflops * 1000.0 / self.mem_bw_GBs)
+
+    def bound_tflops(self, intensity: float) -> float:
+        if intensity <= 0 or not math.isfinite(intensity):
+            return 0.0
+        return float(min(self.peak_tflops, intensity * self.mem_bw_GBs / 1000.0))
+
+
+def load_devices(hardware_json: Path, chosen: List[str]) -> List[DeviceInfo]:
+    hw = load_json(hardware_json)
+    devs = ((hw.get("hardware") or {}).get("devices") or [])
+    chosen_list = [x.strip() for x in (chosen or []) if str(x).strip()]
+    chosen_set = set(chosen_list)
+
+    # Index devices by name for stable ordering.
+    by_name: Dict[str, Dict[str, Any]] = {}
+    order_in_json: List[str] = []
+    for d in devs:
+        name = str(d.get("name") or "").strip()
+        if not name:
+            continue
+        if name in by_name:
+            continue
+        by_name[name] = d
+        order_in_json.append(name)
+
+    # Prefer the CLI order (so device colors are predictable for users).
+    if chosen_list:
+        names_order = [n for n in chosen_list if n in by_name]
+    else:
+        names_order = order_in_json
+
+    out: List[DeviceInfo] = []
+    for idx, name in enumerate(names_order):
+        if chosen_set and name not in chosen_set:
+            continue
+        d = by_name.get(name, {})
+        peak = safe_float(d.get("tflops"), 0.0)
+        bw = safe_float(d.get("mem_bw_GBs"), 0.0)
+        if peak <= 0.0 or bw <= 0.0:
+            continue
+        out.append(
+            DeviceInfo(
+                name=name,
+                peak_tflops=peak,
+                mem_bw_GBs=bw,
+                line_style=DEVICE_LINE_STYLES[idx % len(DEVICE_LINE_STYLES)],
+                edge_color=DEVICE_EDGE_COLORS[idx % len(DEVICE_EDGE_COLORS)],
+            )
+        )
+    return out
+
+
+# ---------------------------
+# Build mini nodes from model shape
+# ---------------------------
+
+def build_common_dims(shape: Dict[str, Any]) -> Tuple[int, int, int, int, int]:
     D = safe_int(shape.get("hidden_dim", shape.get("dim")), 0)
     Hf = safe_int(shape.get("intermediate_dim", shape.get("ffn_dim")), 0)
     qh = safe_int(shape.get("q_head_num", shape.get("q_heads")), 0)
@@ -219,29 +337,19 @@ def build_common_dims(shape: Dict[str, Any]) -> Tuple[int, int, int, int, int, i
     hd = safe_int(shape.get("head_dim"), 0)
     if hd <= 0 and D > 0 and qh > 0:
         hd = D // qh
+    return D, Hf, qh, kvh, hd
+
+
+def estimate_weight_size_bytes(op: str, shape: Dict[str, Any], base_weight_dtype_bytes: int) -> int:
+    op = op.upper()
+    D, Hf, qh, kvh, hd = build_common_dims(shape)
     q_dim = qh * hd
     kv_dim = kvh * hd
-    return D, Hf, qh, kvh, hd, q_dim, kv_dim
-
-
-def estimate_weight_size_bytes(
-    op_name: str,
-    *,
-    shape: Dict[str, Any],
-    base_weight_dtype_bytes: int,
-) -> int:
-    """
-    Provide weight_size to make weight sparsity/quantization apply correctly.
-    """
-    op = op_name.upper()
-    D, Hf, qh, kvh, hd, q_dim, kv_dim = build_common_dims(shape)
     o_dim = q_dim
 
-    if base_weight_dtype_bytes <= 0:
-        base_weight_dtype_bytes = 2
+    bpe = max(1, int(base_weight_dtype_bytes))
 
     elems = 0
-
     if op == "Q":
         elems = D * q_dim
     elif op in ("K", "V"):
@@ -255,45 +363,37 @@ def estimate_weight_size_bytes(
     else:
         elems = 0
 
-    return int(max(0, elems) * int(base_weight_dtype_bytes))
+    return int(max(0, elems) * bpe)
 
 
-def make_node(
-    op_name: str,
-    *,
-    shape: Dict[str, Any],
-    layer: int,
-    seq_len: int,
-    base_weight_dtype_bytes: int,
-    causal: bool = True,
-) -> MiniNode:
-    op = op_name.upper()
-    D, Hf, qh, kvh, hd, q_dim, kv_dim = build_common_dims(shape)
+def make_node(op: str, shape: Dict[str, Any], kv_len: int, base_weight_dtype_bytes: int) -> MiniNode:
+    op_up = op.upper()
+    D, Hf, qh, kvh, hd = build_common_dims(shape)
+    q_dim = qh * hd
+    kv_dim = kvh * hd
     o_dim = q_dim
 
     attrs: Dict[str, Any] = {
-        "layer": int(layer),
-        "dim": int(D),
-        "ffn_dim": int(Hf),
-        "q_heads": int(qh),
-        "kv_heads": int(kvh),
-        "n_kv_heads": int(kvh),
-        "head_dim": int(hd),
-        "q_dim": int(q_dim),
-        "kv_dim": int(kv_dim),
-        "o_dim": int(o_dim),
-        "causal": bool(causal),
-        "kv_len": int(seq_len),   # used by decode attention in cost_model
+        "layer": 0,
+        "dim": D,
+        "ffn_dim": Hf,
+        "q_heads": qh,
+        "kv_heads": kvh,
+        "n_kv_heads": kvh,
+        "head_dim": hd,
+        "q_dim": q_dim,
+        "kv_dim": kv_dim,
+        "o_dim": o_dim,
+        "causal": True,
+        "kv_len": int(kv_len),  # important for decode attention
     }
 
-    w_bytes = estimate_weight_size_bytes(op, shape=shape, base_weight_dtype_bytes=base_weight_dtype_bytes)
-    weight_id = None
-    if w_bytes > 0:
-        weight_id = f"{op}_W"
+    w_bytes = estimate_weight_size_bytes(op_up, shape, base_weight_dtype_bytes)
+    weight_id = f"{op_up}_W" if w_bytes > 0 else None
 
     return MiniNode(
-        id=op,
-        name=op,
+        id=op_up,
+        name=op_up,
         attrs=attrs,
         weight_id=weight_id,
         weight_size=int(w_bytes),
@@ -301,430 +401,677 @@ def make_node(
     )
 
 
-def build_base_graph(
-    ops: List[str],
-    *,
-    shape: Dict[str, Any],
-    seq_len: int,
-    base_weight_dtype_bytes: int,
-    layer: int = 0,
-    causal: bool = True,
-) -> MiniGraph:
+def build_base_graph(ops: List[str], shape: Dict[str, Any], kv_len: int, base_weight_dtype_bytes: int) -> MiniGraph:
     g = MiniGraph()
     for op in ops:
-        if op.upper() not in KNOWN_OPS:
-            # allow unknown if user extends; still create node with minimal attrs
-            pass
-        n = make_node(
-            op,
-            shape=shape,
-            layer=layer,
-            seq_len=seq_len,
-            base_weight_dtype_bytes=base_weight_dtype_bytes,
-            causal=causal,
-        )
+        n = make_node(op, shape, kv_len=kv_len, base_weight_dtype_bytes=base_weight_dtype_bytes)
         g.nodes[n.id] = n
     return g
 
 
-# ---------------------------------------------------------
-# Devices / roofline
-# ---------------------------------------------------------
+# ---------------------------
+# Compute group costs
+# ---------------------------
 @dataclass
-class DeviceInfo:
-    name: str
-    peak_tflops: float
-    mem_bw_GBs: float
-
-    @property
-    def knee_intensity(self) -> float:
-        # FLOPs/Byte where slope meets peak:
-        # peak(TF/s)*1e12 = I*(BW(GB/s)*1e9) => I = peak*1000/BW
-        if self.mem_bw_GBs <= 0:
-            return float("inf")
-        return float(self.peak_tflops * 1000.0 / self.mem_bw_GBs)
-
-    def roofline_tflops(self, intensity: float) -> float:
-        if intensity <= 0 or self.mem_bw_GBs <= 0:
-            return 0.0
-        return float(min(self.peak_tflops, intensity * self.mem_bw_GBs / 1000.0))
-
-
-def load_devices(hardware_json: Path, chosen: List[str]) -> List[DeviceInfo]:
-    hw = load_json(hardware_json)
-    devs = ((hw.get("hardware") or {}).get("devices") or [])
-    chosen_set = set([x.strip() for x in chosen if x.strip()]) if chosen else set()
-
-    out: List[DeviceInfo] = []
-    for d in devs:
-        name = str(d.get("name") or "").strip()
-        if not name:
-            continue
-        if chosen_set and name not in chosen_set:
-            continue
-        peak = safe_float(d.get("tflops"), 0.0)
-        bw = safe_float(d.get("mem_bw_GBs"), 0.0)
-        if peak <= 0.0 or bw <= 0.0:
-            continue
-        out.append(DeviceInfo(name=name, peak_tflops=peak, mem_bw_GBs=bw))
-
-    # keep stable order (as in json)
-    return out
-
-
-# ---------------------------------------------------------
-# Intensity computation
-# ---------------------------------------------------------
-@dataclass
-class OpCost:
+class GroupCost:
     flops: float
-    bytes_rw: int
-    weight_bytes: int
-    intensity: float  # FLOPs/Byte
+    bytes_total: int
+    intensity: float
 
 
-def compute_op_cost(
+def compute_group_cost(
     cm: Any,
-    node: MiniNode,
+    graph: MiniGraph,
+    group_ops: List[str],
     *,
     batch: int,
     seq_len: int,
     phase: str,
-    include_weight_bytes: bool,
-) -> OpCost:
-    flops = float(cm.estimate_flops(node, int(batch), int(seq_len), str(phase)))
-    rd, wr = cm.estimate_activation_bytes(node, int(batch), int(seq_len), str(phase))
-    bytes_rw = int(rd) + int(wr)
+    bytes_mode: str,
+) -> GroupCost:
+    total_flops = 0.0
+    total_bytes = 0
 
-    w_bytes = int(getattr(node, "weight_size", 0) or 0)
-    denom = bytes_rw + (w_bytes if include_weight_bytes else 0)
+    # keep kv_len consistent with current seq_len (especially for decode)
+    for node in graph.nodes.values():
+        node.attrs["kv_len"] = int(seq_len)
 
-    if denom <= 0:
-        intensity = float("inf") if flops > 0 else 0.0
+    for op in group_ops:
+        node = graph.nodes.get(op.upper())
+        if node is None:
+            continue
+
+        f = float(cm.estimate_flops(node, int(batch), int(seq_len), str(phase)))
+        rd, wr = cm.estimate_activation_bytes(node, int(batch), int(seq_len), str(phase))
+        act_bytes = int(rd) + int(wr)
+
+        if bytes_mode == "activation":
+            b = act_bytes
+        else:
+            b = act_bytes + int(getattr(node, "weight_size", 0) or 0)
+
+        total_flops += f
+        total_bytes += int(b)
+
+    if total_bytes <= 0:
+        intensity = float("inf") if total_flops > 0 else 0.0
     else:
-        intensity = float(flops / float(denom))
+        intensity = float(total_flops / float(total_bytes))
 
-    return OpCost(flops=flops, bytes_rw=bytes_rw, weight_bytes=w_bytes, intensity=intensity)
+    return GroupCost(flops=total_flops, bytes_total=total_bytes, intensity=intensity)
 
 
-# ---------------------------------------------------------
-# Plot
-# ---------------------------------------------------------
-def auto_axis_ranges(
+# ---------------------------
+# Opacity mapping
+# ---------------------------
+
+def alpha_for_batch_seqlen(
+    B: int,
+    S: int,
     *,
-    intensities: List[float],
-    devices: List[DeviceInfo],
-) -> Tuple[float, float, float, float]:
-    # X range from operator intensities + device knees
-    xs: List[float] = []
-    for x in intensities:
-        if x > 0 and math.isfinite(x):
-            xs.append(x)
-    for dev in devices:
-        k = dev.knee_intensity
-        if k > 0 and math.isfinite(k):
-            xs.append(k)
+    batches_sorted: List[int],
+    seqlens_sorted: List[int],
+    alpha_min: float,
+    alpha_max: float,
+) -> float:
+    """Jointly map (B, S) -> alpha.
 
-    if not xs:
-        x_min, x_max = 1e-4, 1e4
-    else:
-        mn = min(xs)
-        mx = max(xs)
-        # expand 1 decade each side
-        x_min = 10 ** (math.floor(math.log10(mn)) - 1)
-        x_max = 10 ** (math.ceil(math.log10(mx)) + 1)
-        x_min = max(x_min, 1e-8)
-        x_max = max(x_max, x_min * 10)
+    Requirements from user:
+    - bigger batch => more opaque
+    - bigger seqlen => more opaque
+    - prefer different opacities across combinations
 
-    # Y range from device peaks
-    peaks = [dev.peak_tflops for dev in devices if dev.peak_tflops > 0 and math.isfinite(dev.peak_tflops)]
-    if not peaks:
-        y_min, y_max = 1e-3, 1.0
-    else:
-        pmax = max(peaks)
-        y_max = pmax * 1.5
-        # set y_min to 1e-3 TFLOPs/s (=1 GFLOPs/s) or smaller if peaks tiny
-        y_min = min(1e-3, pmax / 1e6)
-        y_min = max(y_min, 1e-6)
+    We use a monotone, unique (for all pairs) mapping:
+        rank = rank_B * Ns + rank_S
+        alpha = lerp(alpha_min, alpha_max, rank/(Nb*Ns-1))
+    """
 
-    return x_min, x_max, y_min, y_max
+    if not batches_sorted or not seqlens_sorted:
+        return float(max(0.0, min(1.0, alpha_max)))
+
+    Nb = len(batches_sorted)
+    Ns = len(seqlens_sorted)
+    total = Nb * Ns
+
+    try:
+        rB = batches_sorted.index(int(B))
+    except ValueError:
+        # clamp to nearest
+        rB = min(range(Nb), key=lambda i: abs(batches_sorted[i] - int(B)))
+
+    try:
+        rS = seqlens_sorted.index(int(S))
+    except ValueError:
+        rS = min(range(Ns), key=lambda i: abs(seqlens_sorted[i] - int(S)))
+
+    if total <= 1:
+        return float(max(0.0, min(1.0, alpha_max)))
+
+    rank = rB * Ns + rS
+    t = float(rank) / float(total - 1)
+    a = float(alpha_min + t * (alpha_max - alpha_min))
+    return float(max(0.0, min(1.0, a)))
 
 
-def plot_roofline_for_op(
-    op_name: str,
+def annotate_point_bs(
+    ax: Any,
     *,
-    devices: List[DeviceInfo],
-    strategy_costs: List[Tuple[str, OpCost]],  # (label, cost)
-    outdir: Path,
+    x: float,
+    y: float,
+    text: str,
+    y_limits: Tuple[float, float],
+    offset_pts: float,
+    color: str = "saddlebrown",
+) -> None:
+    """Place B/S annotation above or below the marker with a fixed screen offset."""
+
+    y_min, y_max = y_limits
+    # decide above/below based on where the point lies in log space
+    if y <= 0 or not math.isfinite(y) or y_min <= 0 or y_max <= 0 or not math.isfinite(y_min) or not math.isfinite(y_max):
+        place_below = False
+    else:
+        logy = math.log10(y)
+        logy_min = math.log10(y_min)
+        logy_max = math.log10(y_max)
+        denom = (logy_max - logy_min)
+        frac = (logy - logy_min) / denom if denom > 0 else 0.5
+        # if too close to top, put text below
+        place_below = frac > 0.85
+
+    if place_below:
+        xytext = (0, -offset_pts)
+        va = "top"
+    else:
+        xytext = (0, offset_pts)
+        va = "bottom"
+
+    ax.annotate(
+        text,
+        xy=(x, y),
+        xytext=xytext,
+        textcoords="offset points",
+        ha="center",
+        va=va,
+        fontsize=7,
+        color=color,
+        alpha=0.95,
+        zorder=4,
+        annotation_clip=True,
+    )
+
+
+# ---------------------------
+# Plot helpers
+# ---------------------------
+
+def nice_log_limits(
+    values: List[float],
+    pad_decades: float = 0.2,
+    min_floor: float = 1e-8,
+) -> Tuple[float, float]:
+    vs = [v for v in values if v > 0 and math.isfinite(v)]
+    if not vs:
+        return 1e-3, 1e3
+    mn, mx = min(vs), max(vs)
+    mn = max(mn, min_floor)
+    # Tighter limits: pad in *fractional* log10 decades instead of snapping to full decades.
+    lo = 10 ** (math.log10(mn) - float(pad_decades))
+    hi = 10 ** (math.log10(mx) + float(pad_decades))
+    hi = max(hi, lo * 1.2)
+    return lo, hi
+
+
+def draw_phase(
+    *,
+    ax: plt.Axes,
     phase: str,
-    batch: int,
-    seq_len: int,
-    include_weight_bytes: bool,
-    show_points: bool,
-):
-    outdir.mkdir(parents=True, exist_ok=True)
+    devices: List[DeviceInfo],
+    strategy_names: List[str],
+    strategy_colors: Dict[str, str],
+    # points[device][strategy][group] = list of (I, bound, batch, seqlen)
+    points: Dict[str, Dict[str, Dict[str, List[Tuple[float, float, int, int]]]]],
+    groups_to_plot: List[str],
+    x_limits: Tuple[float, float],
+    y_limits: Tuple[float, float],
+    annotate_bs: bool = False,
+    label_offset_pts: float = 16.0,
+    marker_area: float = 220.0,
+    point_alpha: float = 0.9,
+) -> Tuple[List[Line2D], List[Line2D], List[Line2D]]:
+    """Draw a single phase into an existing axis.
 
-    intensities = [c.intensity for _, c in strategy_costs if c.intensity > 0 and math.isfinite(c.intensity)]
-    x_min, x_max, y_min, y_max = auto_axis_ranges(intensities=intensities, devices=devices)
+    Returns: (device_handles, strategy_handles, operator_handles)
+    """
 
-    fig, ax = plt.subplots(figsize=(9.2, 6.2))
+    x_min, x_max = x_limits
+    y_min, y_max = y_limits
+
     ax.set_xscale("log")
     ax.set_yscale("log")
     ax.set_xlim(x_min, x_max)
     ax.set_ylim(y_min, y_max)
     ax.grid(True, which="both", linestyle=":", alpha=0.35)
 
-    # ---- Plot device rooflines (dashed) ----
-    dev_handles: List[Line2D] = []
-    for i, dev in enumerate(devices):
-        dash = DEVICE_LINE_STYLES[i % len(DEVICE_LINE_STYLES)]
-        color = DEVICE_GRAY[i % len(DEVICE_GRAY)]
+    # Make each subplot square.
+    try:
+        ax.set_box_aspect(1)
+    except Exception:
+        pass
 
+    # Subplot title: keep only 'prefill' or 'decode'
+    ax.set_title(str(phase))
+
+    # Rooflines
+    dev_handles: List[Line2D] = []
+    for dev in devices:
         knee = dev.knee_intensity
-        # Piecewise roofline:
-        # y = I * BW/1000 for I <= knee, else y = peak
-        # slope segment
-        if x_min < knee:
-            x1 = x_min
-            x2 = min(knee, x_max)
-            y1 = max(y_min, x1 * dev.mem_bw_GBs / 1000.0)
-            y2 = max(y_min, x2 * dev.mem_bw_GBs / 1000.0)
-            ax.plot([x1, x2], [y1, y2], color=color, linewidth=2.0, linestyle=dash)
+        # slope segment: y = I*BW/1000
+        x1 = x_min
+        x2 = min(knee, x_max)
+        y1 = max(y_min, x1 * dev.mem_bw_GBs / 1000.0)
+        y2 = max(y_min, x2 * dev.mem_bw_GBs / 1000.0)
+        ax.plot([x1, x2], [y1, y2], color=dev.edge_color, linewidth=2.6, linestyle=dev.line_style, alpha=0.95)
+
         # flat segment
         if knee < x_max:
-            x1 = max(knee, x_min)
-            x2 = x_max
-            y = max(y_min, dev.peak_tflops)
-            ax.plot([x1, x2], [y, y], color=color, linewidth=2.0, linestyle=dash)
-
-        # knee marker + annotation
-        if knee > 0 and math.isfinite(knee):
-            ax.scatter([knee], [dev.peak_tflops], s=28, color=color)
-            ax.text(
-                knee,
-                dev.peak_tflops,
-                f"  {dev.name}\n  peak={dev.peak_tflops:g} TF/s\n  BW={dev.mem_bw_GBs:g} GB/s",
-                fontsize=8,
-                ha="left",
-                va="bottom",
-                color=color,
-                alpha=0.9,
+            ax.plot(
+                [max(knee, x_min), x_max],
+                [dev.peak_tflops, dev.peak_tflops],
+                color=dev.edge_color,
+                linewidth=2.6,
+                linestyle=dev.line_style,
+                alpha=0.95,
             )
 
-        dev_handles.append(Line2D([0], [0], color=color, linestyle=dash, linewidth=2.0,
-                                  label=f"{dev.name} roofline (peak={dev.peak_tflops:g} TF/s, BW={dev.mem_bw_GBs:g} GB/s)"))
-
-    # ---- Plot strategies: solid vertical intensity + optional points ----
-    strat_handles: List[Line2D] = []
-    dev_marker_handles: List[Line2D] = []
-
-    # device marker legend (one time)
-    if show_points and devices:
-        for i, dev in enumerate(devices):
-            mk = DEVICE_MARKERS[i % len(DEVICE_MARKERS)]
-            dev_marker_handles.append(
-                Line2D([0], [0], marker=mk, linestyle="None", color="black", markersize=7, label=f"{dev.name} bound-point")
+        dev_handles.append(
+            Line2D(
+                [0],
+                [0],
+                color=dev.edge_color,
+                linestyle=dev.line_style,
+                linewidth=2.6,
+                label=f"{dev.name}",
             )
-
-    for si, (label, cost) in enumerate(strategy_costs):
-        color = STRATEGY_COLORS[si % len(STRATEGY_COLORS)]
-        I = cost.intensity
-
-        # Handle zero/inf intensity in log x
-        if not (I > 0 and math.isfinite(I)):
-            # put at left bound for visibility
-            I_plot = x_min
-            I_str = "0/inf"
-        else:
-            I_plot = I
-            I_str = f"{I:.3g}"
-
-        ax.axvline(I_plot, color=color, linewidth=2.6, linestyle="-", alpha=0.95)
-
-        denom_name = "act_rw" if not include_weight_bytes else "act_rw+weights"
-        strat_handles.append(
-            Line2D([0], [0], color=color, linewidth=2.6, linestyle="-",
-                   label=f"{label}: I={I_str} FLOPs={cost.flops:.3g} Bytes({denom_name})={cost.bytes_rw + (cost.weight_bytes if include_weight_bytes else 0)}")
         )
 
-        # optional: intersection points on each device roofline
-        if show_points:
-            for di, dev in enumerate(devices):
-                mk = DEVICE_MARKERS[di % len(DEVICE_MARKERS)]
-                yb = dev.roofline_tflops(I if (I > 0 and math.isfinite(I)) else x_min)
-                yb = max(y_min, yb)
-                ax.scatter([I_plot], [yb], marker=mk, s=70, color=color, edgecolors="none", alpha=0.95)
+    # Points
+    for dev in devices:
+        dev_name = dev.name
+        for s in strategy_names:
+            col = strategy_colors[s]
+            for g in groups_to_plot:
+                mk = OP_GROUPS[g]["marker"]
+                pts = points[dev_name][s].get(g, [])
+                if not pts:
+                    continue
 
-    ax.set_xlabel("Arithmetic Intensity (FLOPs / Byte)")
-    ax.set_ylabel("Performance Upper Bound (TFLOPs/s)")
-    ax.set_title(f"Roofline: {op_name} | phase={phase} | B={batch} | S={seq_len}")
+                xs_: List[float] = []
+                ys_: List[float] = []
+                filtered: List[Tuple[float, float, int, int]] = []
+                for (I, bound, B, S) in pts:
+                    if not (I > 0 and math.isfinite(I) and bound > 0 and math.isfinite(bound)):
+                        continue
+                    xs_.append(I)
+                    ys_.append(bound)
+                    filtered.append((I, bound, int(B), int(S)))
 
-    # Legends: strategies then devices, keep separated
-    leg1 = ax.legend(handles=strat_handles, loc="upper left", fontsize=8, frameon=False)
-    ax.add_artist(leg1)
+                if not xs_:
+                    continue
 
-    # device roofline legend
-    leg2 = ax.legend(handles=dev_handles, loc="lower right", fontsize=8, frameon=False)
-    ax.add_artist(leg2)
+                ax.scatter(
+                    xs_,
+                    ys_,
+                    s=float(marker_area),
+                    marker=mk,
+                    facecolors=col,
+                    edgecolors=dev.edge_color,
+                    linewidths=0.8,
+                    alpha=float(point_alpha),
+                    zorder=3,
+                )
 
-    # marker legend
-    if show_points and dev_marker_handles:
-        ax.legend(handles=dev_marker_handles, loc="center right", fontsize=8, frameon=False)
+                if annotate_bs:
+                    for (x, y, B, S) in filtered:
+                        annotate_point_bs(
+                            ax,
+                            x=x,
+                            y=y,
+                            text=f"B={B}, S={S}",
+                            y_limits=(y_min, y_max),
+                            offset_pts=float(label_offset_pts),
+                            color="saddlebrown",
+                        )
+
+    # Legend handles
+    strat_handles = [
+        Line2D(
+            [0],
+            [0],
+            marker="o",
+            linestyle="None",
+            markersize=7,
+            markerfacecolor=strategy_colors[s],
+            markeredgecolor="black",
+            label=s,
+        )
+        for s in strategy_names
+    ]
+
+    op_handles = [
+        Line2D(
+            [0],
+            [0],
+            marker=OP_GROUPS[g]["marker"],
+            linestyle="None",
+            color="black",
+            markersize=8,
+            label=OP_GROUPS[g]["display"].replace(" generation", ""),
+        )
+        for g in groups_to_plot
+    ]
+
+    return dev_handles, strat_handles, op_handles
+
+
+def plot_phases_subplots(
+    *,
+    phases: List[str],
+    devices: List[DeviceInfo],
+    strategy_names: List[str],
+    strategy_colors: Dict[str, str],
+    points_by_phase: Dict[str, Dict[str, Dict[str, Dict[str, List[Tuple[float, float, int, int]]]]]],
+    groups_to_plot: List[str],
+    out_path: Path,
+    x_limits: Tuple[float, float],
+    y_limits: Tuple[float, float],
+    annotate_bs: bool = False,
+    label_offset_pts: float = 16.0,
+    marker_area: float = 220.0,
+) -> None:
+    """Plot multiple phases into one figure (each phase is one subplot)."""
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    phases = [str(p).strip().lower() for p in phases if str(p).strip()]
+    if not phases:
+        phases = ["prefill", "decode"]
+
+    # Prefer the common paper layout: prefill | decode (left -> right)
+    if set(phases) >= {"prefill", "decode"}:
+        phases = ["prefill", "decode"] + [p for p in phases if p not in ("prefill", "decode")]
+
+    n = len(phases)
+    ncols = n
+    fig_w = 5.2 * ncols
+    fig_h = 5.2
+    fig, axes = plt.subplots(1, ncols, figsize=(fig_w, fig_h), sharex=True, sharey=True)
+    if ncols == 1:
+        axes = [axes]
+
+    # Draw each phase
+    dev_handles: List[Line2D] = []
+    strat_handles: List[Line2D] = []
+    op_handles: List[Line2D] = []
+    for ax, phase in zip(axes, phases):
+        pts = points_by_phase.get(phase, {})
+        dev_h, strat_h, op_h = draw_phase(
+            ax=ax,
+            phase=phase,
+            devices=devices,
+            strategy_names=strategy_names,
+            strategy_colors=strategy_colors,
+            points=pts,
+            groups_to_plot=groups_to_plot,
+            x_limits=x_limits,
+            y_limits=y_limits,
+            annotate_bs=bool(annotate_bs),
+            label_offset_pts=float(label_offset_pts),
+            marker_area=float(marker_area),
+        )
+        # Keep handles from the first axis (same mapping across all)
+        if not dev_handles:
+            dev_handles = dev_h
+        if not strat_handles:
+            strat_handles = strat_h
+        if not op_handles:
+            op_handles = op_h
+
+    # Axis labels (cleaner for subplots)
+    for ax in axes:
+        ax.set_xlabel("Arithmetic intensity (FLOPs / Byte)")
+    axes[0].set_ylabel("Roofline upper bound (TFLOPs/s)")
+
+    # Legends: keep them *inside* plot corners (upper-left / upper-right / lower-right).
+    # We draw the same legend set on every subplot so each panel is self-contained.
+    for ax in axes:
+        leg_dev = ax.legend(handles=dev_handles, loc="upper left", fontsize=8, frameon=False)
+        ax.add_artist(leg_dev)
+        leg_strat = ax.legend(handles=strat_handles, loc="upper right", fontsize=8, frameon=False)
+        ax.add_artist(leg_strat)
+        ax.legend(handles=op_handles, loc="lower right", fontsize=8, frameon=False)
 
     fig.tight_layout()
-
-    fname = sanitize_filename(f"roofline_{op_name}_phase-{phase}_B{batch}_S{seq_len}.png")
-    fig.savefig(outdir / fname, dpi=220)
+    fig.savefig(out_path, dpi=240)
     plt.close(fig)
 
 
-# ---------------------------------------------------------
+# ---------------------------
 # Main
-# ---------------------------------------------------------
-def main():
+# ---------------------------
+
+def main() -> None:
     parser = argparse.ArgumentParser()
 
-    # Paths (defaults = your repo layout)
     parser.add_argument("--cost-model", type=str, default="./algorithms/cost_model.py")
     parser.add_argument("--optimizations", type=str, default="./algorithms/optimizations.py")
     parser.add_argument("--model-shape", type=str, default="./configs/llama_7b_shape.json")
     parser.add_argument("--hardware-json", type=str, default="./algorithms/examples/hardware_config_gpu_7aim.json")
 
-    # What to draw
-    parser.add_argument("--ops", nargs="*", default=[], help="Ops to plot (e.g., Q K V O QK SOFTMAX SV FFN_W1 FFN_W2). Supports prefix like FFN_.")
-    parser.add_argument("--devices", nargs="*", default=[], help="Device names from hardware json, e.g., GPU0 PIM0 PIM1")
+    # Strategies:
+    # Option A: a single JSON with {"strategies":[{"name":..., "config":{...}}, ...]}  (recommended)
+    parser.add_argument("--strategies-json", type=str, default="", help="JSON with a list of strategies (name+config).")
+    # Option B: provide multiple --opt-json (each is one strategy)
+    parser.add_argument("--opt-json", action="append", default=[], help="One strategy config per file (repeatable).")
 
-    # Strategies
-    parser.add_argument("--opt-json", action="append", default=[],
-                        help="Optimization JSON path (repeatable). baseline: all enable=false; sparse: weight.enable=true, etc.")
+    parser.add_argument("--devices", nargs="*", default=["GPU0", "PIM0"], help="Devices to plot on the same figure")
+    parser.add_argument(
+        "--groups",
+        nargs="*",
+        default=[],
+        help="Which operator groups to plot. Choices: " + ", ".join(OP_GROUPS.keys()),
+    )
+    parser.add_argument("--outdir", type=str, default="../figs/roofline_bubbles")
 
-    # Runtime params
-    parser.add_argument("--batch", type=int, default=1)
-    parser.add_argument("--seq-len", type=int, default=4096)
-    parser.add_argument("--phase", type=str, default="prefill", choices=["prefill", "decode"])
-    parser.add_argument("--dtype", type=str, default="fp16", help="CostModel activation dtype baseline (fp16/bf16/int8...)")
+    parser.add_argument("--dtype", type=str, default="fp16")
+    parser.add_argument("--base-weight-dtype-bytes", type=int, default=2)
 
-    # Weight assumptions (needed so weight sparsity can apply)
-    parser.add_argument("--base-weight-dtype-bytes", type=int, default=2, help="Base dense weight dtype bytes, fp16=2")
-    parser.add_argument("--include-weight-bytes", action="store_true",
-                        help="If set: intensity denominator includes activation R+W plus weights (weight_size). Default: activation only.")
+    parser.add_argument("--bytes-mode", type=str, default="activation+weight", choices=["activation", "activation+weight"])
 
-    # Plot knobs
-    parser.add_argument("--outdir", type=str, default="./roofline_plots")
-    parser.add_argument("--no-points", action="store_true", help="Disable plotting strategy bound points on each device roofline.")
-    parser.add_argument("--list-ops", action="store_true", help="Print known ops and exit.")
+    parser.add_argument("--batches", nargs="*", type=int, default=[1, 8, 32])
+
+    # Backward-compatible seqlens
+    parser.add_argument(
+        "--seqlens",
+        nargs="*",
+        type=int,
+        default=[1024, 2048, 4096, 8192],
+        help="Fallback seqlens used when phase-specific seqlens are not provided.",
+    )
+
+    # Phase-specific seqlens
+    parser.add_argument(
+        "--prefill-seqlens",
+        nargs="*",
+        type=int,
+        default=[],
+        help="Prefill seqlens (prompt length). If empty, fall back to --seqlens.",
+    )
+    parser.add_argument(
+        "--decode-seqlens",
+        nargs="*",
+        type=int,
+        default=[],
+        help="Decode seqlens (KV/cache length). If empty, fall back to --seqlens.",
+    )
+
+    parser.add_argument("--phases", nargs="*", type=str, default=["prefill", "decode"])
+
+    parser.add_argument(
+        "--only-strategies",
+        nargs="*",
+        default=[],
+        help="Optional: filter strategy names (works only with --strategies-json).",
+    )
+
+    # Annotation (default OFF to reduce clutter)
+    ann_group = parser.add_mutually_exclusive_group()
+    ann_group.add_argument(
+        "--annotate-bs",
+        action="store_true",
+        help="Enable the brown 'B=..., S=...' annotation next to points.",
+    )
+    # Legacy flag kept for backward compatibility (now a no-op because the default is already OFF)
+    ann_group.add_argument(
+        "--no-annotate-bs",
+        action="store_true",
+        help="(legacy) Disable the brown 'B=..., S=...' annotation next to points.",
+    )
+    parser.add_argument(
+        "--label-offset-pts",
+        type=float,
+        default=16.0,
+        help="Text offset (in points) for the brown annotation above/below each marker.",
+    )
+    parser.add_argument("--alpha-min", type=float, default=0.25, help="Minimum marker opacity.")
+    parser.add_argument("--alpha-max", type=float, default=1.0, help="Maximum marker opacity.")
+    parser.add_argument("--marker-area", type=float, default=220.0, help="Marker area for scatter points (points^2).")
 
     args = parser.parse_args()
 
-    if args.list_ops:
-        for k in KNOWN_OPS:
-            print(k)
-        return
-
-    ops = expand_ops(args.ops)
-    if not ops:
-        print("[ERROR] No --ops specified. Try --list-ops.")
-        sys.exit(2)
-
-    # Ensure repo root on sys.path (so cost_model.py can import config/task_graph/etc)
-    cm_path = Path(args.cost_model).resolve()        # e.g. .../TriForm/algorithms/cost_model.py
-    alg_dir = cm_path.parent.resolve()              # .../TriForm/algorithms
-    repo_root = alg_dir.parent.resolve()            # .../TriForm
-
-    for p in (str(repo_root), str(alg_dir)):
-        if p not in sys.path:
-            sys.path.insert(0, p)
-
+    # sys.path fix
+    setup_syspath(Path(args.cost_model))
 
     shape = load_json(Path(args.model_shape))
 
-    # Import modules from provided paths
+    # import cost_model + optimizations
     cm_mod = import_module_from_path("_cm_mod", Path(args.cost_model))
     opt_mod = import_module_from_path("_opt_mod", Path(args.optimizations))
-
     CostModel = getattr(cm_mod, "CostModel")
     apply_optimizations_to_graph = getattr(opt_mod, "apply_optimizations_to_graph")
 
-    # Create base graph (NO csv/effects.tsv)
+    # devices
+    devices = load_devices(Path(args.hardware_json), args.devices)
+    if not devices:
+        raise ValueError("No valid devices selected (need tflops>0 and mem_bw_GBs>0).")
+
+    # groups
+    groups_to_plot = [g.upper() for g in (args.groups or []) if g.strip()]
+    if not groups_to_plot:
+        groups_to_plot = list(OP_GROUPS.keys())
+    for g in groups_to_plot:
+        if g not in OP_GROUPS:
+            raise ValueError(f"Unknown group {g}. Choices: {list(OP_GROUPS.keys())}")
+
+    # Phase-specific seqlens resolution
+    prefill_seqlens = [int(x) for x in (args.prefill_seqlens or []) if int(x) > 0] or [int(x) for x in args.seqlens]
+    decode_seqlens = [int(x) for x in (args.decode_seqlens or []) if int(x) > 0] or [int(x) for x in args.seqlens]
+
+    phases = [p.strip().lower() for p in (args.phases or []) if p.strip()]
+    if not phases:
+        phases = ["prefill", "decode"]
+
+    seqlens_per_phase: Dict[str, List[int]] = {}
+    for ph in phases:
+        if ph == "prefill":
+            seqlens_per_phase[ph] = prefill_seqlens
+        elif ph == "decode":
+            seqlens_per_phase[ph] = decode_seqlens
+        else:
+            seqlens_per_phase[ph] = [int(x) for x in args.seqlens]
+
+    seqlens_all = sorted({s for lst in seqlens_per_phase.values() for s in lst if int(s) > 0})
+    if not seqlens_all:
+        seqlens_all = [int(x) for x in args.seqlens if int(x) > 0]
+
+    # Build base graph template once (kv_len will be updated per seqlen)
     base_graph = build_base_graph(
-        ops,
+        UNDERLYING_OPS,
         shape=shape,
-        seq_len=int(args.seq_len),
+        kv_len=int(max(seqlens_all) if seqlens_all else max(args.seqlens)),
         base_weight_dtype_bytes=int(args.base_weight_dtype_bytes),
-        layer=0,
-        causal=True,
     )
 
-    # Strategies:
-    # If user gives none, still run "no_opt" baseline
-    strategy_graphs: List[Tuple[str, MiniGraph]] = [("no_opt", base_graph)]
+    # Load strategies
+    strategy_graphs: List[Tuple[str, MiniGraph]] = []
 
+    if args.strategies_json:
+        root = load_json(Path(args.strategies_json))
+        strategies = root.get("strategies", [])
+        if not isinstance(strategies, list) or not strategies:
+            raise ValueError("strategies-json must contain key 'strategies': [ {name, config}, ... ]")
+
+        for item in strategies:
+            name = str(item.get("name", "")).strip()
+            cfg = item.get("config", {})
+            if not name or not isinstance(cfg, dict):
+                continue
+            if args.only_strategies and name not in set(args.only_strategies):
+                continue
+            g2 = copy.deepcopy(base_graph)
+            apply_optimizations_to_graph(g2, cfg, base_weight_dtype_bytes=int(args.base_weight_dtype_bytes), shape=shape)
+            strategy_graphs.append((name, g2))
+
+    # Option B: each opt-json is one strategy
     for p in args.opt_json:
         pth = Path(p)
         cfg = load_json(pth)
         g2 = copy.deepcopy(base_graph)
-        # annotate in-place
-        apply_optimizations_to_graph(
-            g2,
-            cfg,
-            base_weight_dtype_bytes=int(args.base_weight_dtype_bytes),
-            shape=shape,
-        )
+        apply_optimizations_to_graph(g2, cfg, base_weight_dtype_bytes=int(args.base_weight_dtype_bytes), shape=shape)
         strategy_graphs.append((pth.stem, g2))
 
-    # Devices
-    devices = load_devices(Path(args.hardware_json), args.devices)
-    if not devices:
-        print("[ERROR] No valid devices selected (need tflops>0 and mem_bw_GBs>0). Check --devices and hardware json.")
-        sys.exit(2)
+    if not strategy_graphs:
+        # fallback: a no-op strategy
+        strategy_graphs = [("no_opt", base_graph)]
+
+    # assign colors (by strategy order)
+    strategy_names = [name for name, _ in strategy_graphs]
+    strategy_colors = {name: PALETTE[i % len(PALETTE)] for i, name in enumerate(strategy_names)}
 
     # CostModel
     cm = CostModel(cluster=DummyCluster(), dtype=str(args.dtype), pim_fast_mode=True)
 
     outdir = Path(args.outdir)
-    outdir.mkdir(parents=True, exist_ok=True)
 
-    # Plot per op
-    for op in ops:
-        op_up = op.upper()
-        if op_up not in base_graph.nodes:
-            print(f"[WARNING] op {op_up} not in graph nodes, skip.")
-            continue
+    # Compute points for ALL phases first (so we can unify axis limits)
+    points_by_phase: Dict[str, Dict[str, Dict[str, Dict[str, List[Tuple[float, float, int, int]]]]]] = {}
 
-        costs: List[Tuple[str, OpCost]] = []
-        for label, g in strategy_graphs:
-            node = g.nodes.get(op_up)
-            if node is None:
-                continue
-            c = compute_op_cost(
-                cm,
-                node,
-                batch=int(args.batch),
-                seq_len=int(args.seq_len),
-                phase=str(args.phase),
-                include_weight_bytes=bool(args.include_weight_bytes),
-            )
-            costs.append((label, c))
+    xs_global: List[float] = []
+    ys_global: List[float] = []
+    for dev in devices:
+        xs_global.append(dev.knee_intensity)
+        ys_global.append(dev.peak_tflops)
 
-        if not costs:
-            print(f"[WARNING] No costs for op {op_up}, skip.")
-            continue
+    for phase in phases:
+        seqlens_phase = seqlens_per_phase[phase]
 
-        plot_roofline_for_op(
-            op_name=op_up,
-            devices=devices,
-            strategy_costs=costs,
-            outdir=outdir,
-            phase=str(args.phase),
-            batch=int(args.batch),
-            seq_len=int(args.seq_len),
-            include_weight_bytes=bool(args.include_weight_bytes),
-            show_points=(not bool(args.no_points)),
-        )
-        print(f"[OK] saved {op_up} -> {outdir}")
+        # points dict
+        points: Dict[str, Dict[str, Dict[str, List[Tuple[float, float, int, int]]]]] = {
+            dev.name: {s: {g: [] for g in groups_to_plot} for s in strategy_names} for dev in devices
+        }
+
+        for sname, g_strat in strategy_graphs:
+            for S in seqlens_phase:
+                for B in args.batches:
+                    for gkey in groups_to_plot:
+                        group_ops = OP_GROUPS[gkey]["ops"]
+                        cost = compute_group_cost(
+                            cm,
+                            g_strat,
+                            group_ops,
+                            batch=int(B),
+                            seq_len=int(S),
+                            phase=str(phase),
+                            bytes_mode=str(args.bytes_mode),
+                        )
+                        I = cost.intensity
+                        if not (I > 0 and math.isfinite(I)):
+                            continue
+
+                        for dev in devices:
+                            bound = dev.bound_tflops(I)
+                            points[dev.name][sname][gkey].append((I, bound, int(B), int(S)))
+                            xs_global.append(I)
+                            ys_global.append(bound)
+
+        points_by_phase[phase] = points
+
+    # Unified axes across phases (tighter than the previous decade-snapped limits)
+    x_limits = nice_log_limits(xs_global, min_floor=1e-8)
+    y_limits = nice_log_limits(ys_global, min_floor=1e-6)
+
+    # Plot phases into subplots (prefill | decode)
+    out_path = outdir / (
+        f"roofline_phases-{sanitize_filename('-'.join(phases))}_bytes-{sanitize_filename(args.bytes_mode)}.png"
+    )
+
+    plot_phases_subplots(
+        phases=phases,
+        devices=devices,
+        strategy_names=strategy_names,
+        strategy_colors=strategy_colors,
+        points_by_phase=points_by_phase,
+        groups_to_plot=groups_to_plot,
+        out_path=out_path,
+        x_limits=x_limits,
+        y_limits=y_limits,
+        annotate_bs=bool(args.annotate_bs),
+        label_offset_pts=float(args.label_offset_pts),
+        marker_area=float(args.marker_area),
+    )
+    print(f"[OK] {out_path}")
 
     print("[DONE]")
 
 
 if __name__ == "__main__":
     main()
+

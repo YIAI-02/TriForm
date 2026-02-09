@@ -5,5 +5,8 @@
   "algo": ["heft,hefthint"],
   "baselines": ["ianus","attacc","facil","pd","weights_on_pim","attn_on_pim"],
   "split_by": "head",
-  "split_shards": 4
+  "qkv_shards": 1,
+  "ffn_shards": 1,
+  "kv_cache_shards": 4
 }
+
