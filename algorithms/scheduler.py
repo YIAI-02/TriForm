@@ -538,7 +538,7 @@ class SchedulerBase:
             tgt_idx  = attrs.get("pim_target_idx")
             if tgt_name is not None or tgt_idx is not None:
                 if str(getattr(dev, "type", "")).lower() != "pim":
-                    return True
+                    return False
 
                 pim_devs = sorted(self.cluster.devices_by_type("pim"), key=lambda d: str(d.name))
                 if not pim_devs:
