@@ -685,101 +685,97 @@ class SchedulerBase:
             if kv_bytes > 0:
                 kv_in_pim = bool(getattr(self.label, "kv_in_pim", False))
                 size_nd = self.cost.format_size(kv_bytes, "ND")
-                logger.debug(
-                    "[kv-load] node=%s target=%s kv_in_pim=%s kv_bytes=%s ready=%.4f",
-                    nid, dev.name, kv_in_pim, kv_bytes, ready
-                )
                 if kv_in_pim:
                     pim_devs = self.cluster.devices_by_type("pim")
                     if pim_devs:
                         # Head-partitioned KV (GQA/MQA) may require reading KV from multiple PIMs.
                         # We group by source PIM and model the slowest transfer/read as the gating time.
-                        part_dim = self._kv_partition_dim()
-                        attrs = getattr(node, "attrs", {}) or {}
+                    #     part_dim = self._kv_partition_dim()
+                    #     attrs = getattr(node, "attrs", {}) or {}
 
-                        src_head_counts: Dict[str, int] = {}
-                        if part_dim in ("head", "heads", "head_num", "headnum"):
-                            kv_head_ids = attrs.get("kv_head_ids") #本次attention 要用到的kv head
-                            if isinstance(kv_head_ids, (list, tuple, set)) and kv_head_ids:
-                                for hid in kv_head_ids:
-                                    pn = self._kv_mapped_pim_name_for_head(int(hid))
-                                    if pn:
-                                        src_head_counts[str(pn)] = src_head_counts.get(str(pn), 0) + 1
+                    #     src_head_counts: Dict[str, int] = {}
+                    #     if part_dim in ("head", "heads", "head_num", "headnum"):
+                    #         kv_head_ids = attrs.get("kv_head_ids") #本次attention 要用到的kv head
+                    #         if isinstance(kv_head_ids, (list, tuple, set)) and kv_head_ids:
+                    #             for hid in kv_head_ids:
+                    #                 pn = self._kv_mapped_pim_name_for_head(int(hid))
+                    #                 if pn:
+                    #                     src_head_counts[str(pn)] = src_head_counts.get(str(pn), 0) + 1
 
-                        # Fallback to single mapped PIM (layer-partition or missing kv_head_ids)
-                        if not src_head_counts:
-                            src = self._kv_pim_for_node(node) or min(pim_devs, key=lambda d: self.avail.get(d.name, 0.0))
-                            if src is not None:
-                                src_head_counts[str(src.name)] = 1
+                    #     # Fallback to single mapped PIM (layer-partition or missing kv_head_ids)
+                    #     if not src_head_counts:
+                    #         src = self._kv_pim_for_node(node) or min(pim_devs, key=lambda d: self.avail.get(d.name, 0.0))
+                    #         if src is not None:
+                    #             src_head_counts[str(src.name)] = 1
 
-                        total_heads = int(sum(src_head_counts.values()))
-                        if total_heads <= 0:
-                            total_heads = 1
+                    #     total_heads = int(sum(src_head_counts.values()))
+                    #     if total_heads <= 0:
+                    #         total_heads = 1
 
-                        # Split bytes proportionally by head counts (kv_bytes already corresponds to the KV-head subset).
-                        remaining = int(kv_bytes)
-                        items = list(sorted(src_head_counts.items(), key=lambda x: x[0]))
-                        for i, (src_name, hcnt) in enumerate(items):
-                            if i == len(items) - 1:
-                                share = remaining
-                            else:
-                                share = int((int(kv_bytes) * int(hcnt)) // total_heads)
-                                share = max(0, min(share, remaining))
-                            remaining -= share
-                            if share <= 0:
-                                continue
+                    #     # Split bytes proportionally by head counts (kv_bytes already corresponds to the KV-head subset).
+                    #     remaining = int(kv_bytes)
+                    #     items = list(sorted(src_head_counts.items(), key=lambda x: x[0]))
+                    #     for i, (src_name, hcnt) in enumerate(items):
+                    #         if i == len(items) - 1:
+                    #             share = remaining
+                    #         else:
+                    #             share = int((int(kv_bytes) * int(hcnt)) // total_heads)
+                    #             share = max(0, min(share, remaining))
+                    #         remaining -= share
+                    #         if share <= 0:
+                    #             continue
 
-                            src = self.cluster.devices.get(str(src_name))
-                            if src is None:
-                                continue
-                            earliest_kv = max(float(self.avail.get(src.name, 0.0)), float(ready))
+                    #         src = self.cluster.devices.get(str(src_name))
+                    #         if src is None:
+                    #             continue
+                    #         earliest_kv = max(float(self.avail.get(src.name, 0.0)), float(ready))
 
-                            if str(getattr(dev, "type", "")).lower() == "pim" and str(getattr(dev, "name", "")) == str(src.name):
-                                # Local PIM KV read.
-                                kv_time = float(self.cost.activation_read_time_pim(share))
-                                local_end = earliest_kv + kv_time
-                                kv_ready = max(kv_ready, local_end)
-                                if commit:
-                                    self.avail[src.name] = max(float(self.avail.get(src.name, 0.0)), float(local_end))
-                            else:
-                                # Transfer KV from src PIM -> target device.
-                                t_mem = 0.0
-                                if str(getattr(src, "type", "")).lower() == "pim":
-                                    t_mem = float(self.cost.activation_read_time_pim(int(share)))
-                                send_ready = float(earliest_kv) + float(t_mem) #先从src pim中读出
-                                if commit and str(getattr(src, "type", "")).lower() == "pim":
-                                    self.avail[src.name] = max(float(self.avail.get(src.name, 0.0)), float(send_ready))
+                    #         if str(getattr(dev, "type", "")).lower() == "pim" and str(getattr(dev, "name", "")) == str(src.name):
+                    #             # Local PIM KV read.
+                    #             kv_time = float(self.cost.activation_read_time_pim(share))
+                    #             local_end = earliest_kv + kv_time
+                    #             kv_ready = max(kv_ready, local_end)
+                    #             if commit:
+                    #                 self.avail[src.name] = max(float(self.avail.get(src.name, 0.0)), float(local_end))
+                    #         else:
+                    #             # Transfer KV from src PIM -> target device.
+                    #             t_mem = 0.0
+                    #             if str(getattr(src, "type", "")).lower() == "pim":
+                    #                 t_mem = float(self.cost.activation_read_time_pim(int(share)))
+                    #             send_ready = float(earliest_kv) + float(t_mem) #先从src pim中读出
+                    #             if commit and str(getattr(src, "type", "")).lower() == "pim":
+                    #                 self.avail[src.name] = max(float(self.avail.get(src.name, 0.0)), float(send_ready))
 
-                                size_share_nd = int(self.cost.format_size(int(share), "ND"))
-                                dst_fmt = self.cost.device_preferred_fmt(dev)
-                                t_direct = float(self.cost.comm_cost(src, dev, int(size_share_nd)))
+                    #             size_share_nd = int(self.cost.format_size(int(share), "ND"))
+                    #             dst_fmt = self.cost.device_preferred_fmt(dev)
+                    #             t_direct = float(self.cost.comm_cost(src, dev, int(size_share_nd)))
 
-                                if math.isfinite(float(t_direct)) and float(t_direct) > 0.0:
-                                    # Direct KV movement
-                                    l2s, l2e = self.comm.reserve(
-                                        src.name, dev.name, size_share_nd,
-                                        earliest=send_ready, commit=commit, tag="kv_load",
-                                    )
-                                    ready = float(l2s) + float(
-                                        self.cost.combine_transfer_and_convert(src, dev, int(size_share_nd), "ND", str(dst_fmt))
-                                    )
-                                    kv_ready = max(kv_ready, float(ready))                                    
-                                else:
-                                    # Via-host KV movement
-                                    host = self.cost.get_host_device()
-                                    _, t1 = self.comm.reserve(
-                                        src.name, host.name, size_share_nd,
-                                        earliest=send_ready, commit=commit, tag="kv_load",
-                                    )
-                                    t2s, t2e = self.comm.reserve(
-                                        host.name, dev.name, size_share_nd,
-                                        earliest=float(t1), commit=commit, tag="kv_load",
-                                    )
-                                    ready = float(t2s) + float(
-                                        self.cost.combine_transfer_and_convert(host, dev, int(size_share_nd), "ND", str(dst_fmt))
-                                    )
-                                    kv_ready = max(kv_ready, float(ready))
-                    else:
+                    #             if math.isfinite(float(t_direct)) and float(t_direct) > 0.0:
+                    #                 # Direct KV movement
+                    #                 l2s, l2e = self.comm.reserve(
+                    #                     src.name, dev.name, size_share_nd,
+                    #                     earliest=send_ready, commit=commit, tag="kv_load",
+                    #                 )
+                    #                 ready = float(l2s) + float(
+                    #                     self.cost.combine_transfer_and_convert(src, dev, int(size_share_nd), "ND", str(dst_fmt))
+                    #                 )
+                    #                 kv_ready = max(kv_ready, float(ready))                                    
+                    #             else:
+                    #                 # Via-host KV movement
+                    #                 host = self.cost.get_host_device()
+                    #                 _, t1 = self.comm.reserve(
+                    #                     src.name, host.name, size_share_nd,
+                    #                     earliest=send_ready, commit=commit, tag="kv_load",
+                    #                 )
+                    #                 t2s, t2e = self.comm.reserve(
+                    #                     host.name, dev.name, size_share_nd,
+                    #                     earliest=float(t1), commit=commit, tag="kv_load",
+                    #                 )
+                    #                 ready = float(t2s) + float(
+                    #                     self.cost.combine_transfer_and_convert(host, dev, int(size_share_nd), "ND", str(dst_fmt))
+                    #                 )
+                    #                 kv_ready = max(kv_ready, float(ready))
+                    # else:
                         kv_ready = float(ready)
                 else:
                     host = self.cost.get_host_device()
