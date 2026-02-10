@@ -3,7 +3,7 @@
   "model_variant": "7b",
   "dtype": "int8",
   "batch": 1,
-  "prefill_len": 2048,
+  "prefill_len": 4096,
   "decode_len": 2048,
   "decode_sample_stride": 128,
   "pim_config_path": "./aim_simulator/PIM_AiM.json",

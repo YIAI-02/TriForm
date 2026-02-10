@@ -76,7 +76,6 @@ class CommManager:
         earliest: float,
         commit: bool = True,
         tag: str | None = None,
-        extra: dict | None = None,
     ):
         """Reserve a single directed transfer (src->dst) on the comm timeline."""
         key = (str(src), str(dst))
@@ -113,7 +112,6 @@ class CommManager:
                         start=float(start),
                         end=float(end),
                         tag=tag or "comm",
-                        extra=extra,
                     )
                 except AttributeError:
                     pass
@@ -258,22 +256,6 @@ class SchedulerBase:
 
         # KV/activation runtime states on PIM are centrally managed in buffer manager
         self.buffer.reset_runtime_state()
-
-    def reset_ephemeral_state(self) -> None:
-        """Reset per-schedule transient runtime state (activations + per-node bookkeeping)."""
-        self._node_finish_time.clear()
-        self._node_placement.clear()
-        self._node_out_fmt.clear()
-        self._node_host_store_end.clear()
-        self._act_used.clear()
-        self._act_resident.clear()
-        self._act_refcnt.clear()
-        self._collective_output_devs.clear()
-        try:
-            # KV reservation + weight caches stay; only activation usage reset.
-            self.buffer.reset_runtime_state()
-        except Exception:
-            pass
 
     # ------------------------------------------------------------------
     # Weight residency policy
@@ -586,10 +568,14 @@ class SchedulerBase:
                 return str(getattr(dev, "name", "")) == str(getattr(mapped, "name", ""))
             return True
 
-        # KV consumers: if on PIM, restrict to mapped PIM.
+        # KV consumers: if scheduled on a PIM, they MUST run on the PIM that
+        # holds the required KV-cache shard(s). If the KV heads needed by this
+        # node map to multiple PIMs (mapped==None), disallow PIM to prevent
+        # cross-PIM attention compute.
         if name_up in ("QK", "SV") and str(getattr(dev, "type", "")).lower() == "pim":
-            if mapped is not None:
-                return str(getattr(dev, "name", "")) == str(getattr(mapped, "name", ""))
+            if mapped is None:
+                return False
+            return str(getattr(dev, "name", "")) == str(getattr(mapped, "name", ""))
                 
         return True
 
@@ -650,7 +636,6 @@ class SchedulerBase:
                     self._node_finish_time[nid] = float(finish)
                     self._node_placement[nid] = str(target_pim.name)
                     self._node_out_fmt[nid] = "ND"
-                    self._act_resident[(str(target_pim.name), str(nid))] = 0
                 return float(start), float(finish)
             else:
                 # kv in host: convert on source device then send to host
@@ -1028,18 +1013,7 @@ class SchedulerBase:
                 prod_nid, src_dev, bytes_nd, src_fmt, pred_finish, commit_flag)
             l2s, l2e = self.comm.reserve(
                 host.name, dst_dev.name, size_nd,
-                earliest=host_ready,
-                commit=commit_flag,
-                tag='act_load',
-                extra={
-                    'payload': 'activation',
-                    'action': 'load',
-                    'route': 'host',
-                    'prod_node': str(prod_nid),
-                    'bytes_nd': int(bytes_nd),
-                    'src_fmt': 'ND',
-                    'dst_fmt': str(dst_fmt),
-                },
+                earliest=host_ready, commit=commit_flag, tag='act_move'
             )
             ready = float(l2s) + float(
                 self.cost.combine_transfer_and_convert(host, dst_dev, int(size_nd), "ND", str(dst_fmt))
@@ -1066,19 +1040,7 @@ class SchedulerBase:
                 earliest += self.cost.activation_read_time_pim(size_nd)
             l2s, l2e = self.comm.reserve(
                 src_dev.name, dst_dev.name, size_nd,
-                earliest=earliest,
-                commit=commit_flag,
-                tag='act_move',
-                extra={
-                    'payload': 'activation',
-                    'action': 'move',
-                    'route': 'direct',
-                    'prod_node': str(prod_nid),
-                    'bytes_nd': int(bytes_nd),
-                    'src_fmt': str(src_fmt),
-                    'wire_fmt': 'ND',
-                    'dst_fmt': str(dst_fmt),
-                },
+                earliest=earliest, commit=commit_flag, tag='act_move'
             )
             ready = float(l2s) + float(
                 self.cost.combine_transfer_and_convert(src_dev, dst_dev, int(size_nd), "ND", str(dst_fmt))
@@ -1175,11 +1137,6 @@ class SchedulerBase:
                 # Same device
                 # NOTE:NO transfer unless (PIM) activation got evicted.
                 if dev.type == "pim":
-                    pred_name_up = str(getattr(g.nodes.get(u), 'name', '')).upper() if hasattr(g, 'nodes') else ''
-                    if pred_name_up in ('K_WRITE', 'V_WRITE', 'KV_WRITE'):
-                        inbound_start_times.append(pred_finish)
-                        inbound_end_times.append(pred_finish)
-                        continue
                     if (pred_dev.name, u) in self._act_resident:
                         inbound_start_times.append(pred_finish)
                         inbound_end_times.append(pred_finish)
@@ -1187,27 +1144,11 @@ class SchedulerBase:
                         # Need host round-trip
                         host_ready = self._ensure_host_store(u, pred_dev, pred_write, src_fmt, pred_finish, commit)
                         size_nd = self.cost.format_size(pred_write, 'ND')
-                        host_dev = self.cost.get_host_device()
                         l2s, l2e = self.comm.reserve(
-                            host_dev.name,
-                            dev.name,
-                            size_nd,
-                            earliest=host_ready,
-                            commit=commit,
-                            tag='act_reload',
-                            extra={
-                                'payload': 'activation',
-                                'action': 'reload',
-                                'route': 'host',
-                                'prod_node': str(u),
-                                'cons_node': str(nid),
-                                'bytes_nd': int(pred_write),
-                                'src_fmt': 'ND',
-                                'dst_fmt': str(self.cost.device_preferred_fmt(dev)),
-                                'reason': 'pim_evicted',
-                            },
+                            self.cost.get_host_device().name, dev.name, size_nd, earliest=host_ready, commit=commit
                         )
                         inbound_start_times.append(float(l2s))
+                        host_dev = self.cost.get_host_device()
                         ready = float(l2s) + float(
                             self.cost.combine_transfer_and_convert(host_dev, dev, int(size_nd), "ND", str(self.cost.device_preferred_fmt(dev)),)
                         )
@@ -1304,29 +1245,7 @@ class SchedulerBase:
         to_fmt = self.cost.device_preferred_fmt(dev)
 
         rd_bytes = int(self.cost.format_size(need_nd, from_fmt))
-
-        # Communication annotation: this is a WEIGHT load (host -> device).
-        l2s, l2e = self.comm.reserve(
-            host.name,
-            dev.name,
-            rd_bytes,
-            earliest=earliest,
-            commit=commit,
-            tag='weight_load',
-            extra={
-                'payload': 'weight',
-                'action': 'load',
-                'weight_id': str(wid),
-                'node_id': str(getattr(node, 'id', getattr(node, 'nid', '')) or ''),
-                'op': str(getattr(node, 'name', '') or ''),
-                'bytes_nd': int(need_nd),
-                'bytes_full_nd': int(wsize_nd),
-                'cached_before_nd': int(cached_nd),
-                'from_fmt': str(from_fmt),
-                'to_fmt': str(to_fmt),
-                'cache_capacity_bytes': int(getattr(getattr(self.buffer, 'device_cache', {}).get(dev.name, None), 'capacity', 0) or 0),
-            },
-        )
+        l2s, l2e = self.comm.reserve(host.name, dev.name, rd_bytes, earliest=earliest, commit=commit)
 
         ready = float(l2s) + float(
             self.cost.combine_transfer_and_convert(host, dev, int(rd_bytes), str(from_fmt), str(to_fmt))
@@ -1371,26 +1290,8 @@ class SchedulerBase:
         else:
             earliest = pred_finish + t_conv_src
 
-        # Communication annotation: activation STORE (producer device -> host).
-        _, t_link_end = self.comm.reserve(
-            pred_dev.name,
-            host.name,
-            size_nd,
-            earliest=earliest,
-            commit=commit,
-            tag='act_store',
-            extra={
-                'payload': 'activation',
-                'action': 'store',
-                'route': 'host',
-                'prod_node': str(u),
-                'bytes_nd': int(bytes_nd),
-                'src_fmt': str(src_fmt),
-                'wire_fmt': 'ND',
-                'dst_fmt': 'ND',
-                'reason': 'evict_or_route',
-            },
-        )
+        _, t_link_end = self.comm.reserve(pred_dev.name, host.name, size_nd,
+                                        earliest=earliest, commit=commit, tag='act_move')
         t_done = t_link_end
         if commit:
             self._node_host_store_end[u] = t_done
@@ -1449,7 +1350,7 @@ class NaiveTopoScheduler(SchedulerBase):
     def schedule(self, g: TaskGraph, phase: str) -> List[ScheduledTask]:
         if getattr(self, 'stats', None):
             self.stats.set_phase(phase)
-        self.reset_ephemeral_state()
+
         idx = self._get_graph_index(g)
         topo_pos = {nid: i for i, nid in enumerate(idx.topo)}
         remaining_preds = {nid: len(idx.preds[nid]) for nid in idx.nodes}
@@ -1645,8 +1546,6 @@ class HEFTScheduler(SchedulerBase):
     def schedule(self, g: TaskGraph, phase: str) -> List[ScheduledTask]:
         if getattr(self, 'stats', None):
             self.stats.set_phase(phase)
-
-        self.reset_ephemeral_state()
         idx = self._get_graph_index(g)
        
         # Pre-compute uprank scores (HEFT priority) for this phase.
@@ -2580,7 +2479,6 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
         if getattr(self, "stats", None):
             self.stats.set_phase(phase)
 
-        self.reset_ephemeral_state()
         idx = self._get_graph_index(g)
 
         # Step 1: HEFT priority (upward ranks).

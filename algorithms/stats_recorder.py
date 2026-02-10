@@ -140,15 +140,28 @@ class StatsRecorder:
             for e in self.op_device_events:
                 w.writerow({k: e.get(k) for k in ops_fields})
 
-        comm_fields = [
+        base_comm_fields = [
             "phase", "src", "src_type", "dst", "dst_type",
-            "bytes", "start", "end", "duration", "tag"
+            "bytes", "start", "end", "duration", "tag",
         ]
+
+        extra_keys: list[str] = []
+        try:
+            keys = set()
+            for e in self.comm_events:
+                if isinstance(e, dict):
+                    keys.update(e.keys())
+            keys.difference_update(base_comm_fields)
+            extra_keys = sorted(keys)
+        except Exception:
+            extra_keys = []
+
+        comm_fields = list(base_comm_fields) + list(extra_keys)
         with comms_csv_path.open("w", newline="", encoding="utf-8") as f:
             w = csv.DictWriter(f, fieldnames=comm_fields)
             w.writeheader()
             for e in self.comm_events:
-                w.writerow({k: e.get(k) for k in comm_fields})
+                w.writerow({k: (e.get(k) if isinstance(e, dict) else "") for k in comm_fields})
 
     # -------------------- 2) overlap export (stride-aware) --------------------
     @staticmethod

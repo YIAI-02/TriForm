@@ -424,17 +424,38 @@
       <div class="control">
         <label>Batch</label>
         <select id="batch">
-          <option>1</option>
-          <option selected>128</option>
-          <option>256</option>
+          <option selected>1</option>
+          <option>2</option>
+          <option>4</option>
+          <option>8</option>
+          <option>16</option>
+          <option>32</option>
         </select>
       </div>
+
       <div class="control">
-        <label>SeqLen</label>
-        <select id="seq">
+        <label>Prefill length</label>
+        <select id="prefillLen">
+          <option>128</option>
+          <option>256</option>
           <option>512</option>
           <option selected>1024</option>
           <option>2048</option>
+          <option>4096</option>
+          <option>8192</option>
+        </select>
+      </div>
+
+      <div class="control">
+        <label>Decode length</label>
+        <select id="decodeLen">
+          <option>128</option>
+          <option>256</option>
+          <option>512</option>
+          <option selected>1024</option>
+          <option>2048</option>
+          <option>4096</option>
+          <option>8192</option>
         </select>
       </div>
     </div>
@@ -1441,7 +1462,140 @@ function dockIcon(icon, dock){
 /* =========================
    Build a view (DAG + segment) for a given trace/layer/token
 ========================= */
-function buildLayerGraph(trace, phase, layer, tokenIdx, modelFamily, deviceColorMap){
+
+/* =========================
+   Operator filtering for display
+   Rules:
+   1) Except Identity ops, nodes with duration == 0 are hidden.
+   2) If an op is not part of the model definition, hide it (even if present in trace).
+========================= */
+const ZERO_DUR_EPS = 1e-15;
+
+function isIdentityOpNode(opKey, opDisp){
+  const k = String(opKey || '').trim().toUpperCase();
+  const d = String(opDisp || '').trim().toUpperCase();
+  // In most traces, Identity is represented by the structural op "X".
+  return k === 'X' || k === 'IDENTITY' || d === 'IDENTITY';
+}
+
+// Ops that are part of the built-in model definitions (edge builders).
+// This is used only for filtering display; metrics still use the full trace.
+const MODEL_DEF_OPS_COMMON = new Set([
+  'X', 'LN', 'LN1', 'LN2',
+  'Q', 'K', 'V',
+  'QK', 'SOFTMAX', 'SV',
+  'O',
+  'ADD1', 'ADD2',
+  'K_READ', 'V_READ',
+  'K_WRITE', 'V_WRITE',
+  'O_MERGE', 'FFN_MERGE',
+  'ROUTER', 'MOE_ROUTER'
+]);
+
+const MODEL_DEF_OPS = {
+  llama: new Set([
+    ...MODEL_DEF_OPS_COMMON,
+    'FFN_W1', 'FFN_W2', 'FFN_W3', 'ACT'
+  ]),
+  mpt: new Set([
+    ...MODEL_DEF_OPS_COMMON,
+    'FFN_W1', 'FFN_W2', 'GELU'
+  ]),
+  palm: new Set([
+    ...MODEL_DEF_OPS_COMMON,
+    'FFN_W1', 'FFN_W2', 'GELU'
+  ]),
+  mixtral: new Set([
+    ...MODEL_DEF_OPS_COMMON,
+    'FFN_W1', 'FFN_W2', 'FFN_W3', 'ACT'
+  ])
+};
+
+function opInModelDefinition(opKey, modelFamily){
+  const k = String(opKey || '').trim().toUpperCase();
+  const m = String(modelFamily || 'llama').trim().toLowerCase();
+  const set = MODEL_DEF_OPS[m] || MODEL_DEF_OPS.llama;
+  if (set.has(k)) return true;
+
+  // Mixtral expert patterns (if used).
+  if (m === 'mixtral'){
+    if (/^FFN_W[123]_E\d+$/i.test(k)) return true;
+    if (/^ACT_E\d+$/i.test(k)) return true;
+    if (/^FFN_W2_E\d+$/i.test(k)) return true;
+  }
+  return false;
+}
+
+function shouldShowMergedNode(n, modelFamily, keepOpsByDuration){
+  if (!n) return false;
+
+  const opKey  = String(n.op || '').trim();
+  const opDisp = String(n.op_display || opKey).trim();
+
+  const isId = isIdentityOpNode(opKey, opDisp);
+
+  // Always hide ops that are not part of the selected model definition,
+  // except Identity (which is usually represented as X).
+  if (!isId && !opInModelDefinition(opKey, modelFamily)) return false;
+
+  // Duration-based filtering:
+  // Hide a non-Identity op only if its duration is ~0 AND it is ~0 in BOTH traces.
+  // `keepOpsByDuration` is the set of opKeys that have non-zero duration in *either* CSV.
+  const dur = Number(n.duration);
+  const keepByDur = keepOpsByDuration && keepOpsByDuration.has(String(opKey).trim().toUpperCase());
+
+  if (!isId && !keepByDur && Number.isFinite(dur) && Math.abs(dur) <= ZERO_DUR_EPS) return false;
+
+  return true;
+}
+
+function computeKeepOpsByDuration(phase, layer, tokenIdx){
+  // Returns a set of opKeys (uppercased) that should be kept even if one side has duration=0,
+  // as long as the other trace has non-zero duration for that op.
+  const keep = new Set();
+  if (!traceBase || !traceHeu) return keep;
+
+  const mergedFor = (tr) => {
+    const rows = tr.getRows(phase, layer, tokenIdx);
+    const nodesByIdRaw = {};
+    for (const r of rows){
+      nodesByIdRaw[r.node_id] = r;
+    }
+    const { mergedNodesById } = mergeShardNodes(nodesByIdRaw, layer);
+    return mergedNodesById || {};
+  };
+
+  const mB = mergedFor(traceBase);
+  const mH = mergedFor(traceHeu);
+
+  const durB = {};
+  const durH = {};
+
+  for (const n of Object.values(mB)){
+    const k = String(n?.op || '').trim().toUpperCase();
+    if (!k) continue;
+    const d = Number(n?.duration);
+    durB[k] = Number.isFinite(d) ? d : 0;
+  }
+  for (const n of Object.values(mH)){
+    const k = String(n?.op || '').trim().toUpperCase();
+    if (!k) continue;
+    const d = Number(n?.duration);
+    durH[k] = Number.isFinite(d) ? d : 0;
+  }
+
+  const keys = new Set([...Object.keys(durB), ...Object.keys(durH)]);
+  for (const k of keys){
+    const b = Number(durB[k] || 0);
+    const h = Number(durH[k] || 0);
+    if (Math.abs(b) > ZERO_DUR_EPS || Math.abs(h) > ZERO_DUR_EPS){
+      keep.add(k);
+    }
+  }
+  return keep;
+}
+
+function buildLayerGraph(trace, phase, layer, tokenIdx, modelFamily, deviceColorMap, keepOpsByDuration){
   const rows = trace.getRows(phase, layer, tokenIdx);
   const nodesByIdRaw = {};
   for (const r of rows){
@@ -1450,9 +1604,20 @@ function buildLayerGraph(trace, phase, layer, tokenIdx, modelFamily, deviceColor
 
   const { mergedNodesById, origToMerged } = mergeShardNodes(nodesByIdRaw, layer);
 
+  // Filter nodes for display (see shouldShowMergedNode() above).
+  const filteredNodesById = {};
+  const keepMergedIds = new Set();
+
+  for (const [id, n] of Object.entries(mergedNodesById || {})){
+    if (shouldShowMergedNode(n, modelFamily, keepOpsByDuration)){
+      filteredNodesById[id] = n;
+      keepMergedIds.add(id);
+    }
+  }
+
   const elements = [];
-  for (const id of Object.keys(mergedNodesById)){
-    const n = mergedNodesById[id];
+  for (const id of Object.keys(filteredNodesById)){
+    const n = filteredNodesById[id];
 
     const opKey = String(n.op || '');
     const opDisp = String(n.op_display || opKey);
@@ -1506,23 +1671,26 @@ function buildLayerGraph(trace, phase, layer, tokenIdx, modelFamily, deviceColor
     });
   }
 
-  const edges = buildLayerEdgesByModel(mergedNodesById, layer, modelFamily);
+  const edges = buildLayerEdgesByModel(filteredNodesById, layer, modelFamily);
   for (const [u,v] of edges){
-    if (mergedNodesById[u] && mergedNodesById[v]){
+    if (filteredNodesById[u] && filteredNodesById[v]){
       elements.push({ data: { id: `${u}->${v}`, source: u, target: v } });
     }
   }
 
-  return { elements, mergedNodesById, origToMerged, rows };
+  return { elements, mergedNodesById: filteredNodesById, origToMerged, rows, keepMergedIds };
 }
 
-function buildLayerSegment(rows, origToMerged){
+
+function buildLayerSegment(rows, origToMerged, keepMergedIds){
   let t0 = Infinity, t1 = -Infinity;
 
   const events = [];
   const byDevice = {};
   const nodeStarts = {};
   const nodeEnds = {};
+
+  const keep = (keepMergedIds && keepMergedIds.size) ? (id => keepMergedIds.has(id)) : (() => true);
 
   for (const r of rows){
     const s = Number(r.start);
@@ -1532,6 +1700,7 @@ function buildLayerSegment(rows, origToMerged){
     t1 = Math.max(t1, e);
 
     const mergedId = origToMerged[r.node_id] || r.node_id;
+    if (!keep(mergedId)) continue;
     const ev = {
       mergedId,
       originalId: r.node_id,
@@ -1719,7 +1888,8 @@ let overlayIconsHeu = null;
 const UI = {
   model: document.getElementById('model'),
   batch: document.getElementById('batch'),
-  seq: document.getElementById('seq'),
+  prefillLen: document.getElementById('prefillLen'),
+  decodeLen: document.getElementById('decodeLen'),
   dtype: document.getElementById('dtype'),
   fileBase: document.getElementById('fileBase'),
   fileHeu: document.getElementById('fileHeu'),
@@ -1764,6 +1934,52 @@ const UI = {
   chartSub: document.getElementById('chartSub')
 };
 
+
+
+/* =========================
+   Infer prefill/decode lengths from trace filename
+   Example: "...4096x2048..." -> prefill=4096, decode=2048
+========================= */
+function inferSeqLensFromFilename(name){
+  const s = String(name || '');
+  const m = /(\d+)\s*x\s*(\d+)/i.exec(s);
+  if (!m) return null;
+
+  const prefill = Number(m[1]);
+  const decode  = Number(m[2]);
+  if (!Number.isFinite(prefill) || !Number.isFinite(decode)) return null;
+
+  return { prefill: Math.trunc(prefill), decode: Math.trunc(decode) };
+}
+
+function ensureSelectHasValue(sel, v){
+  if (!sel) return;
+  const val = String(v);
+
+  // If already present, just select it.
+  for (const opt of Array.from(sel.options || [])){
+    if (String(opt.value) === val || String(opt.textContent) === val){
+      sel.value = String(opt.value || opt.textContent);
+      return;
+    }
+  }
+
+  // Otherwise append and select.
+  const opt = document.createElement('option');
+  opt.value = val;
+  opt.textContent = val;
+  sel.appendChild(opt);
+  sel.value = val;
+}
+
+function maybeApplySeqLensFromFilename(name){
+  const got = inferSeqLensFromFilename(name);
+  if (!got) return false;
+
+  ensureSelectHasValue(UI.prefillLen, got.prefill);
+  ensureSelectHasValue(UI.decodeLen, got.decode);
+  return true;
+}
 const player = {
   playing: false,
   segIdx: 0,
@@ -1918,8 +2134,10 @@ async function renderFor(phase, layer, tokenIdx){
 
   const modelFamily = player.model;
 
-  const gB = buildLayerGraph(traceBase, phase, layer, tokenIdx, modelFamily, colorMap);
-  const gH = buildLayerGraph(traceHeu, phase, layer, tokenIdx, modelFamily, colorMap);
+  const keepOpsByDuration = computeKeepOpsByDuration(phase, layer, tokenIdx);
+
+  const gB = buildLayerGraph(traceBase, phase, layer, tokenIdx, modelFamily, colorMap, keepOpsByDuration);
+  const gH = buildLayerGraph(traceHeu, phase, layer, tokenIdx, modelFamily, colorMap, keepOpsByDuration);
 
   // Capture positions per layer once
   const layerKey = String(layer);
@@ -1945,8 +2163,8 @@ async function renderFor(phase, layer, tokenIdx){
   overlayIconsHeu = createDeviceOverlay(document.getElementById('ovHeu'), devices, deviceType, colorMap);
 
   // Build animation segments for this view
-  player.segBase = buildLayerSegment(gB.rows, gB.origToMerged);
-  player.segHeu = buildLayerSegment(gH.rows, gH.origToMerged);
+  player.segBase = buildLayerSegment(gB.rows, gB.origToMerged, gB.keepMergedIds);
+  player.segHeu = buildLayerSegment(gH.rows, gH.origToMerged, gH.keepMergedIds);
 
   // Reset node states
   resetNodeClasses(cyBase);
@@ -2141,7 +2359,8 @@ function alignedMetricY(metric){
 function updateInfoBar(){
   const model = modelLabel();
   const batch = UI.batch.value;
-  const seq = UI.seq.value;
+    const prefillLen = UI.prefillLen?.value;
+  const decodeLen  = UI.decodeLen?.value;
   const dtype = UI.dtype.value;
 
   const seg = curSeg();
@@ -2153,7 +2372,7 @@ function updateInfoBar(){
 
   const tokenLabel = (phase === 'prefill') ? 'prefill' : `decode#${tok}`;
 
-  UI.infoTitle.textContent = `Model: ${model} • B=${batch} • S=${seq} • ${dtype}`;
+  UI.infoTitle.textContent = `Model: ${model} • B=${batch} • prefill=${prefillLen} • decode=${decodeLen} • ${dtype}`;
   UI.infoSub.textContent = `Phase: ${phase} • Layer: L${layer} • Token: ${tokenLabel}`;
 
   const { baseT, heuT, speedup, saved } = alignedTimes();
@@ -2724,6 +2943,7 @@ async function loadTraceFromFileInput(inputEl, labelEl){
   const parsed = parseCsvText(text);
   const trace = buildTrace(parsed);
   labelEl.textContent = `Loaded: ${f.name}`;
+  maybeApplySeqLensFromFilename(f.name);
   return trace;
 }
 
@@ -2733,7 +2953,9 @@ async function tryAutoLoad(url){
     if (!r.ok) return null;
     const text = await r.text();
     const parsed = parseCsvText(text);
-    return buildTrace(parsed);
+    const tr = buildTrace(parsed);
+    maybeApplySeqLensFromFilename(url);
+    return tr;
   }catch(e){
     return null;
   }
