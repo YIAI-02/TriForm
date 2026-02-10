@@ -19,9 +19,9 @@ python plot_trace_gantt.py \
 
 python plot_trace_gantt.py \
   --compare \
-  ../algorithms/output/evaluate_single_test/hardware_config_scale_down_11pima/llama_7b_int8_b1_s64/algo_hefthint/hefthint_4096x4096_ops_trace.csv \
-  ../algorithms/output/evaluate_single_test/hardware_config_scale_down_11pima/llama_7b_int8_b1_s64/algo_pd/4096x4096_ops_trace.csv \
-  --out_dir ../figs/evaluate_single_test/hardware_config_scale_down_11pima/llama_7b_int8_b1_s64/gantt_comparison \
+  ../algorithms/output/experiment_scale_down_4pim_merge/hw_scale_down_4pim_merge/st64/llama_70b_int8_b4_s64/algo_hefthint/hefthint_4096x1024_ops_trace.csv \
+  ../algorithms/output/experiment_scale_down_4pim_merge/hw_scale_down_4pim_merge/st64/llama_70b_int8_b4_s64/algo_pd/4096x1024_ops_trace.csv\
+  --out_dir ../figs/evaluate_single_test/hw_scale_down_4pim_merge/llama_70b_int8_b4_s64/gantt_comparison \
   --time_unit ms \
   --fig_w 25 \
   --comm_lane_mode aggregate

@@ -570,9 +570,10 @@ class CostModel:
         return int(size_bytes * m)
 
     def flop_time(self, flops: float, dev: DeviceSpec) -> float:
-        if dev.tflops <= 0:
-            return 0.0
-        return flops / (dev.tflops * 1024 * 1024 * 1024.0)
+        t = float(getattr(dev, "tflops", 0.0) or 0.0)
+        if t <= 0.0:
+            return float("inf")
+        return float(flops) / (t * 1e12)
 
     def mem_time(self, bytes_amount: int, dev: DeviceSpec) -> float:
         bw = dev.mem_bw_GBs  * 1024 * 1024 * 1024.0

@@ -7,6 +7,6 @@
   "split_by": "head",
   "qkv_shards": 1,
   "ffn_shards": 1,
-  "kv_cache_shards": 4
+  "kv_cache_shards": 1
 }
 
