@@ -4,14 +4,14 @@
   "dtype": "int8",
   "batch": 1,
   "prefill_len": 4096,
-  "decode_len": 2048,
+  "decode_len": 1024,
   "decode_sample_stride": 128,
   "pim_config_path": "./aim_simulator/PIM_AiM.json",
   "gb_config_path": "./aim_simulator/gb.json",
   "ramulator_config_path": "./aim_simulator/example.yaml",
-  "simulation_log_file": "./output/evaluate_single_test/hardware_config_scale_down_4pim_merge/pim_simulation.txt",
-  "result_dir": "./output/evaluate_single_test/hardware_config_scale_down_4pim_merge/",
-  "hardware_json": "./examples/hardware_config_scale_down_4pim_merge.json",
+  "simulation_log_file": "./output/evaluate_single_test/hardware_gpu_8aim_merge/pim_simulation.txt",
+  "result_dir": "./output/evaluate_single_test/hardware_gpu_8aim_merge/",
+  "hardware_json": "./examples/hardware_gpu_8aim_merge.json",
   "algo": [
     "hefthint",
     "heft"
@@ -24,8 +24,5 @@
     "facil",
     "attacc"
   ],
-  "split_by": "head",
-  "qkv_shards": 1,
-  "ffn_shards": 1,
-  "kv_cache_shards": 1
+  "split_by": "head"
 }

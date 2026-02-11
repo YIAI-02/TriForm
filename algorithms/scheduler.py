@@ -138,7 +138,6 @@ class SchedulerBase:
         self._act_used: Dict[str, int] = defaultdict(int)
         self._act_resident: Dict[Tuple[str, str], int] = {}# (dev_name, nid) -> bytes retained on device
         self._act_refcnt: Dict[str, int] = {}
-        self._collective_output_devs: Dict[str, set[str]] = {}  # collective node -> replica devices
 
         # Register PIM runtime budgets to buffer manager (unify all PIM-space checks there)
         pim_devs = [d for d in self.cluster.devices.values() if d.type == 'pim']
@@ -236,44 +235,36 @@ class SchedulerBase:
                 types = ['cpu']
         return tuple(types)
 
-    def reset_state(self):
+    def reset_state(self, *, clear_caches: bool = True) -> None:
+        """Reset scheduler runtime state."""
+
+        # Per-node / per-schedule bookkeeping (always cleared)
         self._node_finish_time.clear()
         self._node_placement.clear()
         self._node_out_fmt.clear()
-        for cache in self.buffer.device_cache.values():
-            cache.items.clear()
-            cache.order.clear()
-            cache.used = 0
-            cache.pinned.clear()
-        self.weight_cached.clear()
-        self.storage_fmt_map.clear()
-        self._weight_load_count.clear()
-        self._weight_sizes.clear()
 
         self._node_host_store_end.clear()
         self._act_used.clear()
         self._act_resident.clear()
         self._act_refcnt.clear()
-        self._collective_output_devs.clear()
-
         # KV/activation runtime states on PIM are centrally managed in buffer manager
-        self.buffer.reset_runtime_state()
-
-    def reset_ephemeral_state(self) -> None:
-        """Reset per-schedule transient runtime state (activations + per-node bookkeeping)."""
-        self._node_finish_time.clear()
-        self._node_placement.clear()
-        self._node_out_fmt.clear()
-        self._node_host_store_end.clear()
-        self._act_used.clear()
-        self._act_resident.clear()
-        self._act_refcnt.clear()
-        self._collective_output_devs.clear()
         try:
-            # KV reservation + weight caches stay; only activation usage reset.
             self.buffer.reset_runtime_state()
         except Exception:
             pass
+
+        if clear_caches:
+            # Clear weight caches on all devices (PIM + NPU/CPU) and scheduler-side
+            # cache bookkeeping.
+            for cache in self.buffer.device_cache.values():
+                cache.items.clear()
+                cache.order.clear()
+                cache.used = 0
+                cache.pinned.clear()
+            self.weight_cached.clear()
+            self.storage_fmt_map.clear()
+            self._weight_load_count.clear()
+            self._weight_sizes.clear()
 
     # ------------------------------------------------------------------
     # Weight residency policy
@@ -332,49 +323,6 @@ class SchedulerBase:
             pass
         return None
          
-    def _node_kv_head_id(self, node: Any) -> Optional[int]:
-        """Best-effort KV-head id extraction for head-partitioned KV placement."""
-        try:
-            attrs = getattr(node, "attrs", None)
-            if not isinstance(attrs, Mapping):
-                return None
-            for k in ("kv_head_id", "kv_head_idx", "kv_head", "head_kv", "kvh"):
-                if k in attrs and attrs.get(k) is not None:
-                    return int(attrs.get(k))
-            # Fallback: derive from q_head_id if present.
-            if "q_head_id" in attrs and attrs.get("q_head_id") is not None:
-                qhid = int(attrs.get("q_head_id"))
-                total_q = int(attrs.get("n_heads", attrs.get("q_heads", 0)) or 0)
-                total_kv = int(attrs.get("n_kv_heads", attrs.get("kv_heads", attrs.get("n_kv_heads", 0))) or 0)
-                if total_q > 0 and total_kv > 0:
-                    qhid = max(0, min(qhid, total_q - 1))
-                    return int((qhid * total_kv) // total_q)
-        except Exception:
-            return None
-        return None
-
-    def _kv_partition_dim(self) -> str:
-        try:
-            return str(getattr(self.label, "kv_partition_dim", "layer") or "layer").strip().lower()
-        except Exception:
-            return "layer"
-
-    # def _kv_mapped_pim_name(self, partition_id: int, *, partition_dim: str) -> Optional[str]:
-    #     """Return mapped PIM device name for a given partition id."""
-    #     mapping = None
-    #     if partition_dim in ("head_num", "head", "heads"):
-    #         mapping = getattr(self.label, "kv_head_to_pim", None)
-    #     else:
-    #         mapping = getattr(self.label, "kv_layer_to_pim", None)
-    #     if not isinstance(mapping, Mapping) or not mapping:
-    #         return None
-    #     if partition_id in mapping:
-    #         return str(mapping[partition_id])
-    #     s = str(int(partition_id))
-    #     if s in mapping:
-    #         return str(mapping[s])
-    #     return None
-
     def _kv_mapped_pim_name_for_layer(self, layer: int) -> Optional[str]:
         """Return mapped pim device name for a layer, if label provides it."""
         try:
@@ -397,80 +345,27 @@ class SchedulerBase:
                 return None
         return None
 
-    def _kv_mapped_pim_name_for_head(self, head_id: int) -> Optional[str]:
-        """Return mapped PIM device name for a KV head, if label provides it."""
-        try:
-            m = getattr(self.label, "kv_head_to_pim", None)
-        except Exception:
-            m = None
-        if not isinstance(m, Mapping) or not m:
-            return None
-        if head_id in m:
-            try:
-                return str(m[head_id])
-            except Exception:
-                return None
-        s = str(int(head_id))
-        if s in m:
-            try:
-                return str(m[s])
-            except Exception:
-                return None
-        return None
-    
     def _kv_pim_for_node(self, node: Any) -> Optional[DeviceSpec]:
-        """Return the PIM device that should hold this node's KV cache.
 
-        Partitioning depends on PlanLabel.kv_partition_dim:
-          - layer    : use kv_layer_to_pim
-          - head_num : use kv_head_to_pim (KV heads mapped across PIMs)
-        """
         try:
             if not bool(getattr(self.label, "kv_in_pim", False)):
                 return None
         except Exception:
             return None
 
-        part_dim = str(getattr(self.label, "kv_partition_dim", "layer") or "layer").lower()
-        name: Optional[str] = None
-        if part_dim in ("head", "heads", "head_num", "headnum"):
-            # Head-partitioned KV cache: a node may depend on *multiple* KV heads (GQA).
-            # If they all map to the same PIM, return that PIM; otherwise return None.
-            try:
-                attrs = getattr(node, "attrs", None)
-            except Exception:
-                attrs = None
-            kv_head_ids = None
-            if isinstance(attrs, Mapping):
-                kv_head_ids = attrs.get("kv_head_ids")
-            if isinstance(kv_head_ids, (list, tuple, set)) and kv_head_ids:
-                pim_names = set()
-                for hid in kv_head_ids:
-                    pn = self._kv_mapped_pim_name_for_head(int(hid))
-                    if pn:
-                        pim_names.add(str(pn))
-                if len(pim_names) == 1:
-                    name = next(iter(pim_names))
-                else:
-                    return None
-            else:
-                hid = self._node_kv_head_id(node)
-                if hid is None:
-                    return None
-                name = self._kv_mapped_pim_name_for_head(int(hid))
-        else:
-            lid = self._node_layer_id(node)
-            if lid is None:
-                return None
-            name = self._kv_mapped_pim_name_for_layer(int(lid))
-
+        lid = self._node_layer_id(node)
+        if lid is None:
+            return None
+        name = self._kv_mapped_pim_name_for_layer(int(lid))
         if not name:
             return None
         dev = self.cluster.devices.get(str(name))
-        if dev is None or str(getattr(dev, "type", "")).lower() != "pim":
+        if dev is None:
+            return None
+        if str(getattr(dev, "type", "")).lower() != "pim":
             return None
         return dev
-    
+
     def _preferred_kv_write_device(self, g: Any, nid: str) -> Optional[DeviceSpec]:
         try:
             node = g.nodes[nid]
@@ -545,28 +440,9 @@ class SchedulerBase:
             dev_type = getattr(dev, "type", None) or str(dev)
             if not bool(allowed.get(dev_type, True)):
                 return False
-        
-        # ---- 2) explicit PIM pinning for head-sharded ops (RR mapping) ----
-        # Model-definition can attach:
-        #   - attrs['pim_target'] or attrs['pim_target_name'] : explicit device name
-        #   - attrs['pim_target_idx']                         : RR index into PIM devices
-        attrs = getattr(node, "attrs", None)      
-        if isinstance(attrs, Mapping):
-            tgt_name = attrs.get("pim_target") or attrs.get("pim_target_name")
-            tgt_idx  = attrs.get("pim_target_idx")
-            if tgt_name is not None or tgt_idx is not None:
-                if str(getattr(dev, "type", "")).lower() != "pim":
-                    return False
 
-                pim_devs = sorted(self.cluster.devices_by_type("pim"), key=lambda d: str(d.name))
-                if not pim_devs:
-                    return False
-                if tgt_name is not None:
-                    return str(dev.name) == str(tgt_name)
-                idx = int(tgt_idx) % len(pim_devs)
-                return str(dev.name) == str(pim_devs[idx].name)
                             
-        # ---- 3) KV mapping restriction (multi-PIM RR) ----
+        # ---- 2) KV mapping restriction (multi-PIM KV placement) ----
         # We already handled KV_WRITE above.
         try:
             if not kv_in_pim:
@@ -673,9 +549,6 @@ class SchedulerBase:
 
         #---------------------1b. Collective communication primitive (ring all-reduce)
         attrs = getattr(node, "attrs", {}) or {}
-        if str(attrs.get("collective", "")).lower() == "allreduce":
-            return self._earliest_finish_allreduce(g, nid, label, phase_eff, commit)
-
         ready = self._ready_time_for_device(g, nid, dev, phase_eff, commit)
 
         #---------------------2.  If this node consumes cached KV (QK/SV), add KV load before compute
@@ -690,19 +563,13 @@ class SchedulerBase:
                     if pim_devs:
                         # Head-partitioned KV (GQA/MQA) may require reading KV from multiple PIMs.
                         # We group by source PIM and model the slowest transfer/read as the gating time.
-                    #     part_dim = self._kv_partition_dim()
                     #     attrs = getattr(node, "attrs", {}) or {}
 
                     #     src_head_counts: Dict[str, int] = {}
                     #     if part_dim in ("head", "heads", "head_num", "headnum"):
-                    #         kv_head_ids = attrs.get("kv_head_ids") #本次attention 要用到的kv head
-                    #         if isinstance(kv_head_ids, (list, tuple, set)) and kv_head_ids:
-                    #             for hid in kv_head_ids:
                     #                 pn = self._kv_mapped_pim_name_for_head(int(hid))
                     #                 if pn:
                     #                     src_head_counts[str(pn)] = src_head_counts.get(str(pn), 0) + 1
-
-                    #     # Fallback to single mapped PIM (layer-partition or missing kv_head_ids)
                     #     if not src_head_counts:
                     #         src = self._kv_pim_for_node(node) or min(pim_devs, key=lambda d: self.avail.get(d.name, 0.0))
                     #         if src is not None:
@@ -1112,58 +979,6 @@ class SchedulerBase:
             
             # Collective predecessor (e.g., tensor-parallel all-reduce):
             # its output is replicated on all participating devices.
-            pred_attrs = getattr(pred_node, "attrs", {}) or {}
-            if str(pred_attrs.get("collective", "")).lower() == "allreduce":
-                replica_devs = self._collective_output_devs.get(u, None)
-                if replica_devs and dev.name in replica_devs:
-                    inbound_start_times.append(pred_finish)
-                    inbound_end_times.append(pred_finish)
-                    continue
-
-                # Otherwise, pick the best replica source to fetch from.
-                cand_src_names = list(replica_devs) if replica_devs else [pred_dev_name]
-                best_s = float("inf")
-                best_e = float("inf")
-                best_src_dev: Optional[DeviceSpec] = None
-
-                # All-reduce outputs are assumed in ND format.
-                src_fmt_collective = self._node_out_fmt.get(u, "ND")
-
-                for src_name in cand_src_names:
-                    if src_name is None:
-                        continue
-                    src_name = str(src_name)
-                    src_dev = self.cluster.devices.get(src_name)
-                    if src_dev is None:
-                        continue
-                    s0, e0 = self._reserve_activation_transfer_best_path(
-                        prod_nid=u,
-                        src_dev=src_dev,
-                        dst_dev=dev,
-                        bytes_nd=int(pred_write),
-                        src_fmt=str(src_fmt_collective),
-                        pred_finish=float(pred_finish),
-                        commit=False,
-                    )
-                    if float(e0) < float(best_e):
-                        best_s, best_e = float(s0), float(e0)
-                        best_src_dev = src_dev
-
-                if commit and best_src_dev is not None and math.isfinite(float(best_e)):
-                    best_s, best_e = self._reserve_activation_transfer_best_path(
-                        prod_nid=u,
-                        src_dev=best_src_dev,
-                        dst_dev=dev,
-                        bytes_nd=int(pred_write),
-                        src_fmt=str(src_fmt_collective),
-                        pred_finish=float(pred_finish),
-                        commit=True,
-                    )
-
-                inbound_start_times.append(float(best_s))
-                inbound_end_times.append(float(best_e))
-                continue
-
             pred_dev = self.cluster.devices[pred_dev_name]
             src_fmt = self._node_out_fmt.get(u, self.cost.device_preferred_fmt(pred_dev))
 
@@ -1445,7 +1260,7 @@ class NaiveTopoScheduler(SchedulerBase):
     def schedule(self, g: TaskGraph, phase: str) -> List[ScheduledTask]:
         if getattr(self, 'stats', None):
             self.stats.set_phase(phase)
-        self.reset_ephemeral_state()
+        self.reset_state(clear_caches=False)
         idx = self._get_graph_index(g)
         topo_pos = {nid: i for i, nid in enumerate(idx.topo)}
         remaining_preds = {nid: len(idx.preds[nid]) for nid in idx.nodes}
@@ -1642,7 +1457,7 @@ class HEFTScheduler(SchedulerBase):
         if getattr(self, 'stats', None):
             self.stats.set_phase(phase)
 
-        self.reset_ephemeral_state()
+        self.reset_state(clear_caches=False)
         idx = self._get_graph_index(g)
        
         # Pre-compute uprank scores (HEFT priority) for this phase.
@@ -2053,10 +1868,9 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
         self._model_total_weight_bytes: Optional[int] = None
         self._weight_chain_hits: Dict[str, float] = defaultdict(float)
 
-    def reset_state(self):
-        """Reset runtime state + clear COMMAWARE hints.
-        """
-        super().reset_state()
+    def reset_state(self, *, clear_caches: bool = True) -> None:
+        """Reset runtime state + clear COMMAWARE hints."""
+        super().reset_state(clear_caches=clear_caches)
         self._plan_hint.clear()
         self._weight_plan_hint.clear()
         self._model_total_weight_bytes = None
@@ -2576,7 +2390,7 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
         if getattr(self, "stats", None):
             self.stats.set_phase(phase)
 
-        self.reset_ephemeral_state()
+        self.reset_state(clear_caches=False)
         idx = self._get_graph_index(g)
 
         # Step 1: HEFT priority (upward ranks).

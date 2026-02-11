@@ -242,7 +242,7 @@ def parse_model_shape_from_file(family: str, variant: str, batch: int, max_seq_l
         setattr(shape, "moe_imbalance_factor", moe_imbalance_factor)
     return shape
 
-def build_graph(cfg: Dict[str, Any], pim_shards: int = None, split_by: str = None):
+def build_graph(cfg: Dict[str, Any]):
     """
     Build a unified task graph that works for both prefill and decode.
     The graph structure is phase-independent; only runtime costs vary.
@@ -256,34 +256,6 @@ def build_graph(cfg: Dict[str, Any], pim_shards: int = None, split_by: str = Non
     shape = parse_model_shape_from_file(family, variant, batch, max_seq_len, cfg)
     md = make_model_def(family)
     dtype_bytes = DTYPE_BYTES.get(cfg.get('dtype','fp16'), 2)
-    
-
-    # Partition controls (optional): used for building head-sharded graphs.
-    part_dim = str(
-        split_by if split_by is not None
-        else cfg.get('split_by', 'head') or 'head'
-    ).strip().lower()
-
-    if pim_shards is None:
-        try:
-            pim_shards = int(cfg.get('num_pim', cfg.get('pim_count', 1)) or 1)
-        except Exception:
-            pim_shards = 1
-    try:
-        shape.split_by = part_dim  # 'head_num' 会在 model_definition 里 normalize 成 'head'
-
-        # Legacy: split_shards (single knob)
-        legacy_cap = cfg.get('split_shards', None)
-        if legacy_cap is None:
-            legacy_cap = int(pim_shards or 0)
-        shape.split_shards = int(legacy_cap)
-        
-        shape.qkv_shards = int(cfg.get('qkv_shards', cfg.get('split_shards_qkv', legacy_cap)))
-        shape.ffn_shards = int(cfg.get('ffn_shards', cfg.get('split_shards_ffn', legacy_cap)))
-        shape.kv_cache_shards = int(cfg.get('kv_cache_shards', cfg.get('split_shards_kv_cache', legacy_cap)))
-    except Exception:
-        pass
-
 
     g = md.build(shape, dtype_bytes=dtype_bytes)
 
@@ -308,7 +280,7 @@ def build_graph(cfg: Dict[str, Any], pim_shards: int = None, split_by: str = Non
         )
         tag = str(
             cfg.get("dump_graph_tag")
-            or f"{family}_{variant}_{part_dim}_sh{getattr(shape,'split_shards', pim_shards or 1)}_"
+            or f"{family}_{variant}_"\
                f"B{batch}_S{int(cfg.get('prefill_len', 0) or 0)}_T{int(cfg.get('decode_len', 0) or 0)}_"
                f"{cfg.get('dtype','fp16')}"
         ).replace(" ", "")

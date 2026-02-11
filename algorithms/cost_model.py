@@ -1121,7 +1121,6 @@ class CostModel:
     def node_device_cost(self, node: TaskNode, dev: DeviceSpec, label: PlanLabel, batch: int, seq_len: int, phase: str) -> float:
         attrs = getattr(node, 'attrs', {}) or {}
         time_scale = float(self._time_scale_hint(node, getattr(dev, 'type', '')))
-        is_shard = bool(attrs.get('is_shard', False))
         kv_in_pim = getattr(label, 'kv_in_pim', False)
 
         b = int(batch or attrs.get('batch', 1) or 1)
