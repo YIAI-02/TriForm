@@ -82,9 +82,41 @@ def _make_label_given_kv(
 ) -> tuple[PlanLabel, bool]:
     """Build a PlanLabel with KV placement forced. """
 
+    def _infer_kv_dtype_bytes() -> float:
+        """Infer KV-cache storage element size in bytes."""
+        default_b = float(DTYPE_BYTES.get(cfg.get('dtype', 'fp16'), 2))
+        try:
+            for n in graph.nodes.values():
+                attrs = getattr(n, 'attrs', None) or {}
+                if not isinstance(attrs, dict):
+                    continue
+                opt = attrs.get('opt', None)
+                if isinstance(opt, dict) and ('kv_dtype_bytes' in opt):
+                    kb = opt.get('kv_dtype_bytes', None)
+                    if kb is None:
+                        continue
+                    try:
+                        kb_f = float(kb)
+                        if kb_f > 0:
+                            return kb_f
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+        return float(default_b)
+
+    def _effective_tp_qkv() -> int:
+        """Get validated effective tp for QKV/attention head sharding."""
+        # model_parser.build_graph() will set tp_qkv_effective when present.
+        tp_eff = cfg.get('tp_qkv_effective', cfg.get('_tp_qkv_effective', None))
+        if tp_eff is not None:
+            return max(1, int(tp_eff))
+        return max(1, int(cfg.get('tp_qkv', 1) or 1))
+
     pim_devs = list(cluster.devices_by_type("pim") or [])
 
     dtype_bytes = int(DTYPE_BYTES.get(cfg.get('dtype', 'fp16'), 2))
+    kv_dtype_bytes = float(_infer_kv_dtype_bytes())
     S = int(cfg.get('prefill_len', 128))
     T = int(cfg.get('decode_len', 32))
     batch = int(cfg.get('batch', 1))
@@ -95,8 +127,9 @@ def _make_label_given_kv(
         getattr(shape, 'head_dim', max(1, getattr(shape, 'dim', 1) // max(1, getattr(shape, 'n_heads', 1))))
     )
 
-    KV_total_bytes = int(2 * (S + T) * n_kv_heads * head_dim * batch * layers * dtype_bytes)
-    kv_bytes_per_layer = int(2 * (S + T) * n_kv_heads * head_dim * batch * dtype_bytes)
+    # NOTE: KV cache storage dtype may differ from activation/weight dtype.
+    KV_total_bytes = int(math.ceil(2 * (S + T) * n_kv_heads * head_dim * batch * layers * kv_dtype_bytes))
+    kv_bytes_per_layer = int(math.ceil(2 * (S + T) * n_kv_heads * head_dim * batch * kv_dtype_bytes))
 
     # Sum all FC weight bytes from the graph.
     FC_total_bytes = 0
@@ -115,7 +148,6 @@ def _make_label_given_kv(
             kv_in_pim=False,
             kv_total_bytes=0,
             kv_bytes_per_layer=0,
-            kv_layer_to_pim={},
             kv_bytes_by_pim={},
             pim_weight_capacity_bytes=0,
         )
@@ -126,17 +158,51 @@ def _make_label_given_kv(
         setattr(label, "weights_preloaded_on_pim", bool(weights_preloaded_on_pim))
         return label, False
 
-    # KV placement across PIM devices: round-robin by layer.
+    # KV placement across PIM devices: shard by KV heads (GQA-aware).
+    # To avoid PIM<->PIM traffic, we assign each KV-head shard to a single PIM.
     pim_rr = sorted(pim_devs, key=lambda d: str(d.name))
     pim_bytes_by_name = {d.name: int(d.mem_capacity_GB * (1024**3)) for d in pim_rr}
-    kv_layer_to_pim: Dict[int, str] = {}
+    kv_head_to_pim: Dict[int, str] = {}
+    kv_heads_by_pim: Dict[str, List[int]] = {d.name: [] for d in pim_rr}
     kv_bytes_by_pim: Dict[str, int] = {d.name: 0 for d in pim_rr}
 
+    tp_qkv_eff = int(_effective_tp_qkv())
+    kv_heads_total = int(n_kv_heads)
+    tp_qkv_eff = max(1, min(int(tp_qkv_eff), kv_heads_total))
+    if kv_heads_total % tp_qkv_eff != 0:
+        # Should have been validated earlier; fallback to per-head sharding.
+        tp_qkv_eff = kv_heads_total
+    kv_heads_per_shard = max(1, kv_heads_total // tp_qkv_eff)
+
+    # Build head shards.
+    head_shards: List[List[int]] = []
+    for si in range(tp_qkv_eff):
+        s0 = si * kv_heads_per_shard
+        s1 = min(kv_heads_total, (si + 1) * kv_heads_per_shard)
+        head_shards.append(list(range(s0, s1)))
+
+    # Assign shards to PIMs (balanced).
     if pim_rr:
-        for l in range(layers):
-            pname = pim_rr[l % len(pim_rr)].name
-            kv_layer_to_pim[int(l)] = str(pname)
-            kv_bytes_by_pim[str(pname)] = int(kv_bytes_by_pim.get(str(pname), 0) + kv_bytes_per_layer)
+        pn = len(pim_rr)
+        base = len(head_shards) // pn
+        rem = len(head_shards) % pn
+        sh_idx = 0
+        for pi, dev in enumerate(pim_rr):
+            take = base + (1 if pi < rem else 0)
+            for _ in range(take):
+                if sh_idx >= len(head_shards):
+                    break
+                shard_heads = head_shards[sh_idx]
+                sh_idx += 1
+                for hid in shard_heads:
+                    kv_head_to_pim[int(hid)] = str(dev.name)
+                kv_heads_by_pim[str(dev.name)].extend(int(h) for h in shard_heads)
+
+        # Compute per-PIM KV bytes.
+        bytes_per_head_all_layers = float(2 * (S + T) * head_dim * batch * layers) * kv_dtype_bytes
+        for dev in pim_rr:
+            hcnt = len(kv_heads_by_pim.get(str(dev.name), []) or [])
+            kv_bytes_by_pim[str(dev.name)] = int(math.ceil(float(hcnt) * bytes_per_head_all_layers))
 
     # Feasibility for KV-on-PIM.
     feasible = True
@@ -161,18 +227,21 @@ def _make_label_given_kv(
         weight_budget = int(FC_total_bytes)
 
     label = PlanLabel(
-        pim_mode=("kv_pim_rr" if (kv_in_pim and feasible) else "kv_host"),
+        pim_mode=("kv_pim_by_head" if (kv_in_pim and feasible) else "kv_host"),
         kv_in_pim=bool(kv_in_pim and feasible),
         kv_total_bytes=int(kv_bytes_in_pim),
-        kv_bytes_per_layer=(int(kv_bytes_per_layer) if (kv_in_pim and feasible) else 0),
-        kv_layer_to_pim=(dict(kv_layer_to_pim) if (kv_in_pim and feasible) else {}),
         kv_bytes_by_pim=(dict(kv_bytes_by_pim) if (kv_in_pim and feasible) else {}),
+        kv_head_to_pim=(dict(kv_head_to_pim) if (kv_in_pim and feasible) else {}),
+        kv_heads_by_pim=(dict(kv_heads_by_pim) if (kv_in_pim and feasible) else {}),
+        kv_partition_dim=('kv_head' if (kv_in_pim and feasible) else 'layer'),
         pim_weight_capacity_bytes=int(weight_budget),
     )
 
     setattr(label, "total_weight_bytes", int(FC_total_bytes))
     setattr(label, "fc_total_bytes", int(FC_total_bytes))
     setattr(label, "kv_total_bytes_raw", int(KV_total_bytes))
+    setattr(label, "kv_dtype_bytes", float(kv_dtype_bytes))
+    setattr(label, "tp_qkv_effective", int(tp_qkv_eff))
     setattr(label, "pim_total_capacity_bytes", int(pim_bytes))
     setattr(label, "weights_preloaded_on_pim", bool(weights_preloaded_on_pim))
     return label, bool(kv_in_pim and feasible)
@@ -514,6 +583,7 @@ def run(cfg: Dict):
     result_dir.mkdir(parents=True, exist_ok=True)
     weight_format_path = Path(cfg.get('weight_format_json') or (result_dir / 'weight_storage_suggestion.json'))
     cluster = demo_cluster(cfg)
+    cfg['topology'] = getattr(cluster, 'topology', cfg.get('topology', None))
     pim_config_path = Path(cfg['pim_config_path'])
     gb_config_path = Path(cfg['gb_config_path'])
     ramulator_config_path = Path(cfg['ramulator_config_path'])
@@ -1235,6 +1305,7 @@ def _eval_one_baseline(cfg: Dict, policy: str) -> Dict:
     reset_simulation_logger()
 
     cluster = demo_cluster(cfg)
+    cfg['topology'] = getattr(cluster, 'topology', cfg.get('topology', None))
     graph, shape = build_graph(cfg)
 
     batch = int(cfg.get("batch", 1))
@@ -1416,6 +1487,7 @@ def _eval_one_baseline(cfg: Dict, policy: str) -> Dict:
 
 def _run_strategy_once(strategy: str, cfg: Dict, *, shared_graph=None, shared_shape=None) -> Dict:
     cluster = demo_cluster(cfg)
+    cfg['topology'] = getattr(cluster, 'topology', cfg.get('topology', None))
     if shared_graph is not None and shared_shape is not None:
         graph, shape = shared_graph, shared_shape
     else:
@@ -1661,6 +1733,7 @@ def evaluate_suite(cfg: Dict, *, algos: List[str], baselines: List[str], result_
         if a not in alist: alist.append(a)
     # Build once to share across algos
     cluster = demo_cluster(cfg)
+    cfg['topology'] = getattr(cluster, 'topology', cfg.get('topology', None))
     shared_graph, shared_shape = build_graph(cfg)
     for a in alist:
         algo_dir = _ensure_dir(base_dir / f"algo_{a}")
@@ -1724,6 +1797,11 @@ def parse_args():
                          choices=['fast_mode', 'ascend_310b_json', 'llmcompass'],
                          help='NPU operator-latency backend: fast_mode/ascend_310b_json/llmcompass. Must be explicitly specified (in config JSON or CLI).')
     sp_eval.add_argument('--pim_fast_mode', action='store_true',default=None)
+    # Tensor-parallel shard controls (graph splitting)
+    sp_eval.add_argument('--tp_qkv', type=int,
+                         help='Tensor-parallel shard size for Q/K/V generation and attention head sharding (column split).')
+    sp_eval.add_argument('--tp_ffn', type=int,
+                         help='Tensor-parallel shard size for FFN intermediate dimension (ffn_dim split).')
     # weight-suggest mode: multi-pass SA to suggest weight formats
     sp_ws = sub.add_parser('weight-suggest', help='Run multi-pass SA to suggest weight formats; no baselines.')
     sp_ws.add_argument('--config', required=True, type=str, help='Path to a JSON config with run parameters.')
@@ -1746,6 +1824,11 @@ def parse_args():
                         choices=['fast_mode', 'ascend_310b_json', 'llmcompass'],
                         help='NPU operator-latency backend: fast/ascend_310b_json/llmcompass. Must be explicitly specified (in config JSON or CLI).')
     sp_ws.add_argument('--pim_fast_mode', action='store_true')   
+    # Tensor-parallel shard controls (graph splitting)
+    sp_ws.add_argument('--tp_qkv', type=int,
+                        help='Tensor-parallel shard size for Q/K/V generation and attention head sharding (column split).')
+    sp_ws.add_argument('--tp_ffn', type=int,
+                        help='Tensor-parallel shard size for FFN intermediate dimension (ffn_dim split).')
     # Graph/tensor-parallel controls
     # Weight-format optimization controls
     sp_ws.add_argument('--format_opt_method', type=str,
@@ -1811,6 +1894,8 @@ def main():
             'prefill_len',
             'decode_len',
             'decode_sample_stride',
+            'tp_qkv',
+            'tp_ffn',
             'result_dir',
             'hardware_json',
             'algo',

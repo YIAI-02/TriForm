@@ -9,12 +9,12 @@
      * <prefix>.pim_tasks.json
 
     python ./verify/schedule_deploy_verify.py export \
-        --schedule ./algorithms/output/evaluate_single_test/hardware_gpu_8aim_merge/qwen_7b_int8_b1_s128/algo_hefthint/hefthint_2048x2048_ops_trace.csv \
+        --schedule ./algorithms/output/evaluate_single_test/hardware_config_scale_down_12pima/llama_7b_int8_b1_s128/algo_hefthint/hefthint_4096x1024_ops_trace.csv \
         --out-dir ./verify/out \
         --prefix hefthint_seg \
         --segment-scope layer \
         --prefill-len 2048 \
-        --dim 3584 --ffn-dim 18944 --n-heads 28 --shards 1
+        --dim 4096 --ffn-dim 11008 --n-heads 32 --shards 4
 
 2) run-gpu
    - 读取 gpu_tasks.json，把每个 segment 的算子序列连续执行并计时

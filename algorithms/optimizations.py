@@ -552,6 +552,11 @@ def apply_optimizations_to_graph(
                     "io": _lower(opt.quant.activation_io, "fp16"),
                 }
 
+                # KV-cache storage dtype can be smaller than model compute dtype.
+                kv_ops = {"K", "V", "QK", "SV", "K_WRITE", "V_WRITE", "KV_READ", "KV_WRITE"}
+                if (getattr(node, "name", "") or "").upper() in kv_ops:
+                    optd.setdefault("kv_dtype_bytes", float(optd["activation_quant"].get("act_dtype_bytes", 0.0)))
+
         # Provide a unified speedup hint table (device_type -> scale)
         # This is purely optional; CostModel will ignore if absent.
         speedup: Dict[str, float] = {}

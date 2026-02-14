@@ -257,7 +257,69 @@ def build_graph(cfg: Dict[str, Any]):
     md = make_model_def(family)
     dtype_bytes = DTYPE_BYTES.get(cfg.get('dtype','fp16'), 2)
 
-    g = md.build(shape, dtype_bytes=dtype_bytes)
+    # ----------------------------
+    # Validate TP sharding params
+    # ----------------------------
+    # QKV TP (column parallel): shard by head groups to minimize cross-PIM traffic.
+    try:
+        Hq = int(getattr(shape, 'n_heads', getattr(shape, 'n_head', 0)) or 0)
+    except Exception:
+        Hq = 0
+    try:
+        Hkv = int(getattr(shape, 'n_kv_heads', getattr(shape, 'n_kv_head', Hq)) or Hq)
+    except Exception:
+        Hkv = Hq
+    try:
+        Hf = int(getattr(shape, 'ffn_dim', getattr(shape, 'hidden_dim', 0)) or 0)
+    except Exception:
+        Hf = 0
+
+    # tp_qkv: number of shards for Q/K/V and attention head-parallelism.
+    tp_qkv_raw = cfg.get('tp_qkv', cfg.get('tp', 1))
+    try:
+        tp_qkv = max(1, int(tp_qkv_raw or 1))
+    except Exception:
+        tp_qkv = 1
+
+    tp_qkv_eff: int
+    if tp_qkv <= 1:
+        tp_qkv_eff = 1
+    elif tp_qkv <= max(Hq, 1) and tp_qkv <= max(Hkv, 1):
+        if (Hq % tp_qkv) != 0 or (Hkv % tp_qkv) != 0:
+            raise ValueError(
+                f"Invalid tp_qkv={tp_qkv}: require Hq%tp_qkv==0 and Hkv%tp_qkv==0 "
+                f"(Hq={Hq}, Hkv={Hkv})."
+            )
+        tp_qkv_eff = tp_qkv
+    elif tp_qkv > max(Hq, 1):
+        # If tp_qkv > Hq, split by KV heads (kv-head baseline) to avoid cross-PIM.
+        tp_qkv_eff = max(1, int(Hkv) if Hkv else 1)
+    else:
+        # tp_qkv between Hkv and Hq (e.g., Hkv < tp_qkv <= Hq) is not supported.
+        raise ValueError(
+            f"Invalid tp_qkv={tp_qkv}: unsupported when Hkv < tp_qkv <= Hq "
+            f"(Hq={Hq}, Hkv={Hkv})."
+        )
+
+    # tp_ffn: shard ffn_dim (column parallel for W1/W3; row parallel for W2).
+    tp_ffn_raw = cfg.get('tp_ffn', 1)
+    try:
+        tp_ffn = max(1, int(tp_ffn_raw or 1))
+    except Exception:
+        tp_ffn = 1
+    if tp_ffn > 1:
+        if Hf <= 0:
+            raise ValueError(f"Invalid tp_ffn={tp_ffn}: unknown ffn_dim (Hf={Hf}).")
+        if (Hf % tp_ffn) != 0:
+            raise ValueError(
+                f"Invalid tp_ffn={tp_ffn}: require ffn_dim%tp_ffn==0 (ffn_dim={Hf})."
+            )
+
+    # Stash validated effective values for downstream components.
+    cfg['tp_qkv_effective'] = int(tp_qkv_eff)
+    cfg['tp_ffn_effective'] = int(tp_ffn)
+
+    g = md.build(shape, dtype_bytes=dtype_bytes, cfg=cfg)
 
     try:
         apply_optimizations_to_graph(

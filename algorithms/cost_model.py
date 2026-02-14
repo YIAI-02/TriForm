@@ -360,7 +360,7 @@ class PimFastBackend(PimBackendBase):
         logger.debug(str(f"[PIM][FAST] weight_load bytes={weight_bytes}"))
         pim_devs = cm.cluster.devices_by_type('pim')
         if pim_devs:
-            return float(cm.pim_mem_time(0, int(weight_bytes), pim_devs[0]))
+            return float(cm.pim_mem_time(int(weight_bytes), 0, pim_devs[0]))
         return 0.0
 
     def activation_read_s(self, cm: "CostModel", activation_bytes_nd: int) -> float:
@@ -435,34 +435,14 @@ class PimTraceBackend(PimBackendBase):
 
         return float(compute_time + mem_time)
     def weight_load_s(self, cm: "CostModel", weight_bytes: int) -> float:
-        """Trace-based PIM weight loading latency (read+write)."""
         # Keep the original behavior: fast-mode bypass
         if bool(cm.pim_fast_mode):
             return PimFastBackend().weight_load_s(cm, weight_bytes)
 
-        if not cm.pim_config_path or not cm.gb_config_path or (not cm.ramulator_config_path):
-            raise ValueError('PIM config, GB config, and Ramulator config must be set for weight loading simulation')
-
-        dtype_bytes = DTYPE_BYTES.get(cm.dtype, 2)
-        try:
-            model_dict = cm.get_model_dict()
-            read_lat, write_lat = _simulate_weight_loading_latency(
-                int(weight_bytes),
-                cm.pim_config_path,
-                cm.gb_config_path,
-                cm.ramulator_config_path,
-                dtype_bytes,
-                use_cache=bool(cm.pim_cache_enabled),
-                keep_traces=bool(cm.debug_traces),
-                model_dict=model_dict,
-            )
-            return float(read_lat + write_lat)
-        except Exception as e:
-            logger.debug(str(f'[Weight Load] Falling back to bandwidth estimation due to: {e}'))
-            pim_devs = cm.cluster.devices_by_type('pim')
-            if pim_devs:
-                return float(cm.pim_mem_time(0, int(weight_bytes), pim_devs[0]))
-            return 0.0
+        pim_devs = getattr(cm.cluster, 'devices_by_type', lambda *_: [])('pim')
+        if pim_devs:
+            return float(cm.pim_mem_time(int(weight_bytes), 0, pim_devs[0]))
+        return 0.0
 
     def activation_read_s(self, cm: "CostModel", activation_bytes_nd: int) -> float:
         # Keep the original behavior: fast-mode bypass
@@ -579,28 +559,98 @@ class CostModel:
         bw = dev.mem_bw_GBs  * 1024 * 1024 * 1024.0
         return 0.0 if bw <= 0 else bytes_amount / bw
 
+    def _pim_parallel_access_bytes(self, dev: Optional[DeviceSpec] = None) -> int:
+        cfg = {}
+        try:
+            if dev is not None:
+                cfg = getattr(dev, 'pim_memory', None) or {}
+        except Exception:
+            cfg = {}
+        if not cfg:
+            cfg = getattr(self.cluster, 'pim_memory', None) or {}
+        if not isinstance(cfg, dict):
+            return 0
+        addr = cfg.get('addr_map') or cfg.get('address_map') or cfg.get('addrmap') or {}
+        if not isinstance(addr, dict):
+            addr = {}
+
+        unit = str(cfg.get('addr_map_unit', cfg.get('addr_map_units', 'bits')) or 'bits').strip().lower()
+
+        # Line bytes (L_B)
+        line_bytes = cfg.get('line_bytes') or cfg.get('line_bytes_B') or cfg.get('line_size_B')
+        if line_bytes is None:
+            off = addr.get('offset', 6)
+            try:
+                if unit in ('bits', 'bit'):
+                    line_bytes = 1 << int(off)
+                else:
+                    # Treat offset as bytes when unit != bits
+                    line_bytes = int(off)
+            except Exception:
+                line_bytes = 64
+        try:
+            line_bytes = int(line_bytes)
+        except Exception:
+            line_bytes = 64
+        line_bytes = max(1, int(line_bytes))
+
+        # Channel/bank parallelism
+        ch = addr.get('channel', addr.get('channels', 0))
+        bk = addr.get('bank', addr.get('banks', 0))
+        try:
+            if unit in ('bits', 'bit'):
+                num_ch = 1 << int(ch) if ch is not None else 1
+                num_bk = 1 << int(bk) if bk is not None else 1
+            else:
+                num_ch = int(ch) if ch is not None else 1
+                num_bk = int(bk) if bk is not None else 1
+        except Exception:
+            num_ch, num_bk = 1, 1
+
+        num_ch = max(1, int(num_ch))
+        num_bk = max(1, int(num_bk))
+        return int(line_bytes) * int(num_ch) * int(num_bk)
+
+    def pim_read_time(self, bytes_amount: int, dev: DeviceSpec) -> float:
+        """PIM read latency (seconds) using line-latency model when available."""
+        return float(self.pim_mem_time(int(bytes_amount or 0), 0, dev))
+
+    def pim_write_time(self, bytes_amount: int, dev: DeviceSpec) -> float:
+        """PIM write latency (seconds) using line-latency model when available."""
+        return float(self.pim_mem_time(0, int(bytes_amount or 0), dev))
+
     def pim_mem_time(self, read_bytes: int, write_bytes: int, dev: DeviceSpec) -> float:
         """
-        #TODO only have the fast mode
-        PIM memory time estimation for fast-mode (no trace).
+        PIM memory time estimation.
+            n_rd = ceil(read_bytes  / bytes_per_access)
+            n_wr = ceil(write_bytes / bytes_per_access)
+         """
+        read_bytes = int(read_bytes or 0)
+        write_bytes = int(write_bytes or 0)
+        if read_bytes <= 0 and write_bytes <= 0:
+            return 0.0
 
-        Add a minimal read/write access latency constraint on top of the
-        bandwidth model:
-          - read:  dev.pim_read_latency_ns  (default: 0)
-          - write: dev.pim_write_latency_ns (default: 0)
+        # Only meaningful for PIM; other devices use bandwidth-only model.
+        if str(getattr(dev, 'type', '')).lower() != 'pim':
+            return float(self.mem_time(int(read_bytes + write_bytes), dev))
 
-        For each direction: t = max(bytes / bw, latency).
-        """
-        bw = dev.mem_bw_GBs * 1024 * 1024 * 1024.0
+        bytes_per_access = int(self._pim_parallel_access_bytes(dev) or 0)
+        rd_lat_ns = float(getattr(dev, 'pim_read_latency_ns', getattr(dev, 'read_latency_ns', 0.0)) or 0.0)
+        wr_lat_ns = float(getattr(dev, 'pim_write_latency_ns', getattr(dev, 'write_latency_ns', 0.0)) or 0.0)
 
-        t_rd = 0.0 if read_bytes <= 0 or bw <= 0 else float(read_bytes) / bw
-        t_wr = 0.0 if write_bytes <= 0 or bw <= 0 else float(write_bytes) / bw
+        if bytes_per_access > 0 and (rd_lat_ns > 0.0 or wr_lat_ns > 0.0):
+            import math
+            n_rd = int(math.ceil(float(read_bytes) / float(bytes_per_access))) if read_bytes > 0 else 0
+            n_wr = int(math.ceil(float(write_bytes) / float(bytes_per_access))) if write_bytes > 0 else 0
+            return float(n_rd) * float(rd_lat_ns) * 1e-9 + float(n_wr) * float(wr_lat_ns) * 1e-9
 
-        rd_lat_ns = getattr(dev, 'pim_read_latency_ns', getattr(dev, 'read_latency_ns', 0.0))
-        wr_lat_ns = getattr(dev, 'pim_write_latency_ns', getattr(dev, 'write_latency_ns', 0.0))
-
-        return (t_rd + float(rd_lat_ns) * 1e-9) + (t_wr + float(wr_lat_ns) * 1e-9)
-
+        # Fallback: bandwidth model (kept for backward compatibility).
+        bw = float(getattr(dev, 'mem_bw_GBs', 0.0) or 0.0) * (1024**3)
+        if bw <= 0.0:
+            return float('inf')
+        t_rd = float(read_bytes) / bw if read_bytes > 0 else 0.0
+        t_wr = float(write_bytes) / bw if write_bytes > 0 else 0.0
+        return float(t_rd + t_wr)
     def comm_cost(self, src: DeviceSpec, dst: DeviceSpec, bytes_amount: int) -> float:
         """
             T = L + O + n_hat / B
@@ -999,7 +1049,7 @@ class CostModel:
             return float(gate_linear + gate_softmax + gate_topk + combine)
 
         # 13)
-        if name in ('K_WRITE', 'V_WRITE', 'KV_READ', 'KV_WRITE', 'ROPE', 'ALIBI'):
+        if name in ('K_WRITE', 'V_WRITE', 'KV_READ', 'KV_WRITE', 'ROPE', 'ALIBI', 'ALLREDUCE'):
             return 0.0
 
         return default
@@ -1090,6 +1140,9 @@ class CostModel:
         if name in ('IDENTITY',):
             elems = dens_store * (b * q_len * D)
             return (to_bytes(elems), to_bytes(elems))
+        if name in ('ALLREDUCE',) and D > 0:
+            elems = dens_store * (b * q_len * D)
+            return (to_bytes(elems), to_bytes(elems))
         if name == 'QK' and qh > 0 and (hd > 0):
             q_read = dens_store * (b * q_len * q_dim)
             write_elems = dens_store * (b * qh * attn_pairs)
@@ -1102,10 +1155,10 @@ class CostModel:
             out_elems = dens_store * (b * qh * q_len * hd)
             return (to_bytes(attn_read), to_bytes(out_elems))
         if name in ('K_WRITE', 'V_WRITE'):
-            # New K/V for current tokens written into KV cache
             write_tokens = q_len
-            elems = b * kvh * hd * write_tokens
-            return (0, to_bytes(elems))
+            elems = float(b * kvh * hd * write_tokens)
+            kv_dtype_bytes = float(self._kv_dtype_bytes(node, phase))
+            return (0, int(math.ceil(max(0.0, elems) * kv_dtype_bytes)))
         if 'ROUTER' in name and D > 0:
             tokens = float(b * q_len)
             read_elems = tokens * D

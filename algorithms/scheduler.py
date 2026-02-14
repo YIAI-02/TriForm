@@ -36,6 +36,14 @@ import copy
 import heapq
 import itertools
 from stats_recorder import StatsRecorder
+from comm_primitives import (
+    normalize_topology,
+    ring_allreduce,
+    reduce_to_host,
+    gather_to_host,
+    scatter_from_host,
+    transfer_p2p,
+)
 
 _MISSING = object()
 DEBUG_SCHEDULER = False
@@ -247,6 +255,7 @@ class SchedulerBase:
         self._act_used.clear()
         self._act_resident.clear()
         self._act_refcnt.clear()
+        self._collective_output_devs = {}
         # KV/activation runtime states on PIM are centrally managed in buffer manager
         try:
             self.buffer.reset_runtime_state()
@@ -322,6 +331,18 @@ class SchedulerBase:
         except Exception:
             pass
         return None
+
+    def _node_kv_head_range(self, node: Any) -> Optional[Tuple[int, int]]:
+        """Return [kv_head_start, kv_head_end) for head-sharded nodes."""
+        try:
+            attrs = getattr(node, "attrs", None)
+            if not isinstance(attrs, Mapping):
+                return None
+            if "kv_head_start" in attrs and "kv_head_end" in attrs:
+                return (int(attrs["kv_head_start"]), int(attrs["kv_head_end"]))
+        except Exception:
+            return None
+        return None
          
     def _kv_mapped_pim_name_for_layer(self, layer: int) -> Optional[str]:
         """Return mapped pim device name for a layer, if label provides it."""
@@ -347,24 +368,48 @@ class SchedulerBase:
 
     def _kv_pim_for_node(self, node: Any) -> Optional[DeviceSpec]:
 
+        # KV not on PIM -> no mapped PIM
         try:
             if not bool(getattr(self.label, "kv_in_pim", False)):
                 return None
         except Exception:
             return None
 
-        lid = self._node_layer_id(node)
-        if lid is None:
-            return None
-        name = self._kv_mapped_pim_name_for_layer(int(lid))
-        if not name:
-            return None
-        dev = self.cluster.devices.get(str(name))
-        if dev is None:
-            return None
-        if str(getattr(dev, "type", "")).lower() != "pim":
-            return None
-        return dev
+        # KV-head based mapping
+        head_map = getattr(self.label, "kv_head_to_pim", None)
+        if isinstance(head_map, Mapping) and head_map:
+            r = self._node_kv_head_range(node)
+            if r is not None:
+                hs, he = int(r[0]), int(r[1])
+                if hs < he:
+                    # Find the mapped PIM name for the first head in the range.
+                    pim_name = head_map.get(hs, head_map.get(str(hs)))
+                    if pim_name is not None:
+                        # Sanity: the entire head range should map to the same PIM.
+                        for h in range(hs, he):
+                            if head_map.get(h, head_map.get(str(h))) != pim_name:
+                                return None
+                        dev = self.cluster.devices.get(str(pim_name))
+                        if dev is not None and str(getattr(dev, "type", "")).lower() == "pim":
+                            return dev
+
+            # Node has no head range: if all KV heads map to ONE PIM, infer that PIM.
+            try:
+                uniq = {str(v) for v in head_map.values() if v is not None}
+            except Exception:
+                uniq = set()
+            if len(uniq) == 1:
+                pn = next(iter(uniq))
+                pim_devs = {
+                    str(d.name): d
+                    for d in (self.cluster.devices_by_type("pim") or [])
+                    if str(getattr(d, "type", "")).lower() == "pim"
+                }
+                dev = pim_devs.get(str(pn))
+                if dev is not None:
+                    return dev
+        return None
+
 
     def _preferred_kv_write_device(self, g: Any, nid: str) -> Optional[DeviceSpec]:
         try:
@@ -373,101 +418,92 @@ class SchedulerBase:
             return None
 
         name = str(getattr(node, "name", "")).upper()
-        if name not in ("K_WRITE", "V_WRITE"):
+        if name not in ("K_WRITE", "V_WRITE", "KV_WRITE"):
             return None
 
-        # If KV is stored on PIM and memory planner provides a layer->PIM mapping,
-        # prefer writing KV directly to that mapped PIM.
-        try:
-            if bool(getattr(self.label, "kv_in_pim", False)):
-                mapped = self._kv_pim_for_node(node)
-                if mapped is not None:
-                    return mapped
-        except Exception:
-            pass
 
-        try:
-            preds = list(g.predecessors(nid))
-        except Exception:
-            preds = []
-        if not preds:
-            return None
-
-        target = "K" if "K_WRITE" in name else "V"
-
-        def _pick(pred_ids: Iterable[str]) -> Optional[DeviceSpec]:
-            for u in pred_ids:
-                dev_name = self._node_placement.get(u)
-                if not dev_name:
-                    continue
-                dev = self.cluster.devices.get(dev_name)
-                if dev is not None:
-                    return dev
-            return None
-
-        return _pick(preds)
+        if bool(getattr(self.label, "kv_in_pim", False)):
+            mapped = self._kv_pim_for_node(node)
+            return mapped
+        return self.cost.get_host_device()
 
     def _node_allowed_on(self, node: TaskNode, dev: DeviceSpec) -> bool:
-        """Whether `node` is allowed to run on `dev`.
-
-        1) Respect operator-level `node.allowed` (per device *type*).
-        2) If `kv_in_pim` and we have a per-layer KV mapping, enforce that:
-           - K_WRITE/V_WRITE/KV_WRITE must execute on the mapped PIM for that layer.
-           - QK/SV, if scheduled on a PIM, must also use that mapped PIM (avoid PIM<->PIM KV traffic).
-        """
 
         # ---- 0) KV-write hard rule (override operator/baseline allow-list) ----
-        # Some baselines (e.g., `weights_on_pim`) may set `node.allowed['pim']=False` for
-        # K_write/V_write ops, but if the memory planner decides `kv_in_pim=True`, KV writes
-        # MUST go to PIM. We therefore override the allow-list for KV write nodes.
         try:
             kv_in_pim = bool(getattr(self.label, "kv_in_pim", False))
         except Exception:
             kv_in_pim = False
 
         name_up = str(getattr(node, "name", "") or "").upper()
+        dev_type = str(getattr(dev, "type", "") or "").lower()
+        dev_name = str(getattr(dev, "name", "") or "")
+    
+        # KV write ops under KV-on-PIM: must execute on the mapped PIM.
         if kv_in_pim and name_up in ("K_WRITE", "V_WRITE", "KV_WRITE"):
-            if str(getattr(dev, "type", "")).lower() != "pim":
+            if dev_type != "pim":
                 return False
             mapped = self._kv_pim_for_node(node)
-            if mapped is not None:
-                return str(getattr(dev, "name", "")) == str(getattr(mapped, "name", ""))
-            return True
+            if mapped is None:
+                return False  # mapping unavailable -> conservative
+            return dev_name == str(getattr(mapped, "name", ""))
 
-        # ---- 1) operator-level allow-list ----
+        # ---- 1) Communication primitives (collectives / transfers) ----
+        try:
+            attrs = getattr(node, "attrs", {}) or {}
+        except Exception:
+            attrs = {}
+        prim = attrs.get("primitive", None)
+        prim_up = str(prim or name_up or "").upper()
+        if prim_up in ("ALLREDUCE", "ALL_REDUCE", "ALL-REDUCE", "REDUCE", "GATHER", "SCATTER", "TRANSFER"):
+            host = self.cost.get_host_device()
+            host_name = str(getattr(host, "name", "")) if host is not None else ""
+            return dev_name == host_name
+
+        # ---- 2) KV locality restriction (multi-PIM KV placement) ----
+        if kv_in_pim:
+            kv_local_ops = {
+                "K", "V",
+                "QK", "SOFTMAX", "SV",
+            }
+            if name_up in kv_local_ops and dev_type == "pim":
+                mapped = self._kv_pim_for_node(node)
+                if mapped is None:
+                    return False
+                return dev_name == str(getattr(mapped, "name", ""))
+            
+        # ---- 3) operator-level allow-list ----
         allowed = getattr(node, "allowed", None)
         if isinstance(allowed, Mapping):
-            dev_type = getattr(dev, "type", None) or str(dev)
-            if not bool(allowed.get(dev_type, True)):
+            key = getattr(dev, "type", None) or str(dev)
+            if not bool(allowed.get(key, True)):
                 return False
 
-                            
-        # ---- 2) KV mapping restriction (multi-PIM KV placement) ----
-        # We already handled KV_WRITE above.
-        try:
-            if not kv_in_pim:
-                return True
-        except Exception:
-            return True
-
-        mapped = None
-        if name_up in ("K_WRITE", "V_WRITE", "KV_WRITE", "QK", "SV"):
-            mapped = self._kv_pim_for_node(node)
-
-        # K/V writes: must run on mapped PIM.
-        if name_up in ("K_WRITE", "V_WRITE", "KV_WRITE"):
-            if str(getattr(dev, "type", "")).lower() != "pim":
-                return False
-            if mapped is not None:
-                return str(getattr(dev, "name", "")) == str(getattr(mapped, "name", ""))
-            return True
-
-        # KV consumers: if on PIM, restrict to mapped PIM.
-        if name_up in ("QK", "SV") and str(getattr(dev, "type", "")).lower() == "pim":
-            if mapped is not None:
-                return str(getattr(dev, "name", "")) == str(getattr(mapped, "name", ""))
-                
         return True
+
+    # -----------------------------
+    # Communication primitive helpers
+    # -----------------------------
+    def _comm_primitive(self, node: TaskNode) -> Optional[str]:
+        """Return the normalized communication primitive kind for `node`, or None.
+
+        We treat these nodes as communication-only operators:
+          - ALLREDUCE (or decomposed REDUCE/SCATTER)
+          - REDUCE / GATHER / SCATTER / TRANSFER
+        """
+        try:
+            attrs = getattr(node, "attrs", {}) or {}
+        except Exception:
+            attrs = {}
+        prim = attrs.get("primitive", None)
+        name = getattr(node, "name", None)
+        prim_up = str(prim or name or "").upper()
+        if prim_up in ("ALLREDUCE", "ALL_REDUCE", "ALL-REDUCE", "REDUCE", "GATHER", "SCATTER", "TRANSFER"):
+            return prim_up
+        return None
+
+    def _is_comm_node(self, node: TaskNode) -> bool:
+        return self._comm_primitive(node) is not None
 
     def _node_weight_id(self, node: TaskNode) -> Optional[str]:
         wid = getattr(node, "weight_id", None)
@@ -517,7 +553,7 @@ class SchedulerBase:
                 # Ensure the K/V activation is available on the target PIM before the store.
                 ready_kv = self._ready_time_for_device(g, nid, target_pim, phase_eff, commit)
                 start = max(float(self.avail.get(target_pim.name, 0.0)), float(ready_kv))
-                finish = start + 3.0 * float(self.cost.activation_read_time_pim(out_write_nd))  # todo: consider write time
+                finish = start + float(self.cost.pim_write_time(int(out_write_nd), target_pim))
                 logger.debug(
                     "[kv-write] node=%s target_pim=%s start=%.4f finish=%.4f", nid, target_pim.name, start, finish
                 )
@@ -546,8 +582,29 @@ class SchedulerBase:
                     self._node_placement[nid] = host.name
                     self._node_out_fmt[nid] = "ND"
                 return float(conv_start), float(finish)
+                
+        #---------------------1b. Communication primitives -------------------
+        attrs = getattr(node, "attrs", {}) or {}
+        prim = attrs.get("primitive", None)
+        prim_up = str(prim or getattr(node, "name", "") or "").upper()
 
-        #---------------------1b. Collective communication primitive (ring all-reduce)
+        if prim_up in ("ALLREDUCE", "ALL_REDUCE", "ALL-REDUCE"):
+            return self._earliest_finish_allreduce(g, nid, label, phase_eff, commit)
+
+        if prim_up in ("REDUCE", "GATHER", "SCATTER", "TRANSFER"):
+            host = self.cost.get_host_device()
+            # These primitives are modeled as host-centric control ops; enforce placement on host.
+            if str(getattr(dev, "name", "")) != str(getattr(host, "name", "")):
+                return (float("inf"), float("inf"))
+            if prim_up == "REDUCE":
+                return self._earliest_finish_reduce(g, nid, label, phase_eff, commit)
+            if prim_up == "GATHER":
+                return self._earliest_finish_gather(g, nid, label, phase_eff, commit)
+            if prim_up == "SCATTER":
+                return self._earliest_finish_scatter(g, nid, label, phase_eff, commit)
+            if prim_up == "TRANSFER":
+                return self._earliest_finish_transfer(g, nid, label, phase_eff, commit)
+
         attrs = getattr(node, "attrs", {}) or {}
         ready = self._ready_time_for_device(g, nid, dev, phase_eff, commit)
 
@@ -556,94 +613,65 @@ class SchedulerBase:
         if node.name.upper() in ("QK", "SV"):
             kv_bytes = int(self.cost.estimate_kv_cache_read_bytes(node, batch, seq_len, phase_eff))
             if kv_bytes > 0:
-                kv_in_pim = bool(getattr(self.label, "kv_in_pim", False))
-                size_nd = self.cost.format_size(kv_bytes, "ND")
-                if kv_in_pim:
-                    pim_devs = self.cluster.devices_by_type("pim")
-                    if pim_devs:
-                        # Head-partitioned KV (GQA/MQA) may require reading KV from multiple PIMs.
-                        # We group by source PIM and model the slowest transfer/read as the gating time.
-                    #     attrs = getattr(node, "attrs", {}) or {}
+                dev_fmt = str(self.cost.device_preferred_fmt(dev))
+                size_nd = int(self.cost.format_size(int(kv_bytes), "ND"))
 
-                    #     src_head_counts: Dict[str, int] = {}
-                    #     if part_dim in ("head", "heads", "head_num", "headnum"):
-                    #                 pn = self._kv_mapped_pim_name_for_head(int(hid))
-                    #                 if pn:
-                    #                     src_head_counts[str(pn)] = src_head_counts.get(str(pn), 0) + 1
-                    #     if not src_head_counts:
-                    #         src = self._kv_pim_for_node(node) or min(pim_devs, key=lambda d: self.avail.get(d.name, 0.0))
-                    #         if src is not None:
-                    #             src_head_counts[str(src.name)] = 1
+                if bool(getattr(label, "kv_in_pim", False)):
+                    # KV cache is sharded on PIMs by KV head. For a shard, KV should come from a single mapped PIM.
+                    src_pim = self._kv_pim_for_node(node)
+                    if src_pim is None:
+                        # Fallback: treat as host-resident KV
+                        host = self.cost.get_host_device()
+                        if str(dev.name) == str(host.name):
+                            mem_t = float(self.cost.mem_time(int(kv_bytes), host))
+                            rd_start = max(float(self.avail.get(host.name, 0.0)), float(ready))
+                            rd_end = rd_start + mem_t
+                            if commit:
+                                self.avail[host.name] = rd_end
+                            kv_ready = max(kv_ready, rd_end)
+                        else:
+                            _, xfer_end = self.comm.reserve(host.name, dev.name, size_nd, earliest=float(ready), commit=commit, tag="kv_load")
+                            conv_t = float(self.cost.format_conversion_time(int(size_nd), "ND", dev_fmt, dev))
+                            kv_ready = max(kv_ready, float(xfer_end) + float(NONOVERLAP_TIME) * conv_t)
+                    else:
+                        # If we execute on the same PIM and are in trace mode, the trace already models KV traffic.
+                        if (
+                            str(getattr(dev, "type", "")).lower() == "pim"
+                            and str(dev.name) == str(src_pim.name)
+                            and (not getattr(self.cost, "pim_fast_mode", True))
+                        ):
+                            pass
+                        else:
+                            # Read from src PIM memory (serialize by PIM availability)
+                            rd_t = float(self.cost.activation_read_time_pim(int(kv_bytes)))
+                            rd_start = max(float(self.avail.get(src_pim.name, 0.0)), float(ready))
+                            rd_end = rd_start + rd_t
+                            if commit:
+                                self.avail[src_pim.name] = rd_end
 
-                    #     total_heads = int(sum(src_head_counts.values()))
-                    #     if total_heads <= 0:
-                    #         total_heads = 1
+                            if str(dev.name) == str(src_pim.name):
+                                kv_ready = max(kv_ready, rd_end)
+                            else:
+                                # Transfer KV to target device (prefer direct, otherwise via host)
+                                host = self.cost.get_host_device()
+                                t_direct = float(self.cost.comm_cost(src_pim, dev, int(size_nd)))
+                                if math.isfinite(t_direct):
+                                    _, xfer_end = self.comm.reserve(
+                                        src_pim.name, dev.name, int(size_nd),
+                                        earliest=float(rd_end), commit=commit, tag="kv_load",
+                                    )
+                                else:
+                                    _, t1_end = self.comm.reserve(
+                                        src_pim.name, host.name, int(size_nd),
+                                        earliest=float(rd_end), commit=commit, tag="kv_load",
+                                    )
+                                    _, xfer_end = self.comm.reserve(
+                                        host.name, dev.name, int(size_nd),
+                                        earliest=float(t1_end), commit=commit, tag="kv_load",
+                                    )
+                                conv_t = float(self.cost.format_conversion_time(int(size_nd), "ND", dev_fmt, dev))
+                                kv_ready = max(kv_ready, float(xfer_end) + conv_t)
 
-                    #     # Split bytes proportionally by head counts (kv_bytes already corresponds to the KV-head subset).
-                    #     remaining = int(kv_bytes)
-                    #     items = list(sorted(src_head_counts.items(), key=lambda x: x[0]))
-                    #     for i, (src_name, hcnt) in enumerate(items):
-                    #         if i == len(items) - 1:
-                    #             share = remaining
-                    #         else:
-                    #             share = int((int(kv_bytes) * int(hcnt)) // total_heads)
-                    #             share = max(0, min(share, remaining))
-                    #         remaining -= share
-                    #         if share <= 0:
-                    #             continue
-
-                    #         src = self.cluster.devices.get(str(src_name))
-                    #         if src is None:
-                    #             continue
-                    #         earliest_kv = max(float(self.avail.get(src.name, 0.0)), float(ready))
-
-                    #         if str(getattr(dev, "type", "")).lower() == "pim" and str(getattr(dev, "name", "")) == str(src.name):
-                    #             # Local PIM KV read.
-                    #             kv_time = float(self.cost.activation_read_time_pim(share))
-                    #             local_end = earliest_kv + kv_time
-                    #             kv_ready = max(kv_ready, local_end)
-                    #             if commit:
-                    #                 self.avail[src.name] = max(float(self.avail.get(src.name, 0.0)), float(local_end))
-                    #         else:
-                    #             # Transfer KV from src PIM -> target device.
-                    #             t_mem = 0.0
-                    #             if str(getattr(src, "type", "")).lower() == "pim":
-                    #                 t_mem = float(self.cost.activation_read_time_pim(int(share)))
-                    #             send_ready = float(earliest_kv) + float(t_mem) #先从src pim中读出
-                    #             if commit and str(getattr(src, "type", "")).lower() == "pim":
-                    #                 self.avail[src.name] = max(float(self.avail.get(src.name, 0.0)), float(send_ready))
-
-                    #             size_share_nd = int(self.cost.format_size(int(share), "ND"))
-                    #             dst_fmt = self.cost.device_preferred_fmt(dev)
-                    #             t_direct = float(self.cost.comm_cost(src, dev, int(size_share_nd)))
-
-                    #             if math.isfinite(float(t_direct)) and float(t_direct) > 0.0:
-                    #                 # Direct KV movement
-                    #                 l2s, l2e = self.comm.reserve(
-                    #                     src.name, dev.name, size_share_nd,
-                    #                     earliest=send_ready, commit=commit, tag="kv_load",
-                    #                 )
-                    #                 ready = float(l2s) + float(
-                    #                     self.cost.combine_transfer_and_convert(src, dev, int(size_share_nd), "ND", str(dst_fmt))
-                    #                 )
-                    #                 kv_ready = max(kv_ready, float(ready))                                    
-                    #             else:
-                    #                 # Via-host KV movement
-                    #                 host = self.cost.get_host_device()
-                    #                 _, t1 = self.comm.reserve(
-                    #                     src.name, host.name, size_share_nd,
-                    #                     earliest=send_ready, commit=commit, tag="kv_load",
-                    #                 )
-                    #                 t2s, t2e = self.comm.reserve(
-                    #                     host.name, dev.name, size_share_nd,
-                    #                     earliest=float(t1), commit=commit, tag="kv_load",
-                    #                 )
-                    #                 ready = float(t2s) + float(
-                    #                     self.cost.combine_transfer_and_convert(host, dev, int(size_share_nd), "ND", str(dst_fmt))
-                    #                 )
-                    #                 kv_ready = max(kv_ready, float(ready))
-                    # else:
-                        kv_ready = float(ready)
                 else:
                     host = self.cost.get_host_device()
                     l2s, l2e = self.comm.reserve(host.name, dev.name, size_nd, earliest=float(ready), commit=commit, tag="kv_load")
@@ -685,8 +713,6 @@ class SchedulerBase:
                     self._ensure_host_store(nid, dev, out_nd, src_fmt, finish, commit=True)
         return float(start), float(finish)
 
-
-
     def _earliest_finish_allreduce(
         self,
         g: TaskGraph,
@@ -695,24 +721,20 @@ class SchedulerBase:
         phase: str,
         commit: bool,
     ) -> Tuple[float, float]:
-        """Schedule a all-reduce collective.
-        """
         node = g.nodes[nid]
         phase_v = self._node_phase(g, nid, phase)
         batch_v = self._node_batch(g, nid, phase_v)
         seq_v = self._node_seq_len(g, nid, phase_v)
 
-        # Message size (bytes) for the reduced tensor.
         rd_b, wr_b = self.cost.estimate_activation_bytes(node, batch_v, seq_v, phase_v)
         tensor_bytes = int(max(int(rd_b), int(wr_b), 0))
 
-        # Collect participant devices from predecessor placements.
+        # Participants inferred from predecessor placements.
         dev_ready: Dict[str, float] = {}
         participants: List[str] = []
         for u in g.predecessors(nid):
             dname = self._node_placement.get(u)
             if not dname:
-                # Fallback: treat as the first known device.
                 dname = str(next(iter(self.cluster.devices.keys()), "CPU0"))
             dname = str(dname)
             t_ready = float(self._node_finish_time.get(u, 0.0))
@@ -722,7 +744,6 @@ class SchedulerBase:
             else:
                 dev_ready[dname] = max(float(dev_ready[dname]), t_ready)
 
-        # If no predecessors or empty tensor, treat as no-op.
         if not participants or tensor_bytes <= 0:
             start = float(max(dev_ready.values(), default=0.0))
             end = float(start)
@@ -734,93 +755,30 @@ class SchedulerBase:
                 self._collective_output_devs[nid] = set(participants or [canon])
             return (float(start), float(end))
 
-        # Canonical ring order for determinism.
         ring = sorted(set(participants))
-        p = int(len(ring))
-
         start = float(max(dev_ready.get(d, 0.0) for d in ring))
         start = float(max(start, max(float(self.avail.get(d, 0.0)) for d in ring)))
 
-        if p <= 1:
+        topo = normalize_topology(getattr(self.cluster, "topology", None))
+        if len(ring) <= 1:
             end = float(start)
-            if commit:
-                canon = ring[0]
-                self._node_finish_time[nid] = float(end)
-                self._node_placement[nid] = str(canon)
-                self._node_out_fmt[nid] = "ND"
-                self._collective_output_devs[nid] = set(ring)
-                # Block the participant device until the collective completes.
-                self.avail[canon] = max(float(self.avail.get(canon, 0.0)), float(end))
-            return (float(start), float(end))
-
-        # Per-step chunk (ring all-reduce).
-        chunk = int((tensor_bytes + p - 1) // p)
-
-        host_dev = self.cost.get_host_device()
-        host_name = str(getattr(host_dev, "name", "CPU0") or "CPU0")
-
-        # Local timeline simulation for commit=False (to correctly serialize steps on a channel).
-        local_tl: Dict[Tuple[str, str], float] = dict(self.comm.timeline_end) if not commit else {}
-
-        def _reserve_p2p(src: str, dst: str, nbytes: int, earliest: float) -> Tuple[float, float]:
-            """Reserve a single directed transfer (src->dst) on the communication timeline."""
-            if commit:
-                return self.comm.reserve(src, dst, nbytes, earliest=earliest, commit=True, tag="allreduce")
-            key = (str(src), str(dst))
-            ch_end = float(local_tl.get(key, 0.0))
-            s = float(max(ch_end, float(earliest)))
-            if str(src) == str(dst) or int(nbytes) <= 0:
-                e = float(s)
-            else:
-                src_dev = self.cluster.devices.get(str(src))
-                dst_dev = self.cluster.devices.get(str(dst))
-                if src_dev is None or dst_dev is None:
-                    dt = float("inf")
-                else:
-                    dt = float(self.cost.comm_cost(src_dev, dst_dev, int(nbytes)))
-                e = float(s + float(dt))
-            local_tl[key] = float(e)
-            return (float(s), float(e))
-
-        def _reserve_step(src: str, dst: str, nbytes: int, earliest: float) -> Tuple[float, float]:
-            """Reserve one all-reduce hop. If src->dst link is missing, route via host."""
-            src = str(src); dst = str(dst)
-            nbytes = int(nbytes or 0)
-            earliest = float(earliest or 0.0)
-            if src == dst or nbytes <= 0:
-                return (float(earliest), float(earliest))
-
-            # Direct link exists?
-            src_dev = self.cluster.devices.get(str(src))
-            dst_dev = self.cluster.devices.get(str(dst))
-            t_direct = float("inf")
-            if src_dev is not None and dst_dev is not None:
-                t_direct = float(self.cost.comm_cost(src_dev, dst_dev, int(nbytes)))
-            if math.isfinite(float(t_direct)) and float(t_direct) > 0.0:
-                return _reserve_p2p(src, dst, nbytes, earliest)
-
-            # Fallback: src -> host -> dst (host-centric star topology).
-            # If one endpoint is already the host, this degenerates to a single hop.
-            if src == host_name or dst == host_name:
-                return _reserve_p2p(src, dst, nbytes, earliest)
-
-            s1, e1 = _reserve_p2p(src, host_name, nbytes, earliest)
-            s2, e2 = _reserve_p2p(host_name, dst, nbytes, float(e1))
-            return (float(s1), float(e2))
-
-        t = float(start)
-        steps = int(2 * (p - 1))
-        for _ in range(steps):
-            ends: List[float] = []
-            for i in range(p):
-                src = ring[i]
-                dst = ring[(i + 1) % p]
-                _, e = _reserve_step(src, dst, chunk, t)
-                ends.append(float(e))
-            # Barrier between steps (ring algorithm).
-            t = float(max(ends, default=t))
-
-        end = float(t)
+        elif topo == "fc":
+            # No contention: analytic ring allreduce.
+            end = float(ring_allreduce(cost=self.cost, cluster=self.cluster, ring=ring, tensor_bytes=int(tensor_bytes), start=float(start)))
+        else:
+            # STAR fallback: reduce->host + broadcast scatter.
+            host = self.cost.get_host_device()
+            red_end = float(reduce_to_host(comm=self.comm, cost=self.cost, cluster=self.cluster, participants=ring, tensor_bytes=int(tensor_bytes), start=float(start), commit=commit, tag='reduce', host_name=str(getattr(host, 'name', ''))))
+            # host accumulation time (adds).
+            try:
+                dtype_b = float(self.cost._act_dtype_bytes(node, phase_v))
+            except Exception:
+                dtype_b = 2.0
+            elems = float(tensor_bytes) / max(1.0, float(dtype_b))
+            flops = float(max(0, len(ring) - 1)) * float(elems)
+            acc_t = float(self.cost.flop_time(flops, host))
+            red_end2 = float(red_end + acc_t)
+            end = float(scatter_from_host(comm=self.comm, cost=self.cost, cluster=self.cluster, targets=ring, bytes_per_target=int(tensor_bytes), start=float(red_end2), commit=commit, tag='scatter', host_name=str(getattr(host, 'name', ''))))
 
         if commit:
             canon = ring[0]
@@ -828,12 +786,256 @@ class SchedulerBase:
             self._node_placement[nid] = str(canon)
             self._node_out_fmt[nid] = "ND"
             self._collective_output_devs[nid] = set(ring)
-            # Conservative: block all participant devices.
             for d in ring:
                 self.avail[d] = max(float(self.avail.get(d, 0.0)), float(end))
 
         return (float(start), float(end))
 
+
+    def _earliest_finish_reduce(
+        self,
+        g: TaskGraph,
+        nid: str,
+        label: PlanLabel,
+        phase: str,
+        commit: bool,
+    ) -> Tuple[float, float]:
+        """Host-centric REDUCE: all predecessors send tensor to host; host sums.
+        Output is resident on host only.
+        """
+        node = g.nodes[nid]
+        phase_v = self._node_phase(g, nid, phase)
+        batch_v = self._node_batch(g, nid, phase_v)
+        seq_v = self._node_seq_len(g, nid, phase_v)
+        rd_b, wr_b = self.cost.estimate_activation_bytes(node, batch_v, seq_v, phase_v)
+        tensor_bytes = int(max(int(rd_b), int(wr_b), 0))
+        host = self.cost.get_host_device()
+        host_name = str(getattr(host, "name", "CPU0") or "CPU0")
+
+        # Participants from predecessor placements.
+        dev_ready: Dict[str, float] = {}
+        sources: List[str] = []
+        for u in g.predecessors(nid):
+            dname = self._node_placement.get(u)
+            if not dname:
+                dname = str(next(iter(self.cluster.devices.keys()), host_name))
+            dname = str(dname)
+            t_ready = float(self._node_finish_time.get(u, 0.0))
+            if dname not in dev_ready:
+                dev_ready[dname] = t_ready
+                sources.append(dname)
+            else:
+                dev_ready[dname] = max(float(dev_ready[dname]), t_ready)
+
+        start = float(max([float(self.avail.get(host_name, 0.0))] + [max(float(self.avail.get(d,0.0)), float(dev_ready.get(d,0.0))) for d in sources] or [0.0]))
+        if not sources or tensor_bytes <= 0:
+            end = float(start)
+            if commit:
+                self._node_finish_time[nid] = float(end)
+                self._node_placement[nid] = host_name
+                self._node_out_fmt[nid] = "ND"
+                self._collective_output_devs[nid] = {host_name}
+            return (float(start), float(end))
+
+        red_end = float(reduce_to_host(comm=self.comm, cost=self.cost, cluster=self.cluster, participants=sources, tensor_bytes=int(tensor_bytes), start=float(start), commit=commit, tag='reduce', host_name=str(getattr(host, 'name', ''))))
+        # Accumulation at host (adds).
+        try:
+            dtype_b = float(self.cost._act_dtype_bytes(node, phase_v))
+        except Exception:
+            dtype_b = 2.0
+        elems = float(tensor_bytes) / max(1.0, float(dtype_b))
+        flops = float(max(0, len(sources) - 1)) * float(elems)
+        acc_t = float(self.cost.flop_time(flops, host))
+        end = float(red_end + acc_t)
+
+        if commit:
+            self._node_finish_time[nid] = float(end)
+            self._node_placement[nid] = host_name
+            self._node_out_fmt[nid] = "ND"
+            self._collective_output_devs[nid] = {host_name}
+            self.avail[host_name] = max(float(self.avail.get(host_name, 0.0)), float(end))
+            for d in sources:
+                self.avail[d] = max(float(self.avail.get(d, 0.0)), float(red_end))
+        return (float(start), float(end))
+
+
+    def _earliest_finish_gather(
+        self,
+        g: TaskGraph,
+        nid: str,
+        label: PlanLabel,
+        phase: str,
+        commit: bool,
+    ) -> Tuple[float, float]:
+        """Host-centric GATHER: all predecessors send tensor to host; concatenate/collect.
+        Output is resident on host only.
+        """
+        node = g.nodes[nid]
+        phase_v = self._node_phase(g, nid, phase)
+        batch_v = self._node_batch(g, nid, phase_v)
+        seq_v = self._node_seq_len(g, nid, phase_v)
+        rd_b, wr_b = self.cost.estimate_activation_bytes(node, batch_v, seq_v, phase_v)
+        tensor_bytes = int(max(int(rd_b), int(wr_b), 0))
+        host = self.cost.get_host_device()
+        host_name = str(getattr(host, "name", "CPU0") or "CPU0")
+        dev_ready: Dict[str, float] = {}
+        sources: List[str] = []
+        for u in g.predecessors(nid):
+            dname = self._node_placement.get(u)
+            if not dname:
+                dname = str(next(iter(self.cluster.devices.keys()), host_name))
+            dname = str(dname)
+            t_ready = float(self._node_finish_time.get(u, 0.0))
+            if dname not in dev_ready:
+                dev_ready[dname] = t_ready
+                sources.append(dname)
+            else:
+                dev_ready[dname] = max(float(dev_ready[dname]), t_ready)
+        start = float(max([float(self.avail.get(host_name, 0.0))] + [max(float(self.avail.get(d,0.0)), float(dev_ready.get(d,0.0))) for d in sources] or [0.0]))
+        if not sources or tensor_bytes <= 0:
+            end = float(start)
+            if commit:
+                self._node_finish_time[nid] = float(end)
+                self._node_placement[nid] = host_name
+                self._node_out_fmt[nid] = "ND"
+                self._collective_output_devs[nid] = {host_name}
+            return (float(start), float(end))
+        end = float(gather_to_host(comm=self.comm, cost=self.cost, cluster=self.cluster, participants=sources, tensor_bytes=int(tensor_bytes), start=float(start), commit=commit, tag='gather', host_name=str(getattr(host, 'name', ''))))
+        if commit:
+            self._node_finish_time[nid] = float(end)
+            self._node_placement[nid] = host_name
+            self._node_out_fmt[nid] = "ND"
+            self._collective_output_devs[nid] = {host_name}
+            self.avail[host_name] = max(float(self.avail.get(host_name, 0.0)), float(end))
+            for d in sources:
+                self.avail[d] = max(float(self.avail.get(d, 0.0)), float(end))
+        return (float(start), float(end))
+
+
+    def _earliest_finish_scatter(
+        self,
+        g: TaskGraph,
+        nid: str,
+        label: PlanLabel,
+        phase: str,
+        commit: bool,
+    ) -> Tuple[float, float]:
+        """Host-centric SCATTER: host sends tensor to target devices.
+
+        scatter_mode:
+          - broadcast: each target receives full tensor_bytes
+          - partition: each target receives ceil(tensor_bytes/num_targets)
+        """
+        node = g.nodes[nid]
+        attrs = getattr(node, "attrs", {}) or {}
+        phase_v = self._node_phase(g, nid, phase)
+        batch_v = self._node_batch(g, nid, phase_v)
+        seq_v = self._node_seq_len(g, nid, phase_v)
+        rd_b, wr_b = self.cost.estimate_activation_bytes(node, batch_v, seq_v, phase_v)
+        tensor_bytes = int(max(int(rd_b), int(wr_b), 0))
+        host = self.cost.get_host_device()
+        host_name = str(getattr(host, "name", "CPU0") or "CPU0")
+        # Target selection
+        targets = []
+        t_attr = attrs.get("targets", None)
+        if isinstance(t_attr, (list, tuple)):
+            targets = [str(x) for x in t_attr if x is not None]
+        else:
+            ttype = str(attrs.get("target_type", "pim") or "pim").lower()
+            if ttype in ("all", "*", "any"):
+                targets = [d.name for d in self.cluster.devices.values() if d.name != host_name]
+            else:
+                targets = [d.name for d in self.cluster.devices_by_type(ttype) if d.name != host_name]
+        # Ensure deterministic order
+        targets = sorted(set(targets))
+
+        # Ready time on host from predecessors
+        ready_host = self._ready_time_for_device(g, nid, host, phase_v, commit)
+        start = float(max(float(self.avail.get(host_name, 0.0)), float(ready_host)))
+        if not targets or tensor_bytes <= 0:
+            end = float(start)
+            if commit:
+                self._node_finish_time[nid] = float(end)
+                self._node_placement[nid] = host_name
+                self._node_out_fmt[nid] = "ND"
+                self._collective_output_devs[nid] = set(targets + [host_name])
+            return (float(start), float(end))
+
+        mode = str(attrs.get("scatter_mode", "broadcast") or "broadcast").lower()
+        if mode in ("partition", "shard", "split"):
+            import math
+            per = int(math.ceil(float(tensor_bytes) / float(max(1, len(targets)))))
+        else:
+            per = int(tensor_bytes)
+        end = float(scatter_from_host(comm=self.comm, cost=self.cost, cluster=self.cluster, targets=targets, bytes_per_target=int(per), start=float(start), commit=commit, tag='scatter', host_name=str(getattr(host, 'name', ''))))
+
+        if commit:
+            self._node_finish_time[nid] = float(end)
+            self._node_placement[nid] = host_name
+            self._node_out_fmt[nid] = "ND"
+            self._collective_output_devs[nid] = set(targets + [host_name])
+            self.avail[host_name] = max(float(self.avail.get(host_name, 0.0)), float(end))
+            for d in targets:
+                self.avail[d] = max(float(self.avail.get(d, 0.0)), float(end))
+        return (float(start), float(end))
+
+
+    def _earliest_finish_transfer(
+        self,
+        g: TaskGraph,
+        nid: str,
+        label: PlanLabel,
+        phase: str,
+        commit: bool,
+    ) -> Tuple[float, float]:
+        """Explicit point-to-point TRANSFER.
+
+        Expects node.attrs to optionally include:
+          - src: device name
+          - dst: device name
+          - bytes: override bytes to transfer
+        If not provided, we infer bytes from activation size of the node and
+        use predecessors placements as src and host as dst.
+        """
+        node = g.nodes[nid]
+        attrs = getattr(node, "attrs", {}) or {}
+        phase_v = self._node_phase(g, nid, phase)
+        batch_v = self._node_batch(g, nid, phase_v)
+        seq_v = self._node_seq_len(g, nid, phase_v)
+        rd_b, wr_b = self.cost.estimate_activation_bytes(node, batch_v, seq_v, phase_v)
+        tensor_bytes = int(max(int(rd_b), int(wr_b), 0))
+        override = attrs.get("bytes", attrs.get("bytes_nd", None))
+        if override is not None:
+            try:
+                tensor_bytes = int(override)
+            except Exception:
+                pass
+        host = self.cost.get_host_device()
+        host_name = str(getattr(host, "name", "CPU0") or "CPU0")
+        src = attrs.get("src", None)
+        dst = attrs.get("dst", None)
+        if src is None:
+            # use first predecessor placement
+            preds = list(g.predecessors(nid))
+            if preds:
+                src = self._node_placement.get(preds[0], host_name)
+            else:
+                src = host_name
+        if dst is None:
+            dst = host_name
+        src = str(src); dst = str(dst)
+        # Earliest start based on predecessor completion and device availability
+        pred_finish = float(max((float(self._node_finish_time.get(u, 0.0)) for u in g.predecessors(nid)), default=0.0))
+        start = float(max(pred_finish, float(self.avail.get(src, 0.0)), float(self.avail.get(dst, 0.0))))
+        end = float(transfer_p2p(comm=self.comm, cost=self.cost, cluster=self.cluster, src=src, dst=dst, bytes_amount=int(tensor_bytes), start=float(start), commit=commit, tag='transfer'))
+        if commit:
+            self._node_finish_time[nid] = float(end)
+            self._node_placement[nid] = str(dst)
+            self._node_out_fmt[nid] = "ND"
+            self._collective_output_devs[nid] = {str(dst)}
+            self.avail[src] = max(float(self.avail.get(src, 0.0)), float(end))
+            self.avail[dst] = max(float(self.avail.get(dst, 0.0)), float(end))
+        return (float(start), float(end))
 
     def _after_commit_consume_predecessors(self, g: TaskGraph, nid: str) -> None:
         for u in g.predecessors(nid):
@@ -977,8 +1179,12 @@ class SchedulerBase:
             seq_u = self._node_seq_len(g, u, phase_u)
             _, pred_write = self.cost.estimate_activation_bytes(pred_node, batch_u, seq_u, phase_u)
             
-            # Collective predecessor (e.g., tensor-parallel all-reduce):
-            # its output is replicated on all participating devices.
+            # Collective predecessor (e.g., tensor-parallel all-reduce)
+            if u in getattr(self, '_collective_output_devs', {}) and dev.name in self._collective_output_devs[u]:
+                inbound_start_times.append(pred_finish)
+                inbound_end_times.append(pred_finish)
+                continue
+
             pred_dev = self.cluster.devices[pred_dev_name]
             src_fmt = self._node_out_fmt.get(u, self.cost.device_preferred_fmt(pred_dev))
 
@@ -1278,6 +1484,35 @@ class NaiveTopoScheduler(SchedulerBase):
             scheduled.add(nid)
             node = g.nodes[nid]
 
+            # Communication primitives
+            if self._is_comm_node(node):
+                host = self.cost.get_host_device()
+                start, finish = self._earliest_finish_on_device(g, nid, host, self.label, phase, commit=True)
+                trace_dev = "COMM"
+                schedule.append(ScheduledTask(nid, trace_dev, start, finish))
+                self._after_commit_consume_predecessors(g, nid)
+
+                if getattr(self, 'stats', None):
+                    op_name = node.attrs.get('op') or node.name
+                    try:
+                        self.stats.log_op_device(
+                            nid=nid, op=op_name,
+                            device=trace_dev, device_type='comm',
+                            start=float(start), end=float(finish),
+                            mode='COMM',
+                        )
+                    except Exception:
+                        pass
+
+                newly_ready: List[str] = []
+                for v in idx.succs.get(nid, ()):  # unlock successors
+                    remaining_preds[v] -= 1
+                    if remaining_preds[v] == 0:
+                        newly_ready.append(v)
+                newly_ready.sort(key=lambda n: topo_pos.get(n, 0))
+                ready.extend(newly_ready)
+                continue
+
             name_up = str(getattr(node, "name", "")).upper()
             is_kv_write = name_up in ("K_WRITE", "V_WRITE", "KV_WRITE")
 
@@ -1480,6 +1715,34 @@ class HEFTScheduler(SchedulerBase):
                 continue
             scheduled.add(nid)
             node = g.nodes[nid]
+
+            # Communication primitives: record them on a virtual 'COMM' lane.
+            if self._is_comm_node(node):
+                host = self.cost.get_host_device()
+                start, finish = self._earliest_finish_on_device(g, nid, host, self.label, phase, commit=True)
+                trace_dev = "COMM"
+                schedule.append(ScheduledTask(nid, trace_dev, start, finish))
+                self._after_commit_consume_predecessors(g, nid)
+
+                if getattr(self, 'stats', None):
+                    op_name = node.attrs.get('op') or node.name
+                    try:
+                        self.stats.log_op_device(
+                            nid=nid, op=op_name,
+                            device=trace_dev, device_type='comm',
+                            start=float(start), end=float(finish),
+                            mode='COMM',
+                        )
+                    except Exception:
+                        pass
+
+                # Unlock successors whose predecessors are now all scheduled (ready-queue).
+                for v in idx.succs.get(nid, ()):
+                    remaining_preds[v] -= 1
+                    if remaining_preds[v] == 0:
+                        heapq.heappush(heap, (-rank_u.get(v, 0.0), topo_pos.get(v, 0), v))
+                continue
+
             kv_in_pim = getattr(self.label, 'kv_in_pim', False)
             is_kv_write = node.name.upper() in ('K_WRITE', 'V_WRITE', 'KV_WRITE')
 
@@ -2419,6 +2682,11 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
 
         def _candidates_for(nid: str, node: TaskNode) -> Tuple[List[DeviceSpec], bool]:
             """Return (device_candidates, is_kv_write)."""
+
+            # Communication primitives: always schedule on host (control/comm-only op).
+            if self._is_comm_node(node):
+                return [self.cost.get_host_device()], False
+
             name_up = str(getattr(node, "name", "")).upper()
             is_kv_write = name_up in ("K_WRITE", "V_WRITE", "KV_WRITE")
 
@@ -2545,7 +2813,10 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
                 raise RuntimeError(f"No feasible placement found for node {nid}")
             dev = best_choice
             start, finish = self._earliest_finish_on_device(g, nid, dev, self.label, phase, commit=True)
-            schedule.append(ScheduledTask(nid, dev.name, float(start), float(finish)))
+            is_comm = self._is_comm_node(node)
+            trace_dev = "COMM" if is_comm else dev.name
+            trace_dev_type = "comm" if is_comm else dev.type
+            schedule.append(ScheduledTask(nid, trace_dev, float(start), float(finish)))
             self._after_commit_consume_predecessors(g, nid)
 
             # 记录 weight-level hint
@@ -2559,11 +2830,11 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
                     self.stats.log_op_device(
                         nid=nid,
                         op=op_name,
-                        device=dev.name,
-                        device_type=dev.type,
+                        device=trace_dev,
+                        device_type=trace_dev_type,
                         start=float(start),
                         end=float(finish),
-                        mode="COMMAWARE",
+                        mode=("COMM" if is_comm else "COMMAWARE"),
                     )
                 except Exception:
                     pass

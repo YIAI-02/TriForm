@@ -1,21 +1,28 @@
-{
+ {
   "hardware": {
-    "topology": "star",
+    "topology": "fc",
     "devices": [
       {
         "name": "CPU0",
         "type": "cpu",
-        "tflops": 24.0,
-        "mem_bw_GBs": 45,
-        "mem_capacity_GB": 1000000.0
+        "tflops": 0.1,
+        "mem_bw_GBs": 32768.0,
+        "mem_capacity_GB": 8192.0
+      },
+      {
+        "name": "GPU0",
+        "type": "npu",
+        "tflops": 312.0,
+        "mem_bw_GBs": 2048.0,
+        "mem_capacity_GB": 80.0
       },
       {
         "name": "PIM0",
         "type": "pim",
         "pim_type": "accel",
-        "tflops": 1.6,
-        "mem_bw_GBs": 300.0,
-        "mem_capacity_GB": 2,
+        "tflops": 16,
+        "mem_bw_GBs": 16384.0,
+        "mem_capacity_GB": 16,
         "pim_read_latency_ns": 5.0,
         "pim_write_latency_ns": 30.0,    
         "pim_memory": {
@@ -25,17 +32,17 @@
             "channel": 1,
             "bank": 2,
             "column": 8,
-            "offset": 9
+            "offset": 12
           }
         }
-      },
+      },      
       {
         "name": "PIM1",
         "type": "pim",
         "pim_type": "accel",
-        "tflops": 1.6,
-        "mem_bw_GBs": 300.0,
-        "mem_capacity_GB": 2,
+        "tflops": 16,
+        "mem_bw_GBs": 16384.0,
+        "mem_capacity_GB": 16,
         "pim_read_latency_ns": 5.0,
         "pim_write_latency_ns": 30.0,    
         "pim_memory": {
@@ -45,7 +52,7 @@
             "channel": 1,
             "bank": 2,
             "column": 8,
-            "offset": 9
+            "offset": 12
           }
         }
       },
@@ -53,9 +60,9 @@
         "name": "PIM2",
         "type": "pim",
         "pim_type": "accel",
-        "tflops": 1.6,
-        "mem_bw_GBs": 300.0,
-        "mem_capacity_GB": 2,
+        "tflops": 16,
+        "mem_bw_GBs": 16384.0,
+        "mem_capacity_GB": 16,
         "pim_read_latency_ns": 5.0,
         "pim_write_latency_ns": 30.0,    
         "pim_memory": {
@@ -65,7 +72,7 @@
             "channel": 1,
             "bank": 2,
             "column": 8,
-            "offset": 9
+            "offset": 12
           }
         }
       },
@@ -73,9 +80,9 @@
         "name": "PIM3",
         "type": "pim",
         "pim_type": "accel",
-        "tflops": 1.6,
-        "mem_bw_GBs": 300.0,
-        "mem_capacity_GB": 2,
+        "tflops": 16,
+        "mem_bw_GBs": 16384.0,
+        "mem_capacity_GB": 16,
         "pim_read_latency_ns": 5.0,
         "pim_write_latency_ns": 30.0,    
         "pim_memory": {
@@ -85,7 +92,7 @@
             "channel": 1,
             "bank": 2,
             "column": 8,
-            "offset": 9
+            "offset": 12
           }
         }
       }
@@ -94,22 +101,27 @@
       {
         "a": "CPU0",
         "b": "PIM0",
-        "bw_GBs": 8.0
+        "bw_GBs": 32.0
       },
       {
         "a": "CPU0",
         "b": "PIM1",
-        "bw_GBs": 8.0
+        "bw_GBs": 32.0
       },
       {
         "a": "CPU0",
         "b": "PIM2",
-        "bw_GBs": 8.0
+        "bw_GBs": 32.0
       },
       {
         "a": "CPU0",
         "b": "PIM3",
-        "bw_GBs": 8.0
+        "bw_GBs": 32.0
+      },
+      { 
+        "a": "CPU0", 
+        "b": "GPU0", 
+        "bw_GBs": 32.0 
       }
     ]
   }

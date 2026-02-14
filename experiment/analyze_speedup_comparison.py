@@ -4,8 +4,8 @@
 
 1) 批量：
    python analyze_speedup_comparison.py \
-  --output-root ../algorithms/output/experiment_scale_down_4pim_merge/ \
-  --out-dir ../figs/speedup/experiment_scale_down_4pim_merge/
+  --output-root ../algorithms/output/hw_hardware_0213/ \
+  --out-dir ../figs/speedup/hw_hardware_0213/
 
 
 2) 指定单个模型目录（目录里有 baseline_compare_*.json）：

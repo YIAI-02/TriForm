@@ -33,6 +33,48 @@ def get_op_allowed(op_name: str) -> Dict[str, bool]:
     key = str(op_name).strip().upper()
     return OPERATOR_DEVICE_ALLOWED.get(key, {}).copy()
 
+def _normalize_topology(topology: Optional[str]) -> str:
+    """Normalize topology string to one of {'fc','star'} (default 'fc')."""
+    if not topology:
+        return 'fc'
+    t = str(topology).strip().lower()
+    if t in ('fully_connected', 'full', 'fc', 'mesh'):
+        return 'fc'
+    if t in ('star', 'host', 'host_star', 'host-centric', 'host_centric'):
+        return 'star'
+    return t
+
+def _insert_row_parallel_collective(
+    g: TaskGraph,
+    *,
+    l: int,
+    tag: str,
+    base_attr: Dict,
+    inputs: List[str],
+    cfg: Optional[Dict] = None,
+) -> str:
+    topo = _normalize_topology((cfg or {}).get('topology'))
+    tag = str(tag)
+    if topo == 'star':
+        nid_red = f"L{l}_Reduce_{tag}"
+        nid_scat = f"L{l}_Scatter_{tag}"
+        red_attr = dict(base_attr)
+        red_attr.update({'topology': 'star', 'primitive': 'reduce'})
+        scat_attr = dict(base_attr)
+        # In our graph abstraction, scatter acts as host distribution (broadcast).
+        scat_attr.update({'topology': 'star', 'primitive': 'scatter', 'scatter_mode': 'broadcast', 'target_type': 'pim'})
+        g.add_node(TaskNode(nid_red, 'REDUCE', flops=0.0, attrs=red_attr, allowed=get_op_allowed('REDUCE')))
+        g.add_node(TaskNode(nid_scat, 'SCATTER', flops=0.0, attrs=scat_attr, allowed=get_op_allowed('SCATTER')))
+        for u in inputs:
+            g.add_edge(u, nid_red)
+        g.add_edge(nid_red, nid_scat)
+        return nid_scat
+    else:
+        nid_ar = f"L{l}_AllReduce_{tag}"
+        g.add_node(TaskNode(nid_ar, 'ALLREDUCE', flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed('ALLREDUCE')))
+        for u in inputs:
+            g.add_edge(u, nid_ar)
+        return nid_ar
 
 def _add_attention_llama_style_unsplit(
     g: TaskGraph,
@@ -144,17 +186,234 @@ def _add_attention_llama_style_unsplit(
     return {"k_write": nid_KW, "v_write": nid_VW}
 
 
+def _partition_head_shards_llama_style(
+    *,
+    q_heads: int,
+    kv_heads: int,
+    tp_qkv: int,
+) -> List[Dict[str, int]]:
+    """Return head-parallel shards for GQA/MQA."""
+    qh = int(q_heads)
+    kvh = int(kv_heads)
+    tp = max(1, int(tp_qkv))
+    if tp <= 1:
+        return [
+            {
+                "shard": 0,
+                "q_head_start": 0,
+                "q_head_end": int(qh),
+                "kv_head_start": 0,
+                "kv_head_end": int(kvh),
+                "q_heads": int(qh),
+                "kv_heads": int(kvh),
+            }
+        ]
+
+    if qh <= 0 or kvh <= 0:
+        return []
+    if (qh % tp) != 0 or (kvh % tp) != 0:
+        # Should be validated upstream; fallback to per-kv-head shards.
+        tp = int(kvh)
+
+    q_per = max(1, qh // tp)
+    kv_per = max(1, kvh // tp)
+    shards: List[Dict[str, int]] = []
+    for i in range(int(tp)):
+        q0 = int(i * q_per)
+        q1 = int((i + 1) * q_per)
+        kv0 = int(i * kv_per)
+        kv1 = int((i + 1) * kv_per)
+        shards.append(
+            {
+                "shard": int(i),
+                "q_head_start": int(q0),
+                "q_head_end": int(q1),
+                "kv_head_start": int(kv0),
+                "kv_head_end": int(kv1),
+                "q_heads": int(q_per),
+                "kv_heads": int(kv_per),
+            }
+        )
+    return shards
+
+
+def _add_attention_llama_style_tp(
+    g: TaskGraph,
+    *,
+    l: int,
+    shape: ModelShape,
+    dtype_bytes: int,
+    base_attr: Dict,
+    ln_nid: str,
+    x_in: Optional[str],
+    add1_nid: str,
+    tp_qkv: int,
+    cfg: Optional[Dict] = None,
+) -> Dict[str, List[str]]:
+    """Add a sharded (TP) LLaMA-style attention subgraph.
+
+    - Q/K/V generation are column-parallel (by head groups).
+    - Attention dataflow (QK/Softmax/SV) runs per shard.
+    - O (WO) is row-parallel => an ALLREDUCE node is inserted.
+    - KV writes are sharded by the same KV-head slices.
+    """
+    dim = int(shape.dim)
+    qh = int(shape.n_heads)
+    kvh = int(shape.n_kv_heads)
+    hd = int(shape.head_dim)
+
+    shards = _partition_head_shards_llama_style(q_heads=qh, kv_heads=kvh, tp_qkv=int(tp_qkv))
+    o_shards: List[str] = []
+    k_writes: List[str] = []
+    v_writes: List[str] = []
+
+    for s in shards:
+        si = int(s["shard"])
+        qhs = int(s["q_heads"])
+        kvhs = int(s["kv_heads"])
+        q_dim = int(qhs * hd)
+        kv_dim = int(kvhs * hd)
+
+        sh_attr = dict(base_attr)
+        sh_attr.update(
+            {
+                "q_heads": int(qhs),
+                "kv_heads": int(kvhs),
+                "n_heads": int(qhs),
+                "n_kv_heads": int(kvhs),
+                "q_dim": int(q_dim),
+                "kv_dim": int(kv_dim),
+                "o_dim": int(q_dim),
+                "head_shard": int(si),
+                "q_head_start": int(s["q_head_start"]),
+                "q_head_end": int(s["q_head_end"]),
+                "kv_head_start": int(s["kv_head_start"]),
+                "kv_head_end": int(s["kv_head_end"]),
+                "tp_qkv": int(tp_qkv),
+            }
+        )
+
+        # --- Q/K/V projections (column-parallel) ---
+        nid_Q = f"L{l}_Q_s{si}"
+        nid_K = f"L{l}_K_s{si}"
+        nid_V = f"L{l}_V_s{si}"
+        g.add_node(
+            TaskNode(
+                nid_Q,
+                "Q",
+                flops=0.0,
+                weight_id=f"L{l}_WQ_s{si}",
+                weight_size=int(dim * q_dim * dtype_bytes),
+                attrs=dict(sh_attr),
+                allowed=get_op_allowed("Q"),
+            )
+        )
+        g.add_node(
+            TaskNode(
+                nid_K,
+                "K",
+                flops=0.0,
+                weight_id=f"L{l}_WK_s{si}",
+                weight_size=int(dim * kv_dim * dtype_bytes),
+                attrs=dict(sh_attr),
+                allowed=get_op_allowed("K"),
+            )
+        )
+        g.add_node(
+            TaskNode(
+                nid_V,
+                "V",
+                flops=0.0,
+                weight_id=f"L{l}_WV_s{si}",
+                weight_size=int(dim * kv_dim * dtype_bytes),
+                attrs=dict(sh_attr),
+                allowed=get_op_allowed("V"),
+            )
+        )
+        g.add_edge(ln_nid, nid_Q)
+        g.add_edge(ln_nid, nid_K)
+        g.add_edge(ln_nid, nid_V)
+
+        # --- KV cache writes (sharded) ---
+        nid_KW = f"L{l}_K_write_s{si}"
+        nid_VW = f"L{l}_V_write_s{si}"
+        g.add_node(TaskNode(nid_KW, "K_write", flops=0.0, attrs=dict(sh_attr), allowed=get_op_allowed("K_write")))
+        g.add_node(TaskNode(nid_VW, "V_write", flops=0.0, attrs=dict(sh_attr), allowed=get_op_allowed("V_write")))
+        g.add_edge(nid_K, nid_KW)
+        g.add_edge(nid_V, nid_VW)
+        k_writes.append(nid_KW)
+        v_writes.append(nid_VW)
+
+        # --- QK / Softmax / SV ---
+        nid_QK = f"L{l}_QK_s{si}"
+        nid_SM = f"L{l}_Softmax_s{si}"
+        nid_SV = f"L{l}_SV_s{si}"
+        nid_O = f"L{l}_O_s{si}"
+
+        g.add_node(TaskNode(nid_QK, "QK", flops=0.0, attrs=dict(sh_attr), allowed=get_op_allowed("QK")))
+        g.add_node(TaskNode(nid_SM, "Softmax", flops=0.0, attrs=dict(sh_attr), allowed=get_op_allowed("Softmax")))
+        g.add_node(TaskNode(nid_SV, "SV", flops=0.0, attrs=dict(sh_attr), allowed=get_op_allowed("SV")))
+        g.add_node(
+            TaskNode(
+                nid_O,
+                "O",
+                flops=0.0,
+                weight_id=f"L{l}_WO_s{si}",
+                # WO is row-parallel: shard rows of the input dim (q_dim).
+                weight_size=int(q_dim * dim * dtype_bytes),
+                attrs=dict(sh_attr),
+                allowed=get_op_allowed("O"),
+            )
+        )
+
+        g.add_edge(nid_Q, nid_QK)
+        g.add_edge(nid_K, nid_QK)
+        g.add_edge(nid_QK, nid_SM)
+        g.add_edge(nid_SM, nid_SV)
+        g.add_edge(nid_V, nid_SV)
+        g.add_edge(nid_SV, nid_O)
+
+        o_shards.append(nid_O)
+
+
+    # Row-parallel WO requires a topology-dependent collective to form the full hidden state.
+    nid_COL = _insert_row_parallel_collective(
+        g,
+        l=l,
+        tag='O',
+        base_attr=base_attr,
+        inputs=o_shards,
+        cfg=cfg,
+    )
+
+    # Residual add consumes the reduced output.
+    if x_in is not None:
+        g.add_edge(x_in, add1_nid)
+    g.add_edge(nid_COL, add1_nid)
+
+    return {"k_writes": k_writes, "v_writes": v_writes, "o_shards": o_shards, "o_collective": [nid_COL]}
+
+
 # =============================================================================
-# Block builders (no operator splitting)
+# Block builders
 # =============================================================================
 
-def add_llama_block(g: TaskGraph, l: int, shape: ModelShape, dtype_bytes: int):
+def add_llama_block(
+    g: TaskGraph,
+    l: int,
+    shape: ModelShape,
+    dtype_bytes: int,
+    cfg: Optional[Dict] = None,
+):
     """LLaMA/Qwen style block."""
 
     b = int(shape.batch)
     dim, ffn = int(shape.dim), int(shape.ffn_dim)
     qh, kvh, hd = int(shape.n_heads), int(shape.n_kv_heads), int(shape.head_dim)
     q_dim, kv_dim, o_in_dim = int(qh * hd), int(kvh * hd), int(qh * hd)
+
+    tp_qkv = int((cfg or {}).get('tp_qkv_effective', 1) or 1)
+    tp_ffn = int((cfg or {}).get('tp_ffn_effective', 1) or 1)
 
     base_attr = {
         "layer": int(l),
@@ -175,26 +434,38 @@ def add_llama_block(g: TaskGraph, l: int, shape: ModelShape, dtype_bytes: int):
     nid_LN = f"L{l}_LN"
     g.add_node(TaskNode(nid_LN, "LN", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("LN")))
 
-    # Depend on previous layer KV writes (if any)
     if l > 0:
-        g.add_edge(f"L{l-1}_K_write", nid_LN)
-        g.add_edge(f"L{l-1}_V_write", nid_LN)
+        g.add_edge(f"L{l-1}_Add2", nid_LN)
 
     # Add1 placeholder
     nid_Add1 = f"L{l}_Add1"
     g.add_node(TaskNode(nid_Add1, "Add", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("Add")))
     x_in = f"L{l-1}_Add2" if l > 0 else None
 
-    _add_attention_llama_style_unsplit(
-        g,
-        l=l,
-        shape=shape,
-        dtype_bytes=int(dtype_bytes),
-        base_attr=base_attr,
-        ln_nid=nid_LN,
-        x_in=x_in,
-        add1_nid=nid_Add1,
-    )
+    if tp_qkv > 1:
+        _add_attention_llama_style_tp(
+            g,
+            l=l,
+            shape=shape,
+            dtype_bytes=int(dtype_bytes),
+            base_attr=base_attr,
+            ln_nid=nid_LN,
+            x_in=x_in,
+            add1_nid=nid_Add1,
+            tp_qkv=int(tp_qkv),
+            cfg=cfg,
+        )
+    else:
+        _add_attention_llama_style_unsplit(
+            g,
+            l=l,
+            shape=shape,
+            dtype_bytes=int(dtype_bytes),
+            base_attr=base_attr,
+            ln_nid=nid_LN,
+            x_in=x_in,
+            add1_nid=nid_Add1,
+        )
 
     # LN2
     nid_LN2 = f"L{l}_LN2"
@@ -202,54 +473,131 @@ def add_llama_block(g: TaskGraph, l: int, shape: ModelShape, dtype_bytes: int):
     g.add_edge(nid_Add1, nid_LN2)
 
     # FFN (SwiGLU)
-    nid_W1 = f"L{l}_FFN_W1"
-    nid_W3 = f"L{l}_FFN_W3"
-    nid_ACT = f"L{l}_SwiGLU"
-    nid_W2 = f"L{l}_FFN_W2"
     nid_Add2 = f"L{l}_Add2"
-
-    g.add_node(
-        TaskNode(
-            nid_W1,
-            "FFN_W1",
-            flops=0.0,
-            weight_id=f"L{l}_W1",
-            weight_size=int(dim * ffn * dtype_bytes),
-            attrs=dict(base_attr),
-            allowed=get_op_allowed("FFN_W1"),
-        )
-    )
-    g.add_node(
-        TaskNode(
-            nid_W3,
-            "FFN_W3",
-            flops=0.0,
-            weight_id=f"L{l}_W3",
-            weight_size=int(dim * ffn * dtype_bytes),
-            attrs=dict(base_attr),
-            allowed=get_op_allowed("FFN_W3"),
-        )
-    )
-    g.add_node(TaskNode(nid_ACT, "SwiGLU", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("SwiGLU")))
-    g.add_node(
-        TaskNode(
-            nid_W2,
-            "FFN_W2",
-            flops=0.0,
-            weight_id=f"L{l}_W2",
-            weight_size=int(ffn * dim * dtype_bytes),
-            attrs=dict(base_attr),
-            allowed=get_op_allowed("FFN_W2"),
-        )
-    )
     g.add_node(TaskNode(nid_Add2, "Add", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("Add")))
 
-    g.add_edge(nid_LN2, nid_W1)
-    g.add_edge(nid_LN2, nid_W3)
-    g.add_edge(nid_W1, nid_ACT)
-    g.add_edge(nid_W3, nid_ACT)
-    g.add_edge(nid_ACT, nid_W2)
-    g.add_edge(nid_W2, nid_Add2)
+    if tp_ffn > 1:
+        ffn_sh = int(ffn // tp_ffn)
+        w2_shards: List[str] = []
+
+        for si in range(int(tp_ffn)):
+            sh_attr = dict(base_attr)
+            sh_attr.update({"ffn_dim": int(ffn_sh), "tp_ffn": int(tp_ffn), "ffn_shard": int(si)})
+
+            nid_W1 = f"L{l}_FFN_W1_s{si}"
+            nid_W3 = f"L{l}_FFN_W3_s{si}"
+            nid_ACT = f"L{l}_SwiGLU_s{si}"
+            nid_W2 = f"L{l}_FFN_W2_s{si}"
+
+            g.add_node(
+                TaskNode(
+                    nid_W1,
+                    "FFN_W1",
+                    flops=0.0,
+                    weight_id=f"L{l}_W1_s{si}",
+                    weight_size=int(dim * ffn_sh * dtype_bytes),
+                    attrs=dict(sh_attr),
+                    allowed=get_op_allowed("FFN_W1"),
+                )
+            )
+            g.add_node(
+                TaskNode(
+                    nid_W3,
+                    "FFN_W3",
+                    flops=0.0,
+                    weight_id=f"L{l}_W3_s{si}",
+                    weight_size=int(dim * ffn_sh * dtype_bytes),
+                    attrs=dict(sh_attr),
+                    allowed=get_op_allowed("FFN_W3"),
+                )
+            )
+            g.add_node(
+                TaskNode(
+                    nid_ACT,
+                    "SwiGLU",
+                    flops=0.0,
+                    attrs=dict(sh_attr),
+                    allowed=get_op_allowed("SwiGLU"),
+                )
+            )
+            g.add_node(
+                TaskNode(
+                    nid_W2,
+                    "FFN_W2",
+                    flops=0.0,
+                    weight_id=f"L{l}_W2_s{si}",
+                    # FFN_W2 is row-parallel: shard rows of the ffn_dim.
+                    weight_size=int(ffn_sh * dim * dtype_bytes),
+                    attrs=dict(sh_attr),
+                    allowed=get_op_allowed("FFN_W2"),
+                )
+            )
+
+            g.add_edge(nid_LN2, nid_W1)
+            g.add_edge(nid_LN2, nid_W3)
+            g.add_edge(nid_W1, nid_ACT)
+            g.add_edge(nid_W3, nid_ACT)
+            g.add_edge(nid_ACT, nid_W2)
+            w2_shards.append(nid_W2)
+
+        # Row-parallel FFN down-proj requires a topology-dependent collective.
+        nid_COL = _insert_row_parallel_collective(
+            g,
+            l=l,
+            tag='FFN',
+            base_attr=base_attr,
+            inputs=w2_shards,
+            cfg=cfg,
+        )
+        g.add_edge(nid_COL, nid_Add2)
+    else:
+        nid_W1 = f"L{l}_FFN_W1"
+        nid_W3 = f"L{l}_FFN_W3"
+        nid_ACT = f"L{l}_SwiGLU"
+        nid_W2 = f"L{l}_FFN_W2"
+
+        g.add_node(
+            TaskNode(
+                nid_W1,
+                "FFN_W1",
+                flops=0.0,
+                weight_id=f"L{l}_W1",
+                weight_size=int(dim * ffn * dtype_bytes),
+                attrs=dict(base_attr),
+                allowed=get_op_allowed("FFN_W1"),
+            )
+        )
+        g.add_node(
+            TaskNode(
+                nid_W3,
+                "FFN_W3",
+                flops=0.0,
+                weight_id=f"L{l}_W3",
+                weight_size=int(dim * ffn * dtype_bytes),
+                attrs=dict(base_attr),
+                allowed=get_op_allowed("FFN_W3"),
+            )
+        )
+        g.add_node(TaskNode(nid_ACT, "SwiGLU", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("SwiGLU")))
+        g.add_node(
+            TaskNode(
+                nid_W2,
+                "FFN_W2",
+                flops=0.0,
+                weight_id=f"L{l}_W2",
+                weight_size=int(ffn * dim * dtype_bytes),
+                attrs=dict(base_attr),
+                allowed=get_op_allowed("FFN_W2"),
+            )
+        )
+
+        g.add_edge(nid_LN2, nid_W1)
+        g.add_edge(nid_LN2, nid_W3)
+        g.add_edge(nid_W1, nid_ACT)
+        g.add_edge(nid_W3, nid_ACT)
+        g.add_edge(nid_ACT, nid_W2)
+        g.add_edge(nid_W2, nid_Add2)
+
     g.add_edge(nid_Add1, nid_Add2)
 
 
@@ -279,8 +627,7 @@ def add_mpt_block(g: TaskGraph, l: int, shape: ModelShape, dtype_bytes: int):
     nid_LN1 = f"L{l}_LN1"
     g.add_node(TaskNode(nid_LN1, "LN", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("LN")))
     if l > 0:
-        g.add_edge(f"L{l-1}_K_write", nid_LN1)
-        g.add_edge(f"L{l-1}_V_write", nid_LN1)
+        g.add_edge(f"L{l-1}_Add2", nid_LN1)
 
     nid_Add1 = f"L{l}_Add1"
     g.add_node(TaskNode(nid_Add1, "Add", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("Add")))
@@ -367,8 +714,7 @@ def add_palm_block(g: TaskGraph, l: int, shape: ModelShape, dtype_bytes: int):
     nid_LN = f"L{l}_LN"
     g.add_node(TaskNode(nid_LN, "LN", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("LN")))
     if l > 0:
-        g.add_edge(f"L{l-1}_K_write", nid_LN)
-        g.add_edge(f"L{l-1}_V_write", nid_LN)
+        g.add_edge(f"L{l-1}_Add2", nid_LN)
 
     x_in = f"L{l-1}_Add2" if l > 0 else None
 
@@ -430,17 +776,17 @@ def add_palm_block(g: TaskGraph, l: int, shape: ModelShape, dtype_bytes: int):
 class LLaMADef:
     name = "llama"
 
-    def build(self, shape: ModelShape, dtype_bytes: int) -> TaskGraph:
+    def build(self, shape: ModelShape, dtype_bytes: int, cfg: Optional[Dict] = None) -> TaskGraph:
         g = TaskGraph()
         for l in range(int(shape.layer_num)):
-            add_llama_block(g, l, shape, int(dtype_bytes))
+            add_llama_block(g, l, shape, int(dtype_bytes), cfg=cfg)
         return g
 
 
 class MPTDef:
     name = "mpt"
 
-    def build(self, shape: ModelShape, dtype_bytes: int) -> TaskGraph:
+    def build(self, shape: ModelShape, dtype_bytes: int, cfg: Optional[Dict] = None) -> TaskGraph:
         g = TaskGraph()
         for l in range(int(shape.layer_num)):
             add_mpt_block(g, l, shape, int(dtype_bytes))
@@ -450,7 +796,7 @@ class MPTDef:
 class PaLMDef:
     name = "palm"
 
-    def build(self, shape: ModelShape, dtype_bytes: int) -> TaskGraph:
+    def build(self, shape: ModelShape, dtype_bytes: int, cfg: Optional[Dict] = None) -> TaskGraph:
         g = TaskGraph()
         for l in range(int(shape.layer_num)):
             add_palm_block(g, l, shape, int(dtype_bytes))
@@ -460,11 +806,11 @@ class PaLMDef:
 class QwenDef:
     name = "qwen"
 
-    def build(self, shape: ModelShape, dtype_bytes: int) -> TaskGraph:
+    def build(self, shape: ModelShape, dtype_bytes: int, cfg: Optional[Dict] = None) -> TaskGraph:
         # Qwen is LLaMA-style for our graph purposes.
         g = TaskGraph()
         for l in range(int(shape.layer_num)):
-            add_llama_block(g, l, shape, int(dtype_bytes))
+            add_llama_block(g, l, shape, int(dtype_bytes), cfg=cfg)
         return g
 
 
@@ -479,7 +825,7 @@ class MixtralDef:
         baseline = max(1, int(top_k))
         return max(1, min(int(total), int(math.ceil(float(baseline) * guard))))
 
-    def build(self, shape: ModelShape, dtype_bytes: int) -> TaskGraph:
+    def build(self, shape: ModelShape, dtype_bytes: int, cfg: Optional[Dict] = None) -> TaskGraph:
         """Mixtral MoE (NO head-splitting)."""
         g = TaskGraph()
 
