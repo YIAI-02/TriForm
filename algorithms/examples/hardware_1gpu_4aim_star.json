@@ -1,16 +1,13 @@
  {
   "hardware": {
-    "topology": "fc",
+    "topology": "star",
     "devices": [
       {
         "name": "CPU0",
         "type": "cpu",
         "tflops": 0.1,
         "mem_bw_GBs": 32768.0,
-        "mem_capacity_GB": 8192.0,
-        "cpu_read_latency_ns": 70.0,
-        "cpu_write_latency_ns": 85.0,
-        "cpu_cacheline_B": 64
+        "mem_capacity_GB": 8192.0
       },
       {
         "name": "GPU0",
@@ -100,12 +97,32 @@
         }
       }
     ],
-    "fc_bw_GBs": 32.0,
-    "link_defaults": {
-      "latency_s": 0.0,
-      "overhead_s": 0.0,
-      "flit_size_B": 16,
-      "max_payload_B": 256
+    "links": [
+      {
+        "a": "CPU0",
+        "b": "PIM0",
+        "bw_GBs": 32.0
+      },
+      {
+        "a": "CPU0",
+        "b": "PIM1",
+        "bw_GBs": 32.0
+      },
+      {
+        "a": "CPU0",
+        "b": "PIM2",
+        "bw_GBs": 32.0
+      },
+      {
+        "a": "CPU0",
+        "b": "PIM3",
+        "bw_GBs": 32.0
+      },
+      { 
+        "a": "CPU0", 
+        "b": "GPU0", 
+        "bw_GBs": 32.0 
       }
+    ]
   }
 }

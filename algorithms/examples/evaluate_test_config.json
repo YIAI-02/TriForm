@@ -1,10 +1,10 @@
 {
-  "model_family": "qwen",
+  "model_family": "llama",
   "model_variant": "7b",
   "dtype": "int8",
   "batch": 1,
-  "prefill_len": 4096,
-  "decode_len": 1024,
+  "prefill_len": 8192,
+  "decode_len": 128,
   "decode_sample_stride": 128,
   "pim_config_path": "./aim_simulator/PIM_AiM.json",
   "gb_config_path": "./aim_simulator/gb.json",
@@ -13,8 +13,8 @@
   "result_dir": "./output/evaluate_single_test/hardware_1gpu_4aim/",
   "hardware_json": "./examples/hardware_1gpu_4aim.json",
   "algo": [
-    "hefthint",
-    "heft"
+    "heft",
+    "hefthint"
   ],
   "baselines": [
     "pd",
@@ -25,7 +25,7 @@
     "attacc"
   ],
   "tp_qkv": 4,
-  "tp_ffn": 8,
+  "tp_ffn": 4,
   "npu_backend": "fast_mode",
   "dump_graph": true,
   "dump_graph_dir": "./output/evaluate_single_test/hardware_config_scale_down_12pima/graph_dumps"

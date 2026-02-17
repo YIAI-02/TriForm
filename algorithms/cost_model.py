@@ -651,6 +651,45 @@ class CostModel:
         t_rd = float(read_bytes) / bw if read_bytes > 0 else 0.0
         t_wr = float(write_bytes) / bw if write_bytes > 0 else 0.0
         return float(t_rd + t_wr)
+
+    def cpu_read_time(self, bytes_amount: int, dev: DeviceSpec) -> float:
+        """CPU read latency (seconds) using access-latency model when available."""
+        return float(self.cpu_mem_time(int(bytes_amount or 0), 0, dev))
+
+    def cpu_write_time(self, bytes_amount: int, dev: DeviceSpec) -> float:
+        """CPU write latency (seconds) using access-latency model when available."""
+        return float(self.cpu_mem_time(0, int(bytes_amount or 0), dev))
+
+    def cpu_mem_time(self, read_bytes: int, write_bytes: int, dev: DeviceSpec) -> float:
+        """CPU host memory time estimation.
+
+        If ``dev`` is a CPU and (cpu_read_latency_ns/cpu_write_latency_ns) are provided,
+        use a cacheline/access-count model:
+
+            n_rd = ceil(read_bytes  / bytes_per_access)
+            n_wr = ceil(write_bytes / bytes_per_access)
+            T = n_rd * rd_lat + n_wr * wr_lat
+
+        Otherwise, fall back to bandwidth-only ``mem_time``.
+        """
+        read_bytes = int(read_bytes or 0)
+        write_bytes = int(write_bytes or 0)
+        if read_bytes <= 0 and write_bytes <= 0:
+            return 0.0
+
+        if str(getattr(dev, 'type', '')).lower() != 'cpu':
+            return float(self.mem_time(int(read_bytes + write_bytes), dev))
+
+        rd_lat_ns = float(getattr(dev, 'cpu_read_latency_ns', 0.0) or 0.0)
+        wr_lat_ns = float(getattr(dev, 'cpu_write_latency_ns', 0.0) or 0.0)
+        bytes_per_access = int(getattr(dev, 'cpu_access_bytes_B', 64) or 64)
+
+        if bytes_per_access > 0 and (rd_lat_ns > 0.0 or wr_lat_ns > 0.0):
+            n_rd = int(math.ceil(float(read_bytes) / float(bytes_per_access))) if read_bytes > 0 else 0
+            n_wr = int(math.ceil(float(write_bytes) / float(bytes_per_access))) if write_bytes > 0 else 0
+            return float(n_rd) * float(rd_lat_ns) * 1e-9 + float(n_wr) * float(wr_lat_ns) * 1e-9
+
+        return float(self.mem_time(int(read_bytes + write_bytes), dev))
     def comm_cost(self, src: DeviceSpec, dst: DeviceSpec, bytes_amount: int) -> float:
         """
             T = L + O + n_hat / B

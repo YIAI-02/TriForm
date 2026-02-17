@@ -3,10 +3,11 @@
 """
 
 1) 批量：
-   python analyze_speedup_comparison.py \
-  --output-root ../algorithms/output/hw_hardware_0213/ \
-  --out-dir ../figs/speedup/hw_hardware_0213/
+python analyze_speedup_comparison.py \
+  --output-root ../algorithms/output/experiment_gpu_aim \
+  --out-dir ../figs/speedup/experiment_gpu_aim
 
+不要传hw_ 这一层目录
 
 2) 指定单个模型目录（目录里有 baseline_compare_*.json）：
    python analyze_speedup_comparison.py --model-dir ../algorithms/output/evaluate_single_test/hardware_config_scale_down_11pima/llama_7b_int8_b1_s64

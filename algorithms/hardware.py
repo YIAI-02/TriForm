@@ -38,6 +38,9 @@ class DeviceSpec:
     pim_read_latency_ns: float = 0.0
     pim_write_latency_ns: float = 0.0
     pim_memory: Dict[str, Any] = field(default_factory=dict)
+    cpu_read_latency_ns: float = 0.0
+    cpu_write_latency_ns: float = 0.0
+    cpu_access_bytes_B: int = 64
 
 class Cluster:
     def __init__(self):
@@ -45,6 +48,7 @@ class Cluster:
         self.links: Dict[Tuple[str, str], float] = {}
         self.link_specs: Dict[Tuple[str, str], LinkSpec] = {}
         self.topology: str = 'fc'
+        self.default_link_spec: Optional[LinkSpec] = None
         self.pim_memory: Dict[str, Any] = {}
 
     def add_device(self, dev: DeviceSpec):
@@ -77,20 +81,33 @@ class Cluster:
         self.link_specs[(b, a)] = spec
 
     def get_link_spec(self, a: str, b: str) -> LinkSpec:
-        """Return a LinkSpec for (a->b). If not present, returns a bw=0 spec."""
+        """Return a LinkSpec for (a->b)."""
+        a = str(a); b = str(b)
         if a == b:
             # Intra-device access is not modeled as a link transfer; keep packet overhead disabled.
             return LinkSpec(bw_GBs=float(self.devices[a].mem_bw_GBs), flit_size_B=0, max_payload_B=0)
+
         spec = self.link_specs.get((a, b))
-        if spec is None:
-            bw = float(self.links.get((a, b), 0.0))
-            return LinkSpec(bw_GBs=bw)
-        return spec
+        if spec is not None:
+            return spec
+
+        # FC fabrics: unspecified pairs use the shared default link spec.
+        if str(getattr(self, 'topology', '')).strip().lower() == 'fc' and self.default_link_spec is not None:
+            return self.default_link_spec
+
+        bw = float(self.links.get((a, b), 0.0))
+        return LinkSpec(bw_GBs=bw)
 
     def get_link_bw(self, a: str, b: str) -> float:
+        a = str(a); b = str(b)
         if a == b:
-            return self.devices[a].mem_bw_GBs
-        return self.links.get((a,b), 0.0)
+            return float(self.devices[a].mem_bw_GBs)
+        bw = self.links.get((a, b), None)
+        if bw is not None:
+            return float(bw)
+        if str(getattr(self, 'topology', '')).strip().lower() == 'fc' and self.default_link_spec is not None:
+            return float(getattr(self.default_link_spec, 'bw_GBs', 0.0) or 0.0)
+        return 0.0
 
     def devices_by_type(self, t: str) -> List[DeviceSpec]: #传进来t是cpu/npu/pim，筛选出是这个dev的所有设备
         return [d for d in self.devices.values() if d.type == t]
@@ -231,6 +248,12 @@ def demo_cluster(cfg: Dict | None = None) -> Cluster:
             topo = 'fc'
     c.topology = str(topo).strip().lower()
 
+    # Normalize common topology aliases so downstream checks can simply use 'fc'/'star'.
+    if c.topology in ('fully_connected', 'fully-connected', 'full', 'mesh'):
+        c.topology = 'fc'
+    elif c.topology in ('host', 'host_star', 'host-centric', 'host_centric'):
+        c.topology = 'star'
+
     try:
         pm = hw_cfg.get('pim_memory') or hw_cfg.get('pim_mem') or {}
         if isinstance(pm, dict):
@@ -245,6 +268,17 @@ def demo_cluster(cfg: Dict | None = None) -> Cluster:
 
         dev_type = str(d.get('type', '') or '').strip().lower()
         pim_mem = d.get('pim_memory') or d.get('pim_mem') or {}
+        cpu_access_raw = (
+            d.get('cpu_access_bytes_B')
+            or d.get('cpu_access_bytes')
+            or d.get('cpu_line_bytes_B')
+            or d.get('cpu_cacheline_B')
+            or d.get('cacheline_B')
+        )
+        try:
+            cpu_access_bytes_B = max(1, int(cpu_access_raw)) if cpu_access_raw is not None else 64
+        except Exception:
+            cpu_access_bytes_B = 64
         dev = DeviceSpec(
             name=d['name'],
             type=d['type'],
@@ -258,6 +292,10 @@ def demo_cluster(cfg: Dict | None = None) -> Cluster:
             arch=d.get('arch') or d.get('model') or d.get('device_arch'),
             llmcompass_kind=d.get('llmcompass_kind') or d.get('llmcompass') or d.get('llmcompass_device'),
             pim_memory=(pim_mem if isinstance(pim_mem, dict) else {}),
+
+            cpu_read_latency_ns=float(d.get('cpu_read_latency_ns', d.get('read_latency_ns', 0.0)) or 0.0),
+            cpu_write_latency_ns=float(d.get('cpu_write_latency_ns', d.get('write_latency_ns', 0.0)) or 0.0),
+            cpu_access_bytes_B=int(cpu_access_bytes_B),
         )
 
         # Capacity consistency check (required):
@@ -291,6 +329,73 @@ def demo_cluster(cfg: Dict | None = None) -> Cluster:
     d_maxp = int(link_defaults.get('max_payload_B', link_defaults.get('max_payload', 256)) or 256)
     d_lat = _read_time_s(link_defaults, 'latency_s', 'latency_us', 'latency_ns', 0.0)
     d_ovh = _read_time_s(link_defaults, 'overhead_s', 'overhead_us', 'overhead_ns', 0.0)
+
+    # -----------------------------
+    # FC topology: single shared bandwidth for all (unspecified) pairs
+    # -----------------------------
+    def _read_bw_gbs(obj: Any, *keys: str) -> Optional[float]:
+        if not isinstance(obj, dict):
+            return None
+        for k in keys:
+            if k in obj and obj[k] is not None:
+                try:
+                    v = float(obj[k])
+                    if v > 0.0:
+                        return float(v)
+                except Exception:
+                    continue
+        return None
+
+    if c.topology == 'fc':
+        bw_fc = _read_bw_gbs(
+            hw_cfg,
+            'fc_bw_GBs', 'fc_bw', 'fc_bandwidth_GBs', 'fc_bandwidth',
+            'link_bw_GBs', 'link_bw', 'link_bandwidth_GBs', 'link_bandwidth',
+            'bw_GBs', 'bw', 'bandwidth_GBs', 'bandwidth',
+        )
+        if bw_fc is None:
+            try:
+                bws: List[float] = []
+                for lk in hw_cfg.get('links', []) or []:
+                    if not isinstance(lk, dict):
+                        continue
+                    v = lk.get('bw_GBs', lk.get('bw', lk.get('bandwidth_GBs', lk.get('bandwidth', None))))
+                    if v is None:
+                        continue
+                    fv = float(v)
+                    if fv > 0.0:
+                        bws.append(fv)
+                if bws:
+                    bw_fc = float(min(bws))
+            except Exception:
+                bw_fc = None
+
+        if bw_fc is not None and float(bw_fc) > 0.0:
+            # Use the same latency/overhead/packet parameters as link_defaults unless explicitly overridden per-link.
+            c.default_link_spec = LinkSpec(
+                bw_GBs=float(bw_fc),
+                latency_s=float(d_lat),
+                overhead_s=float(d_ovh),
+                flit_size_B=int(d_flit),
+                max_payload_B=int(d_maxp),
+            )
+        else:
+            # If users declare FC but provide neither a common bandwidth nor any explicit links,
+            # the comm model becomes unusable. Fail fast with a helpful error.
+            has_any_link = False
+            try:
+                for lk in hw_cfg.get('links', []) or []:
+                    if isinstance(lk, dict) and lk.get('a') and lk.get('b'):
+                        has_any_link = True
+                        break
+            except Exception:
+                has_any_link = False
+            if not has_any_link and len(getattr(c, 'devices', {}) or {}) > 1:
+                raise ValueError(
+                    "FC topology requires a common link bandwidth or explicit links. "
+                    "Please set one of: hardware.fc_bw_GBs / hardware.link_bw_GBs / hardware.interconnect.bw_GBs / "
+                    "hardware.link_defaults.bw_GBs, or provide explicit hardware.links[]."
+                )
 
     for l in hw_cfg.get('links', []):
         if not isinstance(l, dict):

@@ -12,6 +12,6 @@ set -eo pipefail
 cd "$SLURM_SUBMIT_DIR"
 
 source ~/.bashrc
-conda activate triform
+conda activate triform310
 
-bash sweep_models_npu_aim_evaluate.sh --jobs 64
+bash sweep_models_gpu_aim_evaluate.sh --jobs 32

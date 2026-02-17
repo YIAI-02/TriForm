@@ -1,48 +1,55 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+# -----------------------------------------------------------------------------
+# argparse
+# -----------------------------------------------------------------------------
+#  --cost-model PATH default:./algorithms/cost_model.py
+#  --optimizations PATH default:./algorithms/optimizations.py
+#  --model-shape PATH default:./experiment/roofline_configs/llama_7b_shape.json
+#  --hardware-json PATH default:./algorithms/examples/represent_hardware.json
+#  --strategies-json PATH default: {"strategies":[{"name":...,"config":{...}}, ...]}）
+#  --strategy-color-map PATH JSON：{"strategy_name":"#RRGGBB", ...}。
+#  --strategy-colors COLOR [COLOR ...] *
+#  --devices DEV [DEV ...] * defualt: GPU0 PIM0
+#  --groups GROUP [GROUP ...] * QKV_GEN, SCORE, SOFTMAX, CONTEXT, PROJECTION, FFN
+#  --outdir DIR default: ../figs/roofline_bubbles
+#  --dtype DTYPE default: fp16
+#  --base-weight-dtype-bytes N default: 2
+#
+#  --bytes-mode {auto,activation,activation+weight}
+#      Bytes 统计模式：
+#        auto（默认）：PIM 只算 activation；非 PIM 设备算 activation+weight
+#        activation：强制所有设备只算 activation（PIM 仍为 activation-only）
+#        activation+weight：与 auto 对非 PIM 的行为一致（保留用于兼容）
+#
+#  --batches B [B ...] * default: 1 32
+#  --seqlens S [S ...] * (fallback)default: 1024 2048 4096 8192
+#  --prefill-seqlens S [S ...] * (fallback--seqlens)
+#  --decode-seqlens S [S ...] * (fallback--seqlens)
+#  --phases PHASE [PHASE ...] * default:prefill decode
+#  --combine-phases prefill+decode or single picture
+#
+#  --only-strategies NAME [NAME ...] * 
+#
+#  --alpha-min FLOAT default:0.25
+#  --alpha-max FLOAT default:1.0
+#  --marker-area FLOAT default:220.0
+#  --debug
+# -----------------------------------------------------------------------------
+
+
 """
 PYTHONPATH=$PWD/algorithms:$PYTHONPATH \
 python ./experiment/plot_roofline.py \
-  --devices GPU0 PIM0 \
-  --strategies-json ./experiment/roofline_configs/opt_methods.json \
-  --outdir ./figs/roofline_multiops
-
-
-PYTHONPATH=$PWD/algorithms:$PYTHONPATH \
-python ./experiment/plot_roofline.py \
-  --devices GPU0 PIM0 \
-  --strategies-json ./experiment/roofline_configs/opt_methods.json \
-  --batches 1 32 \
-  --prefill-seqlens 4096 \
-  --decode-seqlens 8192 \
-  --groups QKV_GEN SCORE CONTEXT FFN\
-  --phases prefill decode \
-  --bytes-mode activation+weight \
-  --outdir ./figs/roofline/paper
-
-python ./experiment/plot_roofline.py \
   --hardware-json ./algorithms/examples/represent_hardware.json \
-  --devices Ascend AiM GA100 TPUv4 PIMoE HBNMP\
-  --strategies-json ./experiment/roofline_configs/opt_methods.json \
-  --batches 1 32 \
-  --prefill-seqlens 1024 \
-  --decode-seqlens 1024\
-  --groups QKV_GEN SCORE CONTEXT FFN \
-  --phases prefill decode \
-  --bytes-mode auto \
-  --outdir ./figs/roofline/paper_represent \
-  --debug
-
-python ./experiment/plot_roofline.py \
-  --hardware-json ./algorithms/examples/represent_hardware.json \
-  --devices AiM GA100 \
+  --devices AiM Ascend_310B \
   --strategies-json ./experiment/roofline_configs/opt_baseline.json \
-  --batches 1 32 \
-  --prefill-seqlens 1024 \
+  --batches 1 \
+  --prefill-seqlens 8192 \
   --decode-seqlens 1024\
-  --groups QKV_GEN\
-  --phases prefill\
+  --groups QKV_GEN SCORE SOFTMAX CONTEXT FFN\
+  --phases prefill decode\
   --bytes-mode auto \
   --outdir ./figs/roofline/hardware_only \
   --debug
@@ -399,23 +406,35 @@ class DeviceInfo:
     group: str = "unknown"  # e.g., compute | pim
     device_count: int = 1
     multicore_factor: float = 1.0
+    core_utilization: float = 1.0
+    key: str = ""
+
+    def __post_init__(self) -> None:
+        if not str(self.key).strip():
+            self.key = str(self.name)
 
     @property
     def scale_factor(self) -> float:
+        """Effective compute scale factor vs. the base single-device spec."""
         mc = float(self.multicore_factor) if math.isfinite(float(self.multicore_factor)) else 1.0
         if mc <= 0:
             mc = 1.0
         cnt = int(self.device_count) if int(self.device_count) > 0 else 1
-        return float(mc) * float(cnt)
+        util = float(self.core_utilization) if math.isfinite(float(self.core_utilization)) else 1.0
+        if util <= 0:
+            util = 1.0
+        return float(mc) * float(cnt) * float(util)
 
     @property
     def label(self) -> str:
-        """Legend label that reflects device stacking/multicore."""
+        """Legend label that reflects device stacking/multicore/utilization."""
         parts: List[str] = [str(self.name)]
         if int(self.device_count) != 1:
             parts.append(f"×{int(self.device_count)}")
         if abs(float(self.multicore_factor) - 1.0) > 1e-9:
             parts.append(f"mc{float(self.multicore_factor):g}")
+        if abs(float(self.core_utilization) - 1.0) > 1e-9:
+            parts.append(f"util{float(self.core_utilization):g}")
         return " ".join(parts)
 
     @property
@@ -506,54 +525,186 @@ def load_devices(
             continue
 
         # ------------------------------------------------------------
-        # Device stacking / multi-core (represent_hardware.json)
+        # Device scale-up
         # ------------------------------------------------------------
-        # Requirements:
-        #   - each device can specify a multi-core factor and a device count
-        #   - compute scales multiplicatively
-        #   - internal bandwidth unchanged
-        #   - internal storage scales multiplicatively
-        mc = safe_float(
-            d.get(
-                "multicore_factor",
-                d.get("multi_core_factor", d.get("multicore", d.get("multi_core", d.get("mc", 1.0)))),
-            ),
-            1.0,
-        )
-        if mc <= 0.0 or not math.isfinite(mc):
-            mc = 1.0
-        cnt = safe_int(
-            d.get(
-                "device_count",
-                d.get("count", d.get("num_devices", d.get("devices", d.get("n_devices", 1)))),
-            ),
-            1,
-        )
-        if cnt <= 0:
-            cnt = 1
+        def _parse_int_list(v: Any, default: List[int]) -> List[int]:
+            if v is None:
+                return list(default)
+            if isinstance(v, (list, tuple)):
+                xs = [safe_int(x, 0) for x in v]
+            elif isinstance(v, str) and "," in v:
+                xs = [safe_int(x.strip(), 0) for x in v.split(",")]
+            else:
+                xs = [safe_int(v, 0)]
+            xs = [int(x) for x in xs if int(x) > 0]
+            return xs or list(default)
 
-        scale = float(mc) * float(cnt)
-        peak = float(peak0) * float(scale)
-        cap = float(cap0) * float(scale) if cap0 > 0 else float(cap0)
+        def _parse_float_list(v: Any, default: List[float]) -> List[float]:
+            if v is None:
+                return list(default)
+            if isinstance(v, (list, tuple)):
+                xs = [safe_float(x, float("nan")) for x in v]
+            elif isinstance(v, str) and "," in v:
+                xs = [safe_float(x.strip(), float("nan")) for x in v.split(",")]
+            else:
+                xs = [safe_float(v, float("nan"))]
+            out_xs: List[float] = []
+            for x in xs:
+                try:
+                    xf = float(x)
+                except Exception:
+                    continue
+                if not math.isfinite(xf) or xf <= 0:
+                    continue
+                out_xs.append(float(xf))
+            return out_xs or list(default)
+
+        def _parse_util_spec(v: Any) -> Any:
+            # returns: float (constant) | dict[int,float] (map by device_count) | list[float]
+            if v is None:
+                return 1.0
+            if isinstance(v, dict):
+                m2: Dict[int, float] = {}
+                for kk, vv in v.items():
+                    k_str = str(kk).strip()
+                    if k_str.lower() == "default":
+                        continue
+                    k_int = safe_int(k_str, 0)
+                    if k_int <= 0:
+                        continue
+                    u = safe_float(vv, float("nan"))
+                    if not math.isfinite(u) or u <= 0:
+                        continue
+                    m2[int(k_int)] = float(u)
+                # optional default fallback
+                if "default" in v:
+                    udef = safe_float(v.get("default"), float("nan"))
+                    if math.isfinite(udef) and udef > 0:
+                        m2[-1] = float(udef)  # sentinel
+                return m2 or 1.0
+            if isinstance(v, (list, tuple)):
+                xs = [safe_float(x, float("nan")) for x in v]
+                out_xs: List[float] = []
+                for x in xs:
+                    if math.isfinite(x) and x > 0:
+                        out_xs.append(float(x))
+                return out_xs or 1.0
+            if isinstance(v, str) and ":" in v:
+                # e.g. "1:1.0,2:0.9,4:0.85"
+                m2: Dict[int, float] = {}
+                chunks = [c.strip() for c in v.split(",") if c.strip()]
+                for ch in chunks:
+                    if ":" not in ch:
+                        continue
+                    k_s, u_s = [z.strip() for z in ch.split(":", 1)]
+                    k_int = safe_int(k_s, 0)
+                    u = safe_float(u_s, float("nan"))
+                    if k_int > 0 and math.isfinite(u) and u > 0:
+                        m2[int(k_int)] = float(u)
+                return m2 or safe_float(v, 1.0)
+            u = safe_float(v, 1.0)
+            if not math.isfinite(u) or u <= 0:
+                u = 1.0
+            return float(u)
+
+        raw_mc = d.get(
+            "multicore_factor",
+            d.get("multi_core_factor", d.get("multicore", d.get("multi_core", d.get("mc", 1.0)))),
+        )
+        raw_cnt = d.get(
+            "device_count",
+            d.get("count", d.get("num_devices", d.get("devices", d.get("n_devices", 1)))),
+        )
+        raw_util = d.get(
+            "core_utilization",
+            d.get("core_util", d.get("utilization", d.get("util", 1.0))),
+        )
+
+        mc_list = _parse_float_list(raw_mc, [1.0])
+        cnt_list = _parse_int_list(raw_cnt, [1])
+        util_spec = _parse_util_spec(raw_util)
+
+        scale_bw = bool(d.get("scale_mem_bw", d.get("scale_bw", d.get("scale_mem_bw_with_device_count", False))))
 
         group = _infer_device_group(name, d)
-
         edge_color = DEVICE_EDGE_COLOR
         line_style = DEVICE_LINE_STYLES[idx % len(DEVICE_LINE_STYLES)]
 
-        out.append(
-            DeviceInfo(
-                name=name,
-                peak_tflops=peak,
-                mem_bw_GBs=bw,
-                mem_capacity_GB=cap,
-                line_style=line_style,
-                edge_color=edge_color,
-                group=group,
-                device_count=int(cnt),
-                multicore_factor=float(mc),
+        # Generate scaled-up variants (cross product of device_count and multicore_factor)
+        variants: List[Tuple[int, float, float]] = []
+        for cnt_i, cnt in enumerate(cnt_list):
+            # Pick utilization for this device_count
+            util = 1.0
+            if isinstance(util_spec, dict):
+                util = float(util_spec.get(int(cnt), util_spec.get(-1, util_spec.get(1, 1.0))))
+            elif isinstance(util_spec, list):
+                if len(util_spec) == len(cnt_list):
+                    util = float(util_spec[cnt_i])
+                elif len(util_spec) >= 1:
+                    util = float(util_spec[0])
+                else:
+                    util = 1.0
+            else:
+                util = float(util_spec)
+
+            if not math.isfinite(util) or util <= 0:
+                util = 1.0
+
+            for mc in mc_list:
+                mc_f = float(mc)
+                if not math.isfinite(mc_f) or mc_f <= 0:
+                    mc_f = 1.0
+                variants.append((int(cnt), float(mc_f), float(util)))
+
+        # De-duplicate while preserving order
+        uniq: List[Tuple[int, float, float]] = []
+        seen: set = set()
+        for (cnt, mc_f, util) in variants:
+            k = (int(cnt), round(float(mc_f), 12), round(float(util), 12))
+            if k in seen:
+                continue
+            seen.add(k)
+            uniq.append((int(cnt), float(mc_f), float(util)))
+
+        for (cnt, mc_f, util) in uniq:
+            # Peak compute scaling
+            compute_scale = float(cnt) * float(mc_f) * float(util)
+            peak = float(peak0) * float(compute_scale)
+
+            # Memory scaling
+            bw_eff = float(bw) * float(cnt) if bool(scale_bw) else float(bw)
+            cap = float(cap0) * float(cnt) if cap0 > 0 else float(cap0)
+
+            # Skip invalid variants
+            if peak <= 0.0 or bw_eff <= 0.0:
+                continue
+
+            # Unique key for points dict when multiple variants are generated
+            parts: List[str] = []
+            if int(cnt) != 1:
+                parts.append(f"x{int(cnt)}")
+            if abs(float(mc_f) - 1.0) > 1e-9:
+                parts.append(f"mc{float(mc_f):g}")
+            if abs(float(util) - 1.0) > 1e-9:
+                parts.append(f"util{float(util):g}")
+            key = str(name) if not parts else f"{name}[{','.join(parts)}]"
+
+            out.append(
+                DeviceInfo(
+                    name=name,
+                    peak_tflops=peak,
+                    mem_bw_GBs=bw_eff,
+                    mem_capacity_GB=cap,
+                    line_style=line_style,
+                    edge_color=edge_color,
+                    group=group,
+                    device_count=int(cnt),
+                    multicore_factor=float(mc_f),
+                    core_utilization=float(util),
+                    key=str(key),
+                )
             )
-        )
+
     return out
 
 
@@ -1107,7 +1258,7 @@ def draw_phase(
 
     # Points
     for dev in devices:
-        dev_name = dev.name
+        dev_name = dev.key
         for s in strategy_names:
             col = strategy_colors[s]
             for g in groups_to_plot:
@@ -1625,7 +1776,7 @@ def main() -> None:
 
         # points dict
         points: Dict[str, Dict[str, Dict[str, List[Tuple[float, float, int, int]]]]] = {
-            dev.name: {s: {g: [] for g in groups_to_plot} for s in strategy_names} for dev in devices
+            dev.key: {s: {g: [] for g in groups_to_plot} for s in strategy_names} for dev in devices
         }
 
         for sname, g_strat in strategy_graphs:
@@ -1650,7 +1801,7 @@ def main() -> None:
                                 continue
 
                             bound = dev.bound_tflops(I)
-                            points[dev.name][sname][gkey].append((I, bound, int(B), int(S)))
+                            points[dev.key][sname][gkey].append((I, bound, int(B), int(S)))
                             xs_global.append(I)
                             ys_global.append(bound)
 

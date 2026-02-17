@@ -13,7 +13,11 @@ from cost_model import CostModel, DTYPE_BYTES
 from cost_model_pim_backend import _make_shared_model_dict
 from buffer_manager import GlobalMemoryManager
 from model_parser import build_graph
-from config import FORMAT_TUNING_MAX_PASSES, FORMAT_TUNING_TIME_EPS, FORMAT_TUNING_MAP_EPS, PIM_STATIC_ALLOC_RATIO,setup_logging
+from config import (
+    PIM_STATIC_ALLOC_RATIO,
+    ENABLE_PIM_WEIGHT_PRELOAD,
+    setup_logging,
+)
 from plan_label import PlanLabel
 from scheduler import (
     HEFTScheduler,
@@ -138,9 +142,14 @@ def _make_label_given_kv(
 
     pim_bytes = sum(int(d.mem_capacity_GB * (1024**3)) for d in pim_devs)
     weights_preloaded_on_pim = bool(
-        pim_bytes > 0 and (int(FC_total_bytes) + int(KV_total_bytes)) <= int(pim_bytes)
+        bool(ENABLE_PIM_WEIGHT_PRELOAD)
+        and pim_bytes > 0
+        and (int(FC_total_bytes) + int(KV_total_bytes)) <= int(pim_bytes)
     )
-    logger.debug(f"[Preload] Preload is {weights_preloaded_on_pim}")
+    logger.debug(
+        f"[Preload] ENABLE_PIM_WEIGHT_PRELOAD={bool(ENABLE_PIM_WEIGHT_PRELOAD)} -> "
+        f"weights_preloaded_on_pim={weights_preloaded_on_pim}"
+    )
 
     if pim_bytes <= 0:
         label = PlanLabel(
@@ -217,7 +226,16 @@ def _make_label_given_kv(
                     feasible = False
                     break
 
-    logger.debug(f"[KV-on-PIM] KV-on-PIM is {feasible}")
+    selected = bool(kv_in_pim and feasible)
+    logger.debug(
+        "[KV] request_kv_in_pim=%s feasible=%s selected=%s KV_total=%.2fMiB pim_total=%.2fMiB",
+        bool(kv_in_pim),
+        bool(feasible),
+        bool(selected),
+        float(KV_total_bytes) / float(1024 ** 2),
+        float(pim_bytes) / float(1024 ** 2),
+    )
+
     kv_bytes_in_pim = KV_total_bytes if (kv_in_pim and feasible) else 0
 
     # Weight budget: remaining capacity * PIM_STATIC_ALLOC_RATIO.
@@ -338,6 +356,7 @@ def auto_select_kv_policy(
     graph: TaskGraph,
     graph_decode: TaskGraph | None = None,
     shape: Any,
+    capture_best_schedule: bool = False,
 ) -> PlanLabel:
     """Choose KV-on-host vs KV-on-PIM by simulating both and picking the faster one.
     """
@@ -365,33 +384,59 @@ def auto_select_kv_policy(
     if ok and bool(getattr(label_pim, "kv_in_pim", False)):
         cand.append(("pim", label_pim))
 
+    def _simulate_candidate(lb: PlanLabel) -> Dict[str, Any]:
+        """Run prefill+decode once for a label, and return times + serialized schedules + scheduler."""
+        batch = int(cfg.get("batch", 1))
+        prefill_len = int(cfg.get("prefill_len", 128))
+        buffer_mgr = GlobalMemoryManager()
+        sched = _make_scheduler(strategy, cluster, cost, lb, batch=batch, seq_len=prefill_len, buffer=buffer_mgr)
+        sched.reset_state()
+
+        if hasattr(sched, "set_storage_format_map"):
+            try:
+                sched.set_storage_format_map({})
+            except Exception:
+                pass
+
+        g_prefill = graph
+        g_decode = graph_decode if graph_decode is not None else graph
+        t_prefill, prefill_ser = simulate_prefill(sched, cfg, g_prefill)
+        t_decode, decode_ser = simulate_decode_progressive(sched, cfg, g_decode, prefill_end=t_prefill)
+
+        return {
+            "prefill_s": float(t_prefill),
+            "decode_s": float(t_decode),
+            "total_s": float(t_prefill + t_decode),
+            "prefill_schedule": prefill_ser,
+            "decode_steps": decode_ser,
+            "sched": sched,
+        }
+
     best_tag = "host"
     best_label = label_host
     best_total = float("inf")
+    best_sim: Dict[str, Any] | None = None
 
     scores: Dict[str, Dict[str, float]] = {}
     for tag, lb in cand:
-        tp, td, tt = _estimate_total_time_for_label(
-            strategy=strategy,
-            cfg=cfg,
-            cluster=cluster,
-            cost=cost,
-            graph_prefill=graph,
-            graph_decode=graph_decode,
-            label=lb,
-        )
-        scores[str(tag)] = {
-            "prefill_s": float(tp),
-            "decode_s": float(td),
-            "total_s": float(tt),
-        }
+        sim = _simulate_candidate(lb)
+        tp = float(sim.get("prefill_s", 0.0))
+        td = float(sim.get("decode_s", 0.0))
+        tt = float(sim.get("total_s", tp + td))
+        scores[str(tag)] = {"prefill_s": tp, "decode_s": td, "total_s": tt}
+
         if float(tt) < float(best_total):
             best_total = float(tt)
             best_tag = str(tag)
             best_label = lb
+            best_sim = sim
 
     setattr(best_label, "kv_policy_selected", str(best_tag))
     setattr(best_label, "kv_policy_scores", dict(scores))
+
+    if bool(capture_best_schedule) and isinstance(best_sim, dict):
+        setattr(best_label, "_kv_policy_best_sim", dict(best_sim))
+
     return best_label
 
 def _serialize_schedule(schedule: List[ScheduledTask], *, phase: str, token_idx: int | None=None) -> List[Dict]:
@@ -421,11 +466,8 @@ def simulate_decode_progressive(sched: SchedulerBase, cfg: Dict, graph: TaskGrap
     steps_serialized: List[Dict] = []
 
     if isinstance(cfg, dict):
-        try:
-            stride = int(cfg.get('decode_sample_stride', default_stride))
-        except Exception:
-            stride = 64
-    # 精确仿真
+        stride = int(cfg.get('decode_sample_stride', 64))
+    # token by token
     if stride <= 1:
         for t in range(decode_len):
             cur_len = prefill_len + t
@@ -440,9 +482,6 @@ def simulate_decode_progressive(sched: SchedulerBase, cfg: Dict, graph: TaskGrap
             })
         return (float(global_end - prefill_end), steps_serialized)
 
-    # 采样
-    last_sample_time: float | None = None
-    last_sample_t: int = -1
     def _advance_to(t_target: float):
         try:
             for name in list(getattr(sched, 'avail', {}).keys()):
@@ -456,27 +495,47 @@ def simulate_decode_progressive(sched: SchedulerBase, cfg: Dict, graph: TaskGrap
                     tl[k] = max(float(tl.get(k, 0.0)), float(t_target))
         except Exception:
             pass
-    for t in range(decode_len):
-        cur_len = prefill_len + t
-        is_last = (t == decode_len - 1)
-        warmup = 2
-        do_sample = (t < warmup) or (t % stride == 0) or is_last
-        if do_sample:
-            if last_sample_time is not None and last_sample_t >= 0 and t > last_sample_t + 1:
-                gap = t - last_sample_t - 1
-                if gap > 0:
-                    global_end += float(last_sample_time) * float(gap)
-                    for u in range(last_sample_t + 1, t):
-                        steps_serialized.append({'t': u, 'seq_len': prefill_len + u, 'step_time': float(last_sample_time), 'estimated': True, 'schedule': None})
-            _advance_to(global_end)
-            sched.set_seq_len(cur_len)
-            dec_sched = sched.schedule(graph, phase='decode')
-            token_end = float(sched.makespan(dec_sched))
-            step_time = max(0.0, token_end - global_end)
-            global_end = token_end
-            last_sample_time = float(step_time)
-            last_sample_t = t
-            steps_serialized.append({'t': t, 'seq_len': cur_len, 'step_time': float(step_time), 'estimated': False, 'schedule': _serialize_schedule(dec_sched, phase='decode', token_idx=t)})
+
+    stride = int(max(1, int(stride)))
+    # Be defensive even if the user guarantees divisibility.
+    n_blocks = int(decode_len // stride) if (decode_len % stride == 0) else int(math.ceil(decode_len / stride))
+
+    for b in range(n_blocks):
+        block_start = int(b * stride)
+        t = int(min(decode_len - 1, (b + 1) * stride - 1))  # sample at block end
+        cur_len = int(prefill_len + t)
+        block_tokens = int(t - block_start + 1)
+
+        # Advance the device/comm timelines to the current global time.
+        _advance_to(global_end)
+        block_begin = float(global_end)
+
+        # Simulate only one token for this block.
+        sched.set_seq_len(cur_len)
+        dec_sched = sched.schedule(graph, phase='decode')
+        token_end = float(sched.makespan(dec_sched))
+        step_time = max(0.0, float(token_end - block_begin))
+
+        # Back-fill tokens in this block as estimated using the sampled step_time.
+        for u in range(block_start, t):
+            steps_serialized.append({
+                't': int(u),
+                'seq_len': int(prefill_len + u),
+                'step_time': float(step_time),
+                'estimated': True,
+                'schedule': None,
+            })
+
+        steps_serialized.append({
+            't': int(t),
+            'seq_len': int(cur_len),
+            'step_time': float(step_time),
+            'estimated': False,
+            'schedule': _serialize_schedule(dec_sched, phase='decode', token_idx=t),
+        })
+
+        # Account for the whole block (stride tokens) using the sampled step_time.
+        global_end = float(block_begin + float(step_time) * float(block_tokens))
     return (float(global_end - prefill_end), steps_serialized)
 
 def _make_scheduler(name: str, cluster: Cluster, cost: CostModel, label: PlanLabel, batch: int, seq_len: int, buffer: GlobalMemoryManager):
@@ -1243,12 +1302,10 @@ def _is_gemv_like(n: TaskNode, *, phase: str) -> bool:
 def _baseline_ianus(g: TaskGraph, *, phase: str) -> TaskGraph:
     g2 = _clone_graph(g)
     if phase == 'prefill':
-        # 全 NPU
         for _, n in g2.nodes.items():
             n.allowed['npu'] = True; n.allowed['pim'] = False; n.allowed['cpu'] = n.allowed.get('cpu', True)
         return g2
 
-    # decode：按规则划分
     for _, n in g2.nodes.items():
         on_pim = True
         if _is_op(n, 'Q', 'K', 'SOFTMAX', 'NORM', 'ADD'):
@@ -1429,17 +1486,16 @@ def _eval_one_baseline(cfg: Dict, policy: str) -> Dict:
     best_decode_ser = decode_ser
     best_sched = sched
 
-    # 导出最优 scheduler 的统计信息
     try:
         if best_sched is not None and hasattr(best_sched, "stats"):
-            tag = f"{prefill_len}x{decode_len}"
+            prefix = f"{policy}_prefill-{prefill_len}xdecode_{decode_len}"
             decode_stride = int(cfg.get("decode_sample_stride", 1) or 16)
-            trace_ops = algo_dir / f"{tag}_ops_trace.csv"
-            trace_comms = algo_dir / f"{tag}_comms_trace.csv"
+            trace_ops = algo_dir / f"{prefix}_ops_trace.csv"
+            trace_comms = algo_dir / f"{prefix}_comms_trace.csv"
             trace_ops.parent.mkdir(parents=True, exist_ok=True)
             best_sched.stats.dump_csv(
-                algo_dir / f"{tag}_overlap_segments.csv",
-                algo_dir / f"{tag}_overlap_summary.csv",
+                algo_dir / f"{prefix}_overlap_segments.csv",
+                algo_dir / f"{prefix}_overlap_summary.csv",
                 include_idle=False,
                 include_all_phase=False,
                 decode_stride=decode_stride,
@@ -1550,6 +1606,7 @@ def _run_strategy_once(strategy: str, cfg: Dict, *, shared_graph=None, shared_sh
         cost=cost,
         graph=graph,
         shape=shape,
+        capture_best_schedule=True,
     )
 
     sel = getattr(label, 'kv_policy_selected', 'unknown')
@@ -1563,22 +1620,28 @@ def _run_strategy_once(strategy: str, cfg: Dict, *, shared_graph=None, shared_sh
     kv_in_pim = bool(getattr(label, "kv_in_pim", False))
     kv_total_bytes = int(getattr(label, "kv_total_bytes", 0) or 0)
     kv_weight_cap = int(getattr(label, "pim_weight_capacity_bytes", 0) or 0)
-    buffer_mgr = GlobalMemoryManager()
-    sched = _make_scheduler(strategy, cluster, cost, label, batch=batch, seq_len=prefill_len, buffer=buffer_mgr)
-    try:
-        sched.set_storage_format_map({})
-    except Exception:
-        pass
-    try:
+    sim_best = getattr(label, "_kv_policy_best_sim", None)
+    if isinstance(sim_best, dict) and sim_best.get("sched") is not None:
+        sched = sim_best.get("sched")
+        t_prefill = float(sim_best.get("prefill_s", 0.0) or 0.0)
+        t_decode = float(sim_best.get("decode_s", 0.0) or 0.0)
+        prefill_ser = sim_best.get("prefill_schedule")
+        decode_ser = sim_best.get("decode_steps")
+        total_time = float(sim_best.get("total_s", t_prefill + t_decode) or (t_prefill + t_decode))
+    else:
+        buffer_mgr = GlobalMemoryManager()
+        sched = _make_scheduler(strategy, cluster, cost, label, batch=batch, seq_len=prefill_len, buffer=buffer_mgr)
+        try:
+            sched.set_storage_format_map({})
+        except Exception:
+            pass
         sched.reset_state()
-    except Exception:
-        pass
 
-    t_prefill, prefill_ser = simulate_prefill(sched, cfg, graph)
-    t_decode, decode_ser = simulate_decode_progressive(
-        sched, cfg, graph, prefill_end=t_prefill
-    )
-    total_time = float(t_prefill + t_decode)
+        t_prefill, prefill_ser = simulate_prefill(sched, cfg, graph)
+        t_decode, decode_ser = simulate_decode_progressive(
+            sched, cfg, graph, prefill_end=t_prefill
+        )
+        total_time = float(t_prefill + t_decode)
 
     best = {
         "prefill_time_s": float(t_prefill),
@@ -1595,15 +1658,15 @@ def _run_strategy_once(strategy: str, cfg: Dict, *, shared_graph=None, shared_sh
 
     try:
         if best_sched is not None and hasattr(best_sched, "stats"):
-            tag = f"{prefill_len}x{decode_len}"
+            prefix = f"{strategy}_prefill-{prefill_len}xdecode_{decode_len}"
             result_dir = Path(cfg.get("result_dir", "./output/strategy_results"))
             result_dir.mkdir(parents=True, exist_ok=True)
             decode_stride = int(cfg.get("decode_sample_stride", 1) or 16)
-            trace_ops = result_dir / f"{strategy}_{tag}_ops_trace.csv"
-            trace_comms = result_dir / f"{strategy}_{tag}_comms_trace.csv"
+            trace_ops = result_dir / f"{prefix}_ops_trace.csv"
+            trace_comms = result_dir / f"{prefix}_comms_trace.csv"
             best_sched.stats.dump_csv(
-                result_dir / f"{strategy}_{tag}_overlap_segments.csv",
-                result_dir / f"{strategy}_{tag}_overlap_summary.csv",
+                result_dir / f"{prefix}_overlap_segments.csv",
+                result_dir / f"{prefix}_overlap_summary.csv",
                 include_idle=False,
                 include_all_phase=False,
                 decode_stride=decode_stride,

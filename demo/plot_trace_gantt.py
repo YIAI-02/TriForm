@@ -19,8 +19,8 @@ python plot_trace_gantt.py \
 
 python plot_trace_gantt.py \
   --compare \
-  ../algorithms/output/hw_hardware_0213/hw_scale_down_11pima/st64/llama_13b_int8_b1_s64/algo_attacc/4096x1024_ops_trace.csv \
-  ../algorithms/output/hw_hardware_0213/hw_scale_down_11pima/st64/llama_13b_int8_b1_s64/algo_hefthint/hefthint_4096x1024_ops_trace.csv \
+  ../algorithms/output/evaluate_single_test/hardware_1gpu_4aim/qwen_7b_int8_b1_s128/algo_attacc/4096x1024_ops_trace.csv \
+  ../algorithms/output/evaluate_single_test/hardware_1gpu_4aim/qwen_7b_int8_b1_s128/algo_hefthint/hefthint_4096x1024_ops_trace.csv \
   --out_dir ../figs/hw_hardware_0213/hw_scale_down_11pima/llama_13b_int8_b1_s64/gantt_comparison \
   --time_unit ms \
   --fig_w 25 \

@@ -46,7 +46,7 @@ from comm_primitives import (
 )
 
 _MISSING = object()
-DEBUG_SCHEDULER = False
+DEBUG_SCHEDULER = True
 logger = logging.getLogger(__name__)
 attach_local_debug_filter(logger, lambda: DEBUG_SCHEDULER)
 
@@ -196,6 +196,9 @@ class SchedulerBase:
             phy = int(d.mem_capacity_GB * 1024**3)
             cap = max(0, int(PIM_RUNTIME_LRU_THRESHOLD * phy))
             self._runtime_cap[name] = cap
+            self.buffer.register_runtime_device(
+                str(name),phy_bytes=int(phy),runtime_limit_bytes=int(cap),weight_cache_capacity_bytes=int(cap),
+            )
 
         #node schedule
         self._node_finish_time: Dict[str, float] = {}
@@ -470,8 +473,9 @@ class SchedulerBase:
                 mapped = self._kv_pim_for_node(node)
                 if mapped is None:
                     return False
-                return dev_name == str(getattr(mapped, "name", ""))
-            
+                if dev_name != str(getattr(mapped, "name", "")):
+                    return False
+
         # ---- 3) operator-level allow-list ----
         allowed = getattr(node, "allowed", None)
         if isinstance(allowed, Mapping):
@@ -539,9 +543,8 @@ class SchedulerBase:
             kv_in_pim = bool(getattr(self.label, "kv_in_pim", False))
             _, out_write_nd = self.cost.estimate_activation_bytes(node, batch, seq_len, phase_eff)
             size_nd = self.cost.format_size(out_write_nd, "ND")
-            logger.debug(
-                "[kv-write] node=%s target=%s kv_in_pim=%s bytes_nd=%s", nid, dev.name, kv_in_pim, out_write_nd
-            )
+            if commit:
+                logger.debug("[kv-write] node=%s target=%s kv_in_pim=%s bytes_nd=%d", nid, getattr(dev, 'name', dev), bool(kv_in_pim), int(out_write_nd or 0))
 
             if kv_in_pim:
                 pim_devs = self.cluster.devices_by_type("pim")
@@ -554,9 +557,11 @@ class SchedulerBase:
                 ready_kv = self._ready_time_for_device(g, nid, target_pim, phase_eff, commit)
                 start = max(float(self.avail.get(target_pim.name, 0.0)), float(ready_kv))
                 finish = start + float(self.cost.pim_write_time(int(out_write_nd), target_pim))
-                logger.debug(
-                    "[kv-write] node=%s target_pim=%s start=%.4f finish=%.4f", nid, target_pim.name, start, finish
-                )
+                if commit:
+                    logger.debug(
+                        "[kv-write] node=%s -> %s dur=%.4f", nid, target_pim.name,
+                        float(max(0.0, finish - start)),
+                    )
                 if commit:
                     self.avail[target_pim.name] = float(finish)
                     self._node_finish_time[nid] = float(finish)
@@ -571,12 +576,15 @@ class SchedulerBase:
                 conv_start = max(float(self.avail.get(dev.name, 0.0)), float(ready_kv))
                 conv_cost = self.cost.format_conversion_time(size_nd, self.cost.device_preferred_fmt(dev), "ND", dev)
                 _, l2e = self.comm.reserve(dev.name, host.name, size_nd, earliest=conv_start + conv_cost, commit=commit, tag="kv_write")
-                finish = float(l2e)
-                logger.debug(
-                    "[kv-write] node=%s dev=%s -> host start=%.4f finish=%.4f", nid, dev.name, conv_start, finish
-                )
+                link_end = float(l2e)
+                host_wr_t = float(self.cost.cpu_write_time(int(size_nd), host))
+                wr_start = max(float(self.avail.get(host.name, 0.0)), float(link_end))
+                finish = float(wr_start + host_wr_t)
                 if commit:
-                    self.avail[dev.name] = max(self.avail.get(dev.name, 0.0), finish)
+                    logger.debug(
+                        "[kv-write] node=%s %s->host dur=%.4f", nid, dev.name, float(max(0.0, finish - conv_start)))
+                if commit:
+                    self.avail[dev.name] = max(self.avail.get(dev.name, 0.0), link_end)
                     self.avail[host.name] = max(self.avail.get(host.name, 0.0), finish)
                     self._node_finish_time[nid] = finish
                     self._node_placement[nid] = host.name
@@ -623,14 +631,19 @@ class SchedulerBase:
                         # Fallback: treat as host-resident KV
                         host = self.cost.get_host_device()
                         if str(dev.name) == str(host.name):
-                            mem_t = float(self.cost.mem_time(int(kv_bytes), host))
+                            mem_t = float(self.cost.cpu_read_time(int(kv_bytes), host))
                             rd_start = max(float(self.avail.get(host.name, 0.0)), float(ready))
                             rd_end = rd_start + mem_t
                             if commit:
                                 self.avail[host.name] = rd_end
                             kv_ready = max(kv_ready, rd_end)
                         else:
-                            _, xfer_end = self.comm.reserve(host.name, dev.name, size_nd, earliest=float(ready), commit=commit, tag="kv_load")
+                            host_rd_t = float(self.cost.cpu_read_time(int(size_nd), host))
+                            rd_start = max(float(self.avail.get(host.name, 0.0)), float(ready))
+                            rd_end = float(rd_start + host_rd_t)
+                            if commit:
+                                self.avail[host.name] = max(float(self.avail.get(host.name, 0.0)), float(rd_end))
+                            _, xfer_end = self.comm.reserve(host.name, dev.name, size_nd, earliest=float(rd_end), commit=commit, tag="kv_load")
                             conv_t = float(self.cost.format_conversion_time(int(size_nd), "ND", dev_fmt, dev))
                             kv_ready = max(kv_ready, float(xfer_end) + float(NONOVERLAP_TIME) * conv_t)
                     else:
@@ -674,12 +687,19 @@ class SchedulerBase:
 
                 else:
                     host = self.cost.get_host_device()
-                    l2s, l2e = self.comm.reserve(host.name, dev.name, size_nd, earliest=float(ready), commit=commit, tag="kv_load")
+                    host_rd_t = float(self.cost.cpu_read_time(int(size_nd), host))
+                    rd_start = max(float(self.avail.get(host.name, 0.0)), float(ready))
+                    rd_end = float(rd_start + host_rd_t)
+                    if commit:
+                        self.avail[host.name] = max(float(self.avail.get(host.name, 0.0)), float(rd_end))
+
+                    l2s, l2e = self.comm.reserve(host.name, dev.name, size_nd, earliest=float(rd_end), commit=commit, tag="kv_load")
                     kv_ready = max(kv_ready, float(l2s)
                         + float(self.cost.combine_transfer_and_convert(host, dev, int(size_nd), "ND", str(self.cost.device_preferred_fmt(dev)),)
                         ),
                     )
-                logger.debug("[kv-load] node=%s target=%s kv_ready=%.4f", nid, dev.name, kv_ready)
+                if commit:
+                    logger.debug("[kv-load] node=%s target=%s kv_ready=%.4f", nid, dev.name, kv_ready)
 
         #---------------------3. normal weight load + compute + activation handling
         start = max(float(self.avail.get(dev.name, 0.0)), kv_ready)
@@ -696,21 +716,14 @@ class SchedulerBase:
             out_nd = max(int(out_write_nd), int(out_read_nd))
 
             #TODO：check activation residency or host store
-            if dev.type == 'pim':
-                if self.buffer.pim_reserve_activation(dev.name, out_nd, commit=True):
-                    self._act_resident[(dev.name, nid)] = out_nd
-                else:
-                    src_fmt = self.cost.device_preferred_fmt(dev)
-                    self._ensure_host_store(nid, dev, out_nd, src_fmt, finish, commit=True)
+            if self.buffer.pim_reserve_activation(dev.name, out_nd, commit=True):
+                # Activation stays resident on this device.
+                self._act_resident[(dev.name, nid)] = out_nd
             else:
-                cap = int(self._runtime_cap.get(dev.name, 0))
-                used = int(self._act_used.get(dev.name, 0))
-                if used + out_nd <= cap:
-                    self._act_used[dev.name] = used + out_nd
-                    self._act_resident[(dev.name, nid)] = out_nd
-                else:
-                    src_fmt = self.cost.device_preferred_fmt(dev)
-                    self._ensure_host_store(nid, dev, out_nd, src_fmt, finish, commit=True)
+                # Unified policy (same as PIM): evict weights first; if still
+                # cannot fit, spill activation to host.
+                src_fmt = self.cost.device_preferred_fmt(dev)
+                self._ensure_host_store(nid, dev, out_nd, src_fmt, finish, commit=True)
         return float(start), float(finish)
 
     def _earliest_finish_allreduce(
@@ -1045,9 +1058,8 @@ class SchedulerBase:
             udev = self._node_placement.get(u)
             if udev and (udev, u) in self._act_resident and self._act_refcnt[u] == 0:
                 bytes_kept = int(self._act_resident.pop((udev, u), 0))
-                dev_spec = self.cluster.devices.get(udev, None)
-                if dev_spec is not None and getattr(dev_spec, "type", "") == "pim":
-                    self.buffer.pim_release_activation(udev, bytes_kept, commit=True)
+                self.buffer.pim_release_activation(udev, bytes_kept, commit=True)
+
 
     def _get_graph_index(self, g):
         cache = getattr(self, "_graph_index_cache", None)
@@ -1116,9 +1128,7 @@ class SchedulerBase:
             t_direct = float(self.cost.comm_cost(src_dev, dst_dev, int(size_nd)))
             if (not math.isfinite(float(t_direct))) or float(t_direct) <= 0.0:
                 return (float("inf"), float("inf"))
-
-            # If source is PIM, require activation still resident on that PIM.
-            if src_dev.type == 'pim' and (src_dev.name, prod_nid) not in self._act_resident:
+            if (src_dev.name, prod_nid) not in self._act_resident:
                 return (float('inf'), float('inf'))
             # Convert src_fmt -> ND on source if needed; then send ND bytes.
             size_src = self.cost.format_size(int(bytes_nd), src_fmt)
@@ -1150,7 +1160,16 @@ class SchedulerBase:
             )
             return float(l2s), float(ready)
 
-        # Decide best route by completion time.
+        topo = normalize_topology(getattr(self.cluster, "topology", None))
+
+        if topo == "fc":
+            # FC: direct device-to-device transfers are always supported; do not route through host
+            s_direct, e_direct = _direct(False)
+            if math.isfinite(float(e_direct)):
+                return _direct(True) if commit else (float(s_direct), float(e_direct))
+            s_host, e_host = _via_host(False)
+            return _via_host(True) if commit else (float(s_host), float(e_host))
+
         s_direct, e_direct = _direct(False)
         s_host, e_host = _via_host(False)
 
@@ -1190,48 +1209,45 @@ class SchedulerBase:
 
             if pred_dev.name == dev.name:
                 # Same device
-                # NOTE:NO transfer unless (PIM) activation got evicted.
-                if dev.type == "pim":
-                    pred_name_up = str(getattr(g.nodes.get(u), 'name', '')).upper() if hasattr(g, 'nodes') else ''
-                    if pred_name_up in ('K_WRITE', 'V_WRITE', 'KV_WRITE'):
-                        inbound_start_times.append(pred_finish)
-                        inbound_end_times.append(pred_finish)
-                        continue
-                    if (pred_dev.name, u) in self._act_resident:
-                        inbound_start_times.append(pred_finish)
-                        inbound_end_times.append(pred_finish)
-                    else:
-                        # Need host round-trip
-                        host_ready = self._ensure_host_store(u, pred_dev, pred_write, src_fmt, pred_finish, commit)
-                        size_nd = self.cost.format_size(pred_write, 'ND')
-                        host_dev = self.cost.get_host_device()
-                        l2s, l2e = self.comm.reserve(
-                            host_dev.name,
-                            dev.name,
-                            size_nd,
-                            earliest=host_ready,
-                            commit=commit,
-                            tag='act_reload',
-                            extra={
-                                'payload': 'activation',
-                                'action': 'reload',
-                                'route': 'host',
-                                'prod_node': str(u),
-                                'cons_node': str(nid),
-                                'bytes_nd': int(pred_write),
-                                'src_fmt': 'ND',
-                                'dst_fmt': str(self.cost.device_preferred_fmt(dev)),
-                                'reason': 'pim_evicted',
-                            },
-                        )
-                        inbound_start_times.append(float(l2s))
-                        ready = float(l2s) + float(
-                            self.cost.combine_transfer_and_convert(host_dev, dev, int(size_nd), "ND", str(self.cost.device_preferred_fmt(dev)),)
-                        )
-                        inbound_end_times.append(float(ready))
-                else:
+                # NOTE: NO transfer unless the producer activation was spilled.
+                pred_name_up = str(getattr(g.nodes.get(u), 'name', '')).upper() if hasattr(g, 'nodes') else ''
+                if pred_name_up in ('K_WRITE', 'V_WRITE', 'KV_WRITE'):
                     inbound_start_times.append(pred_finish)
                     inbound_end_times.append(pred_finish)
+                    continue
+
+                if (pred_dev.name, u) in self._act_resident:
+                    inbound_start_times.append(pred_finish)
+                    inbound_end_times.append(pred_finish)
+                else:
+                    # Need host round-trip
+                    host_ready = self._ensure_host_store(u, pred_dev, pred_write, src_fmt, pred_finish, commit)
+                    size_nd = self.cost.format_size(pred_write, 'ND')
+                    host_dev = self.cost.get_host_device()
+                    l2s, l2e = self.comm.reserve(
+                        host_dev.name,
+                        dev.name,
+                        size_nd,
+                        earliest=host_ready,
+                        commit=commit,
+                        tag='act_reload',
+                        extra={
+                            'payload': 'activation',
+                            'action': 'reload',
+                            'route': 'host',
+                            'prod_node': str(u),
+                            'cons_node': str(nid),
+                            'bytes_nd': int(pred_write),
+                            'src_fmt': 'ND',
+                            'dst_fmt': str(self.cost.device_preferred_fmt(dev)),
+                            'reason': 'evicted',
+                        },
+                    )
+                    inbound_start_times.append(float(l2s))
+                    ready = float(l2s) + float(
+                        self.cost.combine_transfer_and_convert(host_dev, dev, int(size_nd), "ND", str(self.cost.device_preferred_fmt(dev)),)
+                    )
+                    inbound_end_times.append(float(ready))
             else:
                 # Different devices: choose best path (direct vs via host), also handles format conversion.
                 l2s, ready = self._reserve_activation_transfer_best_path(
@@ -1248,9 +1264,6 @@ class SchedulerBase:
 
         # The node can start after all required inbound transfers are done.
         ready_t = float(max(inbound_end_times, default=0.0))
-        logger.debug(
-            "[ready] node=%s dev=%s ready=%.4f deps=%d", nid, dev.name, ready_t, len(inbound_end_times)
-        )
         return ready_t
 
     def _weight_load_time(self, node: TaskNode, dev: DeviceSpec, earliest: float, commit: bool) -> float:
@@ -1630,6 +1643,7 @@ class HEFTScheduler(SchedulerBase):
 
         exec_types = set(self._executor_device_types())
         devs = [d for d in self.cluster.devices.values() if str(getattr(d, 'type', '')).lower() in exec_types]
+        topo = normalize_topology(getattr(self.cluster, "topology", None))
         total = 0.0
         k = 0
         for di in devs:
@@ -1658,7 +1672,10 @@ class HEFTScheduler(SchedulerBase):
                 # Via host: di -> host (ND) then host -> dj (ND + dst conversion).
                 t_to_host = float(self.cost.comm_cost(di, host, int(size_nd)))
                 t_from_host = float(self.cost.combine_transfer_and_convert(host, dj, int(size_nd), 'ND', str(dst_fmt)))
-                t_path = float(min(t_direct, float(t_to_host + t_from_host)))
+                if topo == "fc":
+                    t_path = float(t_direct)
+                else:
+                    t_path = float(min(t_direct, float(t_to_host + t_from_host)))
 
                 total += float(t_conv_src + t_path)
                 k += 1
@@ -1785,12 +1802,10 @@ class HEFTScheduler(SchedulerBase):
                 raise RuntimeError("No available device for node %s" % nid)
 
             chosen_mode, chosen_finish, chosen_data = min(candidates, key=lambda x: x[1])
-            logger.debug(
-                "[sched] choose node=%s mode=%s finish=%.4f candidates=%s",
-                nid, chosen_mode, chosen_finish, [(m, round(f, 4)) for m, f, _ in candidates]
-            )
-
             dev = chosen_data
+            # Keep this log compact: candidate lists can be very long.
+            logger.debug(
+                "[sched] choose node=%s dev=%s mode=%s finish=%.4f (cands=%d)", nid, getattr(dev, 'name', dev), chosen_mode, float(chosen_finish), int(len(candidates)))
             start, finish = self._earliest_finish_on_device(g, nid, dev, self.label, phase, commit=True)
             schedule.append(ScheduledTask(nid, dev.name, start, finish))
             op_name = node.attrs.get('op') or node.name
@@ -1811,8 +1826,6 @@ class HEFTScheduler(SchedulerBase):
                 remaining_preds[v] -= 1
                 if remaining_preds[v] == 0:
                     heapq.heappush(heap, (-rank_u.get(v, 0.0), topo_pos.get(v, 0), v))
-
-            # logger.debug(str(f'[Schedule] Node {nid} on {self._node_placement[nid]} from {start:.3f} to {finish:.3f} ({chosen_mode})'))
         if len(scheduled) != len(idx.nodes):
             missing = [n for n in idx.nodes if n not in scheduled]
             raise RuntimeError(
@@ -2170,11 +2183,15 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
             return 0.0
         size_nd = int(self.cost.format_size(int(bytes_nd), "ND"))
 
-        host = self.cost.get_host_device()
-        # Via-host route
-        t_via_host = float(self.cost.comm_cost(src, host, size_nd) + self.cost.comm_cost(host, dst, size_nd))
-        # Direct route (if topology provides)
+        topo = normalize_topology(getattr(self.cluster, "topology", None))
+        # Direct route (FC fabrics always allow direct device-to-device transfers).
         t_direct = float(self.cost.comm_cost(src, dst, size_nd))
+        if topo == "fc":
+            return float(t_direct)
+
+        host = self.cost.get_host_device()
+        # Via-host route (STAR / host-centric fabrics)
+        t_via_host = float(self.cost.comm_cost(src, host, size_nd) + self.cost.comm_cost(host, dst, size_nd))
         return float(min(t_via_host, t_direct))
 
     def _rep_device_by_type(self, dev_type: str) -> Optional[DeviceSpec]:

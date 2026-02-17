@@ -6,39 +6,33 @@ shopt -s nullglob
 # Single source of truth
 # =========================
 CONFIG_FILE="${CONFIG_FILE:-./examples/evaluate_len_sweep_config.json}"
-OUTPUT_ROOT="${OUTPUT_ROOT:-./output/experiment_2npu}"
+OUTPUT_ROOT="${OUTPUT_ROOT:-./output/experiment_gpu_aim}"
 
 # Sweep dims
 MODEL_FAMILY_VARIANTS=(
-  "mixtral:8x7b"
-  "palm:62b"
+  # "mixtral:8x7b"
+  # "palm:62b"
   "qwen:1.8b 7b"
-  # "llama:7b"
+  "llama:7b 70b"
 )
 
-PREFILLS=(128 512 1024)
-DECODES=(128 512 1024)
+PREFILLS=(1024 2048 4096 8192)
+DECODES=(1024 2048 4096 8192)
 
 # Hardware sweep (edit here, or use --hardware_glob)
 HARDWARE_CONFIGS=(
-  ./examples/hardware_config_2npu_2aim.json
-  ./examples/hardware_config_2npu_4aim.json
-  # ./examples/hardware_config_2npu_6aim.json
-  ./examples/hardware_config_2npu_8aim.json
-  # ./examples/hardware_config_2npu_12aim.json
-  # ./examples/hardware_config_2npu_16aim.json
+  ./examples/hardware_1gpu_4aim.json
 )
 
 # Run knobs
-STRIDE="${STRIDE:-64}"
+STRIDE="${STRIDE:-128}"
 DTYPE="${DTYPE:-int8}"
-# Keep raw string, then parse once args are handled to avoid space issues
 BATCHES_STR="${BATCHES:-${BATCH:-"1 4 8 16 32"}}"
 
 declare -a BATCHES
 
 NPU_FAST=1
-PIM_FAST=0
+PIM_FAST=1
 DEBUG=0
 HARDWARE_GLOB=""
 JOBS="${JOBS:-}"

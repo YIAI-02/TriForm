@@ -14,12 +14,6 @@ RANKU_INCLUDE_AVG_WEIGHT_LOAD: bool = True
 # Weight storage & formats
 # =========================
 
-# Progressive multi-pass tuning (iterate until converged or reach max passes)
-ENABLE_TWO_PASS_FORMAT_TUNING: bool = True
-FORMAT_TUNING_MAX_PASSES: int = 30
-FORMAT_TUNING_TIME_EPS: float = 1e-4      # 0.1 ms
-FORMAT_TUNING_MAP_EPS: float  = 0.02      # <=1% of weights changed
-
 # Host (weights live in "main memory")
 HOST_NAME: str = "CPU0"
 
@@ -64,6 +58,11 @@ GB_FREQ_GHZ: float = 1.0
 # PIM 容量分配系数
 PIM_STATIC_ALLOC_RATIO: float = 0.9
 PIM_RUNTIME_LRU_THRESHOLD: float = 0.95
+
+# =========================
+# PIM weight preload control
+# =========================
+ENABLE_PIM_WEIGHT_PRELOAD: bool = False
 # =========================
 # Operator device constraints
 # =========================
@@ -166,8 +165,6 @@ def setup_logging(debug: bool, log_file: str = "./output/debug_log.txt"):
         # Silence logs by raising the threshold
         logger.setLevel(_logging.CRITICAL)
 # --- end debug logging setup ---
-
-
 
 # =========================
 # Scheduler algorithm controls

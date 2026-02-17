@@ -247,6 +247,24 @@ class GlobalMemoryManager:
 
         self.ensure_device_cache(dev_name, int(weight_cache_capacity_bytes))
 
+    def register_runtime_device(
+        self,
+        dev_name: str,
+        *,
+        phy_bytes: int,
+        runtime_limit_bytes: int,
+        weight_cache_capacity_bytes: Optional[int] = None,
+    ) -> None:
+        """Register a *non-PIM* device for unified runtime memory modeling"""
+        self.register_pim_device(
+            str(dev_name),
+            phy_bytes=int(phy_bytes),
+            runtime_limit_bytes=int(runtime_limit_bytes),
+            kv_reserved_bytes=0,
+            kv_in_pim=False,
+            weight_cache_capacity_bytes=weight_cache_capacity_bytes,
+        )
+
     def pim_used_bytes(self, dev_name: str) -> Tuple[int, int, int, int, int]:
         """Return (phy_bytes, kv_used, act_used, weight_used, total_used)."""
         st = self.pim_state.get(dev_name)

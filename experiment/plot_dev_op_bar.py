@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 python plot_dev_op_bar.py \
-  --csv ../algorithms/output/evaluate_single_test/hardware_config_gpu_7aim.json/llama_7b_int8_b1_s64/algo_hefthint/hefthint_4096x4096_ops_trace.csv \
+  --csv ../algorithms/output/evaluate_single_test/hardware_1gpu_4aim/qwen_7b_int8_b1_s128/algo_hefthint/hefthint_4096x1024_ops_trace.csv \
   --out_dir ../figs/dev_op_bar/
   --device_label cpu="NPU" \
   --device_label pim="PIM"
