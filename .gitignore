@@ -14,5 +14,6 @@ __pycache__/
 **/debug_*.txt
 **/pim_sim_*.txt
 #
-submodules
+submodules/CENT
+submodules/LLMCompass
 verify/evaluate_single_test
