@@ -8,13 +8,25 @@
      * <prefix>.gpu_tasks.json
      * <prefix>.pim_tasks.json
 
-    python ./verify/schedule_deploy_verify.py export \
-        --schedule ./algorithms/output/evaluate_single_test/hardware_config_scale_down_12pima/llama_7b_int8_b1_s128/algo_hefthint/hefthint_4096x1024_ops_trace.csv \
-        --out-dir ./verify/out \
-        --prefix hefthint_seg \
-        --segment-scope layer \
-        --prefill-len 2048 \
-        --dim 4096 --ffn-dim 11008 --n-heads 32 --shards 4
+python ./verify/schedule_deploy_verify.py export \
+  --schedule  ./algorithms/output/evaluate_single_test/hardware_1gpu_4aim/llama_7b_int8_b1_s128/algo_pd/pd_prefill-8192xdecode_128_ops_trace.csv \
+  --comms     ./algorithms/output/evaluate_single_test/hardware_1gpu_4aim/llama_7b_int8_b1_s128/algo_pd/pd_prefill-8192xdecode_128_comms_trace.csv \
+  --out-dir   ./verify/out \
+  --prefix    pd_seg \
+  --segment-scope layer \
+  --prefill-len 8192 \
+  --decode-stride 128 \
+  --cfg ./configs/llama_7b_shape.json
+
+python ./verify/schedule_deploy_verify.py export \
+  --schedule  ./algorithms/output/evaluate_single_test/hardware_1gpu_4aim/llama_7b_int8_b1_s128/algo_hefthint/hefthint_prefill-8192xdecode_128_ops_trace.csv \
+  --comms     ./algorithms/output/evaluate_single_test/hardware_1gpu_4aim/llama_7b_int8_b1_s128/algo_hefthint/hefthint_prefill-8192xdecode_128_comms_trace.csv \
+  --out-dir   ./verify/out \
+  --prefix    hefthint_seg \
+  --segment-scope layer \
+  --prefill-len 8192 \
+  --decode-stride 128 \
+  --cfg ./configs/llama_7b_shape.json
 
 2) run-gpu
    - 读取 gpu_tasks.json，把每个 segment 的算子序列连续执行并计时
@@ -31,29 +43,22 @@
    - 输出：pim_results.json （key -> sec_per_call）
   python ./verify/schedule_deploy_verify.py run-pim \
   --tasks ./verify/out/hefthint_seg.pim_tasks.json \
-  --out ./verify/out/hefthint_seg.pim_results.json \
-  --cent-sim-root ./submodules/CENT/cent_simulation \
-  --pim-ramulator-config ./algorithms/aim_simulator/example.yaml \
-  --pim-ramulator-bin ./algorithms/ramulator2 \
-  --pim-freq-ghz 1.6 \
-  --pim-num-channels 4 --pim-num-banks 8 --pim-num-devices 7
-
-  python ./verify/schedule_deploy_verify.py run-pim \
-  --tasks ./verify/out/hefthint_seg.pim_tasks.json \
   --out   ./verify/out/hefthint_seg.pim_results.json \
   --pim-ramulator-config ./algorithms/aim_simulator/example.yaml \
-  --pim-hw-json          ./algorithms/aim_simulator/PIM_AiM.json
+  --pim-hw-json          ./algorithms/aim_simulator/PIM_AiM.json \
+  --pim-ramulator-bin ./algorithms/ramulator2\
+  --pim-num-devices 4
 
 4) merge
    - 输入：schedule CSV + gpu_results.json + pim_results.json
    - 重新按同样规则切 segment，统计每个 segment 出现次数，做求和/聚合，给出总 latency + speedup 对比。
    python ./verify/schedule_deploy_verify.py merge \
-  --schedule ./algorithms/output/evaluate_single_test/hardware_config_gpu_7aim.json/llama_7b_int8_b1_s64/algo_hefthint/hefthint_4096x4096_ops_trace.csv \
+  --schedule ./algorithms/output/evaluate_single_test/hardware_1gpu_4aim/llama_7b_int8_b1_s128/algo_hefthint/hefthint_prefill-8192xdecode_128_ops_trace.csv \
   --gpu-results ./verify/out/hefthint_seg.gpu_results.json \
   --pim-results ./verify/out/hefthint_seg.pim_results.json \
   --comm-model schedule \
-  --decode-stride 64 \
-  --out-csv ./verify/out/merge_report.csv
+  --decode-stride 128 \
+  --out-csv ./verify/out/merge_report_hefthint.csv
 
 decode 有多少个 token（多少个 step）：由 schedule 的 decode 行数决定
 """
@@ -361,7 +366,7 @@ def parse_layer(node_id: str) -> int:
     return int(m.group(1)) if m else -1
 
 def parse_shard(node_id: str) -> int:
-    m = re.search(r"_S(\d+)", str(node_id))
+    m = re.search(r"_[sS]_?(\d+)", str(node_id))
     return int(m.group(1)) if m else -1
 
 def infer_decode_steps(df: pd.DataFrame) -> int:
@@ -392,6 +397,18 @@ def add_step_column(df: pd.DataFrame) -> pd.DataFrame:
             df.loc[dmask, "step"] = (d.groupby("phase").cumcount() // nodes_per_step).astype(int).values
     return df
 
+
+def normalize_device_type(v: Any) -> str:
+    s = str(v).strip().lower()
+    # Common aliases
+    if s in ("gpu", "cuda"):
+        return "npu"
+    if s in ("aim",):
+        return "pim"
+    if s in ("host", "x86", "arm"):
+        return "cpu"
+    return s
+
 def load_schedule_csv(path: str) -> pd.DataFrame:
     df = pd.read_csv(path)
     required = {"phase","node_id","op","device","device_type","start","end","duration"}
@@ -399,11 +416,136 @@ def load_schedule_csv(path: str) -> pd.DataFrame:
     if missing:
         raise ValueError(f"schedule csv missing columns: {sorted(missing)}")
     df = df.copy()
-    df["_row"] = range(len(df))  # stable tie-breaker
+    df["_row"] = range(len(df))
+    df["device_type"] = df["device_type"].apply(normalize_device_type)
+    # best-effort numeric conversion (avoid string dtype surprises later)
+    df["duration"] = pd.to_numeric(df["duration"], errors="coerce")
+    df["start"] = pd.to_numeric(df["start"], errors="coerce")
+    df["end"] = pd.to_numeric(df["end"], errors="coerce")
     df = add_step_column(df)
     df["layer"] = df["node_id"].apply(parse_layer)
     df["shard"] = df["node_id"].apply(parse_shard)
     return df
+
+
+# ==========================================================
+# Comms trace (optional) helpers
+# ==========================================================
+def load_comms_csv(path: str) -> pd.DataFrame:
+    """Load a comms trace CSV."""
+    df = pd.read_csv(path)
+    # best-effort normalization: keep original columns, only ensure duration is numeric
+    if "duration" in df.columns:
+        df = df.copy()
+        df["duration"] = pd.to_numeric(df["duration"], errors="coerce")
+    return df
+
+
+def extract_weight_load_seconds(
+    comms_paths: List[str],
+    *,
+    decode_stride: int = 1,
+) -> Dict[str, float]:
+    """Aggregate `weight_load` durations from comms trace(s)."""
+    gpu_s = 0.0
+    pim_s = 0.0
+    unknown_s = 0.0
+
+    if not comms_paths:
+        return {"gpu_s": 0.0, "pim_s": 0.0, "total_s": 0.0, "unknown_s": 0.0}
+
+    rows: List[pd.DataFrame] = []
+
+    def _norm_str(s: pd.Series) -> pd.Series:
+        return s.astype(str).fillna("").replace("nan", "", regex=False).str.strip()
+
+    for cp in comms_paths:
+        p = resolve_existing_path(cp)
+        df = load_comms_csv(str(p))
+        if df is None or df.empty:
+            continue
+        if "tag" not in df.columns or "duration" not in df.columns:
+            continue
+
+        tag_l = df["tag"].astype(str).str.strip().str.lower()
+        wl = df[tag_l == "weight_load"].copy()
+        if wl.empty:
+            continue
+
+        wl["duration"] = pd.to_numeric(wl["duration"], errors="coerce").fillna(0.0).astype(float)
+
+        # destination-based classification
+        dst = _norm_str(wl["dst"]) if "dst" in wl.columns else pd.Series([""] * len(wl), index=wl.index)
+        dst_type = _norm_str(wl["dst_type"]) if "dst_type" in wl.columns else pd.Series([""] * len(wl), index=wl.index)
+
+        dst_u = dst.astype(str).str.upper().str.strip()
+        dst_norm = dst_u.str.replace("_", "", regex=False)
+        dst_norm = dst_norm.str.replace(r"^NPU", "GPU", regex=True)
+
+        dst_type_l = dst_type.astype(str).str.strip().str.lower()
+
+        pim_mask = dst_norm.str.startswith("PIM") | dst_type_l.str.contains("pim")
+        gpu_mask = (
+            dst_norm.str.startswith("GPU")
+            | dst_norm.str.startswith("NPU")
+            | dst_type_l.str.contains("gpu")
+            | dst_type_l.str.contains("npu")
+            | dst_type_l.isin(["other"])
+        )
+        gpu_mask = gpu_mask & (~pim_mask)
+
+        cls = np.where(pim_mask.to_numpy(), "pim", np.where(gpu_mask.to_numpy(), "gpu", "unknown"))
+        wkey = pd.Series([""] * len(wl), index=wl.index)
+        if "node_id" in wl.columns:
+            nid = _norm_str(wl["node_id"])
+            wkey = wkey.where(wkey != "", nid)
+        if "weight_id" in wl.columns:
+            wid = _norm_str(wl["weight_id"])
+            wkey = wkey.where(wkey != "", wid)
+        if "op" in wl.columns:
+            op = _norm_str(wl["op"])
+            wkey = wkey.where(wkey != "", op)
+        # last resort: stable per-row id inside this comms trace
+        wkey = wkey.where(wkey != "", pd.Series([f"ROW{i}" for i in range(len(wl))], index=wl.index))
+
+        rows.append(pd.DataFrame({
+            "class": cls,
+            "dst": dst_norm.to_numpy(),
+            "wkey": wkey.to_numpy(),
+            "duration": wl["duration"].to_numpy(dtype=np.float64),
+        }))
+
+    if not rows:
+        return {"gpu_s": 0.0, "pim_s": 0.0, "total_s": 0.0, "unknown_s": 0.0}
+
+    all_wl = pd.concat(rows, ignore_index=True)
+
+    uniq = (
+        all_wl.groupby(["class", "dst", "wkey"], dropna=False)["duration"]
+        .max()
+        .reset_index()
+    )
+    per_dst = (
+        uniq.groupby(["class", "dst"], dropna=False)["duration"]
+        .sum()
+        .reset_index()
+    )
+
+    pim_by = per_dst[per_dst["class"] == "pim"].set_index("dst")["duration"].to_dict()
+    gpu_by = per_dst[per_dst["class"] == "gpu"].set_index("dst")["duration"].to_dict()
+    unk_by = per_dst[per_dst["class"] == "unknown"].set_index("dst")["duration"].to_dict()
+
+    pim_part = max(pim_by.values()) if pim_by else 0.0
+    gpu_part = max(gpu_by.values()) if gpu_by else 0.0
+    unk_part = sum(unk_by.values()) if unk_by else 0.0
+
+    pim_s = float(pim_part)
+    gpu_s = float(gpu_part + unk_part)
+    unknown_s = float(unk_part)
+
+    total_s = max(float(gpu_s), float(pim_s))
+    return {"gpu_s": float(gpu_s), "pim_s": float(pim_s), "total_s": total_s, "unknown_s": float(unknown_s)}
+
 
 
 # ==========================================================
@@ -436,10 +578,10 @@ class WorkloadConfig:
     pim_num_devices: int = 1  # DIMM/device count (model-parallel)
 
     # AiM-Ramulator integration
-    pim_ramulator_bin: str = "ramulator2"
+    pim_ramulator_bin: Optional[str] = None
     pim_ramulator_config: Optional[str] = None  # required to enable ramulator mode
     pim_freq_ghz: float = 1.0
-    pim_ramulator_timeout_s: int = 300
+    pim_ramulator_timeout_s: int = 1500
     pim_keep_traces: bool = False
     pim_trace_dir: Optional[str] = None
 
@@ -520,7 +662,9 @@ def infer_op_shape(sig: OpSig, cfg: WorkloadConfig) -> OpShape:
 class SegmentSig:
     """
     Segment signature:
-    - device_type: 'npu' or 'pim'
+    - device_type: 'npu' or 'pim' (measured backends).
+      Other device types (e.g. 'cpu') are treated as trace-only: we skip exporting
+      them as tasks and keep their schedule durations directly in merge().
     - phase: 'prefill' or 'decode'
     - step: prefill=-1, decode step id
     - ops: ordered list of (op, shard) inside the segment
@@ -807,6 +951,13 @@ class PIMBackend:
         self.cfg = cfg
         self._TB_cls = import_aim_transformer_block(cent_sim_root)
 
+        if not cfg.pim_ramulator_bin:
+            raise RuntimeError(
+                "pim_ramulator_bin must be provided (path/name of AiM-enabled ramulator2 executable).\n"
+                "Provide it via cfg (pim_tasks.json config) or at run time: "
+                "run-pim --pim-ramulator-bin <path>."
+            )
+
         if not cfg.pim_ramulator_config:
             raise RuntimeError(
                 "PIM ramulator mode requires a config file.\n"
@@ -822,9 +973,14 @@ class PIMBackend:
     # ---------------------------------------------------------------------
 
     def _ramulator_cmd(self, trace_path: Path) -> List[str]:
-        exe = str(self.cfg.pim_ramulator_bin or "ramulator2")
-        if ("/" not in exe and "\\" not in exe) and (Path.cwd() / exe).exists():
-            exe = str((Path.cwd() / exe).resolve())
+        exe_s = str(self.cfg.pim_ramulator_bin)
+        if ("/" in exe_s) or ("\\" in exe_s) or exe_s.startswith("~"):
+            exe = str(Path(exe_s).expanduser().resolve())
+        else:
+            exe = exe_s
+            cand = (Path.cwd() / exe_s)
+            if cand.exists():
+                exe = str(cand.resolve())
         return [exe, "-f", str(self._ramulator_config), "-t", str(trace_path)]
 
     def _run_ramulator(self, trace_path: Path) -> int:
@@ -1122,8 +1278,8 @@ class PIMBackend:
 
         # LOCAL dims (single-shard modeling)
         dim_local = int(sh0.shard_dim if int(self.cfg.shards) > 1 else sh0.dim)
-        n_heads_local = int(sh0.heads_per_shard if int(self.cfg.shards) > 1 else sh0.n_heads)
-        ffn_local = int(sh0.ffn_shard_dim if int(self.cfg.shards) > 1 else sh0.ffn_dim)
+        n_heads_local = int(sh0.heads_per_shard if int(self.cfg.shards) > 1 else int(self.cfg.n_heads))
+        ffn_local = int(sh0.ffn_shard_dim if int(self.cfg.shards) > 1 else int(self.cfg.ffn_dim))
         seqlen = int(sh0.key_len)
 
         trace_dir, cleanup = self._alloc_trace_dir()
@@ -1249,6 +1405,72 @@ def _load_json(path: str) -> Dict[str, Any]:
     p = resolve_existing_path(path)
     return json.loads(p.read_text(encoding="utf-8"))
 
+
+# ==========================================================
+# Model shape JSON helpers
+# ==========================================================
+_MODEL_DIM_KEYS = [
+    "hidden_dim",
+    "hidden_size",
+    "dim",
+    "d_model",
+    "model_dim",
+    "n_embd",
+]
+_MODEL_FFN_KEYS = [
+    "intermediate_dim",
+    "intermediate_size",
+    "ffn_dim",
+    "ffn_hidden_dim",
+    "mlp_dim",
+]
+_MODEL_NHEAD_KEYS = [
+    "q_head_num",
+    "num_attention_heads",
+    "n_heads",
+    "num_heads",
+    "head_num",
+    "n_head",
+]
+
+
+def load_model_shape_json(path: str) -> Dict[str, int]:
+    """Load a model shape/config JSON and return {dim, ffn_dim, n_heads}."""
+    p = resolve_existing_path(path)
+    obj = json.loads(p.read_text(encoding="utf-8"))
+    if not isinstance(obj, dict):
+        raise ValueError(f"model cfg must be a JSON object (dict), got {type(obj)}: {p}")
+
+    lower = {str(k).lower(): v for k, v in obj.items()}
+
+    def _pick_int(keys: List[str]) -> Optional[int]:
+        for k in keys:
+            if k.lower() in lower:
+                v = lower[k.lower()]
+                try:
+                    return int(v)
+                except Exception:
+                    continue
+        return None
+
+    dim = _pick_int(_MODEL_DIM_KEYS)
+    ffn = _pick_int(_MODEL_FFN_KEYS)
+    n_heads = _pick_int(_MODEL_NHEAD_KEYS)
+
+    missing: List[str] = []
+    if dim is None:
+        missing.append("dim")
+    if ffn is None:
+        missing.append("ffn_dim")
+    if n_heads is None:
+        missing.append("n_heads")
+    if missing:
+        raise ValueError(
+            f"model cfg missing required field(s): {missing}. "
+            f"Got keys={sorted(list(lower.keys()))}. File={p}"
+        )
+    return {"dim": int(dim), "ffn_dim": int(ffn), "n_heads": int(n_heads)}
+
 def load_pim_hw_json(path: str) -> Dict[str, Any]:
     """Load and normalize a minimal PIM HW spec JSON.
     Required keys (any alias below is accepted):
@@ -1257,9 +1479,6 @@ def load_pim_hw_json(path: str) -> Dict[str, Any]:
       - burst_length / burst / bl
       - num_banks / banks
       - num_channels / channels
-
-    Optional keys:
-      - pim_num_devices / num_devices / devices / FC_devices
       - pim_threads / threads
       - pim_reuse_size / reuse_size
       - pim_freq_ghz / freq_ghz / frequency_ghz
@@ -1305,7 +1524,6 @@ def load_pim_hw_json(path: str) -> Dict[str, Any]:
         "pim_burst_length": _as_pos_int("pim_burst_length", _get_any(["burst_length", "burst", "bl"])),
         "pim_num_banks": _as_pos_int("pim_num_banks", _get_any(["num_banks", "banks"])),
         "pim_num_channels": _as_pos_int("pim_num_channels", _get_any(["num_channels", "channels"])),
-        "pim_num_devices": None,
         "pim_threads": None,
         "pim_reuse_size": None,
         "pim_freq_ghz": None,
@@ -1313,7 +1531,10 @@ def load_pim_hw_json(path: str) -> Dict[str, Any]:
 
     v = _get_any(["pim_num_devices", "num_devices", "devices", "fc_devices"], required=False)
     if v is not None:
-        hw["pim_num_devices"] = _as_pos_int("pim_num_devices", v)
+        raise ValueError(
+            f"{p}: device-count keys (pim_num_devices/num_devices/devices/FC_devices) are no longer supported in --pim-hw-json. "
+            "Pass device count via CLI: run-pim --pim-num-devices N."
+        )
 
     v = _get_any(["pim_threads", "threads"], required=False)
     if v is not None:
@@ -1332,7 +1553,14 @@ def load_pim_hw_json(path: str) -> Dict[str, Any]:
 # ==========================================================
 # Export / Run / Merge
 # ==========================================================
-def export_tasks(schedule_paths: List[str], cfg: WorkloadConfig, out_dir: str, prefix: str) -> Tuple[Path, Path]:
+def export_tasks(
+    schedule_paths: List[str],
+    cfg: WorkloadConfig,
+    out_dir: str,
+    prefix: str,
+    *,
+    comms_paths: Optional[List[str]] = None,
+) -> Tuple[Path, Path]:
     outp = Path(out_dir).expanduser().resolve()
     outp.mkdir(parents=True, exist_ok=True)
 
@@ -1340,12 +1568,52 @@ def export_tasks(schedule_paths: List[str], cfg: WorkloadConfig, out_dir: str, p
     dfs: List[pd.DataFrame] = []
     resolved_paths: List[Path] = []
     max_decode_steps = 0
+    max_shard_seen = -1
     for sp in schedule_paths:
         p = resolve_existing_path(sp)
         resolved_paths.append(p)
         df = load_schedule_csv(str(p))
         dfs.append(df)
         max_decode_steps = max(max_decode_steps, infer_decode_steps(df))
+
+    if "shard" in df.columns:
+        ms = pd.to_numeric(df["shard"], errors="coerce").fillna(-1).astype(int).max()
+        max_shard_seen = max(max_shard_seen, int(ms))
+
+    inferred = int(max_shard_seen + 1) if int(max_shard_seen) >= 0 else 1
+    if int(getattr(cfg, "shards", 0) or 0) != inferred:
+        print(f"[export] inferred shards={inferred} from schedule (max_shard={max_shard_seen}), override cfg.shards={cfg.shards}")
+    cfg.shards = inferred
+
+    # optional comms traces (for weight_load accounting)
+    resolved_comms: List[Path] = []
+    if comms_paths:
+        for cp in comms_paths:
+            if not cp:
+                continue
+            resolved_comms.append(resolve_existing_path(cp))
+    # Global sum across all provided comms traces.
+    wl = extract_weight_load_seconds(
+        [str(p) for p in resolved_comms],
+        decode_stride=int(getattr(cfg, "decode_stride", 1) or 1),
+    )
+    weight_load_gpu_s = float(wl.get("gpu_s", 0.0))
+    weight_load_pim_s = float(wl.get("pim_s", 0.0))
+    weight_load_unknown_s = float(wl.get("unknown_s", 0.0))
+
+    # Optional per-schedule mapping when user provides paired schedules + comms traces.
+    # This avoids over/under-counting when merge() is called with multiple schedules.
+    weight_load_by_schedule: Dict[str, Dict[str, float]] = {}
+    if comms_paths and len(resolved_comms) == len(resolved_paths):
+        stride = int(getattr(cfg, "decode_stride", 1) or 1)
+        for sp, cp in zip(resolved_paths, resolved_comms):
+            w = extract_weight_load_seconds([str(cp)], decode_stride=stride)
+            weight_load_by_schedule[str(sp)] = {
+                "gpu_s": float(w.get("gpu_s", 0.0)),
+                "pim_s": float(w.get("pim_s", 0.0)),
+                "unknown_s": float(w.get("unknown_s", 0.0)),
+                "total_s": float(w.get("total_s", 0.0)),
+            }
 
     # auto-fill decode_context_lens if None
     if cfg.decode_context_lens is None:
@@ -1364,6 +1632,7 @@ def export_tasks(schedule_paths: List[str], cfg: WorkloadConfig, out_dir: str, p
 
     gpu_tasks: List[Dict[str, Any]] = []
     pim_tasks: List[Dict[str, Any]] = []
+    skipped_tasks: List[Dict[str, Any]] = []
     for k, seg in uniq.items():
         item = {
             "key": k,
@@ -1372,12 +1641,13 @@ def export_tasks(schedule_paths: List[str], cfg: WorkloadConfig, out_dir: str, p
             "ops_repr": seg.ops_repr(),
             "count_hint": int(ctr.get(k, 0)),
         }
-        if seg.device_type == "npu":
+        dev_type = str(seg.device_type).strip().lower()
+        if dev_type == "npu":
             gpu_tasks.append(item)
-        elif seg.device_type == "pim":
+        elif dev_type == "pim":
             pim_tasks.append(item)
         else:
-            raise ValueError(f"Unknown device_type {seg.device_type!r}, expected 'npu' or 'pim'")
+            skipped_tasks.append(item)
 
 
     gpu_json = {
@@ -1386,6 +1656,14 @@ def export_tasks(schedule_paths: List[str], cfg: WorkloadConfig, out_dir: str, p
         "backend": "gpu",
         "segment_scope": cfg.segment_scope,
         "schedules": [str(p) for p in resolved_paths],
+        "weight_load_s": float(weight_load_gpu_s),
+        "weight_load_meta": {
+            "gpu_s": float(weight_load_gpu_s),
+            "pim_s": float(weight_load_pim_s),
+            "unknown_s": float(weight_load_unknown_s),
+            "total_s": float(weight_load_gpu_s + weight_load_pim_s),
+        },
+        "weight_load_by_schedule": weight_load_by_schedule,
         "config": cfg.to_dict(),
         "tasks": sorted(gpu_tasks, key=lambda x: x["key"]),
     }
@@ -1395,6 +1673,15 @@ def export_tasks(schedule_paths: List[str], cfg: WorkloadConfig, out_dir: str, p
         "backend": "pim",
         "segment_scope": cfg.segment_scope,
         "schedules": [str(p) for p in resolved_paths],
+        "comms_traces": [str(p) for p in resolved_comms],
+        "weight_load_s": float(weight_load_pim_s),
+        "weight_load_meta": {
+            "gpu_s": float(weight_load_gpu_s),
+            "pim_s": float(weight_load_pim_s),
+            "unknown_s": float(weight_load_unknown_s),
+            "total_s": float(weight_load_gpu_s + weight_load_pim_s),
+        },
+        "weight_load_by_schedule": weight_load_by_schedule,
         "config": cfg.to_dict(),
         "tasks": sorted(pim_tasks, key=lambda x: x["key"]),
     }
@@ -1405,8 +1692,20 @@ def export_tasks(schedule_paths: List[str], cfg: WorkloadConfig, out_dir: str, p
     _save_json(pim_path, pim_json)
 
     print(f"[export] segment_scope={cfg.segment_scope}")
+    if resolved_comms:
+        print(
+            f"[export] weight_load_s: gpu={weight_load_gpu_s:.6f}s pim={weight_load_pim_s:.6f}s "
+            f"(unknown={weight_load_unknown_s:.6f}s) from {len(resolved_comms)} comms trace(s)"
+        )
     print(f"[export] wrote {gpu_path} ({len(gpu_tasks)} segments)")
     print(f"[export] wrote {pim_path} ({len(pim_tasks)} segments)")
+    if skipped_tasks:
+        by_type: Counter = Counter([str(t.get("sig", {}).get("device_type", "")).strip().lower() for t in skipped_tasks])
+        by_type_s = ", ".join([f"{k or '<empty>'}={v}" for k, v in by_type.items()])
+        print(
+            f"[export] skipped {len(skipped_tasks)} trace-only segment(s) (not npu/pim). "
+            f"They will be kept via schedule durations in merge(). by_device_type: {by_type_s}"
+        )
     return gpu_path, pim_path
 
 
@@ -1421,11 +1720,20 @@ def run_gpu(tasks_json: str, out_json: str, warmup: int = 3, iters: int = 10,
         cfg.gpu_dtype = gpu_dtype
     seg_scope = data.get("segment_scope", cfg.segment_scope)
 
+    try:
+        weight_load_s = float(data.get("weight_load_s", 0.0) or 0.0)
+    except Exception:
+        weight_load_s = 0.0
+
+    weight_load_by_schedule = data.get("weight_load_by_schedule", {}) or {}
+
     tasks = data.get("tasks", [])
     gpu_info = collect_gpu_info(cfg.device)
 
     results: Dict[str, float] = {}
     print(f"[run-gpu] tasks={len(tasks)} warmup={warmup} iters={iters} device={cfg.device} dtype={cfg.gpu_dtype} segment_scope={seg_scope}")
+    if weight_load_s:
+        print(f"[run-gpu] extra weight_load_s={weight_load_s:.6f}s (will be added in merge)")
     print_gpu_info(gpu_info)
 
     backend = GPUBackend(cfg)
@@ -1445,6 +1753,8 @@ def run_gpu(tasks_json: str, out_json: str, warmup: int = 3, iters: int = 10,
         "backend": "gpu",
         "segment_scope": seg_scope,
         "config": cfg.to_dict(),
+        "weight_load_s": float(weight_load_s),
+        "weight_load_by_schedule": weight_load_by_schedule,
         "env": {"gpu": gpu_info},
         "results": results,
     }
@@ -1457,6 +1767,7 @@ def run_pim(tasks_json: str, out_json: str, *,
             cent_sim_root: Optional[str] = None,
             ramulator_config: Optional[str] = None,
             pim_hw_json: Optional[str] = None,
+            pim_num_devices: Optional[int] = None,
             ramulator_bin: Optional[str] = None,
             ramulator_timeout_s: Optional[int] = None,
             keep_traces: bool = False,
@@ -1467,6 +1778,13 @@ def run_pim(tasks_json: str, out_json: str, *,
     cfg = WorkloadConfig.from_dict(cfg_dict)
     seg_scope = data.get("segment_scope", cfg.segment_scope)
     tasks = data.get("tasks", [])
+
+    try:
+        weight_load_s = float(data.get("weight_load_s", 0.0) or 0.0)
+    except Exception:
+        weight_load_s = 0.0
+
+    weight_load_by_schedule = data.get("weight_load_by_schedule", {}) or {}
 
     if ramulator_config is not None:
         cfg.pim_ramulator_config = ramulator_config
@@ -1492,17 +1810,28 @@ def run_pim(tasks_json: str, out_json: str, *,
         cfg.pim_num_channels = int(hw["pim_num_channels"])
 
         # Optional overrides (if present in JSON)
-        if hw.get("pim_num_devices") is not None:
-            cfg.pim_num_devices = int(hw["pim_num_devices"])  # type: ignore[arg-type]
         if hw.get("pim_threads") is not None:
             cfg.pim_threads = int(hw["pim_threads"])  # type: ignore[arg-type]
         if hw.get("pim_reuse_size") is not None:
             cfg.pim_reuse_size = int(hw["pim_reuse_size"])  # type: ignore[arg-type]
         if hw.get("pim_freq_ghz") is not None:
             cfg.pim_freq_ghz = float(hw["pim_freq_ghz"])  # type: ignore[arg-type]
-
+    if pim_num_devices is not None:
+        try:
+            iv = int(pim_num_devices)
+        except Exception as e:
+            raise ValueError(f"pim_num_devices must be an integer, got {pim_num_devices!r}") from e
+        if iv <= 0:
+            raise ValueError(f"pim_num_devices must be > 0, got {iv}")
+        cfg.pim_num_devices = iv
     # For ramulator config, we require it to be actually present (not empty/None).
     # This can be provided via pim_tasks.json or CLI override.
+    if not cfg.pim_ramulator_bin:
+        raise ValueError(
+            "pim_ramulator_bin must be provided to run ramulator.\n"
+            "Provide it either when exporting tasks (export/all) or at run time: "
+            "run-pim --pim-ramulator-bin <path>."
+        )
     if not cfg.pim_ramulator_config:
         raise ValueError(
             "pim_ramulator_config must be provided to run ramulator.\n"
@@ -1514,6 +1843,8 @@ def run_pim(tasks_json: str, out_json: str, *,
 
     results: Dict[str, float] = {}
     print(f"[run-pim] tasks={len(tasks)} segment_scope={seg_scope}")
+    if weight_load_s:
+        print(f"[run-pim] extra weight_load_s={weight_load_s:.6f}s (will be added in merge)")
     for i, t in enumerate(tasks):
         key = t["key"]
         ops = tuple((x["op"], int(x.get("shard",-1))) for x in t.get("ops", []))
@@ -1530,6 +1861,8 @@ def run_pim(tasks_json: str, out_json: str, *,
         "backend": "pim",
         "segment_scope": seg_scope,
         "config": cfg.to_dict(),
+        "weight_load_s": float(weight_load_s),
+        "weight_load_by_schedule": weight_load_by_schedule,
         "results": results,
     }
     _save_json(outp, out)
@@ -1619,7 +1952,6 @@ def _build_row_durations_layer_scope(
     - COMM rows: per-row comm model latency
     - compute rows: segment total latency (from *_results.json) distributed to ops
       proportionally to their original trace 'duration' within each (phase, step, layer, device).
-    - decode scaling: multiply all decode-phase rows by decode_stride.
 
     Returns:
       (dur_s: np.ndarray, missing_segments: int)
@@ -1653,11 +1985,20 @@ def _build_row_durations_layer_scope(
     for (phase, step, layer, device), g in compute_df.groupby(group_cols, sort=False):
         # build segment signature (NOTE: step uses *token index* when decode_stride > 1)
         dev_type = str(g["device_type"].iloc[0])
+        dev_type_n = dev_type.strip().lower()
         ops: List[Tuple[str, int]] = []
         for _, rr in g.iterrows():
             op = str(rr["op"]).strip()
             shard = int(rr["shard"]) if pd.notna(rr["shard"]) else -1
             ops.append((op, shard))
+
+        idxs = g.index.to_numpy()
+        if idxs.size == 0:
+            continue
+        w = pd.to_numeric(g["duration"], errors="coerce").fillna(0.0).astype(float).to_numpy()
+        if dev_type_n not in ("npu", "pim"):
+            dur_s[idxs] = w
+            continue
 
         step_key = int(step)
         if str(phase) == "decode":
@@ -1690,23 +2031,157 @@ def _build_row_durations_layer_scope(
                 missing += 1
                 total_lat = 0.0
 
-        w = g["duration"].astype(float).to_numpy()
-        wsum = float(w.sum())
-        idxs = g.index.to_numpy()
-        if len(idxs) == 0:
-            continue
+        wsum = float(np.nansum(w.astype(np.float64)))
         if wsum > 0:
             dur_s[idxs] = float(total_lat) * (w / wsum)
         else:
             dur_s[idxs] = float(total_lat) / float(len(idxs))
 
     # 3) decode scaling
-    if int(decode_stride) != 1:
-        dmask = (df["phase"].astype(str) == "decode").to_numpy()
-        dur_s[dmask] *= float(decode_stride)
+    ds = int(decode_stride) if decode_stride is not None else 1
+    dmask = (df["phase"].astype(str) == "decode").to_numpy()
+    dur_s[dmask & (~is_comm)] *= float(ds)
 
     return dur_s, int(missing)
 
+def _build_row_durations_device_step_scope(
+    df: pd.DataFrame,
+    *,
+    gpu_res: Dict[str, float],
+    pim_res: Dict[str, float],
+    comm_model: str,
+    pcie_lanes: int,
+    decode_stride: int,
+    dim: int,
+    shards: int,
+    allow_missing: bool,
+) -> Tuple[np.ndarray, int]:
+
+    n = len(df)
+    dur_s = np.zeros(n, dtype=np.float64)
+
+    op_l = df["op"].astype(str).str.strip().str.lower()
+    is_comm = op_l.isin(_COMM_OPS).to_numpy()
+
+    # 1) COMM rows
+    if comm_model.lower() == "schedule":
+        dur_s[is_comm] = df.loc[is_comm, "duration"].astype(float).to_numpy()
+    elif comm_model.lower() == "none":
+        pass
+    else:
+        # cxl (or any future row-level model)
+        comm_idx = df.index[is_comm].to_list()
+        for i in comm_idx:
+            r = df.loc[i]
+            dur_s[i] = _comm_latency_from_row(r, comm_model, pcie_lanes=pcie_lanes, dim=dim, shards=shards)
+
+    # 2) Compute rows (device_step scope: split by comm ops on each device timeline)
+    cols = ["phase", "step", "device", "device_type", "op", "shard", "start", "_row", "duration"]
+    sub = df.loc[:, [c for c in cols if c in df.columns]].copy()
+
+    # Ensure required columns exist (schedule csv schema contract)
+    for req in ["phase", "step", "device", "device_type", "op", "start", "_row", "duration"]:
+        if req not in sub.columns:
+            raise ValueError(f"schedule is missing required column: {req}")
+
+    missing = 0
+    group_cols = ["phase", "step", "device"]
+    for (phase, step, device), g in sub.groupby(group_cols, sort=False):
+        # Match extract_segments() ordering: per group sorted by (start, _row)
+        g = g.sort_values(["start", "_row"], kind="mergesort")
+        dev_type = str(g["device_type"].iloc[0])
+        dev_type_n = dev_type.strip().lower()
+
+        cur_ops: List[Tuple[str, int]] = []
+        cur_idxs: List[int] = []
+
+        def flush_segment() -> None:
+            nonlocal missing, cur_ops, cur_idxs
+            if not cur_ops:
+                cur_ops = []
+                cur_idxs = []
+                return
+
+            if dev_type_n not in ("npu", "pim"):
+                idxs = np.array(cur_idxs, dtype=int)
+                if idxs.size:
+                    dur_s[idxs] = pd.to_numeric(df.loc[idxs, "duration"], errors="coerce").fillna(0.0).astype(float).to_numpy()
+                cur_ops = []
+                cur_idxs = []
+                return
+
+            ph = str(phase)
+            st = int(step)
+
+            # NOTE: Try token-index key first (newer convention), then fall back to sample-step key.
+            total_lat: Optional[float] = None
+            if ph == "decode" and int(decode_stride) != 1:
+                st_tok = 1 + int(st) * int(decode_stride)
+                seg_tok = SegmentSig(device_type=dev_type, phase=ph, step=int(st_tok), ops=tuple(cur_ops))
+                if dev_type == "npu":
+                    total_lat = _try_lookup_segment_latency(seg_tok, gpu_res)
+                elif dev_type == "pim":
+                    total_lat = _try_lookup_segment_latency(seg_tok, pim_res)
+
+                if total_lat is None:
+                    seg_legacy = SegmentSig(device_type=dev_type, phase=ph, step=int(st), ops=tuple(cur_ops))
+                    if dev_type == "npu":
+                        total_lat = _try_lookup_segment_latency(seg_legacy, gpu_res)
+                    elif dev_type == "pim":
+                        total_lat = _try_lookup_segment_latency(seg_legacy, pim_res)
+            else:
+                seg = SegmentSig(device_type=dev_type, phase=ph, step=int(st), ops=tuple(cur_ops))
+                if dev_type == "npu":
+                    total_lat = _try_lookup_segment_latency(seg, gpu_res)
+                elif dev_type == "pim":
+                    total_lat = _try_lookup_segment_latency(seg, pim_res)
+
+            if total_lat is None:
+                if allow_missing:
+                    total_lat = 0.0
+                else:
+                    missing += 1
+                    total_lat = 0.0
+
+            # Distribute segment latency back to its rows proportionally to trace duration.
+            idxs = np.array(cur_idxs, dtype=int)
+            if idxs.size == 0:
+                cur_ops = []
+                cur_idxs = []
+                return
+
+            # Pull weights from original df to avoid any dtype surprises.
+            w = pd.to_numeric(df.loc[idxs, "duration"], errors="coerce").fillna(0.0).astype(float).to_numpy()
+            wsum = float(np.nansum(w.astype(np.float64)))
+            if wsum > 0:
+                dur_s[idxs] = float(total_lat) * (w / wsum)
+            else:
+                dur_s[idxs] = float(total_lat) / float(idxs.size)
+
+            cur_ops = []
+            cur_idxs = []
+
+        for idx, r in g.iterrows():
+            op = str(r["op"]).strip()
+            if op.lower() in _COMM_OPS:
+                flush_segment()
+                continue
+            shard = int(r["shard"]) if ("shard" in r and pd.notna(r["shard"])) else -1
+            cur_ops.append((op, shard))
+            cur_idxs.append(int(idx))
+
+        flush_segment()
+
+    # 3) decode scaling
+    ds = int(decode_stride) if decode_stride is not None else 1
+    if ds <= 0:
+        ds = 1
+    if ds != 1:
+        dmask = (df["phase"].astype(str) == "decode").to_numpy()
+        # measured segment latencies are per-sampled-step
+        dur_s[dmask & (~is_comm)] *= float(ds)
+
+    return dur_s, int(missing)
 
 def _simulate_block_overlap(df_block: pd.DataFrame, dur_s: np.ndarray) -> float:
     """
@@ -1790,6 +2265,279 @@ def _simulate_block_overlap(df_block: pd.DataFrame, dur_s: np.ndarray) -> float:
     prev_layer_done = max(prev_layer_done, layer_max)
     return float(prev_layer_done)
 
+def compute_trace_times_from_ops_csv(df: pd.DataFrame, *, decode_stride: int = 1) -> Dict[str, float]:
+    """Compute prefill/decode e2e time from the original ops_trace.csv timeline."""
+
+    if df is None or df.empty:
+        return {
+            "trace_prefill_s": 0.0,
+            "trace_decode_s": 0.0,
+            "trace_decode_scaled_s": 0.0,
+            "trace_total_raw_s": 0.0,
+            "trace_total_scaled_s": 0.0,
+        }
+
+    # Best-effort numeric conversion
+    start = pd.to_numeric(df.get("start"), errors="coerce")
+    end = pd.to_numeric(df.get("end"), errors="coerce")
+
+    def _span(mask: np.ndarray) -> float:
+        if mask is None or mask.size == 0 or (not mask.any()):
+            return 0.0
+        st = float(np.nanmin(start[mask].to_numpy(dtype=np.float64)))
+        en = float(np.nanmax(end[mask].to_numpy(dtype=np.float64)))
+        if not np.isfinite(st) or not np.isfinite(en):
+            return 0.0
+        return float(max(0.0, en - st))
+
+    ph = df.get("phase")
+    if ph is None:
+        pre = 0.0
+        dec = 0.0
+    else:
+        ph_s = ph.astype(str)
+        pre = _span((ph_s == "prefill").to_numpy())
+        dec = _span((ph_s == "decode").to_numpy())
+
+    total_raw = _span(np.ones(len(df), dtype=bool))
+
+    ds = int(decode_stride) if decode_stride is not None else 1
+    if ds <= 0:
+        ds = 1
+    total = float(pre + dec)
+
+    return {
+        "trace_prefill_s": float(pre),
+        "trace_decode_s": float(dec),
+        "trace_decode_scaled_s": float(dec),
+        "trace_total_raw_s": float(total_raw),
+        "trace_total_s": float(total),
+    }
+
+def _lookup_segment_latency_for_debug(
+    dev_type: str,
+    phase: str,
+    step_sample: int,
+    ops: List[Tuple[str, int]],
+    *,
+    decode_stride: int,
+    gpu_res: Dict[str, float],
+    pim_res: Dict[str, float],
+) -> Tuple[Optional[float], str, int, str]:
+    """Lookup a segment latency in results dicts."""
+    dev_type = str(dev_type)
+    phase = str(phase)
+
+    # Candidate step encodings
+    cands: List[Tuple[str, int]] = []
+    ds = int(decode_stride) if decode_stride is not None else 1
+    if ds <= 0:
+        ds = 1
+    if phase == "decode" and ds != 1:
+        cands.append(("token_index", 1 + int(step_sample) * ds))
+    cands.append(("sample_step", int(step_sample)))
+
+    res = gpu_res if dev_type == "npu" else pim_res if dev_type == "pim" else {}
+
+    # Try in order
+    for kind, st in cands:
+        seg = SegmentSig(device_type=dev_type, phase=phase, step=int(st), ops=tuple(ops))
+        k = seg.to_key()
+        if k in res:
+            try:
+                return float(res[k]), k, int(st), str(kind)
+            except Exception:
+                return res[k], k, int(st), str(kind)  # type: ignore[return-value]
+
+    # Not found: return the first candidate key as a reference
+    kind0, st0 = cands[0]
+    seg0 = SegmentSig(device_type=dev_type, phase=phase, step=int(st0), ops=tuple(ops))
+    return None, seg0.to_key(), int(st0), str(kind0)
+
+
+def _collect_segment_debug_rows(
+    df: pd.DataFrame,
+    *,
+    seg_scope: str,
+    decode_stride: int,
+    gpu_res: Dict[str, float],
+    pim_res: Dict[str, float],
+    allow_missing: bool,
+) -> List[Dict[str, Any]]:
+    """Build per-unique-segment comparison rows: (measured vs trace duration)."""
+    seg_scope = str(seg_scope).lower()
+    if seg_scope not in ("layer", "device_step"):
+        raise ValueError(f"Unknown segment_scope: {seg_scope}")
+
+    # normalize op type
+    op_l = df["op"].astype(str).str.strip().str.lower()
+    is_comm = op_l.isin(_COMM_OPS).to_numpy()
+
+    # Aggregation dict: key_used -> stats
+    stats: Dict[str, Dict[str, Any]] = {}
+
+    def _accum(
+        *,
+        phase: str,
+        step_sample: int,
+        dev_type: str,
+        ops: List[Tuple[str, int]],
+        trace_sum_s_raw: float,
+    ) -> None:
+        dev_type_n = str(dev_type).strip().lower()
+        if dev_type_n not in ("npu", "pim"):
+            seg = SegmentSig(device_type=str(dev_type), phase=str(phase), step=int(step_sample), ops=tuple(ops))
+            key_used = seg.to_key()
+            step_used = int(step_sample)
+            step_kind = "trace"
+            found = True
+            measured_s_raw = 0.0  # will be overwritten to trace_avg_s_raw (running average) below
+        else:
+            lat, key_used, step_used, step_kind = _lookup_segment_latency_for_debug(
+                dev_type, phase, step_sample, ops,
+                decode_stride=int(decode_stride),
+                gpu_res=gpu_res, pim_res=pim_res,
+            )
+            found = lat is not None
+            measured_s_raw = float(lat) if lat is not None else 0.0  # match merge() behavior when missing
+
+        ops_repr = ",".join([f"{op}:{sh}" for op, sh in ops])
+
+        rec = stats.get(key_used)
+        if rec is None:
+            rec = {
+                "key": key_used,
+                "device_type": str(dev_type),
+                "phase": str(phase),
+                "step_sample": int(step_sample),
+                "step_used": int(step_used),
+                "step_kind": str(step_kind),
+                "ops_repr": ops_repr,
+                "count": 0,
+                "trace_sum_s_raw": 0.0,
+                "measured_s_raw": float(measured_s_raw),
+                "found_in_results": bool(found),
+                "missing_count": 0,
+            }
+            stats[key_used] = rec
+
+        rec["count"] = int(rec.get("count", 0)) + 1
+        rec["trace_sum_s_raw"] = float(rec.get("trace_sum_s_raw", 0.0)) + float(trace_sum_s_raw)
+
+        # For trace-only segments, keep "measured" equal to the running trace average.
+        if dev_type_n not in ("npu", "pim"):
+            cnt = max(1, int(rec.get("count", 0)))
+            rec["measured_s_raw"] = float(rec.get("trace_sum_s_raw", 0.0)) / float(cnt)
+            rec["found_in_results"] = True
+            rec["missing_count"] = 0
+
+        # If any occurrence is missing, record it (helps spot bad keys)
+        if not found:
+            rec["missing_count"] = int(rec.get("missing_count", 0)) + 1
+            if not allow_missing:
+                # In non-allow-missing mode we'd still set cost=0 in merge(), but flag it.
+                rec["found_in_results"] = False
+
+    if seg_scope == "layer":
+        # Compute rows only (COMM handled separately)
+        compute_df = df.loc[~is_comm, ["phase", "step", "layer", "device", "device_type", "op", "shard", "start", "_row", "duration"]].copy()
+        compute_df = compute_df.sort_values(["phase", "step", "layer", "device", "start", "_row"], kind="mergesort")
+
+        for (phase, step, layer, device), g in compute_df.groupby(["phase", "step", "layer", "device"], sort=False):
+            if g.empty:
+                continue
+            dev_type = str(g["device_type"].iloc[0])
+            ops: List[Tuple[str, int]] = []
+            for _, rr in g.iterrows():
+                op = str(rr["op"]).strip()
+                shard = int(rr["shard"]) if pd.notna(rr["shard"]) else -1
+                ops.append((op, shard))
+            if not ops:
+                continue
+            trace_sum = float(pd.to_numeric(g["duration"], errors="coerce").fillna(0.0).astype(float).sum())
+            _accum(phase=str(phase), step_sample=int(step), dev_type=dev_type, ops=ops, trace_sum_s_raw=trace_sum)
+
+    else:
+        # device_step: per-device timeline, split by COMM ops
+        cols = ["phase", "step", "device", "device_type", "op", "shard", "start", "_row", "duration"]
+        sub = df.loc[:, [c for c in cols if c in df.columns]].copy()
+        sub = sub.sort_values(["phase", "step", "device", "start", "_row"], kind="mergesort")
+
+        for (phase, step, device), g in sub.groupby(["phase", "step", "device"], sort=False):
+            if g.empty:
+                continue
+            dev_type = str(g["device_type"].iloc[0])
+
+            cur_ops: List[Tuple[str, int]] = []
+            cur_durs: List[float] = []
+
+            def flush() -> None:
+                nonlocal cur_ops, cur_durs
+                if not cur_ops:
+                    cur_ops = []
+                    cur_durs = []
+                    return
+                trace_sum = float(np.nansum(np.array(cur_durs, dtype=np.float64)))
+                _accum(phase=str(phase), step_sample=int(step), dev_type=dev_type, ops=cur_ops, trace_sum_s_raw=trace_sum)
+                cur_ops = []
+                cur_durs = []
+
+            for _, rr in g.iterrows():
+                op = str(rr["op"]).strip()
+                if op.lower() in _COMM_OPS:
+                    flush()
+                    continue
+                shard = int(rr["shard"]) if ("shard" in rr and pd.notna(rr["shard"])) else -1
+                cur_ops.append((op, shard))
+                d = rr.get("duration", 0.0)
+                try:
+                    cur_durs.append(float(d))
+                except Exception:
+                    cur_durs.append(0.0)
+            flush()
+
+    # finalize rows + derived columns
+    out_rows: List[Dict[str, Any]] = []
+    ds = int(decode_stride) if decode_stride is not None else 1
+    if ds <= 0:
+        ds = 1
+
+    for k, rec in stats.items():
+        cnt = max(1, int(rec.get("count", 0) or 0))
+        trace_sum_raw = float(rec.get("trace_sum_s_raw", 0.0) or 0.0)
+        trace_avg_raw = trace_sum_raw / float(cnt)
+
+        phase = str(rec.get("phase", ""))
+        measured_scale = float(ds) if phase == "decode" else 1.0
+
+        measured_raw = float(rec.get("measured_s_raw", 0.0) or 0.0)
+        measured_scaled = measured_raw * measured_scale
+        trace_avg_scaled = trace_avg_raw
+
+        delta_raw = measured_raw - trace_avg_raw
+        delta_scaled = measured_scaled - trace_avg_scaled
+
+        def _pct(delta: float, base: float) -> float:
+            try:
+                if float(base) == 0.0:
+                    return float("nan")
+                return float(delta) / float(base) * 100.0
+            except Exception:
+                return float("nan")
+
+        out_rows.append({
+            **rec,
+            "trace_avg_s_raw": float(trace_avg_raw),
+            "trace_avg_s_scaled": float(trace_avg_scaled),
+            "measured_s_scaled": float(measured_scaled),
+            "delta_s_raw": float(delta_raw),
+            "delta_pct_raw": _pct(delta_raw, trace_avg_raw),
+            "delta_s_scaled": float(delta_scaled),
+            "delta_pct_scaled": _pct(delta_scaled, trace_avg_scaled),
+        })
+
+    return out_rows
+
 
 def merge(
     schedule_paths: List[str],
@@ -1803,6 +2551,8 @@ def merge(
     out_steps_csv: Optional[str] = None,
     allow_missing: bool = False,
     segment_scope: Optional[str] = None,
+    debug: bool = False,
+    debug_txt: Optional[str] = None,
 ) -> None:
     """
     Merge schedule trace(s) + measured segment latencies into an overlapped end-to-end latency.
@@ -1816,6 +2566,10 @@ def merge(
     # load results
     gpu_res: Dict[str, float] = {}
     pim_res: Dict[str, float] = {}
+    gpu_weight_load_s_global: float = 0.0
+    pim_weight_load_s_global: float = 0.0
+    gpu_weight_load_by_schedule: Dict[str, Any] = {}
+    pim_weight_load_by_schedule: Dict[str, Any] = {}
     scope_from_results: Optional[str] = None
     cfg_dim = 4096
     cfg_shards = 4
@@ -1824,6 +2578,11 @@ def merge(
     if gpu_results_json:
         data = _load_json(gpu_results_json)
         gpu_res = {k: float(v) for k, v in data.get("results", {}).items()}
+        try:
+            gpu_weight_load_s_global = float(data.get("weight_load_s", 0.0) or 0.0)
+        except Exception:
+            gpu_weight_load_s_global = 0.0
+        gpu_weight_load_by_schedule = data.get("weight_load_by_schedule", {}) or {}
         scope_from_results = data.get("segment_scope", scope_from_results)
         cfg = data.get("config", {}) or {}
         cfg_dim = int(cfg.get("dim", cfg_dim))
@@ -1834,6 +2593,11 @@ def merge(
     if pim_results_json:
         data = _load_json(pim_results_json)
         pim_res = {k: float(v) for k, v in data.get("results", {}).items()}
+        try:
+            pim_weight_load_s_global = float(data.get("weight_load_s", 0.0) or 0.0)
+        except Exception:
+            pim_weight_load_s_global = 0.0
+        pim_weight_load_by_schedule = data.get("weight_load_by_schedule", {}) or {}
         scope_from_results = data.get("segment_scope", scope_from_results)
         cfg = data.get("config", {}) or {}
         cfg_dim = int(cfg.get("dim", cfg_dim))
@@ -1844,28 +2608,106 @@ def merge(
     # choose segment scope
     seg_scope = (segment_scope or scope_from_results or "layer")
     seg_scope = str(seg_scope).lower()
-    if seg_scope != "layer":
-        raise ValueError(f"New merge implementation currently supports segment_scope=layer only (got: {seg_scope})")
+    if seg_scope not in ("layer", "device_step"):
+        raise ValueError(f"Unknown segment_scope: {seg_scope}")
 
     results_rows: List[Dict[str, Any]] = []
     steps_rows: List[Dict[str, Any]] = []
+
+    dbg_f = None
+    dbg_path = None
+    if debug:
+        dbg_path = Path(debug_txt) if debug_txt else Path(out_csv).with_suffix(".debug.txt")
+        dbg_path.parent.mkdir(parents=True, exist_ok=True)
+        dbg_f = open(str(dbg_path), "w", encoding="utf-8")
+        dbg_f.write(f"# merge debug\n")
+        dbg_f.write(f"# segment_scope={seg_scope} comm_model={comm_model} pcie_lanes={pcie_lanes} decode_stride={decode_stride} allow_missing={allow_missing}\n")
 
     for sp in schedule_paths:
         p = resolve_existing_path(sp)
         df = load_schedule_csv(str(p))
 
         # build per-row durations (seconds)
-        dur_s, missing_cnt = _build_row_durations_layer_scope(
-            df,
-            gpu_res=gpu_res,
-            pim_res=pim_res,
-            comm_model=comm_model,
-            pcie_lanes=pcie_lanes,
-            decode_stride=decode_stride,
-            dim=cfg_dim,
-            shards=cfg_shards,
-            allow_missing=allow_missing,
-        )
+        if seg_scope == "layer":
+            dur_s, missing_cnt = _build_row_durations_layer_scope(
+                df,
+                gpu_res=gpu_res,
+                pim_res=pim_res,
+                comm_model=comm_model,
+                pcie_lanes=pcie_lanes,
+                decode_stride=decode_stride,
+                dim=cfg_dim,
+                shards=cfg_shards,
+                allow_missing=allow_missing,
+            )
+        else:
+            dur_s, missing_cnt = _build_row_durations_device_step_scope(
+                df,
+                gpu_res=gpu_res,
+                pim_res=pim_res,
+                comm_model=comm_model,
+                pcie_lanes=pcie_lanes,
+                decode_stride=decode_stride,
+                dim=cfg_dim,
+                shards=cfg_shards,
+                allow_missing=allow_missing,
+            )
+
+        if dbg_f is not None:
+            dbg_f.write(f"\n# schedule={Path(p).name}\n")
+            dbg_rows = _collect_segment_debug_rows(
+                df,
+                seg_scope=seg_scope,
+                decode_stride=int(decode_stride),
+                gpu_res=gpu_res,
+                pim_res=pim_res,
+                allow_missing=bool(allow_missing),
+            )
+            miss_keys = sum(1 for r in dbg_rows if not bool(r.get("found_in_results", False)))
+            dbg_f.write(f"# unique_segments={len(dbg_rows)} missing_keys={miss_keys} missing_instances_in_merge={missing_cnt}\n")
+
+            cols = [
+                "phase","device_type","step_sample","step_used","step_kind",
+                "count","measured_s_raw","trace_avg_s_raw","delta_s_raw","delta_pct_raw",
+                "measured_s_scaled","trace_avg_s_scaled","delta_s_scaled","delta_pct_scaled",
+                "found_in_results","missing_count","key","ops_repr",
+            ]
+            dbg_f.write("\t".join(cols) + "\n")
+
+            def _row_line(r: Dict[str, Any]) -> str:
+                out: List[str] = []
+                for c in cols:
+                    v = r.get(c, "")
+                    if isinstance(v, float):
+                        if np.isfinite(v):
+                            out.append(f"{v:.9g}")
+                        else:
+                            out.append("nan")
+                    else:
+                        out.append(str(v))
+                return "\t".join(out)
+
+            # Top-N by absolute delta (scaled)
+            dbg_f.write("# -- top_by_abs_delta_scaled --\n")
+            def _abs_delta_scaled(x: Dict[str, Any]) -> float:
+                try:
+                    v = float(x.get("delta_s_scaled", 0.0) or 0.0)
+                    return float(abs(v)) if np.isfinite(v) else float("inf")
+                except Exception:
+                    return float("inf")
+            for r in sorted(dbg_rows, key=_abs_delta_scaled, reverse=True)[:50]:
+                dbg_f.write(_row_line(r) + "\n")
+
+            # Full listing in a stable order (easy to diff between runs)
+            dbg_f.write("# -- all_segments_sorted --\n")
+            def _stable_key(x: Dict[str, Any]) -> Tuple[Any, ...]:
+                try:
+                    step_u = int(x.get("step_used", 0) or 0)
+                except Exception:
+                    step_u = 0
+                return (str(x.get("phase","")), str(x.get("device_type","")), step_u, str(x.get("ops_repr","")))
+            for r in sorted(dbg_rows, key=_stable_key):
+                dbg_f.write(_row_line(r) + "\n")
 
         # busy-time breakdown (already includes decode stride scaling)
         op_l = df["op"].astype(str).str.strip().str.lower()
@@ -1876,7 +2718,36 @@ def merge(
 
         # prefill block
         prefill_df = df[df["phase"].astype(str) == "prefill"]
-        prefill_time = _simulate_block_overlap(prefill_df, dur_s)
+        prefill_time_no_weight_load = _simulate_block_overlap(prefill_df, dur_s)
+
+        # --------------------------------------------------
+        # Weight load overhead (optional)
+        # --------------------------------------------------
+        sched_k = str(p)
+        weight_load_gpu_s = float(gpu_weight_load_s_global)
+        weight_load_pim_s = float(pim_weight_load_s_global)
+        weight_load_unknown_s = 0.0
+
+        if isinstance(gpu_weight_load_by_schedule, dict) and sched_k in gpu_weight_load_by_schedule:
+            try:
+                v = gpu_weight_load_by_schedule.get(sched_k) or {}
+                if isinstance(v, dict):
+                    weight_load_gpu_s = float(v.get("gpu_s", weight_load_gpu_s) or 0.0)
+                    weight_load_unknown_s += float(v.get("unknown_s", 0.0) or 0.0)
+            except Exception:
+                pass
+
+        if isinstance(pim_weight_load_by_schedule, dict) and sched_k in pim_weight_load_by_schedule:
+            try:
+                v = pim_weight_load_by_schedule.get(sched_k) or {}
+                if isinstance(v, dict):
+                    weight_load_pim_s = float(v.get("pim_s", weight_load_pim_s) or 0.0)
+                    weight_load_unknown_s += float(v.get("unknown_s", 0.0) or 0.0)
+            except Exception:
+                pass
+
+        weight_load_total_s = float(weight_load_gpu_s + weight_load_pim_s)
+        prefill_time = float(prefill_time_no_weight_load + weight_load_total_s)
 
         # decode blocks (one per sampled step), strictly sequential across steps
         decode_time = 0.0
@@ -1900,7 +2771,43 @@ def merge(
                 "block_time_s": float(t),
             })
 
+        total_time_no_weight_load = float(prefill_time_no_weight_load + decode_time)
         total_time = float(prefill_time + decode_time)
+
+        # Busy-time breakdown: add weight-load to the respective device buckets.
+        gpu_busy_with_weight_load = float(gpu_busy + weight_load_gpu_s)
+        pim_busy_with_weight_load = float(pim_busy + weight_load_pim_s)
+
+        # --------------------------------------------------
+        # Compare with original ops_trace.csv (timeline in the schedule CSV)
+        # --------------------------------------------------
+        trace_t = compute_trace_times_from_ops_csv(df, decode_stride=decode_stride)
+        trace_prefill_s = float(trace_t.get("trace_prefill_s", 0.0) or 0.0)
+        trace_decode_s = float(trace_t.get("trace_decode_s", 0.0) or 0.0)
+        trace_decode_scaled_s = float(trace_t.get("trace_decode_scaled_s", 0.0) or 0.0)
+        trace_total_raw_s = float(trace_t.get("trace_total_raw_s", 0.0) or 0.0)
+        trace_total_scaled_s = float(trace_t.get("trace_total_scaled_s", 0.0) or 0.0)
+
+        def _safe_ratio(delta: float, base: float) -> float:
+            try:
+                base_f = float(base)
+                if base_f == 0.0:
+                    return float("nan")
+                return float(delta) / base_f
+            except Exception:
+                return float("nan")
+
+        delta_prefill_s = float(prefill_time_no_weight_load - trace_prefill_s)
+        delta_decode_s = float(decode_time - trace_decode_scaled_s)
+        delta_total_s = float(total_time_no_weight_load - trace_total_scaled_s)
+
+        delta_prefill_ratio = _safe_ratio(delta_prefill_s, trace_prefill_s)
+        delta_decode_ratio = _safe_ratio(delta_decode_s, trace_decode_scaled_s)
+        delta_total_ratio = _safe_ratio(delta_total_s, trace_total_scaled_s)
+
+        delta_prefill_pct = float(delta_prefill_ratio * 100.0) if np.isfinite(delta_prefill_ratio) else float("nan")
+        delta_decode_pct = float(delta_decode_ratio * 100.0) if np.isfinite(delta_decode_ratio) else float("nan")
+        delta_total_pct = float(delta_total_ratio * 100.0) if np.isfinite(delta_total_ratio) else float("nan")
 
         results_rows.append({
             "schedule": str(Path(p).name),
@@ -1908,13 +2815,35 @@ def merge(
             "comm_model": str(comm_model),
             "pcie_lanes": int(pcie_lanes),
             "decode_stride": int(decode_stride),
+            "weight_load_gpu_s": float(weight_load_gpu_s),
+            "weight_load_pim_s": float(weight_load_pim_s),
+            "weight_load_total_s": float(weight_load_total_s),
+            "weight_load_unknown_s": float(weight_load_unknown_s),
+            "prefill_time_no_weight_load_s": float(prefill_time_no_weight_load),
             "prefill_time_s": float(prefill_time),
             "decode_time_s": float(decode_time),
+            "total_time_no_weight_load_s": float(total_time_no_weight_load),
             "total_time_s": float(total_time),
-            "gpu_busy_s": float(gpu_busy),
-            "pim_busy_s": float(pim_busy),
+            "gpu_busy_s": float(gpu_busy_with_weight_load),
+            "pim_busy_s": float(pim_busy_with_weight_load),
             "comm_busy_s": float(comm_busy),
             "missing_segments": int(missing_cnt),
+            # ---- schedule trace timeline baseline (ops_trace.csv) ----
+            "trace_prefill_s": float(trace_prefill_s),
+            "trace_decode_s": float(trace_decode_s),
+            "trace_decode_scaled_s": float(trace_decode_scaled_s),
+            "trace_total_raw_s": float(trace_total_raw_s),
+            "trace_total_scaled_s": float(trace_total_scaled_s),
+            # ---- delta = (merged_no_weight_load - trace_scaled) ----
+            "delta_prefill_s": float(delta_prefill_s),
+            "delta_prefill_ratio": float(delta_prefill_ratio),
+            "delta_prefill_pct": float(delta_prefill_pct),
+            "delta_decode_s": float(delta_decode_s),
+            "delta_decode_ratio": float(delta_decode_ratio),
+            "delta_decode_pct": float(delta_decode_pct),
+            "delta_total_s": float(delta_total_s),
+            "delta_total_ratio": float(delta_total_ratio),
+            "delta_total_pct": float(delta_total_pct),
         })
 
     # save CSV (no console print)
@@ -1927,19 +2856,86 @@ def merge(
         out_steps_p.parent.mkdir(parents=True, exist_ok=True)
         pd.DataFrame(steps_rows).to_csv(str(out_steps_p), index=False)
 
+    if dbg_f is not None:
+        dbg_f.close()
+
+def collect_merge_csv(list_tsv: str, *, out_csv: str, skip_missing: bool = False) -> None:
+    """Concatenate multiple per-run merge.csv files into one combined CSV."""
+    lp = resolve_existing_path(list_tsv)
+    try:
+        lst = pd.read_csv(str(lp), sep="\t")
+    except Exception as e:
+        raise ValueError(f"Failed to read list TSV: {lp}") from e
+
+    if lst is None or lst.empty:
+        raise ValueError(f"merge list is empty: {lp}")
+
+    # Find merge_csv column (recommended name)
+    merge_col = None
+    if "merge_csv" in lst.columns:
+        merge_col = "merge_csv"
+    else:
+        # best effort: any column containing 'merge' and 'csv'
+        for c in lst.columns:
+            cl = str(c).lower()
+            if "merge" in cl and "csv" in cl:
+                merge_col = c
+                break
+    if merge_col is None:
+        raise ValueError(f"{lp}: missing required column 'merge_csv' (columns={list(lst.columns)})")
+
+    frames: List[pd.DataFrame] = []
+    missing: List[str] = []
+
+    for _, r in lst.iterrows():
+        m = str(r.get(merge_col, "")).strip()
+        if not m or m.lower() in ("nan", "none", "-"):
+            continue
+        mp = Path(m).expanduser()
+        if not mp.is_absolute():
+            mp = (lp.parent / mp).resolve()
+
+        if not mp.exists():
+            if skip_missing:
+                missing.append(str(mp))
+                continue
+            raise FileNotFoundError(f"merge_csv not found: {mp}")
+
+        df = pd.read_csv(str(mp))
+        # Always keep the physical path for traceability
+        if "merge_csv" not in df.columns:
+            df["merge_csv"] = str(mp)
+
+        # Attach metadata columns from list file
+        for c in lst.columns:
+            if c == merge_col:
+                continue
+            meta_name = c if c not in df.columns else f"meta_{c}"
+            df[meta_name] = r.get(c, "")
+        frames.append(df)
+
+    if not frames:
+        raise ValueError(f"No merge CSVs found to collect from: {lp}")
+
+    out = pd.concat(frames, ignore_index=True)
+
+    outp = Path(out_csv).expanduser()
+    outp.parent.mkdir(parents=True, exist_ok=True)
+    out.to_csv(str(outp), index=False)
+
+    if missing:
+        print(f"[collect-merge] skipped {len(missing)} missing merge csv(s) (skip_missing=1)")
+
 
 # ==========================================================
 # CLI
 # ==========================================================
 
 def add_common_model_args(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--dim", type=int, default=4096)
-    p.add_argument("--ffn-dim", type=int, default=11008, dest="ffn_dim")
-    p.add_argument("--n-heads", type=int, default=32, dest="n_heads")
-    p.add_argument("--shards", type=int, default=4)
+
+    p.add_argument("--cfg", type=str, default=None, help="model shape json, e.g. ./configs/llama_7b_shape.json")
     p.add_argument("--prefill-len", type=int, default=128, dest="prefill_len")
-    p.add_argument("--decode-context-lens", type=str, default=None,
-                   help="comma-separated list, e.g. 129,130,131. If omitted, inferred from schedule decode steps.")
+    p.add_argument("--decode-context-lens", type=str, nargs="?", const="auto", default=None,)
 
     p.add_argument("--device", type=str, default="cuda", help="cuda or cpu (GPU benchmark side)")
     p.add_argument("--gpu-dtype", type=str, default="fp16", dest="gpu_dtype")
@@ -1954,10 +2950,10 @@ def add_common_model_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--pim-reuse-size", type=int, default=32)
 
     p.add_argument("--pim-num-devices", type=int, default=1, help="PIM device/DIMM count")
-    p.add_argument("--pim-ramulator-bin", type=str, default="ramulator2", help="path/name of AiM-enabled ramulator2 executable")
+    p.add_argument("--pim-ramulator-bin", type=str, default=None, help="path/name of AiM-enabled ramulator2 executable (required for run-pim)",)
     p.add_argument("--pim-ramulator-config", type=str, default=None, help="ramulator2 config file (required for run-pim)")
     p.add_argument("--pim-freq-ghz", type=float, default=1.0, help="PIM clock frequency in GHz for cycles->seconds")
-    p.add_argument("--pim-ramulator-timeout-s", type=int, default=300, help="ramulator2 timeout per trace (seconds)")
+    p.add_argument("--pim-ramulator-timeout-s", type=int, default=3000, help="ramulator2 timeout per trace (seconds)")
     p.add_argument("--pim-keep-traces", action="store_true", help="keep generated AiM traces (debug)")
     p.add_argument("--pim-trace-dir", type=str, default=None, help="trace output dir when keeping traces")
     p.add_argument("--pim-no-override-ramulator-config", action="store_true",
@@ -1969,39 +2965,59 @@ def add_common_model_args(p: argparse.ArgumentParser) -> None:
                    help="how to form segments from operator-level schedule")
 
 def build_cfg_from_args(args: argparse.Namespace) -> WorkloadConfig:
-    cfg = WorkloadConfig(
-        dim=args.dim,
-        ffn_dim=args.ffn_dim,
-        n_heads=args.n_heads,
-        shards=args.shards,
-        prefill_len=args.prefill_len,
-        decode_context_lens=None,
-        device=args.device,
-        gpu_dtype=args.gpu_dtype,
-        pim_dram_column=args.pim_dram_column,
-        pim_dram_row=args.pim_dram_row,
-        pim_burst_length=args.pim_burst_length,
-        pim_num_banks=args.pim_num_banks,
-        pim_num_channels=args.pim_num_channels,
-        pim_threads=args.pim_threads,
-        pim_reuse_size=args.pim_reuse_size,
-        pim_num_devices=args.pim_num_devices,
-        pim_ramulator_bin=args.pim_ramulator_bin,
-        pim_ramulator_config=args.pim_ramulator_config,
-        pim_freq_ghz=args.pim_freq_ghz,
-        pim_ramulator_timeout_s=args.pim_ramulator_timeout_s,
-        pim_keep_traces=bool(args.pim_keep_traces),
-        pim_trace_dir=args.pim_trace_dir,
-        segment_scope=args.segment_scope,
-    )
-    if args.decode_context_lens:
-        cfg.decode_context_lens = [int(x) for x in str(args.decode_context_lens).split(",") if x.strip()]
+    cfg = WorkloadConfig()
+
+    # ------------------------------
+    # Model shape from --cfg
+    # ------------------------------
+    cfg_path = getattr(args, "cfg", None)
+    if cfg_path:
+        shape = load_model_shape_json(cfg_path)
+        cfg.dim = int(shape["dim"])
+        cfg.ffn_dim = int(shape["ffn_dim"])
+        cfg.n_heads = int(shape["n_heads"])
+    # ------------------------------
+    # Schedule lengths / dtype / device / PIM params
+    # ------------------------------
+    cfg.prefill_len = int(getattr(args, "prefill_len", cfg.prefill_len))
+    cfg.decode_context_lens = None
+    cfg.device = str(getattr(args, "device", cfg.device))
+    cfg.gpu_dtype = str(getattr(args, "gpu_dtype", cfg.gpu_dtype))
+
+    cfg.pim_dram_column = int(getattr(args, "pim_dram_column", cfg.pim_dram_column))
+    cfg.pim_dram_row = int(getattr(args, "pim_dram_row", cfg.pim_dram_row))
+    cfg.pim_burst_length = int(getattr(args, "pim_burst_length", cfg.pim_burst_length))
+    cfg.pim_num_banks = int(getattr(args, "pim_num_banks", cfg.pim_num_banks))
+    cfg.pim_num_channels = int(getattr(args, "pim_num_channels", cfg.pim_num_channels))
+    cfg.pim_threads = int(getattr(args, "pim_threads", cfg.pim_threads))
+    cfg.pim_reuse_size = int(getattr(args, "pim_reuse_size", cfg.pim_reuse_size))
+    cfg.pim_num_devices = int(getattr(args, "pim_num_devices", cfg.pim_num_devices))
+
+    cfg.pim_ramulator_bin = getattr(args, "pim_ramulator_bin", cfg.pim_ramulator_bin)
+    cfg.pim_ramulator_config = getattr(args, "pim_ramulator_config", cfg.pim_ramulator_config)
+    cfg.pim_freq_ghz = float(getattr(args, "pim_freq_ghz", cfg.pim_freq_ghz))
+    cfg.pim_ramulator_timeout_s = int(getattr(args, "pim_ramulator_timeout_s", cfg.pim_ramulator_timeout_s))
+    cfg.pim_keep_traces = bool(getattr(args, "pim_keep_traces", cfg.pim_keep_traces))
+    cfg.pim_trace_dir = getattr(args, "pim_trace_dir", cfg.pim_trace_dir)
+
+    cfg.segment_scope = str(getattr(args, "segment_scope", cfg.segment_scope))
+
+    # decode stride (used to generate decode-context-lens / shape inference)
+    if hasattr(args, "decode_stride") and getattr(args, "decode_stride") is not None:
+        cfg.decode_stride = int(getattr(args, "decode_stride"))
+
+    # decode context lengths
+    dcl = getattr(args, "decode_context_lens", None)
+    if dcl is not None:
+        dcl_s = str(dcl).strip()
+        if dcl_s and dcl_s.lower() not in ("auto", "none"):
+            cfg.decode_context_lens = [int(x) for x in dcl_s.split(",") if str(x).strip()]
     return cfg
 
 
 def main(argv: Optional[List[str]] = None) -> None:
     argv = list(argv) if argv is not None else sys.argv[1:]
-    subcmds = {"export","run-gpu","run-pim","merge","all"}
+    subcmds = {"export","run-gpu","run-pim","merge","collect-merge","all"}
 
     # Backward compatibility: if user calls without subcommand, treat as "all"
     if not argv or argv[0].startswith("-") or argv[0] not in subcmds:
@@ -2014,8 +3030,12 @@ def main(argv: Optional[List[str]] = None) -> None:
     p_exp = sub.add_parser("export", help="export gpu_tasks.json and pim_tasks.json (segment-level) from schedule csv(s)")
     p_exp.add_argument("--schedule", type=str, default=None, help="single schedule csv path")
     p_exp.add_argument("--schedules", type=str, nargs="+", default=None, help="schedule csv paths (one or more)")
+    p_exp.add_argument("--comms", type=str, default=None, help="(optional) single comms trace csv path (for weight_load accounting)")
+    p_exp.add_argument("--comms-traces", type=str, nargs="+", default=None,
+                       help="(optional) comms trace csv paths (one or more); if same count as --schedules, treated as paired")
     p_exp.add_argument("--out-dir", type=str, default=".", help="output directory")
     p_exp.add_argument("--prefix", type=str, default="tasks", help="output file prefix")
+    p_exp.add_argument("--decode-stride", type=int, default=1)
     add_common_model_args(p_exp)
 
     # run-gpu
@@ -2036,11 +3056,14 @@ def main(argv: Optional[List[str]] = None) -> None:
     p_pim.add_argument("--out", type=str, required=True, help="pim_results.json")
     p_pim.add_argument("--cent-sim-root", type=str, default=None,
                        help="path to .../submodules/CENT/cent_simulation (or set env CENT_SIM_ROOT)")
+    p_pim.add_argument("--pim-ramulator-bin",type=str, default=None, help="path/name of AiM-enabled ramulator2 executable (required unless present in pim_tasks.json config)",)
     p_pim.add_argument("--pim-ramulator-config", type=str, required=True,
                        help="ramulator2 config file (YAML/JSON), e.g. example.yaml")
     p_pim.add_argument("--pim-hw-json", type=str, required=True,
                        help="PIM HW spec JSON, e.g. PIM_AiM.json")
-
+    p_pim.add_argument("--pim-num-devices", type=int, default=None,
+                       help="Override PIM device/DIMM count (used as FC_devices for model-parallel mapping). "
+                            "This overrides the value stored in pim_tasks.json.")
     # merge
     p_m = sub.add_parser("merge", help="merge schedule(s) with gpu_results.json + pim_results.json (segment-level)")
     p_m.add_argument("--schedule", type=str, default=None, help="single schedule csv path")
@@ -2059,11 +3082,27 @@ def main(argv: Optional[List[str]] = None) -> None:
                      help="if a segment key is missing in results, treat its cost as 0 instead of error")
     p_m.add_argument("--segment-scope", type=str, default=None, choices=["layer","device_step"],
                      help="override segment scope used to parse schedules (default: inferred from results or 'layer')")
+    p_m.add_argument("--debug", action="store_true",
+                     help="write per-segment (measured vs schedule-trace) comparison into a txt file")
+    p_m.add_argument("--debug-txt", type=str, default=None,
+                     help="(optional) output path for --debug; default: <out-csv>.debug.txt")
+
+    # collect-merge
+    p_c = sub.add_parser("collect-merge", help="collect multiple merge.csv into a single CSV")
+    p_c.add_argument("--list", type=str, required=True,
+                     help="TSV file listing merge csv paths. Recommended column name: merge_csv")
+    p_c.add_argument("--out-csv", type=str, required=True,
+                     help="output combined CSV path")
+    p_c.add_argument("--skip-missing", action="store_true",
+                     help="skip missing merge csvs instead of failing")
 
     # all (single-machine end-to-end)
     p_all = sub.add_parser("all", help="single-machine mode: export -> run both -> merge")
     p_all.add_argument("--schedule", type=str, default=None, help="single schedule csv path")
     p_all.add_argument("--schedules", type=str, nargs="+", default=None)
+    p_all.add_argument("--comms", type=str, default=None, help="(optional) single comms trace csv path (for weight_load accounting)")
+    p_all.add_argument("--comms-traces", type=str, nargs="+", default=None,
+                       help="(optional) comms trace csv paths (one or more); if same count as --schedules, treated as paired")
     p_all.add_argument("--out-dir", type=str, default=".", help="where to place tasks/results")
     p_all.add_argument("--prefix", type=str, default="run", help="prefix for tasks/results files")
     p_all.add_argument("--warmup", type=int, default=3)
@@ -2078,6 +3117,10 @@ def main(argv: Optional[List[str]] = None) -> None:
     p_all.add_argument("--merge-out-steps-csv", type=str, default=None,
                        help="(optional) save per-decode-step block latency (csv)")
     p_all.add_argument("--allow-missing", action="store_true")
+    p_all.add_argument("--debug", action="store_true",
+                       help="write per-segment (measured vs schedule-trace) comparison into a txt file during merge")
+    p_all.add_argument("--debug-txt", type=str, default=None,
+                       help="(optional) output path for --debug; default: alongside merge_out_csv")
     add_common_model_args(p_all)
 
     args = parser.parse_args(argv)
@@ -2085,9 +3128,10 @@ def main(argv: Optional[List[str]] = None) -> None:
     if args.cmd == "export":
         cfg = build_cfg_from_args(args)
         schedule_paths = ([args.schedule] if getattr(args, "schedule", None) else (args.schedules or []))
+        comms_paths = ([args.comms] if getattr(args, "comms", None) else (getattr(args, "comms_traces", None) or []))
         if not schedule_paths:
             raise SystemExit("export requires --schedule or --schedules")
-        export_tasks(schedule_paths, cfg, args.out_dir, args.prefix)
+        export_tasks(schedule_paths, cfg, args.out_dir, args.prefix, comms_paths=comms_paths)
         return
 
     if args.cmd == "run-gpu":
@@ -2099,8 +3143,10 @@ def main(argv: Optional[List[str]] = None) -> None:
             args.tasks,
             args.out,
             cent_sim_root=args.cent_sim_root,
+            ramulator_bin=args.pim_ramulator_bin,
             ramulator_config=args.pim_ramulator_config,
             pim_hw_json=args.pim_hw_json,
+            pim_num_devices=args.pim_num_devices,
         )
         return
 
@@ -2115,7 +3161,12 @@ def main(argv: Optional[List[str]] = None) -> None:
               decode_stride=args.decode_stride,
               out_csv=args.out_csv,
               out_steps_csv=args.out_steps_csv,
-              allow_missing=args.allow_missing, segment_scope=args.segment_scope)
+              allow_missing=args.allow_missing, segment_scope=args.segment_scope,
+              debug=args.debug, debug_txt=args.debug_txt)
+        return
+
+    if args.cmd == "collect-merge":
+        collect_merge_csv(args.list, out_csv=args.out_csv, skip_missing=args.skip_missing)
         return
 
     if args.cmd == "all":
@@ -2123,11 +3174,12 @@ def main(argv: Optional[List[str]] = None) -> None:
         out_dir = args.out_dir
         prefix = args.prefix
         schedule_paths = ([args.schedule] if getattr(args, "schedule", None) else (args.schedules or []))
+        comms_paths = ([args.comms] if getattr(args, "comms", None) else (getattr(args, "comms_traces", None) or []))
         if not schedule_paths:
             raise SystemExit("all requires --schedule or --schedules")
 
         # 1) export
-        gpu_tasks, pim_tasks = export_tasks(schedule_paths, cfg, out_dir, prefix)
+        gpu_tasks, pim_tasks = export_tasks(schedule_paths, cfg, out_dir, prefix, comms_paths=comms_paths)
 
         # 2) run both
         gpu_res_path = None
@@ -2140,7 +3192,8 @@ def main(argv: Optional[List[str]] = None) -> None:
         pim_data = _load_json(str(pim_tasks))
         if len(pim_data.get("tasks", [])) > 0:
             pim_res_path = run_pim(str(pim_tasks), str(Path(out_dir)/f"{prefix}.pim_results.json"),
-                                   cent_sim_root=args.cent_sim_root)
+                                   cent_sim_root=args.cent_sim_root,
+                                   ramulator_bin=getattr(args, "pim_ramulator_bin", None))
 
         # 3) merge
         merge(schedule_paths,
@@ -2150,7 +3203,8 @@ def main(argv: Optional[List[str]] = None) -> None:
               decode_stride=args.decode_stride,
               out_csv=(args.merge_out_csv or str(Path(out_dir)/f"{prefix}.merge.csv")),
               out_steps_csv=(args.merge_out_steps_csv),
-              allow_missing=args.allow_missing, segment_scope=cfg.segment_scope)
+              allow_missing=args.allow_missing, segment_scope=cfg.segment_scope,
+              debug=args.debug, debug_txt=args.debug_txt)
         return
 
     raise SystemExit(f"Unknown cmd: {args.cmd}")

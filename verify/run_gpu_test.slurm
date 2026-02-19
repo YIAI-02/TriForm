@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -J verify_run_gpu
 #SBATCH -p GPU40G
-#SBATCH --qos=low
+#SBATCH --qos=high
 #SBATCH -N 1
 #SBATCH --gres=gpu:1
 #SBATCH --ntasks=1
@@ -18,7 +18,9 @@ echo "[slurm] CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-unset}"
 
 nvidia-smi
 
+set +u
 source ~/.bashrc
+set -u
 conda activate triform310
 
 python - << 'PY'
