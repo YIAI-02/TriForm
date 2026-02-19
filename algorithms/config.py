@@ -91,16 +91,6 @@ OPERATOR_DEVICE_ALLOWED = {
     "ALLREDUCE": {"cpu": True, "npu": True, "pim": True},
 }
 
-
-# =========================
-# Simulated Annealing (optional)
-# =========================
-# SA_ENABLE = False greedy search only
-SA_ENABLE: bool = True          # turn off to disable SA
-SA_T0: float = 1.0              # initial temperature
-SA_ALPHA: float = 0.85          # cooling rate per pass
-SA_FLIP_PROB: float = 0.15      # per-weight flip prob when proposing neighbor
-
 # Global debug switch reflecting the --debug CLI flag
 DEBUG_GLOBAL: bool = False
 
@@ -182,3 +172,22 @@ SCHED_JOINT_LK_PLAN_HINT_MAX: int =  3
 # Weight-reuse bias gain multiplier (eta in bias formula)
 SCHED_WEIGHT_BIAS_ETA: float = 100
 
+
+# -------------------------------------------------------------------------------------------------
+# Peak compute utilization model 
+# -------------------------------------------------------------------------------------------------
+CPU_FALLBACK_TFLOPS = 1e-3  # 1 GFLOP/s
+COMPUTE_UTILIZATION = {
+    'default': 0.7,
+    'npu': {
+        'enabled': True,
+        'curve': 'sigmoid',
+        'min_util': 0.2,
+        'max_util': 0.6,
+        'flops_low': 5e7,     # <= 0.5 GFLOPs -> near min_util
+        'flops_high': 5e12,   # >= 5TFLOPs -> near max_util
+        'knee_flops': 1.0e11,  #defualt sqrt(low*high) ≈ 1.58e10
+        'slope': 3.0,
+    },
+
+}

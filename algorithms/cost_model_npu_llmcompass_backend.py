@@ -15,8 +15,9 @@ import re
 from pathlib import Path
 from typing import Optional, Dict, Tuple, Any
 import logging
-
+import math
 from config import attach_local_debug_filter
+import config as _config
 from hardware import DeviceSpec
 
 logger = logging.getLogger(__name__)
@@ -46,6 +47,7 @@ def _normalize_npu_backend(backend: Optional[str]) -> Optional[str]:
     if b in ('llmcompass',):
         return 'llmcompass'
     raise ValueError(f"Unknown npu_backend='{backend}'. Expected one of: fast, ascend_310b_json, llmcompass")
+
 
 _LLMCOMPASS_MODS: Optional[Dict[str, Any]] = None
 _LLMCOMPASS_DEVICE_CACHE: Dict[str, Any] = {}

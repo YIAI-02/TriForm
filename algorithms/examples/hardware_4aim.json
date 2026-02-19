@@ -13,14 +13,6 @@
         "cpu_cacheline_B": 64
       },
       {
-        "name": "GPU0",
-        "type": "npu",
-        "tflops": 312.0,
-        "mem_bw_GBs": 2048.0,
-        "mem_capacity_GB": 80.0,
-        "llmcompass_device": "A100"
-      },
-      {
         "name": "PIM0",
         "type": "pim",
         "pim_type": "accel",

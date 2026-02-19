@@ -36,6 +36,10 @@
 #  --alpha-max FLOAT default:1.0
 #  --marker-area FLOAT default:220.0
 #  --debug
+# --model-shapes \
+#    ./experiment/roofline_configs/llama_7b_shape.json \
+#    ./experiment/roofline_configs/llama_13b_shape.json \
+#  --model-labels llama7b llama13b \
 # -----------------------------------------------------------------------------
 
 
@@ -43,14 +47,17 @@
 PYTHONPATH=$PWD/algorithms:$PYTHONPATH \
 python ./experiment/plot_roofline.py \
   --hardware-json ./algorithms/examples/represent_hardware.json \
-  --devices AiM Ascend_310B \
-  --strategies-json ./experiment/roofline_configs/opt_baseline.json \
-  --batches 1 \
+  --devices GA100 \
+  --model-shapes \
+    ./experiment/roofline_configs/llama_7b_shape.json \
+  --model-labels llama7b\
+  --strategies-json ./experiment/roofline_configs/opt_methods_example.json \
+  --batches 1 32\
   --prefill-seqlens 8192 \
-  --decode-seqlens 1024\
-  --groups QKV_GEN SCORE SOFTMAX CONTEXT FFN\
+  --decode-seqlens 2048\
+  --groups QKV_GEN SCORE FFN\
   --phases prefill decode\
-  --bytes-mode auto \
+  --bytes-mode activation+weight \
   --outdir ./figs/roofline/hardware_only \
   --debug
 """
@@ -63,6 +70,7 @@ import copy
 import importlib.util
 import json
 import math
+import csv
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -182,6 +190,26 @@ class DummyCluster:
 def load_json(path: Path) -> Dict[str, Any]:
     with Path(path).open("r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def load_json_auto(s: str) -> Dict[str, Any]:
+    """Load JSON from a file path or an inline JSON string. """
+
+    ss = str(s or "").strip()
+    if not ss:
+        raise ValueError("Empty JSON input.")
+
+    # Inline JSON object
+    if ss.startswith("{") and ss.endswith("}"):
+        try:
+            obj = json.loads(ss)
+            if isinstance(obj, dict):
+                return obj
+        except Exception:
+            pass
+
+    # File path
+    return load_json(Path(ss))
 
 
 def _is_valid_color(c: str) -> bool:
@@ -384,6 +412,33 @@ def sanitize_filename(s: str) -> str:
         else:
             out.append("_")
     return "".join(out)
+
+
+def make_unique_labels(labels: List[str]) -> List[str]:
+    """Make labels unique while preserving order."""
+
+    out: List[str] = []
+    seen: Dict[str, int] = {}
+    for lab in (labels or []):
+        base = str(lab).strip() or "model"
+        if base not in seen:
+            seen[base] = 1
+            out.append(base)
+        else:
+            seen[base] += 1
+            out.append(f"{base}_{seen[base]}")
+    return out
+
+
+def summarize_labels_for_filename(labels: List[str], max_items: int = 3) -> str:
+    """Compact representation of a list of labels for filenames."""
+
+    labs = [sanitize_filename(str(x)) for x in (labels or []) if str(x).strip()]
+    if not labs:
+        return "models"
+    if len(labs) <= max_items:
+        return "-".join(labs)
+    return "-".join(labs[:max_items] + [f"plus{len(labs) - max_items}"])
 
 
 def format_seqlen(S: int) -> str:
@@ -1187,6 +1242,7 @@ def draw_phase(
     *,
     ax: plt.Axes,
     phase: str,
+    title: Optional[str] = None,
     devices: List[DeviceInfo],
     strategy_names: List[str],
     strategy_colors: Dict[str, str],
@@ -1220,8 +1276,8 @@ def draw_phase(
     ax.tick_params(colors="black")
     # Do not force a square subplot; keep a landscape layout.
 
-    # Subplot title: keep only 'prefill' or 'decode'
-    ax.set_title(str(phase))
+    # Subplot title
+    ax.set_title(str(title) if (title is not None and str(title).strip()) else str(phase))
 
     # Rooflines
     dev_handles: List[Line2D] = []
@@ -1523,6 +1579,201 @@ def plot_single_phase(
     plt.close(fig)
 
 
+def plot_models_subplots_for_phase(
+    *,
+    phase: str,
+    model_labels: List[str],
+    devices: List[DeviceInfo],
+    strategy_names: List[str],
+    strategy_colors: Dict[str, str],
+    # points_by_model[model] = points dict compatible with draw_phase
+    points_by_model: Dict[str, Dict[str, Dict[str, Dict[str, List[Tuple[float, float, int, int]]]]]],
+    groups_to_plot: List[str],
+    out_path: Path,
+    x_limits: Tuple[float, float],
+    y_limits: Tuple[float, float],
+    batches_sorted: List[int],
+    batch_color_map: Dict[int, str],
+    marker_area: float = 220.0,
+) -> None:
+    """Compare multiple model shapes for a single phase in one multi-panel figure."""
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    model_labels = [str(m).strip() for m in (model_labels or []) if str(m).strip()]
+    if not model_labels:
+        model_labels = ["model"]
+
+    ncols = len(model_labels)
+    fig_w = 7.0 * ncols
+    fig_h = 4.0
+    fig, axes = plt.subplots(1, ncols, figsize=(fig_w, fig_h), sharex=True, sharey=True)
+    if ncols == 1:
+        axes = [axes]
+
+    # Draw
+    dev_handles: List[Line2D] = []
+    strat_handles: List[Line2D] = []
+    batch_handles: List[Line2D] = []
+    op_handles: List[Line2D] = []
+    for ax, mlabel in zip(axes, model_labels):
+        pts = points_by_model.get(mlabel, {})
+        dev_h, strat_h, batch_h, op_h = draw_phase(
+            ax=ax,
+            phase=str(phase).strip().lower(),
+            title=str(mlabel),
+            devices=devices,
+            strategy_names=strategy_names,
+            strategy_colors=strategy_colors,
+            points=pts,
+            groups_to_plot=groups_to_plot,
+            x_limits=x_limits,
+            y_limits=y_limits,
+            batches_sorted=list(batches_sorted or []),
+            batch_color_map=dict(batch_color_map or {}),
+            marker_area=float(marker_area),
+        )
+        if not dev_handles:
+            dev_handles = dev_h
+        if not strat_handles:
+            strat_handles = strat_h
+        if not batch_handles:
+            batch_handles = batch_h
+        if not op_handles:
+            op_handles = op_h
+
+    # Labels
+    for ax in axes:
+        ax.set_xlabel("Arithmetic intensity (FLOPs / Byte)")
+    axes[0].set_ylabel("Roofline upper bound (TFLOPs/s)")
+
+    # Legends on each subplot (self-contained panels)
+    for ax in axes:
+        leg_dev = ax.legend(handles=dev_handles, loc="upper left", fontsize=8, frameon=False)
+        ax.add_artist(leg_dev)
+
+        leg_strat = ax.legend(handles=strat_handles, loc="upper right", fontsize=8, frameon=False)
+        ax.add_artist(leg_strat)
+
+        leg_batch = ax.legend(handles=batch_handles, loc="lower left", fontsize=8, frameon=False)
+        ax.add_artist(leg_batch)
+
+        ax.legend(handles=op_handles, loc="lower right", fontsize=8, frameon=False)
+
+    # Put phase name as figure title
+    try:
+        fig.suptitle(str(phase).strip().lower(), y=1.02)
+        fig.tight_layout(rect=[0, 0, 1, 0.95])
+    except Exception:
+        fig.tight_layout()
+
+    fig.savefig(out_path, dpi=240)
+    plt.close(fig)
+
+
+def plot_models_phases_grid(
+    *,
+    phases: List[str],
+    model_labels: List[str],
+    devices: List[DeviceInfo],
+    strategy_names: List[str],
+    strategy_colors: Dict[str, str],
+    # points_by_phase_model[phase][model] = points dict compatible with draw_phase
+    points_by_phase_model: Dict[str, Dict[str, Dict[str, Dict[str, Dict[str, List[Tuple[float, float, int, int]]]]]]],
+    groups_to_plot: List[str],
+    out_path: Path,
+    x_limits: Tuple[float, float],
+    y_limits: Tuple[float, float],
+    batches_sorted: List[int],
+    batch_color_map: Dict[int, str],
+    marker_area: float = 220.0,
+) -> None:
+    """Compare multiple model shapes *and* multiple phases in a grid (rows=phases, cols=models)."""
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    phases = [str(p).strip().lower() for p in (phases or []) if str(p).strip()]
+    if not phases:
+        phases = ["prefill", "decode"]
+
+    model_labels = [str(m).strip() for m in (model_labels or []) if str(m).strip()]
+    if not model_labels:
+        model_labels = ["model"]
+
+    # Prefer the common paper layout: prefill | decode (top -> bottom)
+    if set(phases) >= {"prefill", "decode"}:
+        phases = ["prefill", "decode"] + [p for p in phases if p not in ("prefill", "decode")]
+
+    nrows = len(phases)
+    ncols = len(model_labels)
+    fig_w = 7.0 * ncols
+    fig_h = 4.0 * nrows
+    fig, axes = plt.subplots(nrows, ncols, figsize=(fig_w, fig_h), sharex=True, sharey=True)
+
+    # Normalize axes to 2D list for uniform indexing
+    if nrows == 1 and ncols == 1:
+        axes2 = [[axes]]
+    elif nrows == 1:
+        axes2 = [list(axes)]
+    elif ncols == 1:
+        axes2 = [[ax] for ax in axes]
+    else:
+        axes2 = [list(row) for row in axes]
+
+    dev_handles: List[Line2D] = []
+    strat_handles: List[Line2D] = []
+    batch_handles: List[Line2D] = []
+    op_handles: List[Line2D] = []
+
+    for r, ph in enumerate(phases):
+        for c, mlabel in enumerate(model_labels):
+            ax = axes2[r][c]
+            pts = (points_by_phase_model.get(ph, {}) or {}).get(mlabel, {})
+            dev_h, strat_h, batch_h, op_h = draw_phase(
+                ax=ax,
+                phase=str(ph),
+                title=f"{str(ph)}\n{str(mlabel)}",
+                devices=devices,
+                strategy_names=strategy_names,
+                strategy_colors=strategy_colors,
+                points=pts,
+                groups_to_plot=groups_to_plot,
+                x_limits=x_limits,
+                y_limits=y_limits,
+                batches_sorted=list(batches_sorted or []),
+                batch_color_map=dict(batch_color_map or {}),
+                marker_area=float(marker_area),
+            )
+
+            if not dev_handles:
+                dev_handles = dev_h
+            if not strat_handles:
+                strat_handles = strat_h
+            if not batch_handles:
+                batch_handles = batch_h
+            if not op_handles:
+                op_handles = op_h
+
+            # Axis labels only on outer edges
+            if r == nrows - 1:
+                ax.set_xlabel("Arithmetic intensity (FLOPs / Byte)")
+            if c == 0:
+                ax.set_ylabel("Roofline upper bound (TFLOPs/s)")
+
+            # Legends on each panel (self-contained)
+            leg_dev = ax.legend(handles=dev_handles, loc="upper left", fontsize=8, frameon=False)
+            ax.add_artist(leg_dev)
+            leg_strat = ax.legend(handles=strat_handles, loc="upper right", fontsize=8, frameon=False)
+            ax.add_artist(leg_strat)
+            leg_batch = ax.legend(handles=batch_handles, loc="lower left", fontsize=8, frameon=False)
+            ax.add_artist(leg_batch)
+            ax.legend(handles=op_handles, loc="lower right", fontsize=8, frameon=False)
+
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=240)
+    plt.close(fig)
+
+
 # ---------------------------
 # Main
 # ---------------------------
@@ -1532,7 +1783,30 @@ def main() -> None:
 
     parser.add_argument("--cost-model", type=str, default="./algorithms/cost_model.py")
     parser.add_argument("--optimizations", type=str, default="./algorithms/optimizations.py")
-    parser.add_argument("--model-shape", type=str, default="./experiment/roofline_configs/llama_7b_shape.json")
+    parser.add_argument(
+        "--model-shape",
+        type=str,
+        default="./experiment/roofline_configs/llama_7b_shape.json",
+        help="Single model shape JSON (backward compatible).",
+    )
+    parser.add_argument(
+        "--model-shapes",
+        nargs="*",
+        default=[],
+        help=(
+            "Multiple model shape JSONs (file paths or inline JSON objects). "
+            "If provided, overrides --model-shape. Example: --model-shapes a.json b.json"
+        ),
+    )
+    parser.add_argument(
+        "--model-labels",
+        nargs="*",
+        default=[],
+        help=(
+            "Optional labels for --model-shapes in the same order. "
+            "If omitted, file stems are used."
+        ),
+    )
     parser.add_argument("--hardware-json", type=str, default="./algorithms/examples/represent_hardware.json")
     # Strategies:a single JSON with {"strategies":[{"name":..., "config":{...}}, ...]}  (recommended)
     parser.add_argument("--strategies-json", type=str, default="", help="JSON with a list of strategies (name+config).")
@@ -1629,12 +1903,19 @@ def main() -> None:
         help="Print per-op FLOPs/bytes breakdown for a representative (phase,B,S). Useful to verify KV-cache read bytes and quantization/sparsity tags.",
     )
 
+    parser.add_argument(
+        "--export-intensity-csv",
+        type=str,
+        default="",
+        help=(
+            "Optional: export every plotted point (model/phase/device/strategy/group/B/S) with FLOPs, bytes, intensity and bound TFLOPs/s to a CSV file."
+        ),
+    )
+
     args = parser.parse_args()
 
     # sys.path fix
     setup_syspath(Path(args.cost_model))
-
-    shape = load_json(Path(args.model_shape))
 
     # import cost_model + optimizations
     cm_mod = import_module_from_path("_cm_mod", Path(args.cost_model))
@@ -1679,16 +1960,39 @@ def main() -> None:
     if not seqlens_all:
         seqlens_all = [int(x) for x in args.seqlens if int(x) > 0]
 
-    # Build base graph template once (kv_len will be updated per seqlen)
-    base_graph = build_base_graph(
-        UNDERLYING_OPS,
-        shape=shape,
-        kv_len=int(max(seqlens_all) if seqlens_all else max(args.seqlens)),
-        base_weight_dtype_bytes=int(args.base_weight_dtype_bytes),
-    )
+    # ---------------------------------------------------------------------
+    # Model shapes (support multiple)
+    # ---------------------------------------------------------------------
+    model_shape_inputs: List[str] = [str(x).strip() for x in (args.model_shapes or []) if str(x).strip()]
+    if not model_shape_inputs:
+        model_shape_inputs = [str(args.model_shape).strip()]
 
-    # Load strategies
-    strategy_graphs: List[Tuple[str, MiniGraph]] = []
+    # Labels (optional)
+    raw_labels: List[str] = [str(x).strip() for x in (args.model_labels or []) if str(x).strip()]
+    labels: List[str] = []
+    for i, spec in enumerate(model_shape_inputs):
+        if i < len(raw_labels) and raw_labels[i]:
+            labels.append(raw_labels[i])
+        else:
+            # If spec is an inline JSON object, fall back to a generic name
+            ss = str(spec).strip()
+            if ss.startswith("{") and ss.endswith("}"):
+                labels.append(f"model{i + 1}")
+            else:
+                labels.append(Path(ss).stem or f"model{i + 1}")
+    model_labels = make_unique_labels(labels)
+
+    models: List[Tuple[str, Dict[str, Any]]] = []
+    for mlabel, mspec in zip(model_labels, model_shape_inputs):
+        shape_i = load_json_auto(mspec)
+        if not isinstance(shape_i, dict):
+            raise ValueError(f"Model shape must be a JSON object/dict: {mspec}")
+        models.append((str(mlabel), shape_i))
+
+    # ---------------------------------------------------------------------
+    # Load strategies (configs only; graphs are built per model)
+    # ---------------------------------------------------------------------
+    strategy_items: List[Dict[str, Any]] = []
     strategy_color_hints: Dict[str, str] = {}
 
     if args.strategies_json:
@@ -1708,10 +2012,14 @@ def main() -> None:
                 "{strategies:[{name,config}]}, a list of {name,config}, or a mapping {name: config}."
             )
 
+        only_set = set(args.only_strategies or [])
         for item in items:
             name = str(item.get("name") or "").strip()
             cfg = item.get("config", {})
             if not name or not isinstance(cfg, dict):
+                continue
+
+            if only_set and name not in only_set:
                 continue
 
             # Optional color hint per strategy
@@ -1719,19 +2027,13 @@ def main() -> None:
             if c_hint and _is_valid_color(c_hint):
                 strategy_color_hints[name] = c_hint
 
-            if args.only_strategies and name not in set(args.only_strategies):
-                continue
+            strategy_items.append({"name": name, "config": cfg})
 
-            g2 = copy.deepcopy(base_graph)
-            apply_optimizations_to_graph(g2, cfg, base_weight_dtype_bytes=int(args.base_weight_dtype_bytes), shape=shape)
-            strategy_graphs.append((name, g2))
-
-    if not strategy_graphs:
+    if not strategy_items:
         # fallback: a no-op strategy
-        strategy_graphs = [("no_opt", base_graph)]
+        strategy_items = [{"name": "no_opt", "config": {}}]
 
-    # assign colors (by strategy order / user mapping)
-    strategy_names = [name for name, _ in strategy_graphs]
+    strategy_names = [str(it["name"]) for it in strategy_items]
     strategy_colors = resolve_strategy_colors(
         strategy_names,
         color_map_file=str(args.strategy_color_map),
@@ -1740,19 +2042,53 @@ def main() -> None:
         palette=PALETTE,
     )
 
+    # ---------------------------------------------------------------------
+    # Build per-model graphs (base graph + apply optimizations)
+    # ---------------------------------------------------------------------
+    max_kv_len = int(max(seqlens_all) if seqlens_all else max(args.seqlens))
+
+    strategy_graphs_by_model: Dict[str, List[Tuple[str, MiniGraph]]] = {}
+    for mlabel, shape_i in models:
+        base_graph_i = build_base_graph(
+            UNDERLYING_OPS,
+            shape=shape_i,
+            kv_len=max_kv_len,
+            base_weight_dtype_bytes=int(args.base_weight_dtype_bytes),
+        )
+
+        graphs: List[Tuple[str, MiniGraph]] = []
+        for item in strategy_items:
+            sname = str(item.get("name") or "").strip() or "strategy"
+            cfg = item.get("config", {})
+            g2 = copy.deepcopy(base_graph_i)
+            # Always call apply_optimizations_to_graph for consistency; it should be no-op for {}.
+            apply_optimizations_to_graph(
+                g2,
+                cfg,
+                base_weight_dtype_bytes=int(args.base_weight_dtype_bytes),
+                shape=shape_i,
+            )
+            graphs.append((sname, g2))
+
+        strategy_graphs_by_model[mlabel] = graphs
+
     # CostModel
     cm = CostModel(cluster=DummyCluster(), dtype=str(args.dtype), pim_fast_mode=True)
 
     # Optional: print a representative FLOPs/bytes breakdown for validation.
     if bool(getattr(args, "debug", False)):
-        debug_dump_strategy_costs(
-            cm,
-            strategy_graphs,
-            phases=list(phases),
-            seqlens_per_phase=dict(seqlens_per_phase),
-            batches=[int(x) for x in (args.batches or [1])],
-            groups_to_plot=list(groups_to_plot),
-        )
+        for mlabel, graphs in strategy_graphs_by_model.items():
+            print("\n" + "#" * 88)
+            print(f"[DEBUG] MODEL={mlabel}")
+            print("#" * 88)
+            debug_dump_strategy_costs(
+                cm,
+                graphs,
+                phases=list(phases),
+                seqlens_per_phase=dict(seqlens_per_phase),
+                batches=[int(x) for x in (args.batches or [1])],
+                groups_to_plot=list(groups_to_plot),
+            )
 
     outdir = Path(args.outdir)
 
@@ -1762,8 +2098,11 @@ def main() -> None:
         int(b): str(BATCH_DOT_COLORS[i % len(BATCH_DOT_COLORS)]) for i, b in enumerate(batches_sorted)
     }
 
-    # Compute points for ALL phases first (so we can unify axis limits)
-    points_by_phase: Dict[str, Dict[str, Dict[str, Dict[str, List[Tuple[float, float, int, int]]]]]] = {}
+    # Compute points for ALL models & phases first (so we can unify axis limits)
+    points_by_phase_model: Dict[
+        str,
+        Dict[str, Dict[str, Dict[str, Dict[str, List[Tuple[float, float, int, int]]]]]],
+    ] = {}
 
     xs_global: List[float] = []
     ys_global: List[float] = []
@@ -1771,76 +2110,95 @@ def main() -> None:
         xs_global.append(dev.knee_intensity)
         ys_global.append(dev.peak_tflops)
 
+    export_records: List[Dict[str, Any]] = []
+    want_export = bool(str(args.export_intensity_csv or "").strip())
+
     for phase in phases:
         seqlens_phase = seqlens_per_phase[phase]
+        points_by_phase_model[phase] = {}
 
-        # points dict
-        points: Dict[str, Dict[str, Dict[str, List[Tuple[float, float, int, int]]]]] = {
-            dev.key: {s: {g: [] for g in groups_to_plot} for s in strategy_names} for dev in devices
-        }
+        for mlabel, _shape_i in models:
+            strategy_graphs = strategy_graphs_by_model.get(mlabel, [])
 
-        for sname, g_strat in strategy_graphs:
-            for S in seqlens_phase:
-                for B in batches_sorted:
-                    for gkey in groups_to_plot:
-                        group_ops = OP_GROUPS[gkey]["ops"]
+            # points dict (compatible with draw_phase)
+            points: Dict[str, Dict[str, Dict[str, List[Tuple[float, float, int, int]]]]] = {
+                dev.key: {s: {g: [] for g in groups_to_plot} for s in strategy_names} for dev in devices
+            }
 
-                        for dev in devices:
-                            include_weight = device_requires_weight_loading(dev, str(args.bytes_mode))
-                            cost = compute_group_cost(
-                                cm,
-                                g_strat,
-                                group_ops,
-                                batch=int(B),
-                                seq_len=int(S),
-                                phase=str(phase),
-                                include_weight=bool(include_weight),
-                            )
-                            I = cost.intensity
-                            if not (I > 0 and math.isfinite(I)):
-                                continue
+            for sname, g_strat in strategy_graphs:
+                for S in seqlens_phase:
+                    for B in batches_sorted:
+                        for gkey in groups_to_plot:
+                            group_ops = OP_GROUPS[gkey]["ops"]
 
-                            bound = dev.bound_tflops(I)
-                            points[dev.key][sname][gkey].append((I, bound, int(B), int(S)))
-                            xs_global.append(I)
-                            ys_global.append(bound)
+                            for dev in devices:
+                                include_weight = device_requires_weight_loading(dev, str(args.bytes_mode))
+                                cost = compute_group_cost(
+                                    cm,
+                                    g_strat,
+                                    group_ops,
+                                    batch=int(B),
+                                    seq_len=int(S),
+                                    phase=str(phase),
+                                    include_weight=bool(include_weight),
+                                )
+                                I = cost.intensity
+                                if not (I > 0 and math.isfinite(I)):
+                                    continue
 
-        points_by_phase[phase] = points
+                                bound = dev.bound_tflops(I)
+                                points[dev.key][sname][gkey].append((I, bound, int(B), int(S)))
+                                xs_global.append(I)
+                                ys_global.append(bound)
+
+                                if want_export:
+                                    export_records.append(
+                                        {
+                                            "model": str(mlabel),
+                                            "phase": str(phase),
+                                            "device_key": str(dev.key),
+                                            "device_label": str(dev.label),
+                                            "device_group": str(getattr(dev, "group", "")),
+                                            "strategy": str(sname),
+                                            "group": str(gkey),
+                                            "batch": int(B),
+                                            "seqlen": int(S),
+                                            "bytes_mode": str(args.bytes_mode),
+                                            "include_weight": bool(include_weight),
+                                            "flops": float(cost.flops),
+                                            "bytes_total": int(cost.bytes_total),
+                                            "intensity": float(I),
+                                            "bound_tflops": float(bound),
+                                        }
+                                    )
+
+            points_by_phase_model[phase][mlabel] = points
 
     # Unified axes across phases (tighter than the previous decade-snapped limits)
     x_limits = nice_log_limits(xs_global, min_floor=1e-8)
     y_limits = nice_log_limits(ys_global, min_floor=1e-6)
-    if bool(args.combine_phases):
-        out_path = outdir / (
-            f"roofline_phases-{sanitize_filename('-'.join(phases))}_bytes-{sanitize_filename(args.bytes_mode)}.pdf"
-        )
-        plot_phases_subplots(
-            phases=phases,
-            devices=devices,
-            strategy_names=strategy_names,
-            strategy_colors=strategy_colors,
-            points_by_phase=points_by_phase,
-            groups_to_plot=groups_to_plot,
-            out_path=out_path,
-            x_limits=x_limits,
-            y_limits=y_limits,
-            batches_sorted=list(batches_sorted or []),
-            batch_color_map=dict(batch_color_map or {}),
-            marker_area=float(args.marker_area),
-        )
-        print(f"[OK] {out_path}")
-    else:
-        for ph in phases:
-            pts = points_by_phase.get(ph, {})
+    # ---------------------------------------------------------------------
+    # Plot
+    # ---------------------------------------------------------------------
+    model_names_order = [mlabel for mlabel, _shape_i in models]
+
+    if len(model_names_order) == 1:
+        # Backward-compatible output names
+        m0 = model_names_order[0]
+        points_by_phase: Dict[str, Dict[str, Dict[str, Dict[str, List[Tuple[float, float, int, int]]]]]] = {
+            ph: (points_by_phase_model.get(ph, {}) or {}).get(m0, {}) for ph in phases
+        }
+
+        if bool(args.combine_phases):
             out_path = outdir / (
-                f"roofline_phase-{sanitize_filename(ph)}_bytes-{sanitize_filename(args.bytes_mode)}.pdf"
+                f"roofline_phases-{sanitize_filename('-'.join(phases))}_bytes-{sanitize_filename(args.bytes_mode)}.pdf"
             )
-            plot_single_phase(
-                phase=ph,
+            plot_phases_subplots(
+                phases=phases,
                 devices=devices,
                 strategy_names=strategy_names,
                 strategy_colors=strategy_colors,
-                points=pts,
+                points_by_phase=points_by_phase,
                 groups_to_plot=groups_to_plot,
                 out_path=out_path,
                 x_limits=x_limits,
@@ -1850,6 +2208,120 @@ def main() -> None:
                 marker_area=float(args.marker_area),
             )
             print(f"[OK] {out_path}")
+        else:
+            for ph in phases:
+                pts = points_by_phase.get(ph, {})
+                out_path = outdir / (
+                    f"roofline_phase-{sanitize_filename(ph)}_bytes-{sanitize_filename(args.bytes_mode)}.pdf"
+                )
+                plot_single_phase(
+                    phase=ph,
+                    devices=devices,
+                    strategy_names=strategy_names,
+                    strategy_colors=strategy_colors,
+                    points=pts,
+                    groups_to_plot=groups_to_plot,
+                    out_path=out_path,
+                    x_limits=x_limits,
+                    y_limits=y_limits,
+                    batches_sorted=list(batches_sorted or []),
+                    batch_color_map=dict(batch_color_map or {}),
+                    marker_area=float(args.marker_area),
+                )
+                print(f"[OK] {out_path}")
+    else:
+        # Multi-model comparison outputs
+        models_tag = summarize_labels_for_filename(model_names_order, max_items=3)
+        phases_tag = sanitize_filename("-".join(phases))
+        bytes_tag = sanitize_filename(str(args.bytes_mode))
+
+        if bool(args.combine_phases):
+            out_path = outdir / (
+                f"roofline_compare_models-{models_tag}_phases-{phases_tag}_bytes-{bytes_tag}.pdf"
+            )
+            plot_models_phases_grid(
+                phases=phases,
+                model_labels=list(model_names_order),
+                devices=devices,
+                strategy_names=strategy_names,
+                strategy_colors=strategy_colors,
+                points_by_phase_model=points_by_phase_model,
+                groups_to_plot=groups_to_plot,
+                out_path=out_path,
+                x_limits=x_limits,
+                y_limits=y_limits,
+                batches_sorted=list(batches_sorted or []),
+                batch_color_map=dict(batch_color_map or {}),
+                marker_area=float(args.marker_area),
+            )
+            print(f"[OK] {out_path}")
+        else:
+            for ph in phases:
+                out_path = outdir / (
+                    f"roofline_compare_models-{models_tag}_phase-{sanitize_filename(ph)}_bytes-{bytes_tag}.pdf"
+                )
+                plot_models_subplots_for_phase(
+                    phase=ph,
+                    model_labels=list(model_names_order),
+                    devices=devices,
+                    strategy_names=strategy_names,
+                    strategy_colors=strategy_colors,
+                    points_by_model=points_by_phase_model.get(ph, {}),
+                    groups_to_plot=groups_to_plot,
+                    out_path=out_path,
+                    x_limits=x_limits,
+                    y_limits=y_limits,
+                    batches_sorted=list(batches_sorted or []),
+                    batch_color_map=dict(batch_color_map or {}),
+                    marker_area=float(args.marker_area),
+                )
+                print(f"[OK] {out_path}")
+
+    # ---------------------------------------------------------------------
+    # Optional: export CSV
+    # ---------------------------------------------------------------------
+    if want_export:
+        csv_path = Path(str(args.export_intensity_csv)).expanduser()
+        csv_path.parent.mkdir(parents=True, exist_ok=True)
+        # Stable order
+        try:
+            export_records.sort(
+                key=lambda r: (
+                    str(r.get("model")),
+                    str(r.get("phase")),
+                    str(r.get("device_key")),
+                    str(r.get("strategy")),
+                    str(r.get("group")),
+                    int(r.get("batch", 0)),
+                    int(r.get("seqlen", 0)),
+                )
+            )
+        except Exception:
+            pass
+
+        fieldnames = [
+            "model",
+            "phase",
+            "device_key",
+            "device_label",
+            "device_group",
+            "strategy",
+            "group",
+            "batch",
+            "seqlen",
+            "bytes_mode",
+            "include_weight",
+            "flops",
+            "bytes_total",
+            "intensity",
+            "bound_tflops",
+        ]
+        with csv_path.open("w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=fieldnames)
+            w.writeheader()
+            for row in export_records:
+                w.writerow({k: row.get(k) for k in fieldnames})
+        print(f"[OK] {csv_path}")
 
     print("[DONE]")
 

@@ -30,6 +30,17 @@ from stats_recorder import get_simulation_logger
 logger = logging.getLogger(__name__)
 attach_local_debug_filter(logger, lambda: False)
 
+def _file_signature(p: Path) -> str:
+    try:
+        rp = Path(p).expanduser().resolve()
+    except Exception:
+        rp = Path(p)
+    try:
+        st = rp.stat()
+        return f"{rp}|{int(st.st_size)}|{int(st.st_mtime_ns)}"
+    except Exception:
+        return f"{rp}|missing"
+
 _PIM_NORM_ALIASES = {
     'ln', 'layernorm', 'layer_norm',
     'rmsnorm', 'rms_norm',
@@ -245,7 +256,17 @@ def _calc_channels(block):
     channel_lst = [channel for channel in range(channel_multi_tb_required)]
     return (channel_lst, FC_total_banks, channels_required)
 
-def _emit_single_op_trace(block, op: str, dim: int, n_heads: int, n_kv_heads: int, ffn_dim: int, seqlens: Optional[List[int]]):
+
+def _emit_single_op_trace(
+    block,
+    op: str,
+    dim: int,
+    n_heads: int,
+    n_kv_heads: int,
+    ffn_dim: int,
+    seqlens: Optional[List[int]],
+) -> None:
+
     channel_lst, FC_total_banks, channels_required = _calc_channels(block)
     head_dim = dim // max(1, n_heads)
     if op in ('q_proj', 'k_proj', 'v_proj', 'wo_proj', 'ffn_up', 'ffn_gate', 'ffn_down'):
@@ -337,7 +358,18 @@ def _emit_single_op_trace(block, op: str, dim: int, n_heads: int, n_kv_heads: in
         block.file.write('AiM EOC\n')
         block.file.flush()
 
-def _generate_pim_trace(op: str, pim_config: Path, dim: int, n_heads: int, n_kv_heads: int, ffn_dim: int, seqlen: Optional[int], trace_file: Path, model_dict: Optional[Dict]=None) -> None:
+def _generate_pim_trace(
+    op: str,
+    pim_config: Path,
+    dim: int,
+    n_heads: int,
+    n_kv_heads: int,
+    ffn_dim: int,
+    seqlen: Optional[int],
+    phase: str,
+    trace_file: Path,
+    model_dict: Optional[Dict] = None,
+) -> None:
     op = _normalize_pim_op(op)
     if model_dict is None:
         raise ValueError('Model dictionary must be provided for PIM trace generation')
@@ -345,15 +377,40 @@ def _generate_pim_trace(op: str, pim_config: Path, dim: int, n_heads: int, n_kv_
     pim_cfg = _load_memory_config(pim_config)
     args = _make_tb_args_from_pim(pim_cfg, str(trace_file))
     args.op_trace = True
-    args.seqlen = int(seqlen or args.seqlen or 16)
+    S = int(seqlen or args.seqlen or 16)
     block = TransformerBlock(model_dict, args)
     if hasattr(block, 'memory_mapping'):
         block.memory_mapping()
-    seqlens_list = [seqlen] if seqlen else None
-    _emit_single_op_trace(block, op, dim, n_heads, n_kv_heads, ffn_dim, seqlens_list)
-    if hasattr(block, 'file') and block.file:
+    ph = str(phase or '').strip().lower()
+    is_prefill = (ph == 'prefill')
+
+    # Prefill: query_len == key_len == S. Decode: query_len == 1.
+    T = int(S if is_prefill else 1)
+    if op in ('score', 'softmax', 'output'):
+        if is_prefill and T > 1:
+            seqlens_list: List[int] = list(range(1, S + 1))
+        else:
+            seqlens_list = [S]
+        _emit_single_op_trace(block, op, dim, n_heads, n_kv_heads, ffn_dim, seqlens_list)
+    else:
+        for _ in range(T):
+            _emit_single_op_trace(block, op, dim, n_heads, n_kv_heads, ffn_dim, None)
+
+    # Finalize trace once.
+    if hasattr(block, 'finish'):
+        try:
+            block.finish()
+        except Exception:
+            if getattr(block, 'file', None):
+                block.file.write('AiM EOC\n')
+    else:
+        if getattr(block, 'file', None):
+            block.file.write('AiM EOC\n')
+
+    if getattr(block, 'file', None):
         block.file.flush()
         block.file.close()
+
     if not trace_file.exists():
         raise RuntimeError(f'Trace file not generated: {trace_file}')
     if trace_file.stat().st_size == 0:
@@ -462,7 +519,7 @@ def _generate_weight_write_trace_to_pim(trace_path: Path, weight_bytes: int, pim
 def _simulate_weight_loading_latency(weight_bytes: int, pim_config_path: Path, gb_config_path: Path, ramulator_config_path: Path, dtype_bytes: int=2, use_cache: bool=True, keep_traces: bool=False, model_dict: Optional[Dict]=None) -> Tuple[float, float]:
     if model_dict is None:
         raise ValueError('Model dictionary must be provided for weight loading simulation')
-    cache_key = f'weight_load_{weight_bytes}_{pim_config_path.name}_{gb_config_path.name}_{ramulator_config_path.name}'
+    cache_key = f"weight_load|{int(weight_bytes)}|{int(dtype_bytes)}|{_file_signature(pim_config_path)}|{_file_signature(gb_config_path)}|{_file_signature(ramulator_config_path)}"
     if use_cache:
         cached = _pim_cache.cache.get(hashlib.md5(cache_key.encode()).hexdigest())
         if cached is not None:
@@ -570,7 +627,7 @@ def _run_ramulator(trace_path: Path, ramulator_config: Path, timeout: int=300) -
 class PIMLatencyCache:
     def __init__(self, cache_file: Optional[Path]=None):
         self.cache_file = cache_file or Path('./pkl/pim_latency_cache.pkl')
-        self.cache: Dict[str, float] = {}
+        self.cache: Dict[str, Any] = {}
         self.lock = Lock()
         self._load_cache()
 
@@ -590,50 +647,113 @@ class PIMLatencyCache:
         except Exception as e:
             logger.debug(str(f'[PIM Cache] Failed to save cache: {e}'))
 
-    def _make_key(self, op: str, dim: int, n_heads: int, n_kv_heads: int, ffn_dim: int, seqlen: Optional[int], pim_config: Path, ramulator_config: Path) -> str:
-        params = f'{op}_{dim}_{n_heads}_{n_kv_heads}_{ffn_dim}_{seqlen}'
-        configs = f'{pim_config.name}_{ramulator_config.name}'
-        key = f'{params}_{configs}'
+    def _make_key(
+        self,
+        op: str,
+        phase: str,
+        dim: int,
+        n_heads: int,
+        n_kv_heads: int,
+        ffn_dim: int,
+        seqlen: Optional[int],
+        pim_config: Path,
+        ramulator_config: Path,
+    ) -> str:
+        ph = str(phase or '').strip().lower() or 'decode'
+
+        params = f'{op}|{ph}|{int(dim)}|{int(n_heads)}|{int(n_kv_heads)}|{int(ffn_dim)}|{int(seqlen) if seqlen is not None else -1}'
+        cfgs = f'{_file_signature(pim_config)}|{_file_signature(ramulator_config)}'
+        key = f'v2|{params}|{cfgs}'
         return hashlib.md5(key.encode()).hexdigest()
 
-    def get(self, op: str, dim: int, n_heads: int, n_kv_heads: int, ffn_dim: int, seqlen: Optional[int], pim_config: Path, ramulator_config: Path) -> Optional[float]:
-        key = self._make_key(op, dim, n_heads, n_kv_heads, ffn_dim, seqlen, pim_config, ramulator_config)
+    def get(
+        self,
+        op: str,
+        phase: str,
+        dim: int,
+        n_heads: int,
+        n_kv_heads: int,
+        ffn_dim: int,
+        seqlen: Optional[int],
+        pim_config: Path,
+        ramulator_config: Path,
+    ) -> Optional[float]:
+        key = self._make_key(op, phase, dim, n_heads, n_kv_heads, ffn_dim, seqlen, pim_config, ramulator_config)
         with self.lock:
-            return self.cache.get(key)
+            v = self.cache.get(key)
+        try:
+            return float(v) if v is not None else None
+        except Exception:
+            return None
 
-    def set(self, op: str, dim: int, n_heads: int, n_kv_heads: int, ffn_dim: int, seqlen: Optional[int], pim_config: Path, ramulator_config: Path, latency: float):
-        key = self._make_key(op, dim, n_heads, n_kv_heads, ffn_dim, seqlen, pim_config, ramulator_config)
+    def set(
+        self,
+        op: str,
+        phase: str,
+        dim: int,
+        n_heads: int,
+        n_kv_heads: int,
+        ffn_dim: int,
+        seqlen: Optional[int],
+        pim_config: Path,
+        ramulator_config: Path,
+        latency: float,
+    ):
+        key = self._make_key(op, phase, dim, n_heads, n_kv_heads, ffn_dim, seqlen, pim_config, ramulator_config)
         with self.lock:
-            self.cache[key] = latency
+            self.cache[key] = float(latency)
             self._save_cache()
+
 _pim_cache = PIMLatencyCache()
 
 
-def _get_pim_latency_via_trace(op: str, pim_config: Path, ramulator_config: Path, dim: int, n_heads: int, n_kv_heads: int, ffn_dim: int, seqlen: Optional[int], model_dict: Optional[Dict]=None, use_cache: bool=True) -> float:
-    """
-    Generate trace and run Ramulator, returning the latency (in seconds).
-    This function blocks until Ramulator finishes the simulation and returns the result.
-    """
+def _get_pim_latency_via_trace(
+    op: str,
+    pim_config: Path,
+    ramulator_config: Path,
+    dim: int,
+    n_heads: int,
+    n_kv_heads: int,
+    ffn_dim: int,
+    seqlen: Optional[int],
+    phase: str = "decode",
+    model_dict: Optional[Dict] = None,
+    use_cache: bool = True,
+) -> float:
     orig_op = op
     op = _normalize_pim_op(op)
 
     if model_dict is None:
         raise ValueError('Model dictionary must be provided for PIM latency computation')
+    ph = str(phase or '').strip().lower() or 'decode'
     sim_logger = get_simulation_logger()
     sim_logger.record_simulation(op, dim, n_heads, n_kv_heads, ffn_dim, seqlen)
     if orig_op != op:
         sim_logger._log(f"[PIM] normalize op '{orig_op}' -> '{op}'")
+    
     if use_cache:
-        cached = _pim_cache.get(op, dim, n_heads, n_kv_heads, ffn_dim, seqlen, pim_config, ramulator_config)
+        cached = _pim_cache.get(op, ph, dim, n_heads, n_kv_heads, ffn_dim, seqlen, pim_config, ramulator_config)
         if cached is not None:
             return cached
-    msg = f'[PIM] Computing latency for {op} (dim={dim}, heads={n_heads}, seq={seqlen})'
+    msg = f"[PIM] Computing latency for {op} phase={ph} (dim={dim}, heads={n_heads}, seq={seqlen})"
     sim_logger._log(msg)
+
     temp_dir = Path(tempfile.mkdtemp(prefix='pim_trace_'))
     try:
-        trace_path = temp_dir / f'{op}_trace.trace'
+        trace_path = temp_dir / f'{op}_{ph}_trace.trace'
         sim_logger._log(f'[PIM] Generating trace: {trace_path}')
-        _generate_pim_trace(op=op, pim_config=pim_config, dim=dim, n_heads=n_heads, n_kv_heads=n_kv_heads, ffn_dim=ffn_dim, seqlen=seqlen, trace_file=trace_path, model_dict=model_dict)
+        _generate_pim_trace(
+            op=op,
+            pim_config=pim_config,
+            dim=int(dim),
+            n_heads=int(n_heads),
+            n_kv_heads=int(n_kv_heads),
+            ffn_dim=int(ffn_dim),
+            seqlen=int(seqlen) if seqlen is not None else None,
+            phase=ph,
+            trace_file=trace_path,
+            model_dict=model_dict,
+         )
         sim_logger._log(f'[PIM] Trace generation completed')
         sim_logger._log(f'[PIM] Starting ramulator simulation...')
         cycles = _run_ramulator(trace_path, ramulator_config)
@@ -643,7 +763,7 @@ def _get_pim_latency_via_trace(op: str, pim_config: Path, ramulator_config: Path
             latency = 0.0
         sim_logger._log(f'[PIM] Latency computed: {latency:.6e} seconds ({cycles} cycles)')
         if use_cache:
-            _pim_cache.set(op, dim, n_heads, n_kv_heads, ffn_dim, seqlen, pim_config, ramulator_config, latency)
+            _pim_cache.set(op, ph, dim, n_heads, n_kv_heads, ffn_dim, seqlen, pim_config, ramulator_config, latency)
         return latency
     except Exception as e:
         sim_logger._log(f'[PIM] Error during latency computation: {e}')

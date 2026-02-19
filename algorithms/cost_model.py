@@ -1,6 +1,7 @@
 from __future__ import annotations
 from cProfile import label
 from config import attach_local_debug_filter
+import config as _config
 import json, os, time
 import math
 from dataclasses import dataclass
@@ -48,13 +49,13 @@ from cost_model_npu_json_backend import (
 )
 
 logger = logging.getLogger(__name__)
-attach_local_debug_filter(logger, lambda: False)
+attach_local_debug_filter(logger, lambda: True)
 DTYPE_BYTES: Dict[str, float] = {'fp32': 4, 'fp16': 2, 'bf16': 2, 'int8': 1, 'int4': 0.5}
 
 # Canonical op-key sets for NPU backends
 NPU_ACT_KEYS = {
     'gelu','relu','silu','swish','mish','tanh','sigmoid','relu6','leaky_relu','elu','hardtanh','selu','prelu',
-    'geglu','swiglu','glu_act','activation'
+    'geglu','swiglu','swi_glu','silu_glu','glu_act','activation','act'
 }
 NPU_NORM_KEYS = {
     'layernorm','layer_norm','ln','rmsnorm','rms_norm','norm',
@@ -63,6 +64,79 @@ NPU_NORM_KEYS = {
 NPU_GEMM_KEYS = {
     'q_proj','k_proj','v_proj','wo_proj','ffn_up','ffn_gate','ffn_down','score','output',
 }
+
+# NPU op-name aliases (graph node labels -> canonical backend keys)
+_NPU_OP_ALIASES: Dict[str, str] = {
+    # Attention projections
+    'q': 'q_proj',
+    'k': 'k_proj',
+    'v': 'v_proj',
+    'o': 'wo_proj',
+    'wo': 'wo_proj',
+
+    # Attention core
+    'qk': 'score',
+    'score': 'score',
+    'softmax': 'softmax',
+    'sv': 'output',
+    'output': 'output',
+
+    # FFN / MLP (LLaMA SwiGLU naming)
+    'ffn_w1': 'ffn_gate',
+    'ffn_w3': 'ffn_up',
+    'ffn_w2': 'ffn_down',
+    'w1': 'ffn_gate',
+    'w3': 'ffn_up',
+    'w2': 'ffn_down',
+    'mlp_w1': 'ffn_gate',
+    'mlp_w3': 'ffn_up',
+    'mlp_w2': 'ffn_down',
+
+    # Residual / elementwise
+    'residual': 'add',
+}
+
+
+# Token-level matcher for embedded op names.
+_NPU_OP_TOKEN_RE = re.compile(
+    r'(^|_)(qk|sv|softmax|ffn_w1|ffn_w2|ffn_w3|q_proj|k_proj|v_proj|wo_proj)($|_)'
+)
+
+
+def _normalize_npu_op_key(op_key: str) -> str:
+    """Normalize a graph op label to a canonical NPU backend op-key."""
+    s = (op_key or '').strip().lower()
+    if not s:
+        return s
+    s = s.replace('-', '_').replace(' ', '_')
+    s = re.sub(r'__+', '_', s)
+    s2 = re.sub(r'^(l|layer|block)\d+_', '', s)
+    s2 = re.sub(r'_(s|shard)\d+$', '', s2)
+    s2 = re.sub(r'_e\d+$', '', s2)          # expert id
+    s2 = re.sub(r'_expert\d+$', '', s2)
+    s2 = re.sub(r'_tp\d+$', '', s2)
+    s2 = s2.strip('_')
+    if not s2:
+        s2 = s
+
+    # Direct alias hit.
+    if s2 in _NPU_OP_ALIASES:
+        return _NPU_OP_ALIASES[s2]
+
+    # Try last token (handles cases like "attn_q", "proj_q", etc.).
+    tail = s2.split('_')[-1] if '_' in s2 else s2
+    if tail in _NPU_OP_ALIASES:
+        return _NPU_OP_ALIASES[tail]
+
+    # Tokenized / embedded match.
+    m = _NPU_OP_TOKEN_RE.search(s2)
+    if m:
+        tok = (m.group(2) or '').lower()
+        if tok in _NPU_OP_ALIASES:
+            return _NPU_OP_ALIASES[tok]
+        return tok
+
+    return s2
 
 def _is_norm_like(op_key: str) -> bool:
     s = (op_key or '').strip().lower()
@@ -132,17 +206,20 @@ class NpuLlmCompassBackend(NpuBackendBase):
     name = 'llmcompass'
 
     def estimate_s(self, cm: "CostModel", node: TaskNode, dev: DeviceSpec, ctx: NpuOpContext) -> float:
+        """LLMCompass-backed latency estimate."""
         device_key = _llmcompass_guess_device_key(dev)
+        op = (ctx.op_key or '').strip().lower()
+
+        if op in ('add', 'identity', 'allreduce', 'k_write', 'v_write', 'kv_write'):
+            logger.debug(str(f'[NPU-ELEM][LLMCompass] op={op} device={device_key} mem_s={ctx.mem_s}'))
+            return float(ctx.mem_s)
 
         # (a) Softmax
-        if ctx.op_key == 'softmax':
+        if op == 'softmax':
             M_rows = max(1, int(ctx.batch) * max(1, int(ctx.q_heads)) * max(1, int(ctx.q_len)))
-            # Keep the original semantics:
-            # - prefill+dense: K_cols = seq_len
-            # - prefill+sparse: use kv_len (avg keys per query)
-            # - decode: use kv_len
+            is_dense = str(ctx.attn_pattern).lower() in ('dense', 'none', 'off', 'disabled')
             if str(ctx.phase) == 'prefill':
-                K_cols = max(1, int(ctx.seq_len if ctx.attn_pattern in ('dense', 'none', 'off', 'disabled') else ctx.kv_len))
+                K_cols = max(1, int(ctx.seq_len if is_dense else ctx.kv_len))
             else:
                 K_cols = max(1, int(ctx.kv_len))
 
@@ -154,30 +231,26 @@ class NpuLlmCompassBackend(NpuBackendBase):
             return float(lat_s + float(ctx.mem_s))
 
         # (b) Activation (use GELU as proxy)
-        if ctx.op_key in NPU_ACT_KEYS:
+        if op in NPU_ACT_KEYS:
             data_len = max(1, int(ctx.batch)) * max(1, int(ctx.q_len)) * max(1, int(ctx.ffn_dim if ctx.ffn_dim > 0 else ctx.dim))
             lat_s = _llmcompass_simulate_gelu_s(device_key, cm.dtype, int(data_len))
-            logger.debug(str(f'[NPU-ACT][LLMCompass] device={device_key} data_len={data_len} s={lat_s}'))
+            logger.debug(str(f'[NPU-ACT][LLMCompass] device={device_key} op={op} data_len={data_len} s={lat_s}'))
             return float(lat_s + float(ctx.mem_s))
 
         # (c) Norm
-        if _is_norm_like(ctx.op_key):
+        if _is_norm_like(op):
             rows = max(1, int(ctx.batch)) * max(1, int(ctx.q_len))
-            try:
-                lat_s = _llmcompass_simulate_layernorm_s(device_key, cm.dtype, int(rows), int(ctx.dim))
-            except Exception as e:
-                logger.debug(str(f'[NPU-NORM][LLMCompass] layernorm simulation failed for op={ctx.op_key}: {e}'))
-                return float(self._fallback_fast_s(cm, node, dev, ctx))
-            logger.debug(str(f'[NPU-NORM][LLMCompass] device={device_key} rows={rows} dim={ctx.dim} s={lat_s}'))
+            lat_s = _llmcompass_simulate_layernorm_s(device_key, cm.dtype, int(rows), int(ctx.dim))
+            logger.debug(str(f'[NPU-NORM][LLMCompass] device={device_key} op={op} rows={rows} dim={ctx.dim} s={lat_s}'))
             return float(lat_s + float(ctx.mem_s))
 
         # (d) Matmul-like (GEMM / BatchedMatmul)
-        if ctx.op_key in NPU_GEMM_KEYS:
+        if op in NPU_GEMM_KEYS:
             # ---- Attention score / output: use BatchedMatmul ----
-            if ctx.op_key in ('score', 'output'):
+            if op in ('score', 'output'):
                 bmm_batch = max(1, int(ctx.batch) * max(1, int(ctx.q_heads)))
                 M_mm = max(1, int(ctx.q_len))
-                if ctx.op_key == 'score':
+                if op == 'score':
                     # [B*H, Tq, Dh] x [B*H, Dh, Tk] => [B*H, Tq, Tk]
                     N_mm = max(1, int(ctx.kv_len))
                     K_mm = max(1, int(ctx.head_dim))
@@ -186,7 +259,10 @@ class NpuLlmCompassBackend(NpuBackendBase):
                     N_mm = max(1, int(ctx.head_dim))
                     K_mm = max(1, int(ctx.kv_len))
 
-                lat_s = _llmcompass_simulate_matmul_s(device_key, cm.dtype, int(M_mm), int(N_mm), int(K_mm), batch=int(bmm_batch), batched=True,)
+                lat_s = _llmcompass_simulate_matmul_s(
+                    device_key, cm.dtype, int(M_mm), int(N_mm), int(K_mm),
+                    batch=int(bmm_batch), batched=True,
+                )
                 logger.debug(str(
                     f'[NPU-MMAD][LLMCompass][BMM] device={device_key} '
                     f'batch={bmm_batch} M={M_mm} N={N_mm} K={K_mm} '
@@ -196,34 +272,44 @@ class NpuLlmCompassBackend(NpuBackendBase):
 
             # ---- Projections / FFN: use GEMM (fold batch*tokens into M) ----
             M_mm = max(1, int(ctx.batch) * max(1, int(ctx.q_len)))
-
-            if ctx.op_key == 'q_proj':
-                K_mm = max(1, int(ctx.head_dim))
-                N_mm = max(1, int(ctx.q_dim))
-            elif ctx.op_key in ('k_proj', 'v_proj'):
-                K_mm = max(1, int(ctx.head_dim))
-                N_mm = max(1, int(ctx.kv_dim))
-            elif ctx.op_key == 'wo_proj':
-                K_mm = max(1, int(ctx.o_dim))
-                N_mm = max(1, int(ctx.head_dim))
-            elif ctx.op_key in ('ffn_up', 'ffn_gate'):
-                K_mm = max(1, int(ctx.head_dim))
-                N_mm = max(1, int(ctx.ffn_dim))
-            elif ctx.op_key == 'ffn_down':
-                K_mm = max(1, int(ctx.ffn_dim))
-                N_mm = max(1, int(ctx.head_dim))
+            if op == 'q_proj':
+                # [B*T, D] x [D, q_dim]
+                K_mm = max(1, int(ctx.dim))
+                N_mm = max(1, int(ctx.q_dim) if int(ctx.q_dim) > 0 else int(ctx.dim))
+            elif op in ('k_proj', 'v_proj'):
+                # [B*T, D] x [D, kv_dim]
+                K_mm = max(1, int(ctx.dim))
+                N_mm = max(1, int(ctx.kv_dim) if int(ctx.kv_dim) > 0 else int(ctx.dim))
+            elif op == 'wo_proj':
+                # [B*T, o_dim] x [o_dim, D]
+                K_mm = max(1, int(ctx.o_dim) if int(ctx.o_dim) > 0 else int(ctx.dim))
+                N_mm = max(1, int(ctx.dim))
+            elif op in ('ffn_up', 'ffn_gate'):
+                # [B*T, D] x [D, ffn_dim]
+                K_mm = max(1, int(ctx.dim))
+                N_mm = max(1, int(ctx.ffn_dim) if int(ctx.ffn_dim) > 0 else int(4 * int(ctx.dim)))
+            elif op == 'ffn_down':
+                # [B*T, ffn_dim] x [ffn_dim, D]
+                K_mm = max(1, int(ctx.ffn_dim) if int(ctx.ffn_dim) > 0 else int(4 * int(ctx.dim)))
+                N_mm = max(1, int(ctx.dim))
             else:
-                return float(self._fallback_fast_s(cm, node, dev, ctx))
+                # Should be unreachable due to NPU_GEMM_KEYS guard.
+                raise RuntimeError(f"[LLMCompass] Internal: unhandled GEMM op='{op}'")
 
             lat_s = _llmcompass_simulate_matmul_s(device_key, cm.dtype, int(M_mm), int(N_mm), int(K_mm))
             logger.debug(str(
-                f'[NPU-MMAD][LLMCompass][GEMM] device={device_key} '
+                f'[NPU-MMAD][LLMCompass][GEMM] device={device_key} op={op} '
                 f'M={M_mm} N={N_mm} K={K_mm} phase={ctx.phase} s={lat_s}'
             ))
             return float(lat_s + float(ctx.mem_s))
 
-        # Fallback
-        return float(self._fallback_fast_s(cm, node, dev, ctx))
+        # (e) Unknown op -> HARD ERROR
+        raise RuntimeError(
+            f"[LLMCompass] Unrecognized NPU op_key='{op}'. "
+            f"Supported categories: softmax, norm-like, activation-like, "
+            f"gemm-like ({sorted(NPU_GEMM_KEYS)}), elem-like(add/identity/...). "
+            f"Node={getattr(node, 'name', '?')}"
+        )
 
 
 class NpuAscend310BJsonBackend(NpuBackendBase):
@@ -233,12 +319,13 @@ class NpuAscend310BJsonBackend(NpuBackendBase):
         # (a) Softmax
         if ctx.op_key == 'softmax':
             M_rows = max(1, int(ctx.batch) * max(1, int(ctx.q_heads)) * max(1, int(ctx.q_len)))
+            is_dense = str(ctx.attn_pattern).lower() in ('dense','none','off','disabled')
             if str(ctx.phase) == 'prefill':
-                K_cols = max(1, int(ctx.seq_len if ctx.attn_pattern in ('dense', 'none', 'off', 'disabled') else ctx.kv_len))
+                K_cols = int(ctx.seq_len if is_dense else ctx.kv_len)
             else:
-                K_cols = max(1, int(ctx.kv_len))
-
-            us = _predict_softmax_latency_us_from_json(int(M_rows), int(K_cols), phase=ctx.phase, causal=ctx.causal)
+                K_cols = int(ctx.kv_len)
+            causal_for_model = bool(ctx.causal) and not (str(ctx.phase) == 'prefill' and (not is_dense))
+            us = _predict_softmax_latency_us_from_json(M_rows, K_cols, phase=ctx.phase, causal=causal_for_model)
             logger.debug(str(f'[NPU-SOFTMAX][JSON] M={M_rows} K={K_cols} phase={ctx.phase} causal={ctx.causal} us={us}'))
             if us is not None:
                 return float(max(float(us) * 1e-06, float(ctx.mem_s)))
@@ -277,8 +364,7 @@ class NpuAscend310BJsonBackend(NpuBackendBase):
             try:
                 qh_eff = max(1, int(ctx.q_heads))
                 hd_eff = int(ctx.head_dim if ctx.head_dim > 0 else (ctx.dim // qh_eff))
-                kv_len_eff = int(ctx.seq_len) if str(ctx.phase) == 'prefill' else int(ctx.kv_len)
-
+                kv_len_eff = max(1, int(ctx.kv_len))
                 if ctx.op_key == 'score':
                     M, N, K = 1, max(1, kv_len_eff), max(1, hd_eff)
                     reps = max(1, qh_eff * max(1, int(ctx.q_len)))
@@ -384,54 +470,58 @@ class PimTraceBackend(PimBackendBase):
         op_norm = _normalize_pim_op(op_in) if op_in else ''
         traceable = bool(op_norm) and (op_norm in PIM_TRACE_SUPPORTED_OPS)
 
-        compute_time = 0.0
-        if op_in and int(ctx.dim) > 0 and (int(ctx.n_heads) > 0):
-            if traceable:
-                try:
-                    model_dict = cm.get_model_dict()
-                    compute_time = float(
-                        _get_pim_latency_via_trace(
-                            op=str(op_norm),
-                            pim_config=cm.pim_config_path,
-                            ramulator_config=cm.ramulator_config_path,
-                            dim=int(ctx.dim),
-                            n_heads=int(ctx.n_heads),
-                            n_kv_heads=int(ctx.n_kv_heads),
-                            ffn_dim=int(ctx.ffn_dim),
-                            seqlen=int(ctx.seq_len) if int(ctx.seq_len) > 0 else None,
-                            model_dict=model_dict,
-                            use_cache=bool(cm.pim_cache_enabled),
-                        )
-                    )
-                except Exception as e:
-                    # Do not fail scheduling when trace simulation cannot run.
-                    # Fall back to mem-only cost.
-                    logger.debug(str(
-                        f"[PIM] Trace backend failed for {getattr(node,'name','?')}: "
-                        f"op='{op_in}' normalized='{op_norm}' err={e}. "
-                        f"Falling back to mem-only cost."
-                    ))
-                    compute_time = 0.0
-            else:
-                logger.debug(str(
-                    f"[PIM] Trace backend: skip unsupported op for {getattr(node,'name','?')}: "
-                    f"op='{op_in}' normalized='{op_norm}'. Using mem-only cost."
-                ))
-        else:
+        # Basic parameter guardrails
+        if (not op_in) or int(ctx.dim) <= 0 or int(ctx.n_heads) <= 0:
             logger.debug(str(
                 f'[PIM] Warning: Insufficient parameters for {getattr(node,"name","?")} '
                 f'(op={ctx.op_key}, dim={ctx.dim}, heads={ctx.n_heads})'
             ))
 
-        ATTENTION_DATAFLOW = {'QK', 'SV', 'SOFTMAX', 'K_READ', 'V_READ', 'K_WRITE', 'V_WRITE', 'KV_READ', 'KV_WRITE'}
-        node_name_upper = ((getattr(node, 'name', '') or '').upper())
-        # When KV is assumed to live in PIM, attention dataflow ops are already modeled inside trace.
-        # If the op is not traceable, fall back to the bandwidth model to avoid silently charging 0.
-        if bool(ctx.kv_in_pim) and (node_name_upper in ATTENTION_DATAFLOW) and traceable:
-            mem_time = 0.0
+            return 0.0
+
+        # Prefer exact trace-based latency when supported.
+        if traceable:
+            try:
+                model_dict = cm.get_model_dict()
+                compute_time = float(
+                    _get_pim_latency_via_trace(
+                        op=str(op_norm),
+                        pim_config=cm.pim_config_path,
+                        ramulator_config=cm.ramulator_config_path,
+                        dim=int(ctx.dim),
+                        n_heads=int(ctx.n_heads),
+                        n_kv_heads=int(ctx.n_kv_heads),
+                        ffn_dim=int(ctx.ffn_dim),
+                        seqlen=int(ctx.seq_len) if int(ctx.seq_len) > 0 else None,
+                        phase=str(ctx.phase),
+                        model_dict=model_dict,
+                        use_cache=bool(cm.pim_cache_enabled),
+                    )
+                )
+                return float(compute_time)
+            except Exception as e:
+                # Do not fail scheduling when trace simulation cannot run.
+                # Fall back to compute-only estimate (NO mem_time for CENT backend).
+                logger.debug(str(
+                    f"[PIM] Trace backend failed for {getattr(node,'name','?')}: "
+                    f"op='{op_in}' normalized='{op_norm}' err={e}. "
+                    f"Falling back to compute-only estimate."
+                ))
         else:
-            rd, wr = cm.estimate_activation_bytes(node, ctx.batch, ctx.seq_len, ctx.phase)
-            mem_time = float(cm.pim_mem_time(int(rd), int(wr), dev))
+            logger.debug(str(
+                f"[PIM] Trace backend: skip unsupported op for {getattr(node,'name','?')}: "
+                f"op='{op_in}' normalized='{op_norm}'. Using compute-only estimate."
+            ))
+
+        # Fallback path: compute-only estimate (seconds).
+        try:
+            flops = float(cm.estimate_flops(node, ctx.batch, ctx.seq_len, ctx.phase))
+            t = float(cm.flop_time(flops, dev))
+            return float(t)
+        except Exception as e:
+            logger.debug(str(f"[PIM] compute-only fallback failed for {getattr(node,'name','?')}: {e}"))
+            return 0.0
+
 
         return float(compute_time + mem_time)
     def weight_load_s(self, cm: "CostModel", weight_bytes: int) -> float:
@@ -449,24 +539,10 @@ class PimTraceBackend(PimBackendBase):
         if bool(cm.pim_fast_mode):
             return PimFastBackend().activation_read_s(cm, activation_bytes_nd)
 
-        try:
-            read_lat, _ = _simulate_weight_loading_latency(
-                int(activation_bytes_nd),
-                cm.gb_config_path,         # pim_config_path (WRITE side not used)
-                cm.pim_config_path,        # gb_config_path (READ side uses PIM cfg)
-                cm.ramulator_config_path,
-                dtype_bytes=DTYPE_BYTES.get(cm.dtype, 2),
-                use_cache=bool(cm.pim_cache_enabled),
-                keep_traces=bool(cm.debug_traces),
-                model_dict=cm.get_model_dict(),
-            )
-            return float(read_lat)
-        except Exception as e:
-            logger.debug(f"[activation_read_time_pim] fallback to mem_time due to: {e}")
-            pim_devs = getattr(cm.cluster, 'devices_by_type', lambda *_: [])('pim')
-            if pim_devs:
-                return float(cm.pim_mem_time(int(activation_bytes_nd), 0, pim_devs[0]))
-            return 0.0
+        pim_devs = getattr(cm.cluster, 'devices_by_type', lambda *_: [])('pim')
+        if pim_devs:
+            return float(cm.pim_mem_time(int(activation_bytes_nd), 0, pim_devs[0]))
+        return 0.0
 
 
 def build_pim_backend(pim_fast_mode: bool) -> PimBackendBase:
@@ -549,11 +625,94 @@ class CostModel:
         m = float(FORMAT_SIZE_MULTIPLIER.get(fmt, 1.0))
         return int(size_bytes * m)
 
-    def flop_time(self, flops: float, dev: DeviceSpec) -> float:
+    def _compute_utilization(self, flops: float, dev: DeviceSpec) -> float:
+        """Heuristic utilization of peak compute throughput for small workloads."""
+        try:
+            cfg = getattr(_config, 'COMPUTE_UTILIZATION', None)
+            if not isinstance(cfg, dict) or not cfg:
+                return 1.0
+            dev_type = str(getattr(dev, 'type', '') or '').lower()
+            params = cfg.get(dev_type, cfg.get('default', cfg))
+
+            # Allow simple scalar override (constant utilization).
+            if isinstance(params, (int, float)):
+                u = float(params)
+                return 1.0 if u <= 0 else min(1.0, u)
+            if not isinstance(params, dict):
+                return 1.0
+
+            if not bool(params.get('enabled', True)):
+                return 1.0
+
+            min_u = float(params.get('min_util', params.get('min', 1.0)) or 0.0)
+            max_u = float(params.get('max_util', params.get('max', 1.0)) or 1.0)
+
+            # Clamp to [0, 1]
+            min_u = max(0.0, min(1.0, min_u))
+            max_u = max(0.0, min(1.0, max_u))
+            if max_u <= 0.0:
+                return 1.0
+            if min_u > max_u:
+                min_u, max_u = max_u, min_u
+
+            flops_low = float(params.get('flops_low', params.get('low_flops', 0.0)) or 0.0)
+            flops_high = float(params.get('flops_high', params.get('high_flops', 0.0)) or 0.0)
+            curve = str(params.get('curve', params.get('mode', 'log_linear')) or 'log_linear').strip().lower()
+            power = float(params.get('power', 1.0) or 1.0)
+            power = max(1e-3, power)
+
+            f = float(flops or 0.0)
+            if f <= 0.0:
+                return max(min_u, 1e-6)
+
+            # If thresholds are not configured, treat as constant max utilization.
+            if flops_low <= 0.0 or flops_high <= 0.0 or flops_high <= flops_low:
+                return max(min(max_u, 1.0), 1e-6)
+
+            if f <= flops_low:
+                return max(min_u, 1e-6)
+            if f >= flops_high:
+                return max(max_u, 1e-6)
+
+            if curve in ('linear',):
+                x = (f - flops_low) / (flops_high - flops_low)
+            elif curve in ('sigmoid', 'logistic'):
+                # knee defaults to geometric mean; slope controls steepness.
+                knee = float(params.get('knee_flops', math.sqrt(flops_low * flops_high)) or math.sqrt(flops_low * flops_high))
+                slope = float(params.get('slope', 1.0) or 1.0)
+                knee = max(1.0, knee)
+                x = (math.log10(f) - math.log10(knee)) * slope
+                s = 1.0 / (1.0 + math.exp(-x))
+                u = min_u + (max_u - min_u) * s
+                return max(min(1.0, u), 1e-6)
+            else:
+                x = (math.log10(f) - math.log10(flops_low)) / (math.log10(flops_high) - math.log10(flops_low))
+
+            x = max(0.0, min(1.0, x))
+            x = x ** power
+            u = min_u + (max_u - min_u) * x
+            return max(min(1.0, u), 1e-6)
+        except Exception:
+            return 1.0
+
+    def effective_tflops(self, flops: float, dev: DeviceSpec) -> float:
+        """Peak TFLOPS scaled by utilization."""
         t = float(getattr(dev, "tflops", 0.0) or 0.0)
         if t <= 0.0:
+            # For CPU, keep the previous behavior: do not treat missing tflops as "free".
+            if str(getattr(dev, 'type', '') or '').lower() == 'cpu':
+                t = float(getattr(_config, 'CPU_FALLBACK_TFLOPS', 1e-3) or 1e-3)
+            else:
+                return 0.0
+        util = float(self._compute_utilization(float(flops or 0.0), dev))
+        return float(t * max(util, 1e-6))
+
+    def flop_time(self, flops: float, dev: DeviceSpec) -> float:
+        """Compute-bound time lower-bound (seconds) using peak*util throughput."""
+        eff = float(self.effective_tflops(float(flops or 0.0), dev))
+        if eff <= 0.0:
             return float("inf")
-        return float(flops) / (t * 1e12)
+        return float(flops) / (eff * 1e12)
 
     def mem_time(self, bytes_amount: int, dev: DeviceSpec) -> float:
         bw = dev.mem_bw_GBs  * 1024 * 1024 * 1024.0
@@ -1247,11 +1406,7 @@ class CostModel:
             mem_t = float(self.mem_time(int(rd + wr), dev))
 
             flops = float(self.estimate_flops(node, batch, seq_len, phase))
-            tflops = float(getattr(dev, 'tflops', 0.0) or 0.0)
-            if tflops <= 0.0:
-                # Fallback: treat as very slow (1 GFLOP/s equivalent) instead of free.
-                tflops = 1e-3
-            compute_t = float(flops) / (tflops * 1e12)
+            compute_t = float(self.flop_time(flops, dev))
             return max(compute_t, mem_t) * time_scale
 
         # ------------------------------------------------------------------
@@ -1264,7 +1419,8 @@ class CostModel:
             rd, wr = self.estimate_activation_bytes(node, batch, seq_len, phase)
             mem_t = float(self.mem_time(int(rd + wr), dev))
 
-            op_key = (str(getattr(node, 'name', '') or '')).strip().lower()
+            raw_key = str(getattr(node, 'name', '') or getattr(node, 'id', '') or '')
+            op_key = _normalize_npu_op_key(raw_key)
             ctx = NpuOpContext(
                 op_key=op_key,
                 attrs=attrs,

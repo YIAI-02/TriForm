@@ -46,7 +46,7 @@ from comm_primitives import (
 )
 
 _MISSING = object()
-DEBUG_SCHEDULER = True
+DEBUG_SCHEDULER = False
 logger = logging.getLogger(__name__)
 attach_local_debug_filter(logger, lambda: DEBUG_SCHEDULER)
 

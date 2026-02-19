@@ -141,7 +141,12 @@ def _map_op_to_mmad_dims(op: str, dim: int, n_heads: int, n_kv_heads: int, ffn_d
     op = op.lower()
     head_dim = dim // max(1, n_heads)
     result = None
-    if op in ('q_proj', 'k_proj', 'v_proj', 'wo_proj'):
+    if op == 'q_proj':
+        result = (1, dim, dim, max(1, seqlen))
+    elif op in ('k_proj', 'v_proj'):
+        kv_dim = max(1, n_kv_heads * head_dim)
+        result = (1, kv_dim, dim, max(1, seqlen))
+    elif op == 'wo_proj':
         result = (1, dim, dim, max(1, seqlen))
     elif op in ('ffn_up', 'ffn_gate'):
         result = (1, ffn_dim if ffn_dim > 0 else 4 * dim, dim, max(1, seqlen))
