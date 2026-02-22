@@ -718,6 +718,98 @@ class CostModel:
         bw = dev.mem_bw_GBs  * 1024 * 1024 * 1024.0
         return 0.0 if bw <= 0 else bytes_amount / bw
 
+
+    # ---------------------------------------------------------------------
+    # Kernel-launch / runtime overhead (NPU/GPU)
+    # ---------------------------------------------------------------------
+    def _kernel_launch_cfg(self, dev: Optional[DeviceSpec] = None) -> Dict[str, Any]:
+        cfg = getattr(_config, 'KERNEL_LAUNCH_OVERHEAD', None)
+        if not isinstance(cfg, dict) or not cfg:
+            return {}
+        if dev is None:
+            return dict(cfg)
+
+        dev_type = str(getattr(dev, 'type', '') or '').lower()
+        per = cfg.get(dev_type, None)
+        if isinstance(per, dict) and per:
+            merged = dict(cfg)
+            merged.update(per)  # shallow merge
+            return merged
+        return dict(cfg)
+
+    def kernel_launch_overhead_s(self, op_key: str, dev: DeviceSpec, *, phase: str = 'prefill') -> float:
+        cfg = self._kernel_launch_cfg(dev)
+        if not cfg or not bool(cfg.get('enabled', False)):
+            return 0.0
+
+        # Backend gating to avoid double-counting with empirical backends.
+        apply_backends = cfg.get('apply_backends', None)
+        if apply_backends not in (None, True, 'all', 'ALL'):
+            name = str(getattr(self, '_npu_backend_impl_name', None) or getattr(self, 'npu_backend', '') or '')
+            if isinstance(apply_backends, str):
+                apply_list = [apply_backends]
+            elif isinstance(apply_backends, (list, tuple, set)):
+                apply_list = list(apply_backends)
+            else:
+                apply_list = []
+            if apply_list and (name not in apply_list):
+                return 0.0
+
+        op = str(op_key or '').strip().lower()
+        if not op:
+            return 0.0
+
+        # Phase scaling
+        ph = str(phase or '').strip().lower()
+        scale = 1.0
+        ph_scale = cfg.get('phase_scale', None)
+        if isinstance(ph_scale, dict) and ph_scale:
+            try:
+                scale = float(ph_scale.get(ph, 1.0) or 1.0)
+            except Exception:
+                scale = 1.0
+
+        # Exact op override
+        us = None
+        by_op = cfg.get('by_op_us', cfg.get('by_op', None))
+        if isinstance(by_op, dict) and by_op:
+            if op in by_op:
+                try:
+                    us = float(by_op[op] or 0.0)
+                except Exception:
+                    us = 0.0
+
+        # Category fallback
+        if us is None:
+            # Infer category
+            if op == 'softmax':
+                cat = 'softmax'
+            elif _is_norm_like(op):
+                cat = 'norm'
+            elif op in NPU_ACT_KEYS:
+                cat = 'activation'
+            elif op in ('add', 'identity', 'residual', 'dropout'):
+                cat = 'elem'
+            elif op in NPU_GEMM_KEYS:
+                cat = 'gemm'
+            else:
+                cat = 'default'
+
+            by_cat = cfg.get('by_category_us', cfg.get('by_category', None))
+            if isinstance(by_cat, dict) and by_cat and (cat in by_cat):
+                try:
+                    us = float(by_cat[cat] or 0.0)
+                except Exception:
+                    us = 0.0
+            else:
+                try:
+                    us = float(cfg.get('default_us', cfg.get('default', 0.0)) or 0.0)
+                except Exception:
+                    us = 0.0
+
+        us = max(0.0, float(us or 0.0)) * max(0.0, float(scale))
+        return float(us) * 1e-6
+
     def _pim_parallel_access_bytes(self, dev: Optional[DeviceSpec] = None) -> int:
         cfg = {}
         try:
@@ -1442,7 +1534,14 @@ class CostModel:
                 mem_s=float(mem_t),
             )
             t = float(self._npu_backend_impl.estimate_s(self, node, dev, ctx))
-            return float(t) * time_scale
+            overhead = 0.0
+            try:
+                overhead = float(self.kernel_launch_overhead_s(op_key, dev, phase=str(phase)))
+                if bool(self._kernel_launch_cfg(dev).get('scale_by_time_scale', False)):
+                    overhead *= float(time_scale)
+            except Exception:
+                overhead = 0.0
+            return float(t) * time_scale + float(overhead)
 
         # ------------------------------------------------------------------
         # PIM

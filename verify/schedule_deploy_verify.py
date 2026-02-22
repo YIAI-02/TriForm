@@ -93,14 +93,28 @@ except Exception:
     F = None
 
 _COMM_OPS = {
+    # KV cache writebacks
     "k_write",
     "v_write",
-    "identity",
+    "kv_write",
+
+    # Collectives / comm
     "allreduce",
-    "allgather",
+    "all_reduce",
+    "reduce",
+    "scatter",
     "reducescatter",
+    "reduce_scatter",
+    "allgather",
+    "all_gather",
+    "broadcast",
+    "alltoall",
+    "all_to_all",
+
+    # Point-to-point / misc
     "send",
     "recv",
+    "identity",
 }
 
 
@@ -218,11 +232,11 @@ def collect_gpu_info(device_str: str) -> Dict[str, Any]:
     return info
 
 
-def print_gpu_info(info: Dict[str, Any]) -> None:
+def print_gpu_info(info: Dict[str, Any], *, print_fn=print) -> None:
     """Pretty-print GPU info for logs."""
     dev = info.get("requested_device")
     if not info.get("torch_available", False):
-        print(f"[run-gpu] torch not available; cannot query GPU properties. requested_device={dev}")
+        print_fn(f"[run-gpu] torch not available; cannot query GPU properties. requested_device={dev}")
         return
 
     if dev and str(dev).startswith("cuda") and info.get("cuda_available"):
@@ -240,13 +254,13 @@ def print_gpu_info(info: Dict[str, Any]) -> None:
             extra.append(f"CC={cc}")
         extra_s = ("; " + ", ".join(extra)) if extra else ""
 
-        print(f"[run-gpu] GPU[{idx}] {name}{extra_s}")
+        print_fn(f"[run-gpu] GPU[{idx}] {name}{extra_s}")
         if info.get("nvidia_smi_L"):
-            print(f"[run-gpu] nvidia-smi -L: {info['nvidia_smi_L']}")
+            print_fn(f"[run-gpu] nvidia-smi -L: {info['nvidia_smi_L']}")
         if info.get("nvidia_smi_query"):
-            print(f"[run-gpu] nvidia-smi query: {info['nvidia_smi_query']}")
+            print_fn(f"[run-gpu] nvidia-smi query: {info['nvidia_smi_query']}")
     else:
-        print(
+        print_fn(
             f"[run-gpu] running on non-CUDA device={dev} (cuda_available={info.get('cuda_available')})."
         )
 
@@ -366,8 +380,17 @@ def parse_layer(node_id: str) -> int:
     return int(m.group(1)) if m else -1
 
 def parse_shard(node_id: str) -> int:
-    m = re.search(r"_[sS]_?(\d+)", str(node_id))
+    m = re.search(r"_(?:s|shard)_?(\d+)", str(node_id), flags=re.IGNORECASE)
     return int(m.group(1)) if m else -1
+
+def strip_shard_suffix(node_id: str) -> str:
+    """Strip trailing shard suffix from node_id.
+
+    Example: 'L0_Q_s3' -> 'L0_Q'.
+    """
+    s = str(node_id)
+    return re.sub(r"_(?:s|shard)_?\d+$", "", s, flags=re.IGNORECASE)
+
 
 def infer_decode_steps(df: pd.DataFrame) -> int:
     #TODO
@@ -547,6 +570,261 @@ def extract_weight_load_seconds(
     return {"gpu_s": float(gpu_s), "pim_s": float(pim_s), "total_s": total_s, "unknown_s": float(unknown_s)}
 
 
+# ==========================================================
+# Layer-scope comm accumulation (kv_load)
+# ==========================================================
+
+def extract_layer_comm_seconds(
+    comms_paths: List[str],
+    schedule_df: pd.DataFrame,
+    *,
+    tags: Tuple[str, ...] = ("kv_load",),
+) -> pd.DataFrame:
+    """Extract per-(phase, step, layer) comm seconds for selected comm tags.
+    Returned columns:
+      phase, step, layer, comm_s, weight_load_s, kv_load_s
+    """
+
+    if not comms_paths:
+        return pd.DataFrame(columns=["phase", "step", "layer", "comm_s", "weight_load_s", "kv_load_s"])
+
+    # Load + concat
+    parts = []
+    for p in comms_paths:
+        if not p:
+            continue
+        p = resolve_existing_path(p)
+        if p is None:
+            continue
+        try:
+            c = load_comms_csv(str(p))
+        except Exception:
+            continue
+        if c is None or c.empty:
+            continue
+        parts.append(c)
+
+    if not parts:
+        return pd.DataFrame(columns=["phase", "step", "layer", "comm_s", "weight_load_s", "kv_load_s"])
+
+    df = pd.concat(parts, ignore_index=True)
+
+    if "tag" not in df.columns or "duration" not in df.columns:
+        return pd.DataFrame(columns=["phase", "step", "layer", "comm_s", "weight_load_s", "kv_load_s"])
+
+    df = df.copy()
+    df["tag_l"] = (
+        df["tag"].astype(str).str.strip().str.lower().str.replace(" ", "_", regex=False)
+    )
+
+    tags_l = [str(t).strip().lower().replace(" ", "_") for t in tags]
+    df = df[df["tag_l"].isin(tags_l)].copy()
+    if df.empty:
+        return pd.DataFrame(columns=["phase", "step", "layer", "comm_s", "weight_load_s", "kv_load_s"])
+
+    # Phase
+    if "phase" in df.columns:
+        df["phase"] = df["phase"].astype(str).str.strip()
+    else:
+        df["phase"] = "prefill"
+
+    # Duration
+    df["duration"] = pd.to_numeric(df["duration"], errors="coerce").fillna(0.0).astype(float)
+
+    # Layer
+    if "layer" in df.columns:
+        df["layer"] = pd.to_numeric(df["layer"], errors="coerce").fillna(-1).astype(int)
+    else:
+        src_col = None
+        for c in ("node_id", "prod_node", "cons_node"):
+            if c in df.columns:
+                src_col = c
+                break
+        if src_col is None:
+            df["layer"] = -1
+        else:
+            df["layer"] = df[src_col].apply(parse_layer).astype(int)
+
+    # Step
+    if "step" in df.columns:
+        df["step"] = pd.to_numeric(df["step"], errors="coerce").fillna(-1).astype(int)
+    else:
+        # Build decode step start times from schedule
+        d = schedule_df
+        if d is None or d.empty or "phase" not in d.columns or "step" not in d.columns:
+            df["step"] = -1
+        else:
+            dph = d["phase"].astype(str)
+            ddec = d[dph == "decode"]
+            if ddec.empty:
+                df["step"] = -1
+            else:
+                bounds = (
+                    ddec.groupby("step", as_index=True)
+                    .agg(start_min=("start", "min"), end_max=("end", "max"))
+                    .sort_values("start_min")
+                )
+                step_ids = bounds.index.to_numpy(dtype=int)
+                step_starts = bounds["start_min"].to_numpy(dtype=float)
+
+                # Use comm start time; fall back to end
+                st = pd.to_numeric(df.get("start"), errors="coerce")
+                en = pd.to_numeric(df.get("end"), errors="coerce")
+                t = st.fillna(en)
+
+                # Default -1 for non-decode
+                df["step"] = -1
+                mask_dec = df["phase"].astype(str) == "decode"
+                if mask_dec.any() and step_starts.size > 0:
+                    tt = t[mask_dec].to_numpy(dtype=float)
+                    import numpy as np
+                    idx = np.searchsorted(step_starts, tt, side="right") - 1
+                    idx[idx < 0] = 0
+                    idx[idx >= len(step_ids)] = len(step_ids) - 1
+                    df.loc[mask_dec, "step"] = step_ids[idx]
+
+    # Aggregate
+    g = (
+        df.groupby(["phase", "step", "layer", "tag_l"], as_index=False)["duration"]
+        .sum()
+        .rename(columns={"duration": "comm_s"})
+    )
+
+    wide = (
+        g.pivot_table(index=["phase", "step", "layer"], columns="tag_l", values="comm_s", aggfunc="sum", fill_value=0.0)
+        .reset_index()
+    )
+
+    # Ensure columns
+    if "weight_load" not in wide.columns:
+        wide["weight_load"] = 0.0
+    if "kv_load" not in wide.columns:
+        wide["kv_load"] = 0.0
+
+    wide = wide.rename(columns={"weight_load": "weight_load_s", "kv_load": "kv_load_s"})
+    wide["comm_s"] = wide["weight_load_s"].astype(float) + wide["kv_load_s"].astype(float)
+
+    # Order
+    cols = ["phase", "step", "layer", "comm_s", "weight_load_s", "kv_load_s"]
+    for c in cols:
+        if c not in wide.columns:
+            wide[c] = 0
+    wide = wide[cols]
+
+    return wide
+
+
+def estimate_kv_load_seconds_from_ops_csv(
+    schedule_df: pd.DataFrame,
+    cfg: WorkloadConfig,
+    *,
+    decode_stride: int,
+) -> Dict[Tuple[str, int, int], float]:
+    """Estimate kv_load time per (phase, step, layer) by scanning QK/SV ops.
+
+    Model (decode only):
+        bytes(K or V) = batch * kv_heads_shard * head_dim * kv_len * kv_dtype_bytes
+        time_s        = bytes / (kv_load_bw_gbs * 1e9) + kv_load_overhead_us * 1e-6
+    """
+
+    if schedule_df is None or schedule_df.empty:
+        return {}
+
+    bw = float(getattr(cfg, "kv_load_bw_gbs", 0.0) or 0.0)
+    if bw <= 0.0:
+        return {}
+
+    kv_dtype_bytes = float(getattr(cfg, "kv_dtype_bytes", 2.0) or 2.0)
+    overhead_s = float(getattr(cfg, "kv_load_overhead_us", 0.0) or 0.0) * 1e-6
+    batch = int(getattr(cfg, "batch", 1) or 1)
+    n_kv_heads = getattr(cfg, "n_kv_heads", None)
+    if n_kv_heads is None:
+        n_kv_heads = int(getattr(cfg, "n_heads", 0) or 0)
+    else:
+        n_kv_heads = int(n_kv_heads)
+    dim = int(getattr(cfg, "dim", 0) or 0)
+    q_heads = int(getattr(cfg, "n_heads", 0) or 0)
+    head_dim = max(1, int(dim // max(1, q_heads)))
+    shards = int(getattr(cfg, "shards", 1) or 1)
+    shards = max(1, shards)
+
+    def _kv_heads_for_shard(shard_id: int) -> int:
+        """Distribute KV heads across shards (supports non-divisible cases)."""
+        if shard_id < 0:
+            return int(n_kv_heads)
+        base = int(n_kv_heads) // int(shards)
+        rem = int(n_kv_heads) % int(shards)
+        # First `rem` shards carry one extra head.
+        return int(base + (1 if int(shard_id) < int(rem) else 0))
+
+    # decode context length lookup
+    dcl = getattr(cfg, "decode_context_lens", None)
+    dcl_list = list(dcl) if isinstance(dcl, (list, tuple)) else None
+
+    prefill_len = int(getattr(cfg, "prefill_len", 0) or 0)
+    ds = int(decode_stride or getattr(cfg, "decode_stride", 1) or 1)
+    if ds <= 0:
+        ds = 1
+
+    def _kv_len_for_step(step: int) -> int:
+        if dcl_list is not None and 0 <= int(step) < len(dcl_list):
+            try:
+                return int(dcl_list[int(step)])
+            except Exception:
+                pass
+        return int(prefill_len + 1 + int(step) * ds)
+
+    # Filter QK/SV ops in decode.
+    ph = schedule_df.get("phase")
+    op = schedule_df.get("op")
+    if ph is None or op is None:
+        return {}
+
+    ph_s = ph.astype(str).str.strip()
+    op_u = op.astype(str).str.strip().str.upper()
+    mask = (ph_s == "decode") & (op_u.isin(["QK", "SV"]))
+    if not bool(mask.any()):
+        return {}
+
+    sub = schedule_df.loc[mask, ["phase", "step", "layer", "device", "shard", "op"]].copy()
+    # best-effort numeric
+    sub["step"] = pd.to_numeric(sub["step"], errors="coerce").fillna(-1).astype(int)
+    sub["layer"] = pd.to_numeric(sub["layer"], errors="coerce").fillna(-1).astype(int)
+    sub["shard"] = pd.to_numeric(sub["shard"], errors="coerce").fillna(-1).astype(int)
+
+    per_dev: Dict[Tuple[str, int, int, str], float] = {}
+    for r in sub.itertuples(index=False):
+        phase = str(r.phase)
+        step = int(r.step)
+        layer = int(r.layer)
+        device = str(r.device)
+        shard_id = int(r.shard)
+
+        if step < 0:
+            # safety: skip malformed decode rows
+            continue
+
+        kv_len = _kv_len_for_step(step)
+        kvh = _kv_heads_for_shard(shard_id)
+        if kv_len <= 0 or kvh <= 0:
+            continue
+
+        elems = float(batch) * float(kvh) * float(head_dim) * float(kv_len)
+        bytes_ = float(elems) * float(kv_dtype_bytes)
+        t = float(bytes_ / (float(bw) * 1e9) + float(overhead_s))
+
+        k = (phase, step, layer, device)
+        per_dev[k] = float(per_dev.get(k, 0.0) + t)
+
+    # collapse device dimension: layer-scope kv_load is the max across devices
+    layer_map: Dict[Tuple[str, int, int], float] = {}
+    for (phase, step, layer, _dev), t in per_dev.items():
+        kk = (phase, int(step), int(layer))
+        layer_map[kk] = max(float(layer_map.get(kk, 0.0)), float(t))
+
+    return layer_map
+
+
 
 # ==========================================================
 # Workload config + shape inference (same as v2)
@@ -567,6 +845,13 @@ class WorkloadConfig:
     device: str = "cuda"
     gpu_dtype: str = "fp16"
 
+    # KV-cache load modeling (verification-time)
+    kv_load_bw_gbs: float = 0.0
+    kv_dtype_bytes: float = 2.0
+    kv_load_overhead_us: float = 0.0
+    n_kv_heads: Optional[int] = None
+    batch: int = 1
+
     # pim sim config (defaults roughly match aim_sim)
     pim_dram_column: int = 256
     pim_dram_row: int = 64
@@ -584,9 +869,14 @@ class WorkloadConfig:
     pim_ramulator_timeout_s: int = 1500
     pim_keep_traces: bool = False
     pim_trace_dir: Optional[str] = None
+    pim_hw_json_path: Optional[str] = None
+    debug: bool = False
 
     # segmenting
-    segment_scope: str = "layer"  # layer | device_step
+    segment_scope: str = "layer"
+
+    # shard placement granularity:
+    shard_policy: str = "coarse_majority"
 
     def to_dict(self) -> Dict[str, Any]:
         return dataclasses.asdict(self)
@@ -696,67 +986,170 @@ class SegmentSig:
         return SegmentSig(device_type=str(d["device_type"]), phase=str(d["phase"]), step=int(d["step"]), ops=ops)
 
 def extract_segments(df: pd.DataFrame, segment_scope: str) -> Tuple[Dict[str, SegmentSig], Counter]:
-    """
-    Return:
-      - uniq segments: key -> SegmentSig
-      - ctr: Counter over keys (each occurrence = one (phase,step,layer,device) group in scope=layer, etc.)
+    """Extract unique segments from a schedule.
 
-    Only 2 segment scope is supported 
-        - layer: phase, step, layer, device 同一个segment中不会出现不同的layer和不同的device
-        - device: depart by device 按照communication ops 进行分段
+    We always segment by **layer**: one segment per (phase, step, layer, device).
+
+    Notes:
+      - Ops in `_COMM_OPS` are treated as communication/synchronization and are **not** exported
+        as compute segments (GPU/PIM benchmarking skips them).
+      - Device-scope segmentation (splitting a device timeline by comm ops) has been removed.
+
+    Returns:
+      - uniq: dict key -> SegmentSig
+      - ctr:  Counter over keys (each occurrence corresponds to one (phase, step, layer, device) group)
     """
+
+    scope = str(segment_scope).lower().strip()
+    if scope != "layer":
+        raise ValueError(
+            f"Only segment_scope='layer' is supported (got {segment_scope!r}). "
+            "Device-scope segmentation has been removed."
+        )
+
     uniq: Dict[str, SegmentSig] = {}
     ctr: Counter = Counter()
 
-    segment_scope = str(segment_scope).lower() 
-    if segment_scope not in ("layer", "device_step"):
-        raise ValueError(f"Unknown segment_scope: {segment_scope}")
-
-    if segment_scope == "layer":
-        # One segment per (phase, step, layer, device) excluding comm ops
-        group_cols = ["phase","step","layer","device"]
-        for (phase, step, layer, device), g in df.groupby(group_cols, sort=False): #groupby(group_cols) divide by different cols
-            g = g.sort_values(["start","_row"])
-            dev_type = str(g["device_type"].iloc[0])
-            ops: List[Tuple[str,int]] = []
-            for _, r in g.iterrows():
-                op = str(r["op"]).strip()
-                if op.lower() in _COMM_OPS:
-                    continue
-                shard = int(r["shard"]) if pd.notna(r["shard"]) else -1
-                ops.append((op, shard))
-            if not ops:
+    group_cols = ["phase", "step", "layer", "device"]
+    for (phase, step, layer, device), g in df.groupby(group_cols, sort=False):
+        g = g.sort_values(["start", "_row"], kind="mergesort")
+        dev_type = str(g["device_type"].iloc[0])
+        ops: List[Tuple[str, int]] = []
+        for _, r in g.iterrows():
+            op = str(r["op"]).strip()
+            if op.lower() in _COMM_OPS:
                 continue
-            seg = SegmentSig(device_type=dev_type, phase=str(phase), step=int(step), ops=tuple(ops))
-            k = seg.to_key()
-            uniq[k] = seg
-            ctr[k] += 1
+            shard = int(r["shard"]) if pd.notna(r["shard"]) else -1
+            ops.append((op, shard))
 
-    else:
-        # device_step: segments on each device timeline, split by comm ops
-        group_cols = ["phase","step","device"]
-        for (phase, step, device), g in df.groupby(group_cols, sort=False):
-            g = g.sort_values(["start","_row"])
-            dev_type = str(g["device_type"].iloc[0])
-            cur: List[Tuple[str,int]] = []
-            for _, r in g.iterrows():
-                op = str(r["op"]).strip()
-                if op.lower() in _COMM_OPS:
+        if not ops:
+            continue
 
-                    if cur:
-                        seg = SegmentSig(device_type=dev_type, phase=str(phase), step=int(step), ops=tuple(cur))
-                        k = seg.to_key()
-                        uniq[k] = seg
-                        ctr[k] += 1
-                        cur = []
-                    continue
-                shard = int(r["shard"]) if pd.notna(r["shard"]) else -1
-                cur.append((op, shard))
-            if cur:
-                seg = SegmentSig(device_type=dev_type, phase=str(phase), step=int(step), ops=tuple(cur))
-                k = seg.to_key()
-                uniq[k] = seg
-                ctr[k] += 1
+        seg = SegmentSig(device_type=dev_type, phase=str(phase), step=int(step), ops=tuple(ops))
+        k = seg.to_key()
+        uniq[k] = seg
+        ctr[k] += 1
+
+    return uniq, ctr
+
+
+def _iter_layer_segments_coarse_majority(
+    df: pd.DataFrame,
+    *,
+    total_shards: int,
+) -> Iterable[Tuple[str, int, int, str, Tuple[Tuple[str, int], ...]]]:
+    """Yield coarse-grained compute segments for each (phase,step,layer).
+
+    We only consider compute rows with device_type in {npu, pim}, and we ignore comm ops in _COMM_OPS.
+
+    Placement rule for sharded ops (node_id like *_s0..*_sN):
+      - if (# unique shards on GPU) > total_shards/2 -> put the whole op on GPU (npu)
+      - else -> put the whole op on PIM (pim)
+
+    """
+    total_shards = int(total_shards)
+    if total_shards <= 0:
+        total_shards = 1
+
+    # Restrict to compute on GPU/PIM and drop comm ops.
+    comp = df[df["device_type"].astype(str).str.lower().isin(["npu", "pim"])].copy()
+    if comp.empty:
+        return
+    op_l = comp["op"].astype(str).str.strip().str.lower()
+    comp = comp[~op_l.isin(_COMM_OPS)].copy()
+    if comp.empty:
+        return
+
+    comp["_base_node"] = comp["node_id"].apply(strip_shard_suffix)
+
+    # group by layer occurrence
+    for (phase, step, layer), g_layer in comp.groupby(["phase", "step", "layer"], sort=False):
+        # group by op instance (base node id) to avoid merging LN vs LN2, Add1 vs Add2, etc.
+        items: List[Tuple[float, int, str, str, bool]] = []
+        # (t0, row0, op, chosen_dev, is_sharded)
+        for base, g_op in g_layer.groupby("_base_node", sort=False):
+            # ordering keys (stable)
+            try:
+                t0 = float(pd.to_numeric(g_op["start"], errors="coerce").min())
+            except Exception:
+                t0 = 0.0
+            try:
+                row0 = int(pd.to_numeric(g_op["_row"], errors="coerce").min())
+            except Exception:
+                row0 = 0
+
+            op = str(g_op["op"].iloc[0]).strip()
+            dev0 = str(g_op["device_type"].iloc[0]).strip().lower()
+
+            sh_series = pd.to_numeric(g_op.get("shard"), errors="coerce").fillna(-1).astype(int)
+            is_sharded = bool((sh_series >= 0).any())
+
+            chosen = dev0
+            if is_sharded:
+                # Count unique shard indices scheduled on GPU (npu)
+                gtmp = g_op.copy()
+                gtmp["_shard_i"] = sh_series.values
+                gpu_mask = gtmp["device_type"].astype(str).str.lower().eq("npu") & (gtmp["_shard_i"] >= 0)
+                gpu_shards = set(gtmp.loc[gpu_mask, "_shard_i"].tolist())
+                num_gpu = len(gpu_shards)
+
+                if num_gpu > (float(total_shards) / 2.0):
+                    chosen = "npu"
+                else:
+                    chosen = "pim"
+
+            items.append((t0, row0, op, chosen, is_sharded))
+
+        # stable order inside the layer
+        items.sort(key=lambda x: (x[0], x[1]))
+
+        gpu_ops: List[Tuple[str, int]] = []
+        pim_ops: List[Tuple[str, int]] = []
+
+        for _, _, op, chosen, is_sharded in items:
+            if chosen == "npu":
+                if is_sharded and total_shards > 1:
+                    for s in range(total_shards):
+                        gpu_ops.append((op, int(s)))
+                else:
+                    gpu_ops.append((op, -1))
+            elif chosen == "pim":
+                # In coarse mode, sharded ops are emitted once; PIMBackend handles model-parallel via FC_devices.
+                pim_ops.append((op, -1))
+            else:
+                # not npu/pim -> ignore (trace-only in merge)
+                pass
+
+        if gpu_ops:
+            yield (str(phase), int(step), int(layer), "npu", tuple(gpu_ops))
+        if pim_ops:
+            yield (str(phase), int(step), int(layer), "pim", tuple(pim_ops))
+
+
+def extract_segments_coarse_majority(df: pd.DataFrame, segment_scope: str, *, total_shards: int) -> Tuple[Dict[str, SegmentSig], Counter]:
+    """Extract unique segments using coarse-majority shard placement.
+
+    Returns:
+      - uniq: dict key -> SegmentSig
+      - ctr:  Counter over keys (each occurrence corresponds to one (phase, step, layer, device_type) group)
+    """
+    scope = str(segment_scope).lower().strip()
+    if scope != "layer":
+        raise ValueError(
+            f"Only segment_scope='layer' is supported (got {segment_scope!r}). "
+            "Device-scope segmentation has been removed."
+        )
+
+    uniq: Dict[str, SegmentSig] = {}
+    ctr: Counter = Counter()
+
+    for phase, step, layer, dev, ops in _iter_layer_segments_coarse_majority(df, total_shards=total_shards):
+        if not ops:
+            continue
+        seg = SegmentSig(device_type=str(dev), phase=str(phase), step=int(step), ops=tuple(ops))
+        k = seg.to_key()
+        uniq[k] = seg
+        ctr[k] += 1
 
     return uniq, ctr
 
@@ -918,7 +1311,22 @@ class GPUBackend:
             raise ValueError(f"Unknown op for GPUBackend: {op}")
             return
 
-    def benchmark_segment(self, seg: SegmentSig, warmup: int = 3, iters: int = 10) -> float:
+    def benchmark_segment(
+        self,
+        seg: SegmentSig,
+        warmup: int = 3,
+        iters: int = 10,
+        *,
+        debug: bool = False,
+        debug_logger: Optional[Any] = None,
+        seg_key: Optional[str] = None,
+        task_meta: Optional[Dict[str, Any]] = None,
+    ) -> float:
+        """Benchmark one segment.
+
+        When debug=True, prints per-op shapes + a per-op timing breakdown (very noisy).
+        """
+
         # Pre-build execution plan to avoid shape inference in inner loop
         plan: List[Tuple[OpSig, OpShape]] = []
         for op, shard in seg.ops:
@@ -930,470 +1338,588 @@ class GPUBackend:
                 for sig, sh in plan:
                     self.execute_one(sig, sh)
 
-        return self._bench(fn, warmup=warmup, iters=iters)
+        if not bool(debug):
+            return self._bench(fn, warmup=warmup, iters=iters)
 
+        # ------------------------------
+        # Debug path
+        # ------------------------------
+        log = (getattr(debug_logger, "log", None) if debug_logger is not None else None)
+        if not callable(log):
+            log = print
 
-# ==========================================================
-# PIM backend (segment-level simulation)
-# ==========================================================
-
-class PIMBackend:
-    """
-    PIM backend (trace-based):
-      1) Use CENT(AiM) simulator's TransformerBlock trace generators to emit an AiM instruction trace.
-      2) Run AiM-enabled ramulator2 on that trace and parse "memory_system_cycles".
-    """
-
-    def __init__(self, cfg: WorkloadConfig, *, cent_sim_root: Optional[str] = None):
-        if torch is None:
-            raise RuntimeError("PyTorch is required for AiM simulator.")
-
-        self.cfg = cfg
-        self._TB_cls = import_aim_transformer_block(cent_sim_root)
-
-        if not cfg.pim_ramulator_bin:
-            raise RuntimeError(
-                "pim_ramulator_bin must be provided (path/name of AiM-enabled ramulator2 executable).\n"
-                "Provide it via cfg (pim_tasks.json config) or at run time: "
-                "run-pim --pim-ramulator-bin <path>."
-            )
-
-        if not cfg.pim_ramulator_config:
-            raise RuntimeError(
-                "PIM ramulator mode requires a config file.\n"
-            )
-        self._ramulator_config_base = Path(cfg.pim_ramulator_config).expanduser().resolve()
-        if not self._ramulator_config_base.exists():
-            raise FileNotFoundError(f"Ramulator config not found: {self._ramulator_config_base}")
-
-        self._ramulator_config = self._ramulator_config_base
-
-    # ---------------------------------------------------------------------
-    # Config / helpers
-    # ---------------------------------------------------------------------
-
-    def _ramulator_cmd(self, trace_path: Path) -> List[str]:
-        exe_s = str(self.cfg.pim_ramulator_bin)
-        if ("/" in exe_s) or ("\\" in exe_s) or exe_s.startswith("~"):
-            exe = str(Path(exe_s).expanduser().resolve())
-        else:
-            exe = exe_s
-            cand = (Path.cwd() / exe_s)
-            if cand.exists():
-                exe = str(cand.resolve())
-        return [exe, "-f", str(self._ramulator_config), "-t", str(trace_path)]
-
-    def _run_ramulator(self, trace_path: Path) -> int:
-        if not trace_path.exists():
-            raise FileNotFoundError(f"Trace file not found: {trace_path}")
-        cmd = self._ramulator_cmd(trace_path)
+        # Segment meta
+        key_s = seg_key or seg.to_key()
+        meta = task_meta or {}
         try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=int(self.cfg.pim_ramulator_timeout_s),
-                cwd=str(trace_path.parent),
-            )
-        except subprocess.TimeoutExpired as e:
-            raise RuntimeError(f"Ramulator timed out after {self.cfg.pim_ramulator_timeout_s}s: {cmd}") from e
-
-        if result.returncode != 0:
-            out = (result.stdout or "") + "\n" + (result.stderr or "")
-            raise RuntimeError(
-                f"Ramulator failed (rc={result.returncode}).\n"
-                f"Command: {' '.join(cmd)}\n"
-                f"Trace: {trace_path}\n"
-                f"Config: {self._ramulator_config}\n"
-                f"Output:\n{out}"
-            )
-
-        out = (result.stdout or "") + "\n" + (result.stderr or "")
-        m = re.search(r"(?mi)^\s*memory_system_cycles\s*:\s*([0-9]+)\s*$", out)
-        if not m:
-            raise RuntimeError(
-                "Failed to parse ramulator output for memory_system_cycles.\n"
-                f"Command: {' '.join(cmd)}\nOutput:\n{out}"
-            )
-        cycles = int(m.group(1))
-        if cycles <= 0:
-            raise RuntimeError(f"Invalid cycle count from ramulator: {cycles}")
-        return cycles
-
-    def _alloc_trace_dir(self) -> Tuple[Path, bool]:
-        if self.cfg.pim_keep_traces:
-            base = Path(self.cfg.pim_trace_dir or "./pim_traces").expanduser().resolve()
-            base.mkdir(parents=True, exist_ok=True)
-            return base, False
-        tmp = Path(tempfile.mkdtemp(prefix="pim_trace_")).resolve()
-        return tmp, True
-
-    def _max_seq_len(self) -> int:
-        # Prefer decoded context lens from tasks.json if available; else fall back.
-        m = 0
-        if self.cfg.decode_context_lens:
-            try:
-                m = int(max(self.cfg.decode_context_lens))
-            except Exception:
-                m = 0
-        if m <= 0:
-            # prefill_len + decode_steps is a safe upper bound if schedule is standard.
-            try:
-                m = int(self.cfg.prefill_len) + int(self.cfg.decode_steps)
-            except Exception:
-                m = int(self.cfg.prefill_len)
-        return max(1, int(m))
-
-    def _make_tb_args(self, *, trace_file: str, seqlen: int) -> Any:
-        import types
-        args = types.SimpleNamespace()
-
-        args.DRAM_column = int(self.cfg.pim_dram_column)
-        args.DRAM_row = int(self.cfg.pim_dram_row)
-        args.burst_length = int(self.cfg.pim_burst_length)
-        args.num_banks = int(self.cfg.pim_num_banks)
-        args.num_channels = int(self.cfg.pim_num_channels)
-        args.threads = int(self.cfg.pim_threads)
-        args.reuse_size = int(self.cfg.pim_reuse_size)
-
-        # Most CENT traces assume channels_per_block exists.
-        args.channels_per_block = int(getattr(self.cfg, 'pim_channels_per_block', 0) or args.num_channels)
-
-        # Device count
-        args.model_parallel = bool(int(self.cfg.pim_num_devices) > 1)
-        args.FC_devices = int(self.cfg.pim_num_devices)
-
-        # PIM simulator flags
-        args.only_trace = True
-        args.op_trace = True   # ensure trace_* flags are enabled if any path checks them
-        args.trace_file = str(trace_file)
-        args.pim_compute = True
-
-        # Model meta (not used by trace-only ops heavily, but required by the class)
-        args.model = 'llama_like'
-        args.embedding = 'rope'
-        args.seqlen = int(seqlen)
-        args.max_seq_len = int(self._max_seq_len())
-
-        # Parallelism flags
-        args.pipeline_parallel = False
-        args.inter_device_attention = False
-        args.only_FC = False
-
-        # Trace knobs
-        args.trace_prepare = True
-        args.trace_norm = True
-        args.trace_fc_kqvo = True
-        args.trace_attention = True
-        args.trace_softmax = True
-        args.trace_fc_ffn = True
-        args.trace_activation = True
-
-        # GEMV mode used by TransformerBlock's trace generator
-        args.GEMV = 'reuse-GB'
-
-        return args
-
-    def _make_dummy_model_dict(self, *, dim: int, n_heads: int, ffn_dim: int, seqlen: int) -> Dict[str, Any]:
-        """Create a minimal model_dict compatible with TransformerBlockLlama.memory_mapping()."""
-        D = int(dim)
-        H = int(max(1, n_heads))
-        F = int(ffn_dim)
-        S = int(max(1, seqlen))
-
-        hd = int(max(1, D // H))
-        nkv = H
-
-        model_dict: Dict[str, Any] = {
-            'TP_param': torch.tensor(1),
-            'dim': torch.tensor(D),
-            'n_heads': torch.tensor(H),
-            'n_kv_heads': torch.tensor(nkv),
-
-            'x': torch.zeros((1, 1, D)),
-            'SANorm': torch.zeros((D,)),
-            'FFNNorm': torch.zeros((D,)),
-
-            'sa': torch.zeros((1, 1, D)),
-            'h': torch.zeros((1, 1, D)),
-            'out': torch.zeros((1, 1, D)),
-
-            'wq': torch.zeros((D, D)),
-            'wk': torch.zeros((D, D)),
-            'wv': torch.zeros((D, D)),
-            'xq': torch.zeros((1, 1, D)),
-            'xk': torch.zeros((1, 1, D)),
-            'xv': torch.zeros((1, 1, D)),
-
-            'start_pos': torch.tensor(S - 1),
-            'cache_k': torch.zeros((1, S, nkv, hd)),
-            'cache_v': torch.zeros((1, S, nkv, hd)),
-            'scores': torch.zeros((1, H, 1, S)),
-            'output': torch.zeros((1, 1, D)),
-            'wo': torch.zeros((D, D)),
-
-            'w1': torch.zeros((F, D)),
-            'w3': torch.zeros((F, D)),
-            'w2': torch.zeros((D, F)),
-            'ffn': torch.zeros((1, 1, D)),
-        }
-        return model_dict
-
-    def _calc_channels(self, block) -> Tuple[int, List[int], int]:
-        total_banks = int(block.total_banks)
-        if getattr(block, 'model_parallel', False):
-            FC_total_banks = int(total_banks * int(getattr(block, 'FC_devices', 1))) #todo
-            channels_required = int(getattr(block, 'num_channels', self.cfg.pim_num_channels))
-        else:
-            FC_total_banks = int(total_banks)
-            channels_required = int(getattr(block, 'channels_per_block', self.cfg.pim_num_channels))
-
-        num_channels = int(getattr(block, 'num_channels', channels_required))
-        channel_multi_required = (num_channels // channels_required) * channels_required if channels_required > 0 else num_channels
-        channel_lst_multi = [c for c in range(max(1, channel_multi_required))]
-        return channels_required, channel_lst_multi, FC_total_banks
-
-    def _time_add(self, block, key: str, delta: float) -> None:
-        if not hasattr(block, 'time'):
-            return
-        try:
-            block.time[key] = float(block.time.get(key, 0.0)) + float(delta)
+            cnt = int(meta.get("count_hint", 0))
         except Exception:
+            cnt = 0
+        ops_repr = meta.get("ops_repr", None)
+
+        log("=" * 88)
+        log(f"[gpu-debug] segment_key={key_s}")
+        log(f"[gpu-debug] sig: device_type={seg.device_type} phase={seg.phase} step={seg.step} (count_hint={cnt})")
+        if ops_repr:
+            log(f"[gpu-debug] ops_repr: {ops_repr}")
+        log(f"[gpu-debug] cfg: device={self.device} dtype={self.dtype} dim={self.cfg.dim} ffn_dim={self.cfg.ffn_dim} "
+            f"n_heads={self.cfg.n_heads} shards={self.cfg.shards}")
+
+        # Helper formatters
+        def _fmt_shape(shape: Tuple[int, ...]) -> str:
+            return "x".join(str(int(x)) for x in shape)
+
+        def _fmt_bytes(n: float) -> str:
+            n = float(n)
+            if n < 1024:
+                return f"{n:.0f} B"
+            if n < 1024**2:
+                return f"{n/1024:.2f} KiB"
+            if n < 1024**3:
+                return f"{n/1024**2:.2f} MiB"
+            return f"{n/1024**3:.2f} GiB"
+
+        def _fmt_flops(n: float) -> str:
+            n = float(n)
+            if n < 1e3:
+                return f"{n:.0f}"
+            if n < 1e6:
+                return f"{n/1e3:.3f} K"
+            if n < 1e9:
+                return f"{n/1e6:.3f} M"
+            if n < 1e12:
+                return f"{n/1e9:.3f} G"
+            return f"{n/1e12:.3f} T"
+
+        # Op I/O shapes + rough cost model
+        try:
+            dtype_bytes = int(torch.tensor([], dtype=self.dtype).element_size())
+        except Exception:
+            dtype_bytes = 0
+
+        def _op_io(op: str, sh: OpShape) -> Tuple[List[Tuple[str, Tuple[int, ...]]], Tuple[str, Tuple[int, ...]]]:
+            D = int(sh.dim)
+            Sd = int(sh.shard_dim)
+            Fsd = int(sh.ffn_shard_dim)
+            T = int(sh.query_len)
+            H = int(sh.heads_per_shard)
+            Hd = int(sh.head_dim)
+            K = int(sh.key_len)
+
+            if op == "LN":
+                return [("x", (T, D)), ("w", (D,))], ("y", (T, D))
+            if op in ("Q", "K", "V"):
+                return [("x", (T, D)), ("w", (Sd, D))], ("y", (T, Sd))
+            if op == "O":
+                return [("x", (T, Sd)), ("w", (D, Sd))], ("y", (T, D))
+            if op in ("FFN_W1", "FFN_W3"):
+                return [("x", (T, D)), ("w", (Fsd, D))], ("y", (T, Fsd))
+            if op == "SwiGLU":
+                return [("a", (T, Fsd)), ("b", (T, Fsd))], ("y", (T, Fsd))
+            if op == "FFN_W2":
+                return [("x", (T, Fsd)), ("w", (D, Fsd))], ("y", (T, D))
+            if op == "Add":
+                return [("a", (T, D)), ("b", (T, D))], ("y", (T, D))
+            if op == "QK":
+                return [("q", (H, T, Hd)), ("k", (H, Hd, K))], ("y", (H, T, K))
+            if op == "Softmax":
+                return [("scores", (H, T, K))], ("y", (H, T, K))
+            if op == "SV":
+                return [("p", (H, T, K)), ("v", (H, K, Hd))], ("y", (H, T, Hd))
+            return [("?", tuple())], ("?", tuple())
+
+        def _op_flops(op: str, sh: OpShape) -> float:
+            """Very rough FLOPs estimate (multiply-add counted as 2 FLOPs)."""
+            D = float(sh.dim)
+            Sd = float(sh.shard_dim)
+            Fsd = float(sh.ffn_shard_dim)
+            T = float(sh.query_len)
+            H = float(sh.heads_per_shard)
+            Hd = float(sh.head_dim)
+            K = float(sh.key_len)
+
+            if op == "LN":
+                # mean(x^2), rsqrt, mul: ~5 ops per element (rough)
+                return 5.0 * T * D
+            if op in ("Q", "K", "V"):
+                return 2.0 * T * Sd * D
+            if op == "O":
+                return 2.0 * T * D * Sd
+            if op in ("FFN_W1", "FFN_W3"):
+                return 2.0 * T * Fsd * D
+            if op == "SwiGLU":
+                # silu + mul: very rough
+                return 6.0 * T * Fsd
+            if op == "FFN_W2":
+                return 2.0 * T * D * Fsd
+            if op == "Add":
+                return 1.0 * T * D
+            if op == "QK":
+                return 2.0 * H * T * K * Hd
+            if op == "Softmax":
+                # exp + sum + div ~ 5 ops per element (rough)
+                return 5.0 * H * T * K
+            if op == "SV":
+                return 2.0 * H * T * K * Hd
+            return 0.0
+
+        def _op_bytes(op: str, sh: OpShape) -> float:
+            ins, out = _op_io(op, sh)
+            total_elems = 0.0
+            for _, shape in ins:
+                if shape:
+                    elems = 1
+                    for v in shape:
+                        elems *= int(v)
+                    total_elems += float(elems)
+            _, oshape = out
+            if oshape:
+                elems = 1
+                for v in oshape:
+                    elems *= int(v)
+                total_elems += float(elems)
+            return float(total_elems) * float(dtype_bytes)
+
+        # Print op list + inferred shapes
+        log("[gpu-debug] op plan (with inferred tensor shapes):")
+        for j, (sig, sh) in enumerate(plan):
+            ins, out = _op_io(sig.op, sh)
+            ins_s = " + ".join([f"{n}=[{_fmt_shape(shape)}]" for n, shape in ins if shape])
+            out_s = f"{out[0]}=[{_fmt_shape(out[1])}]" if out[1] else out[0]
+            log(f"  - op#{j:02d}  op={sig.op:<8} shard={sig.shard:<2d}  {ins_s}  ->  {out_s}  (T={sh.query_len}, K={sh.key_len})")
+
+        # GPU memory stats (best effort)
+        mem_before = None
+        if self.device.type == "cuda":
             try:
-                block.time[key] = block.time.get(key, 0) + delta
+                mem_before = {
+                    "alloc": int(torch.cuda.memory_allocated()),
+                    "reserved": int(torch.cuda.memory_reserved()),
+                }
+            except Exception:
+                mem_before = None
+
+        # Warmup once (avoid re-alloc / cuBLAS autotune costs in timing loops)
+        if warmup and warmup > 0:
+            with torch.no_grad():
+                for _ in range(int(warmup)):
+                    for sig, sh in plan:
+                        self.execute_one(sig, sh)
+            if self.device.type == "cuda":
+                self._cuda_sync()
+
+        mem_after_warmup = None
+        if self.device.type == "cuda":
+            try:
+                mem_after_warmup = {
+                    "alloc": int(torch.cuda.memory_allocated()),
+                    "reserved": int(torch.cuda.memory_reserved()),
+                }
+            except Exception:
+                mem_after_warmup = None
+
+        # Accurate segment timing (no extra per-op events)
+        seg_s = self._bench(fn, warmup=0, iters=iters)
+
+        # Per-op timing breakdown
+        per_op_s: List[float] = [0.0 for _ in range(len(plan))]
+        if len(plan) == 0:
+            log("[gpu-debug] empty plan; segment time is 0")
+            return float(seg_s)
+
+        if self.device.type == "cuda":
+            try:
+                # Reset peak stats so we can report per-segment peaks
+                try:
+                    torch.cuda.reset_peak_memory_stats()
+                except Exception:
+                    pass
+
+                # Allocate events once (reused each iter)
+                ev_s = [torch.cuda.Event(enable_timing=True) for _ in range(len(plan))]
+                ev_e = [torch.cuda.Event(enable_timing=True) for _ in range(len(plan))]
+
+                it = max(1, int(iters))
+                with torch.no_grad():
+                    for _ in range(it):
+                        for j, (sig, sh) in enumerate(plan):
+                            ev_s[j].record()
+                            self.execute_one(sig, sh)
+                            ev_e[j].record()
+                        self._cuda_sync()
+                        for j in range(len(plan)):
+                            per_op_s[j] += float(ev_s[j].elapsed_time(ev_e[j])) / 1000.0
+                per_op_s = [float(x) / float(it) for x in per_op_s]
+
+                mem_peak = None
+                try:
+                    mem_peak = {
+                        "max_alloc": int(torch.cuda.max_memory_allocated()),
+                        "max_reserved": int(torch.cuda.max_memory_reserved()),
+                    }
+                except Exception:
+                    mem_peak = None
+
+            except Exception as e:
+                log(f"[gpu-debug] per-op CUDA timing failed: {e}")
+                mem_peak = None
+        else:
+            import time as _time
+            it = max(1, int(iters))
+            with torch.no_grad():
+                for _ in range(it):
+                    for j, (sig, sh) in enumerate(plan):
+                        t0 = _time.perf_counter()
+                        self.execute_one(sig, sh)
+                        t1 = _time.perf_counter()
+                        per_op_s[j] += float(t1 - t0)
+            per_op_s = [float(x) / float(it) for x in per_op_s]
+            mem_peak = None
+
+        # Print per-op timing table
+        log("[gpu-debug] per-op timing breakdown (avg over iters):")
+        hdr = f"  {'idx':>3}  {'op':<8} {'sh':>2}  {'io':<46}  {'time':>10}  {'est_flops':>10}  {'TFLOPs':>8}  {'bytes':>10}  {'GB/s':>8}"
+        log(hdr)
+        log("  " + "-" * (len(hdr) - 2))
+        total_ops_s = float(sum(per_op_s))
+        for j, ((sig, sh), t_s) in enumerate(zip(plan, per_op_s)):
+            ins, out = _op_io(sig.op, sh)
+            ins_s = "+".join([f"{n}[{_fmt_shape(shape)}]" for n, shape in ins if shape])
+            out_s = f"{out[0]}[{_fmt_shape(out[1])}]" if out[1] else out[0]
+            io_s = f"{ins_s}->{out_s}"
+            if len(io_s) > 46:
+                io_s = io_s[:43] + "..."
+
+            fl = _op_flops(sig.op, sh)
+            by = _op_bytes(sig.op, sh)
+            t_ms = float(t_s) * 1000.0
+            tflops = (fl / float(t_s) / 1e12) if (t_s and t_s > 0 and fl > 0) else 0.0
+            gbs = (by / float(t_s) / 1e9) if (t_s and t_s > 0 and by > 0) else 0.0
+
+            log(
+                f"  {j:3d}  {sig.op:<8} {sig.shard:2d}  {io_s:<46}  {t_ms:9.3f}ms  {_fmt_flops(fl):>10}  {tflops:8.2f}  {_fmt_bytes(by):>10}  {gbs:8.2f}"
+            )
+
+        lbl = "cuda_events" if self.device.type == "cuda" else "wall_time"
+        log(f"[gpu-debug] segment avg latency ({lbl}): {seg_s*1000.0:.3f} ms")
+        log(f"[gpu-debug] sum(per-op)               : {total_ops_s*1000.0:.3f} ms (ratio={total_ops_s/seg_s if seg_s>0 else 0.0:.3f})")
+        log("[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.")
+
+        if mem_before is not None or mem_after_warmup is not None:
+            if mem_before is not None:
+                log(f"[gpu-debug] cuda mem before warmup: alloc={_fmt_bytes(mem_before['alloc'])} reserved={_fmt_bytes(mem_before['reserved'])}")
+            if mem_after_warmup is not None:
+                log(f"[gpu-debug] cuda mem after warmup : alloc={_fmt_bytes(mem_after_warmup['alloc'])} reserved={_fmt_bytes(mem_after_warmup['reserved'])}")
+        if self.device.type == "cuda" and 'mem_peak' in locals() and mem_peak is not None:
+            log(f"[gpu-debug] cuda mem peak (this segment): max_alloc={_fmt_bytes(mem_peak['max_alloc'])} max_reserved={_fmt_bytes(mem_peak['max_reserved'])}")
+
+        return float(seg_s)
+
+
+
+class _DebugLogger:
+    """Lightweight logger for verbose debug runs.
+
+    When enabled, logs are printed to stdout and optionally duplicated to a
+    text file.
+    """
+
+    def __init__(self, enabled: bool, out_path: Optional[str] = None):
+        self.enabled = bool(enabled)
+        self.out_path: Optional[Path] = None
+        self._fp = None
+        if self.enabled and out_path:
+            p = Path(out_path).expanduser().resolve()
+            p.parent.mkdir(parents=True, exist_ok=True)
+            self.out_path = p
+            self._fp = p.open('w', encoding='utf-8')
+
+    def log(self, msg: str) -> None:
+        if not self.enabled:
+            return
+        s = str(msg)
+        print(s)
+        if self._fp is not None:
+            try:
+                self._fp.write(s + "\n")
+                self._fp.flush()
             except Exception:
                 pass
 
-    # ---------------------------------------------------------------------
-    # Trace emitters
-    # ---------------------------------------------------------------------
-    def _emit_rmsnorm(self, block, channels_required: int, channel_lst: List[int]) -> None:
-        dim = int(block.dim)
-        burst = int(block.burst_length)
-        total_banks = int(block.total_banks)
+    def close(self) -> None:
+        if self._fp is not None:
+            try:
+                self._fp.close()
+            except Exception:
+                pass
+            self._fp = None
 
-        input_len = (dim - 1) // max(1, (total_banks // 2)) + 1
-        block.WR_BIAS_only_trace(channel_lst)
-        block.MAC_ABK_only_trace(channel_lst, block.x_row_index, (input_len - 1) // burst + 1, 'breakdown_sa_pow')
-        block.RD_MAC_only_trace(channel_lst)
 
-        ew_len = (dim - 1) // max(1, (total_banks // 4)) + 1
-        ew_banks = (dim - 1) // ew_len + 1
+def _resolve_ramulator_bin_path(bin_str: str) -> Path:
+    """Resolve ramulator2 executable path from a CLI/config string."""
+    if not bin_str:
+        raise ValueError("pim_ramulator_bin is empty")
 
-        self._time_add(block, 'WR_SBK', float(getattr(block, 'timing_constant', {}).get('WR_SBK', 0)) + dim / burst)
-        block.store_for_EWMUL_input_only_trace(channels_required, ew_banks, 1, block.x_copy_row_index, ew_len)
-        block.EWMUL_only_trace(channel_lst, block.x_copy_row_index, (ew_len - 1) // burst + 1)
+    # Best-effort: treat as path first, then fall back to PATH lookup.
+    p: Optional[Path] = None
+    try:
+        # resolve_existing_path handles cwd and script-root relative lookups.
+        p = resolve_existing_path(bin_str)
+    except Exception:
+        which = shutil.which(bin_str)
+        if which:
+            p = Path(which)
 
-        for bank in range(int(block.num_banks)):
-            if bank % 4 == 2:
-                block.COPY_BK_GB_only_trace(channel_lst, bank, block.x_copy_row_index, (ew_len - 1) // burst + 1)
-                block.COPY_GB_BK_only_trace(channel_lst, bank - 1, block.SANorm_row_index, (ew_len - 1) // burst + 1)
+    if p is None:
+        raise FileNotFoundError(f"ramulator2 executable not found: {bin_str!r}")
 
-        block.EWMUL_only_trace(channel_lst, block.SANorm_row_index, (ew_len - 1) // burst + 1)
-
-        self._time_add(block, 'RD_SBK', float(getattr(block, 'timing_constant', {}).get('RD_SBK', 0)) + dim / burst)
-        block.load_from_EWMUL_input_only_trace(channels_required, ew_banks, 2, block.SANorm_row_index, ew_len)
-        block.SYNC_only_trace()
-
-    def _emit_softmax(self, block, channels_required: int, channel_lst: List[int], seqlen: int) -> None:
-        burst = int(block.burst_length)
-        num_banks = int(block.num_banks)
-        total_banks = int(block.total_banks)
-        S = int(max(1, seqlen))
-
-        rows_per_score = (S - 1) // int(block.DRAM_column) + 1
-        input_vector_EWMUL_length = (S - 1) // max(1, (total_banks // 4)) + 1
-        input_vector_EWMUL_utilized_banks = (S - 1) // input_vector_EWMUL_length + 1
-
-        for row in range(rows_per_score):
-            if row == rows_per_score - 1:
-                ew_len = (S - row * int(block.DRAM_column) - 1) // max(1, (total_banks // 4)) + 1
-                ew_banks = (S - row * int(block.DRAM_column) - 1) // ew_len + 1
-            else:
-                ew_len = (int(block.DRAM_column) - 1) // max(1, (total_banks // 4)) + 1
-                ew_banks = (int(block.DRAM_column) - 1) // ew_len + 1
-
-            self._time_add(block, 'WR_SBK', float(getattr(block, 'timing_constant', {}).get('WR_SBK', 0)) + ew_banks * ew_len / burst)
-            block.store_for_EWMUL_score_only_trace(channels_required, block.scores_row_index, input_vector_EWMUL_utilized_banks, 1,  input_vector_EWMUL_length)
-            block.EWMUL_only_trace(channel_lst, block.scores_row_index, (ew_len - 1) // burst + 1)
-
-            for bank in range(num_banks):
-                if bank % 4 == 2:
-                    block.COPY_BK_GB_only_trace(channel_lst, bank, block.scores_row_index, (ew_len - 1) // burst + 1)
-                    block.COPY_GB_BK_only_trace(channel_lst, bank - 1, block.xk_row_index, (ew_len - 1) // burst + 1)
-
-            block.EWMUL_only_trace(channel_lst, block.xk_row_index, (ew_len - 1) // burst + 1)
-
-            self._time_add(block, 'RD_SBK', float(getattr(block, 'timing_constant', {}).get('RD_SBK', 0)) + ew_banks * ew_len / burst)
-            block.load_from_EWMUL_score_only_trace(channels_required, block.xk_row_index, input_vector_EWMUL_utilized_banks, 2,  input_vector_EWMUL_length)
-            block.SYNC_only_trace()
-
-    def _emit_silu(self, block, channel_lst: List[int]) -> None:
-        ffn_dim = int(block.w1.shape[0])
-        burst = int(block.burst_length)
-        total_banks = int(block.total_banks)
-
-        ew_len = (ffn_dim - 1) // max(1, (total_banks // 4)) + 1
-        ew_banks = (ffn_dim - 1) // ew_len + 1
-
-        self._time_add(block, 'WR_SBK', float(getattr(block, 'timing_constant', {}).get('WR_SBK', 0)) + ffn_dim / burst)
-        block.store_for_EWMUL_input_only_trace(int(block.channels_per_block), ew_banks, 1, block.ffn_row_index, ew_len)
-        block.EWMUL_only_trace(channel_lst, block.ffn_row_index, (ew_len - 1) // burst + 1)
-
-        for bank in range(int(block.num_banks)):
-            if bank % 4 == 2:
-                block.COPY_BK_GB_only_trace(channel_lst, bank, block.ffn_row_index, (ew_len - 1) // burst + 1)
-                block.COPY_GB_BK_only_trace(channel_lst, bank - 1, block.SANorm_row_index, (ew_len - 1) // burst + 1)
-
-        block.EWMUL_only_trace(channel_lst, block.SANorm_row_index, (ew_len - 1) // burst + 1)
-
-        self._time_add(block, 'RD_SBK', float(getattr(block, 'timing_constant', {}).get('RD_SBK', 0)) + ffn_dim / burst)
-        block.SYNC_only_trace()
-
-    def _emit_residual(self, block) -> None:
-        op_size = int(block.dim) // int(block.burst_length)
-        block.EWADD_only_trace(op_size)
-
-    def _emit_weight_gemv(self, block, channel_lst: List[int], row_index: int, V: int, N: int, FC_total_banks: int, timing: str, *, with_af: bool = False) -> None:
-        if with_af and hasattr(block, 'Vector_Matrix_Mul_weight_af_pim_only_trace'):
-            block.Vector_Matrix_Mul_weight_af_pim_only_trace(channel_lst, row_index, int(V), int(N), int(FC_total_banks), timing)
+    if p.is_dir():
+        cand = p / 'ramulator2'
+        if cand.exists():
+            p = cand
         else:
-            block.Vector_Matrix_Mul_weight_pim_only_trace(channel_lst, row_index, int(V), int(N), int(FC_total_banks), timing)
+            raise FileNotFoundError(f"ramulator2 executable not found in directory: {p}")
 
-    # ---------------------------------------------------------------------
-    # Public: simulate a whole segment as one continuous trace
-    # ---------------------------------------------------------------------
-    def benchmark_segment(self, seg: SegmentSig) -> float:
-        # Find a representative shape to build the TB
-        first = None
-        for op, shard in seg.ops:
-            if op in _COMM_OPS:
-                continue
-            first = OpSig(device_type=seg.device_type, phase=seg.phase, step=seg.step, op=op, shard=shard)
-            break
-        if first is None:
-            return 0.0
+    return p.expanduser().resolve()
 
-        sh0 = infer_op_shape(first, self.cfg)
 
-        # LOCAL dims (single-shard modeling)
-        dim_local = int(sh0.shard_dim if int(self.cfg.shards) > 1 else sh0.dim)
-        n_heads_local = int(sh0.heads_per_shard if int(self.cfg.shards) > 1 else int(self.cfg.n_heads))
-        ffn_local = int(sh0.ffn_shard_dim if int(self.cfg.shards) > 1 else int(self.cfg.ffn_dim))
-        seqlen = int(sh0.key_len)
-
-        trace_dir, cleanup = self._alloc_trace_dir()
-        trace_name = f"{seg.phase}_step{seg.step}_{uuid.uuid4().hex}.trace"
-        trace_path = trace_dir / trace_name
-
-        args = self._make_tb_args(trace_file=str(trace_path), seqlen=seqlen)
-        model_dict = self._make_dummy_model_dict(dim=dim_local, n_heads=n_heads_local, ffn_dim=ffn_local, seqlen=seqlen)
-
-        block = self._TB_cls(model_dict, args)
-
+def _infer_max_seqlen_from_tasks(tasks: List[Dict[str, Any]], cfg: WorkloadConfig) -> int:
+    """Infer a safe max_seq_len for trace args from the task list."""
+    mx = int(max(1, cfg.prefill_len))
+    # Prefer explicit decode_context_lens if present in config.
+    if cfg.decode_context_lens:
         try:
-            if hasattr(block, 'memory_mapping'):
-                block.memory_mapping()
+            mx = max(mx, int(max(cfg.decode_context_lens)))
+        except Exception:
+            pass
+    # Scan tasks as fallback.
+    for t in tasks:
+        try:
+            ph = str(t.get('sig', {}).get('phase', 'decode'))
+            st = int(t.get('sig', {}).get('step', 0))
+            ops = t.get('ops', []) or []
+            if not ops:
+                continue
+            op0 = str(ops[0].get('op', ''))
+            sh0 = int(ops[0].get('shard', -1))
+            shp = infer_op_shape(OpSig(device_type='pim', phase=ph, step=st, op=op0, shard=sh0), cfg)
+            mx = max(mx, int(shp.key_len))
+        except Exception:
+            continue
+    return int(max(1, mx))
 
-            channels_required, channel_lst, FC_total_banks = self._calc_channels(block)
 
-            for op, shard in seg.ops:
-                if op in _COMM_OPS:
-                    continue
+class PIMBackendViaCostModel:
+    """PIM latency backend that delegates to cost_model_pim_backend.
 
-                sig = OpSig(device_type=seg.device_type, phase=seg.phase, step=seg.step, op=op, shard=shard)
-                sh = infer_op_shape(sig, self.cfg)
-                T = int(max(1, sh.query_len))
+    This unifies op normalization and trace emission so schedule verification
+    and CostModel use the exact same implementation (no duplicated emitters).
+    """
 
-                if seg.phase == 'prefill' and T > 1: #todo
-                    seqlens_list = list(range(1, int(sh.key_len) + 1))
-                else:
-                    seqlens_list = [int(sh.key_len)]
+    def __init__(
+        self,
+        cfg: WorkloadConfig,
+        tasks: List[Dict[str, Any]],
+        *,
+        debug_logger: _DebugLogger,
+        use_cache: bool = True,
+    ):
+        if torch is None:
+            raise RuntimeError("PyTorch is required for AiM simulator.")
+        self.cfg = cfg
+        self.debug = bool(getattr(cfg, 'debug', False))
+        self._dbg = debug_logger
+        self.use_cache = bool(use_cache)
 
-                if op == 'LN':
-                    for _ in range(T):
-                        self._emit_rmsnorm(block, channels_required, channel_lst)
+        # Lazy import so GPU-only flows don't depend on CostModel modules.
+        try:
+            # Make import robust even when invoked from ./verify.
+            try:
+                _add_sys_path(_script_dir().parent)
+            except Exception:
+                pass
+            import cost_model_pim_backend as cm_pim_backend  # type: ignore
+        except Exception as e:
+            raise RuntimeError(
+                "Failed to import cost_model_pim_backend. "
+                "Ensure schedule_deploy_verify is run from the repo root (so PYTHONPATH works). "
+                f"Import error: {e}"
+            ) from e
+        self.cm = cm_pim_backend
 
-                elif op == 'Q':
-                    for _ in range(T):
-                        self._emit_weight_gemv(block, channel_lst, int(block.wq_row_index), dim_local, dim_local, FC_total_banks, 'breakdown_sa_weight')
+        # Resolve configs
+        if not cfg.pim_ramulator_config:
+            raise ValueError("pim_ramulator_config must be provided")
+        self.ramulator_config = resolve_existing_path(str(cfg.pim_ramulator_config))
 
-                elif op == 'K':
-                    for _ in range(T):
-                        self._emit_weight_gemv(block, channel_lst, int(block.wk_row_index), dim_local, dim_local, FC_total_banks, 'breakdown_sa_weight')
+        if not cfg.pim_ramulator_bin:
+            raise ValueError("pim_ramulator_bin must be provided")
+        self.ramulator_bin = _resolve_ramulator_bin_path(str(cfg.pim_ramulator_bin))
 
-                elif op == 'V':
-                    for _ in range(T):
-                        self._emit_weight_gemv(block, channel_lst, int(block.wv_row_index), dim_local, dim_local, FC_total_banks, 'breakdown_sa_weight')
+        # cost_model_pim_backend historically uses Path.cwd()/ramulator2;
+        # we standardize it via env var.
+        os.environ['RAMULATOR2_BIN'] = str(self.ramulator_bin)
 
-                elif op == 'O':
-                    for _ in range(T):
-                        self._emit_weight_gemv(block, channel_lst, int(block.wo_row_index), dim_local, dim_local, FC_total_banks, 'breakdown_sa_weight')
+        # PIM hw config (pim_config)
+        self._tmp_pim_cfg_dir: Optional[Path] = None
+        self.pim_config = self._resolve_or_synthesize_pim_config(tasks)
 
-                elif op == 'FFN_W1':
-                    for _ in range(T):
-                        self._emit_weight_gemv(block, channel_lst, int(block.w1_row_index), dim_local, ffn_local, FC_total_banks, 'breakdown_ffn_weight', with_af=True)
+        # Model dict cache (keyed by (dim, heads, kv_heads, ffn_dim, seqlen)).
+        self._model_dict_cache: Dict[Tuple[int, int, int, int, int], Dict[str, Any]] = {}
 
-                elif op == 'FFN_W3':
-                    for _ in range(T):
-                        self._emit_weight_gemv(block, channel_lst, int(block.w3_row_index), dim_local, ffn_local, FC_total_banks, 'breakdown_ffn_weight')
+        self._print_debug_header()
 
-                elif op == 'FFN_W2':
-                    for _ in range(T):
-                        self._emit_weight_gemv(block, channel_lst, int(block.w2_row_index), ffn_local, dim_local, FC_total_banks, 'breakdown_ffn_weight')
+    def _resolve_or_synthesize_pim_config(self, tasks: List[Dict[str, Any]]) -> Path:
+        # If user provided a PIM hw JSON path, use it directly.
+        if getattr(self.cfg, 'pim_hw_json_path', None):
+            return resolve_existing_path(str(self.cfg.pim_hw_json_path))
 
-                elif op == 'SwiGLU':
-                    for _ in range(T):
-                        self._emit_silu(block, channel_lst)
+        # Otherwise synthesize a minimal JSON compatible with cost_model backend.
+        max_seq_len = _infer_max_seqlen_from_tasks(tasks, self.cfg)
+        pim_cfg = {
+            'DRAM_column': int(self.cfg.pim_dram_column),
+            'DRAM_row': int(self.cfg.pim_dram_row),
+            'burst_length': int(self.cfg.pim_burst_length),
+            'num_banks': int(self.cfg.pim_num_banks),
+            'num_channels': int(self.cfg.pim_num_channels),
+            'threads': int(self.cfg.pim_threads),
+            'reuse_size': int(self.cfg.pim_reuse_size),
+            'channels_per_block': int(self.cfg.pim_num_channels),
+            'max_seq_len': int(max_seq_len),
+        }
 
-                elif op == 'Add':
-                    for _ in range(T):
-                        self._emit_residual(block)
+        self._tmp_pim_cfg_dir = Path(tempfile.mkdtemp(prefix='pim_hw_synth_')).resolve()
+        p = self._tmp_pim_cfg_dir / 'pim_hw_synth.json'
+        p.write_text(json.dumps(pim_cfg, indent=2), encoding='utf-8')
+        if self.debug:
+            self._dbg.log(f"[run-pim][debug] synthesized pim_config JSON: {p}")
+        return p
 
-                elif op == 'QK':
-                    for S in seqlens_list:
-                        block.Vector_Matrix_Mul_score_pim_only_trace(int(block.cache_k_row_index), int(S), 'breakdown_sa_score')
+    def close(self) -> None:
+        if self._tmp_pim_cfg_dir is not None:
+            try:
+                shutil.rmtree(self._tmp_pim_cfg_dir, ignore_errors=True)
+            except Exception:
+                pass
+            self._tmp_pim_cfg_dir = None
 
-                elif op == 'Softmax':
-                    for S in seqlens_list:
-                        self._emit_softmax(block, channels_required, channel_lst, int(S))
+    def _print_debug_header(self) -> None:
+        if not self.debug:
+            return
 
-                elif op == 'SV':
-                    for S in seqlens_list:
-                        block.Vector_Matrix_Mul_output_pim_only_trace(int(block.cache_v_row_index), int(S), 'breakdown_sa_output')
+        # Try to surface the CostModel constant used for cycles->sec.
+        try:
+            from config import PIM_FREQ_GHZ as CM_PIM_FREQ_GHZ  # type: ignore
+        except Exception:
+            CM_PIM_FREQ_GHZ = None  # type: ignore
 
-                else:
-                    raise ValueError(f"Unknown / unsupported PIM op in schedule: {op}")
+        self._dbg.log("=" * 80)
+        self._dbg.log("[run-pim][debug] Using cost_model_pim_backend._get_pim_latency_via_trace")
+        self._dbg.log(f"[run-pim][debug] shard_policy={self.cfg.shard_policy!r} shards={int(self.cfg.shards)}")
+        self._dbg.log(f"[run-pim][debug] model: dim={int(self.cfg.dim)} ffn_dim={int(self.cfg.ffn_dim)} n_heads={int(self.cfg.n_heads)} n_kv_heads={(int(self.cfg.n_kv_heads) if self.cfg.n_kv_heads is not None else 'auto->n_heads')}")
+        self._dbg.log(f"[run-pim][debug] lengths: prefill_len={int(self.cfg.prefill_len)} decode_stride={int(getattr(self.cfg,'decode_stride',1) or 1)} decode_context_lens_len={(len(self.cfg.decode_context_lens) if self.cfg.decode_context_lens else 0)}")
+        self._dbg.log(f"[run-pim][debug] pim_config={self.pim_config} (from {'pim_hw_json_path' if self.cfg.pim_hw_json_path else 'synth'})")
+        self._dbg.log(f"[run-pim][debug] ramulator_config={self.ramulator_config}")
+        self._dbg.log(f"[run-pim][debug] ramulator_bin={self.ramulator_bin} (exported as env RAMULATOR2_BIN)")
+        self._dbg.log(f"[run-pim][debug] ramulator_timeout_s={int(getattr(self.cfg,'pim_ramulator_timeout_s',0) or 0)}")
+        self._dbg.log(f"[run-pim][debug] cache_enabled={self.use_cache}")
+        self._dbg.log(f"[run-pim][debug] schedule cfg.pim_freq_ghz={float(getattr(self.cfg,'pim_freq_ghz',0.0) or 0.0)}")
+        self._dbg.log(f"[run-pim][debug] cost_model config.PIM_FREQ_GHZ={CM_PIM_FREQ_GHZ}")
+        self._dbg.log("=" * 80)
 
-            if hasattr(block, 'finish'):
-                block.finish()
-            else:
-                if getattr(block, 'file', None):
-                    try:
-                        block.file.write('AiM EOC\n')
-                    except Exception:
-                        pass
+    def _pim_params_for_op(self, *, op: str, shard: int, phase: str, step: int) -> Tuple[int, int, int, int, int, int]:
+        """Return (dim, n_heads, n_kv_heads, ffn_dim, seqlen, query_len) for this op."""
+        sig = OpSig(device_type='pim', phase=str(phase), step=int(step), op=str(op), shard=int(shard))
+        sh = infer_op_shape(sig, self.cfg)
 
-            if getattr(block, 'file', None):
+        shards = int(max(1, getattr(self.cfg, 'shards', 1) or 1))
+        shard_policy = str(getattr(self.cfg, 'shard_policy', 'fine')).strip().lower()
+        fine = shard_policy in ('fine',)
+
+        n_kv_total = int(self.cfg.n_kv_heads) if self.cfg.n_kv_heads is not None else int(self.cfg.n_heads)
+
+        if fine and int(shard) >= 0 and shards > 1:
+            dim = int(sh.shard_dim)
+            n_heads = int(max(1, sh.heads_per_shard))
+            ffn_dim = int(max(1, sh.ffn_shard_dim))
+            n_kv_heads = int(max(1, n_kv_total // shards))
+        else:
+            dim = int(sh.dim)
+            n_heads = int(max(1, self.cfg.n_heads))
+            ffn_dim = int(max(1, self.cfg.ffn_dim))
+            n_kv_heads = int(max(1, n_kv_total))
+
+        seqlen = int(max(1, sh.key_len))
+        qlen = int(max(1, sh.query_len))
+        return dim, n_heads, n_kv_heads, ffn_dim, seqlen, qlen
+
+    def _get_model_dict(self, *, dim: int, n_heads: int, n_kv_heads: int, ffn_dim: int, seqlen: int) -> Dict[str, Any]:
+        key = (int(dim), int(n_heads), int(n_kv_heads), int(ffn_dim), int(seqlen))
+        md = self._model_dict_cache.get(key)
+        if md is not None:
+            return md
+
+        # Use CostModel's shared model_dict generator to avoid drift.
+        md = self.cm._make_shared_model_dict(int(dim), int(n_heads), int(n_kv_heads), int(ffn_dim), int(seqlen))
+        self._model_dict_cache[key] = md
+        return md
+
+    def benchmark_segment(self, seg: SegmentSig) -> float:
+        total = 0.0
+        for (op, shard) in seg.ops:
+            if str(op).strip().lower() in _COMM_OPS:
+                continue
+
+            dim, n_heads, n_kv_heads, ffn_dim, seqlen, qlen = self._pim_params_for_op(
+                op=str(op), shard=int(shard), phase=str(seg.phase), step=int(seg.step)
+            )
+            op_norm = self.cm._normalize_pim_op(str(op))
+
+            cache_hit = None
+            if self.debug and self.use_cache:
                 try:
-                    block.file.flush()
+                    cache_hit = self.cm._pim_cache.get(op_norm, str(seg.phase), dim, n_heads, n_kv_heads, ffn_dim, seqlen, self.pim_config, self.ramulator_config)
                 except Exception:
-                    pass
-                try:
-                    block.file.close()
-                except Exception:
-                    pass
+                    cache_hit = None
 
-            cycles = self._run_ramulator(trace_path)
-            sec = float(cycles) / (float(self.cfg.pim_freq_ghz) * 1_000_000_000.0)
-            return sec
+            if self.debug:
+                self._dbg.log(
+                    f"[run-pim][debug] seg phase={seg.phase} step={seg.step} op={op!r} -> norm={op_norm!r} shard={shard} "
+                    f"dim={dim} heads={n_heads} kv_heads={n_kv_heads} ffn_dim={ffn_dim} seqlen={seqlen} qlen={qlen} "
+                    f"cache_hit={'Y' if cache_hit is not None else 'N'}"
+                )
 
-        finally:
-            if cleanup:
-                try:
-                    shutil.rmtree(trace_dir, ignore_errors=True)
-                except Exception:
-                    pass
+            model_dict = self._get_model_dict(dim=dim, n_heads=n_heads, n_kv_heads=n_kv_heads, ffn_dim=ffn_dim, seqlen=seqlen)
+
+            # Provide a stable prefix so traces are easy to correlate (if kept).
+            trace_prefix = None
+            if self.debug:
+                trace_prefix = f"{seg.phase}_step{seg.step}_sh{shard}_{op_norm}"
+
+            sec = float(
+                self.cm._get_pim_latency_via_trace(
+                    op=str(op),
+                    pim_config=self.pim_config,
+                    ramulator_config=self.ramulator_config,
+                    dim=int(dim),
+                    n_heads=int(n_heads),
+                    n_kv_heads=int(n_kv_heads),
+                    ffn_dim=int(ffn_dim),
+                    seqlen=int(seqlen),
+                    phase=str(seg.phase),
+                    model_dict=model_dict,
+                    use_cache=bool(self.use_cache),
+                    ramulator_timeout_s=int(getattr(self.cfg, 'pim_ramulator_timeout_s', 300) or 300),
+                    keep_traces=bool(getattr(self.cfg, 'pim_keep_traces', False)),
+                    trace_dir=(Path(self.cfg.pim_trace_dir).expanduser().resolve() if getattr(self.cfg, 'pim_trace_dir', None) else None),
+                    trace_prefix=trace_prefix,
+                )
+            )
+
+            total += sec
+            if self.debug:
+                self._dbg.log(f"[run-pim][debug]   -> latency_s={sec:.6e} (accum={total:.6e})")
+        return float(total)
 # ==========================================================
 # JSON helpers
 # ==========================================================
@@ -1576,9 +2102,10 @@ def export_tasks(
         dfs.append(df)
         max_decode_steps = max(max_decode_steps, infer_decode_steps(df))
 
-    if "shard" in df.columns:
-        ms = pd.to_numeric(df["shard"], errors="coerce").fillna(-1).astype(int).max()
-        max_shard_seen = max(max_shard_seen, int(ms))
+        # infer max shard index across all schedules
+        if "shard" in df.columns:
+            ms = pd.to_numeric(df["shard"], errors="coerce").fillna(-1).astype(int).max()
+            max_shard_seen = max(max_shard_seen, int(ms))
 
     inferred = int(max_shard_seen + 1) if int(max_shard_seen) >= 0 else 1
     if int(getattr(cfg, "shards", 0) or 0) != inferred:
@@ -1625,8 +2152,15 @@ def export_tasks(
     # collect unique segments over all schedules
     uniq: Dict[str, SegmentSig] = {}
     ctr: Counter = Counter()
-    for df in dfs: # all schedules merge into one uniq dict and update counter
-        u, c = extract_segments(df, cfg.segment_scope)
+
+    shard_policy = str(getattr(cfg, "shard_policy", "fine")).strip().lower()
+    use_coarse = shard_policy in ("coarse", "coarse_majority", "coarse-majority", "majority", "coarsemajority")
+
+    for df in dfs:  # all schedules merge into one uniq dict and update counter
+        if use_coarse:
+            u, c = extract_segments_coarse_majority(df, cfg.segment_scope, total_shards=int(cfg.shards))
+        else:
+            u, c = extract_segments(df, cfg.segment_scope)
         uniq.update(u)
         ctr.update(c)
 
@@ -1709,8 +2243,18 @@ def export_tasks(
     return gpu_path, pim_path
 
 
-def run_gpu(tasks_json: str, out_json: str, warmup: int = 3, iters: int = 10,
-            device: Optional[str] = None, gpu_dtype: Optional[str] = None) -> Path:
+
+def run_gpu(
+    tasks_json: str,
+    out_json: str,
+    warmup: int = 3,
+    iters: int = 10,
+    device: Optional[str] = None,
+    gpu_dtype: Optional[str] = None,
+    *,
+    debug: bool = False,
+    debug_txt: Optional[str] = None,
+) -> Path:
     data = _load_json(tasks_json)
     cfg = WorkloadConfig.from_dict(data.get("config", {}))
     # Apply CLI/runtime overrides (take precedence over gpu_tasks.json config)
@@ -1728,23 +2272,80 @@ def run_gpu(tasks_json: str, out_json: str, warmup: int = 3, iters: int = 10,
     weight_load_by_schedule = data.get("weight_load_by_schedule", {}) or {}
 
     tasks = data.get("tasks", [])
+
+    # Debug output + (optional) tee to file
+    cfg.debug = bool(debug or getattr(cfg, "debug", False))
+    dbg = _DebugLogger(enabled=bool(cfg.debug), out_path=debug_txt)
+    log = dbg.log if dbg.enabled else print
+
     gpu_info = collect_gpu_info(cfg.device)
 
     results: Dict[str, float] = {}
-    print(f"[run-gpu] tasks={len(tasks)} warmup={warmup} iters={iters} device={cfg.device} dtype={cfg.gpu_dtype} segment_scope={seg_scope}")
+    log(f"[run-gpu] tasks={len(tasks)} warmup={warmup} iters={iters} device={cfg.device} dtype={cfg.gpu_dtype} segment_scope={seg_scope}")
     if weight_load_s:
-        print(f"[run-gpu] extra weight_load_s={weight_load_s:.6f}s (will be added in merge)")
-    print_gpu_info(gpu_info)
+        log(f"[run-gpu] extra weight_load_s={weight_load_s:.6f}s (will be added in merge)")
+    print_gpu_info(gpu_info, print_fn=log)
+
+    # Extra backend/flags snapshot (debug only)
+    if dbg.enabled and torch is not None:
+        try:
+            log(f"[run-gpu][debug] torch_default_dtype={torch.get_default_dtype()}")
+        except Exception:
+            pass
+        try:
+            # matmul / TF32 knobs (may not exist on some builds)
+            mm = getattr(getattr(torch.backends, "cuda", None), "matmul", None)
+            if mm is not None and hasattr(mm, "allow_tf32"):
+                log(f"[run-gpu][debug] torch.backends.cuda.matmul.allow_tf32={mm.allow_tf32}")
+        except Exception:
+            pass
+        try:
+            cd = getattr(torch.backends, "cudnn", None)
+            if cd is not None:
+                log(
+                    f"[run-gpu][debug] cudnn.enabled={getattr(cd,'enabled',None)} "
+                    f"benchmark={getattr(cd,'benchmark',None)} deterministic={getattr(cd,'deterministic',None)} "
+                    f"allow_tf32={getattr(cd,'allow_tf32',None)}"
+                )
+        except Exception:
+            pass
+
+        # One-time nvidia-smi snapshot (utilization / mem usage) if available.
+        smi_path = shutil.which("nvidia-smi")
+        if smi_path:
+            ok, out = _try_run([
+                smi_path,
+                "--query-gpu=index,utilization.gpu,utilization.memory,memory.used,memory.total,temperature.gpu,power.draw,power.limit",
+                "--format=csv,noheader,nounits",
+            ])
+            if ok and out:
+                log(f"[run-gpu][debug] nvidia-smi snapshot: {out}")
 
     backend = GPUBackend(cfg)
-    for i, t in enumerate(tasks):
-        key = t["key"]
-        ops = tuple((x["op"], int(x.get("shard",-1))) for x in t.get("ops", []))
-        sig = SegmentSig(device_type="npu", phase=str(t["sig"]["phase"]), step=int(t["sig"]["step"]), ops=ops)
-        sec = backend.benchmark_segment(sig, warmup=warmup, iters=iters)
-        results[key] = float(sec)
-        if (i + 1) % 20 == 0 or (i + 1) == len(tasks):
-            print(f"  progress {i+1}/{len(tasks)}")
+    try:
+        for i, t in enumerate(tasks):
+            key = t["key"]
+            ops = tuple((x["op"], int(x.get("shard", -1))) for x in t.get("ops", []))
+            sig = SegmentSig(device_type="npu", phase=str(t["sig"]["phase"]), step=int(t["sig"]["step"]), ops=ops)
+
+            sec = backend.benchmark_segment(
+                sig,
+                warmup=warmup,
+                iters=iters,
+                debug=bool(dbg.enabled),
+                debug_logger=dbg,
+                seg_key=key,
+                task_meta=t,
+            )
+            results[key] = float(sec)
+
+            if (i + 1) % 20 == 0 or (i + 1) == len(tasks):
+                log(f"  progress {i+1}/{len(tasks)}")
+    finally:
+        try:
+            dbg.close()
+        except Exception:
+            pass
 
     outp = Path(out_json).expanduser().resolve()
     out = {
@@ -1759,19 +2360,26 @@ def run_gpu(tasks_json: str, out_json: str, warmup: int = 3, iters: int = 10,
         "results": results,
     }
     _save_json(outp, out)
-    print(f"[run-gpu] wrote {outp}")
+    log(f"[run-gpu] wrote {outp}")
     return outp
 
 
-def run_pim(tasks_json: str, out_json: str, *,
-            cent_sim_root: Optional[str] = None,
-            ramulator_config: Optional[str] = None,
-            pim_hw_json: Optional[str] = None,
-            pim_num_devices: Optional[int] = None,
-            ramulator_bin: Optional[str] = None,
-            ramulator_timeout_s: Optional[int] = None,
-            keep_traces: bool = False,
-            trace_dir: Optional[str] = None) -> Path:
+def run_pim(
+    tasks_json: str,
+    out_json: str,
+    *,
+    cent_sim_root: Optional[str] = None,
+    ramulator_config: Optional[str] = None,
+    pim_hw_json: Optional[str] = None,
+    pim_num_devices: Optional[int] = None,
+    ramulator_bin: Optional[str] = None,
+    ramulator_timeout_s: Optional[int] = None,
+    keep_traces: bool = False,
+    trace_dir: Optional[str] = None,
+    debug: bool = False,
+    debug_txt: Optional[str] = None,
+    no_cache: bool = False,
+) -> Path:
 
     data = _load_json(tasks_json)
     cfg_dict = data.get("config", {}) or {}
@@ -1816,6 +2424,8 @@ def run_pim(tasks_json: str, out_json: str, *,
             cfg.pim_reuse_size = int(hw["pim_reuse_size"])  # type: ignore[arg-type]
         if hw.get("pim_freq_ghz") is not None:
             cfg.pim_freq_ghz = float(hw["pim_freq_ghz"])  # type: ignore[arg-type]
+        # Keep the original JSON path so the CostModel trace backend can consume it.
+        cfg.pim_hw_json_path = str(resolve_existing_path(pim_hw_json))
     if pim_num_devices is not None:
         try:
             iv = int(pim_num_devices)
@@ -1824,6 +2434,16 @@ def run_pim(tasks_json: str, out_json: str, *,
         if iv <= 0:
             raise ValueError(f"pim_num_devices must be > 0, got {iv}")
         cfg.pim_num_devices = iv
+
+    # In fine mode, we do NOT use cfg.pim_num_devices/--pim-num-devices to enable FC_devices.
+    # Sharding is modeled explicitly via schedule rows and per-device segments.
+    shard_policy = str(getattr(cfg, 'shard_policy', 'fine')).strip().lower()
+    use_coarse = shard_policy in ("coarse", "coarse_majority", "coarse-majority", "majority", "coarsemajority")
+    if (not use_coarse) and int(getattr(cfg, 'pim_num_devices', 1) or 1) != 1:
+        print(
+            f"[run-pim] shard_policy={cfg.shard_policy!r}: ignoring pim_num_devices={cfg.pim_num_devices} for trace generation; "
+            "fine-mode tracing always uses a single PIM device (FC_devices=1) and follows per-shard placement from the schedule."
+        )
     # For ramulator config, we require it to be actually present (not empty/None).
     # This can be provided via pim_tasks.json or CLI override.
     if not cfg.pim_ramulator_bin:
@@ -1839,20 +2459,33 @@ def run_pim(tasks_json: str, out_json: str, *,
             "run-pim --pim-ramulator-config <path> --pim-hw-json <path>."
         )
 
-    backend = PIMBackend(cfg, cent_sim_root=cent_sim_root)
+    # Debug output + (optional) tee to file
+    cfg.debug = bool(debug or getattr(cfg, 'debug', False))
+    dbg = _DebugLogger(enabled=bool(cfg.debug), out_path=debug_txt)
+    backend = PIMBackendViaCostModel(cfg, tasks, debug_logger=dbg, use_cache=(not bool(no_cache)))
 
     results: Dict[str, float] = {}
     print(f"[run-pim] tasks={len(tasks)} segment_scope={seg_scope}")
     if weight_load_s:
         print(f"[run-pim] extra weight_load_s={weight_load_s:.6f}s (will be added in merge)")
-    for i, t in enumerate(tasks):
-        key = t["key"]
-        ops = tuple((x["op"], int(x.get("shard",-1))) for x in t.get("ops", []))
-        sig = SegmentSig(device_type="pim", phase=str(t["sig"]["phase"]), step=int(t["sig"]["step"]), ops=ops)
-        sec = backend.benchmark_segment(sig)
-        results[key] = float(sec)
-        if (i + 1) % 50 == 0 or (i + 1) == len(tasks):
-            print(f"  progress {i+1}/{len(tasks)}")
+    try:
+        for i, t in enumerate(tasks):
+            key = t["key"]
+            ops = tuple((x["op"], int(x.get("shard",-1))) for x in t.get("ops", []))
+            sig = SegmentSig(device_type="pim", phase=str(t["sig"]["phase"]), step=int(t["sig"]["step"]), ops=ops)
+            sec = backend.benchmark_segment(sig)
+            results[key] = float(sec)
+            if (i + 1) % 50 == 0 or (i + 1) == len(tasks):
+                print(f"  progress {i+1}/{len(tasks)}")
+    finally:
+        try:
+            backend.close()
+        except Exception:
+            pass
+        try:
+            dbg.close()
+        except Exception:
+            pass
 
     outp = Path(out_json).expanduser().resolve()
     out = {
@@ -1903,29 +2536,6 @@ def _comm_latency_from_df(df: pd.DataFrame, comm_model: str, pcie_lanes: int = 1
     raise ValueError(f"Unknown comm_model: {comm_model}")
 
 
-
-def _comm_latency_from_row(r: Any, comm_model: str, *, pcie_lanes: int = 16,
-                           dim: int = 4096, shards: int = 4, dtype_bytes: int = 2) -> float:
-    """Per-row COMM latency (seconds)."""
-    comm_model = str(comm_model).lower()
-    if comm_model == "none":
-        return 0.0
-    if comm_model == "schedule":
-        return float(r["duration"])
-    if comm_model == "cxl":
-        if cxl_latency is None:
-            raise RuntimeError("cxl_latency.py not importable; cannot use --comm-model cxl")
-        op = str(r["op"])
-        shard = int(r.get("shard", -1)) if pd.notna(r.get("shard", -1)) else -1
-        shard_dim = max(1, int(dim) // max(1, int(shards)))
-        if op in ("K_write", "V_write"):
-            bytes_ = shard_dim * dtype_bytes
-        else:
-            bytes_ = int(dim) * dtype_bytes
-        return float(cxl_latency.cxl_memcpy_latency(bytes_, lanes=pcie_lanes))
-    raise ValueError(f"Unknown comm_model: {comm_model}")
-
-
 def _try_lookup_segment_latency(seg: SegmentSig, res: Dict[str, float]) -> Optional[float]:
     k = seg.to_key()
     v = res.get(k, None)
@@ -1965,14 +2575,6 @@ def _build_row_durations_layer_scope(
     # 1) COMM rows
     if comm_model.lower() == "schedule":
         dur_s[is_comm] = df.loc[is_comm, "duration"].astype(float).to_numpy()
-    elif comm_model.lower() == "none":
-        pass
-    else:
-        # cxl (or any future row-level model)
-        comm_idx = df.index[is_comm].to_list()
-        for i in comm_idx:
-            r = df.loc[i]
-            dur_s[i] = _comm_latency_from_row(r, comm_model, pcie_lanes=pcie_lanes, dim=dim, shards=shards)
 
     # 2) Compute rows (layer scope)
     compute_df = df.loc[~is_comm, ["phase", "step", "layer", "device", "device_type", "op", "shard", "start", "_row", "duration"]].copy()
@@ -2041,145 +2643,6 @@ def _build_row_durations_layer_scope(
     ds = int(decode_stride) if decode_stride is not None else 1
     dmask = (df["phase"].astype(str) == "decode").to_numpy()
     dur_s[dmask & (~is_comm)] *= float(ds)
-
-    return dur_s, int(missing)
-
-def _build_row_durations_device_step_scope(
-    df: pd.DataFrame,
-    *,
-    gpu_res: Dict[str, float],
-    pim_res: Dict[str, float],
-    comm_model: str,
-    pcie_lanes: int,
-    decode_stride: int,
-    dim: int,
-    shards: int,
-    allow_missing: bool,
-) -> Tuple[np.ndarray, int]:
-
-    n = len(df)
-    dur_s = np.zeros(n, dtype=np.float64)
-
-    op_l = df["op"].astype(str).str.strip().str.lower()
-    is_comm = op_l.isin(_COMM_OPS).to_numpy()
-
-    # 1) COMM rows
-    if comm_model.lower() == "schedule":
-        dur_s[is_comm] = df.loc[is_comm, "duration"].astype(float).to_numpy()
-    elif comm_model.lower() == "none":
-        pass
-    else:
-        # cxl (or any future row-level model)
-        comm_idx = df.index[is_comm].to_list()
-        for i in comm_idx:
-            r = df.loc[i]
-            dur_s[i] = _comm_latency_from_row(r, comm_model, pcie_lanes=pcie_lanes, dim=dim, shards=shards)
-
-    # 2) Compute rows (device_step scope: split by comm ops on each device timeline)
-    cols = ["phase", "step", "device", "device_type", "op", "shard", "start", "_row", "duration"]
-    sub = df.loc[:, [c for c in cols if c in df.columns]].copy()
-
-    # Ensure required columns exist (schedule csv schema contract)
-    for req in ["phase", "step", "device", "device_type", "op", "start", "_row", "duration"]:
-        if req not in sub.columns:
-            raise ValueError(f"schedule is missing required column: {req}")
-
-    missing = 0
-    group_cols = ["phase", "step", "device"]
-    for (phase, step, device), g in sub.groupby(group_cols, sort=False):
-        # Match extract_segments() ordering: per group sorted by (start, _row)
-        g = g.sort_values(["start", "_row"], kind="mergesort")
-        dev_type = str(g["device_type"].iloc[0])
-        dev_type_n = dev_type.strip().lower()
-
-        cur_ops: List[Tuple[str, int]] = []
-        cur_idxs: List[int] = []
-
-        def flush_segment() -> None:
-            nonlocal missing, cur_ops, cur_idxs
-            if not cur_ops:
-                cur_ops = []
-                cur_idxs = []
-                return
-
-            if dev_type_n not in ("npu", "pim"):
-                idxs = np.array(cur_idxs, dtype=int)
-                if idxs.size:
-                    dur_s[idxs] = pd.to_numeric(df.loc[idxs, "duration"], errors="coerce").fillna(0.0).astype(float).to_numpy()
-                cur_ops = []
-                cur_idxs = []
-                return
-
-            ph = str(phase)
-            st = int(step)
-
-            # NOTE: Try token-index key first (newer convention), then fall back to sample-step key.
-            total_lat: Optional[float] = None
-            if ph == "decode" and int(decode_stride) != 1:
-                st_tok = 1 + int(st) * int(decode_stride)
-                seg_tok = SegmentSig(device_type=dev_type, phase=ph, step=int(st_tok), ops=tuple(cur_ops))
-                if dev_type == "npu":
-                    total_lat = _try_lookup_segment_latency(seg_tok, gpu_res)
-                elif dev_type == "pim":
-                    total_lat = _try_lookup_segment_latency(seg_tok, pim_res)
-
-                if total_lat is None:
-                    seg_legacy = SegmentSig(device_type=dev_type, phase=ph, step=int(st), ops=tuple(cur_ops))
-                    if dev_type == "npu":
-                        total_lat = _try_lookup_segment_latency(seg_legacy, gpu_res)
-                    elif dev_type == "pim":
-                        total_lat = _try_lookup_segment_latency(seg_legacy, pim_res)
-            else:
-                seg = SegmentSig(device_type=dev_type, phase=ph, step=int(st), ops=tuple(cur_ops))
-                if dev_type == "npu":
-                    total_lat = _try_lookup_segment_latency(seg, gpu_res)
-                elif dev_type == "pim":
-                    total_lat = _try_lookup_segment_latency(seg, pim_res)
-
-            if total_lat is None:
-                if allow_missing:
-                    total_lat = 0.0
-                else:
-                    missing += 1
-                    total_lat = 0.0
-
-            # Distribute segment latency back to its rows proportionally to trace duration.
-            idxs = np.array(cur_idxs, dtype=int)
-            if idxs.size == 0:
-                cur_ops = []
-                cur_idxs = []
-                return
-
-            # Pull weights from original df to avoid any dtype surprises.
-            w = pd.to_numeric(df.loc[idxs, "duration"], errors="coerce").fillna(0.0).astype(float).to_numpy()
-            wsum = float(np.nansum(w.astype(np.float64)))
-            if wsum > 0:
-                dur_s[idxs] = float(total_lat) * (w / wsum)
-            else:
-                dur_s[idxs] = float(total_lat) / float(idxs.size)
-
-            cur_ops = []
-            cur_idxs = []
-
-        for idx, r in g.iterrows():
-            op = str(r["op"]).strip()
-            if op.lower() in _COMM_OPS:
-                flush_segment()
-                continue
-            shard = int(r["shard"]) if ("shard" in r and pd.notna(r["shard"])) else -1
-            cur_ops.append((op, shard))
-            cur_idxs.append(int(idx))
-
-        flush_segment()
-
-    # 3) decode scaling
-    ds = int(decode_stride) if decode_stride is not None else 1
-    if ds <= 0:
-        ds = 1
-    if ds != 1:
-        dmask = (df["phase"].astype(str) == "decode").to_numpy()
-        # measured segment latencies are per-sampled-step
-        dur_s[dmask & (~is_comm)] *= float(ds)
 
     return dur_s, int(missing)
 
@@ -2311,553 +2774,435 @@ def compute_trace_times_from_ops_csv(df: pd.DataFrame, *, decode_stride: int = 1
         "trace_decode_s": float(dec),
         "trace_decode_scaled_s": float(dec),
         "trace_total_raw_s": float(total_raw),
+        "trace_total_scaled_s": float(total),
         "trace_total_s": float(total),
     }
-
-def _lookup_segment_latency_for_debug(
-    dev_type: str,
-    phase: str,
-    step_sample: int,
-    ops: List[Tuple[str, int]],
-    *,
-    decode_stride: int,
-    gpu_res: Dict[str, float],
-    pim_res: Dict[str, float],
-) -> Tuple[Optional[float], str, int, str]:
-    """Lookup a segment latency in results dicts."""
-    dev_type = str(dev_type)
-    phase = str(phase)
-
-    # Candidate step encodings
-    cands: List[Tuple[str, int]] = []
-    ds = int(decode_stride) if decode_stride is not None else 1
-    if ds <= 0:
-        ds = 1
-    if phase == "decode" and ds != 1:
-        cands.append(("token_index", 1 + int(step_sample) * ds))
-    cands.append(("sample_step", int(step_sample)))
-
-    res = gpu_res if dev_type == "npu" else pim_res if dev_type == "pim" else {}
-
-    # Try in order
-    for kind, st in cands:
-        seg = SegmentSig(device_type=dev_type, phase=phase, step=int(st), ops=tuple(ops))
-        k = seg.to_key()
-        if k in res:
-            try:
-                return float(res[k]), k, int(st), str(kind)
-            except Exception:
-                return res[k], k, int(st), str(kind)  # type: ignore[return-value]
-
-    # Not found: return the first candidate key as a reference
-    kind0, st0 = cands[0]
-    seg0 = SegmentSig(device_type=dev_type, phase=phase, step=int(st0), ops=tuple(ops))
-    return None, seg0.to_key(), int(st0), str(kind0)
-
-
-def _collect_segment_debug_rows(
-    df: pd.DataFrame,
-    *,
-    seg_scope: str,
-    decode_stride: int,
-    gpu_res: Dict[str, float],
-    pim_res: Dict[str, float],
-    allow_missing: bool,
-) -> List[Dict[str, Any]]:
-    """Build per-unique-segment comparison rows: (measured vs trace duration)."""
-    seg_scope = str(seg_scope).lower()
-    if seg_scope not in ("layer", "device_step"):
-        raise ValueError(f"Unknown segment_scope: {seg_scope}")
-
-    # normalize op type
-    op_l = df["op"].astype(str).str.strip().str.lower()
-    is_comm = op_l.isin(_COMM_OPS).to_numpy()
-
-    # Aggregation dict: key_used -> stats
-    stats: Dict[str, Dict[str, Any]] = {}
-
-    def _accum(
-        *,
-        phase: str,
-        step_sample: int,
-        dev_type: str,
-        ops: List[Tuple[str, int]],
-        trace_sum_s_raw: float,
-    ) -> None:
-        dev_type_n = str(dev_type).strip().lower()
-        if dev_type_n not in ("npu", "pim"):
-            seg = SegmentSig(device_type=str(dev_type), phase=str(phase), step=int(step_sample), ops=tuple(ops))
-            key_used = seg.to_key()
-            step_used = int(step_sample)
-            step_kind = "trace"
-            found = True
-            measured_s_raw = 0.0  # will be overwritten to trace_avg_s_raw (running average) below
-        else:
-            lat, key_used, step_used, step_kind = _lookup_segment_latency_for_debug(
-                dev_type, phase, step_sample, ops,
-                decode_stride=int(decode_stride),
-                gpu_res=gpu_res, pim_res=pim_res,
-            )
-            found = lat is not None
-            measured_s_raw = float(lat) if lat is not None else 0.0  # match merge() behavior when missing
-
-        ops_repr = ",".join([f"{op}:{sh}" for op, sh in ops])
-
-        rec = stats.get(key_used)
-        if rec is None:
-            rec = {
-                "key": key_used,
-                "device_type": str(dev_type),
-                "phase": str(phase),
-                "step_sample": int(step_sample),
-                "step_used": int(step_used),
-                "step_kind": str(step_kind),
-                "ops_repr": ops_repr,
-                "count": 0,
-                "trace_sum_s_raw": 0.0,
-                "measured_s_raw": float(measured_s_raw),
-                "found_in_results": bool(found),
-                "missing_count": 0,
-            }
-            stats[key_used] = rec
-
-        rec["count"] = int(rec.get("count", 0)) + 1
-        rec["trace_sum_s_raw"] = float(rec.get("trace_sum_s_raw", 0.0)) + float(trace_sum_s_raw)
-
-        # For trace-only segments, keep "measured" equal to the running trace average.
-        if dev_type_n not in ("npu", "pim"):
-            cnt = max(1, int(rec.get("count", 0)))
-            rec["measured_s_raw"] = float(rec.get("trace_sum_s_raw", 0.0)) / float(cnt)
-            rec["found_in_results"] = True
-            rec["missing_count"] = 0
-
-        # If any occurrence is missing, record it (helps spot bad keys)
-        if not found:
-            rec["missing_count"] = int(rec.get("missing_count", 0)) + 1
-            if not allow_missing:
-                # In non-allow-missing mode we'd still set cost=0 in merge(), but flag it.
-                rec["found_in_results"] = False
-
-    if seg_scope == "layer":
-        # Compute rows only (COMM handled separately)
-        compute_df = df.loc[~is_comm, ["phase", "step", "layer", "device", "device_type", "op", "shard", "start", "_row", "duration"]].copy()
-        compute_df = compute_df.sort_values(["phase", "step", "layer", "device", "start", "_row"], kind="mergesort")
-
-        for (phase, step, layer, device), g in compute_df.groupby(["phase", "step", "layer", "device"], sort=False):
-            if g.empty:
-                continue
-            dev_type = str(g["device_type"].iloc[0])
-            ops: List[Tuple[str, int]] = []
-            for _, rr in g.iterrows():
-                op = str(rr["op"]).strip()
-                shard = int(rr["shard"]) if pd.notna(rr["shard"]) else -1
-                ops.append((op, shard))
-            if not ops:
-                continue
-            trace_sum = float(pd.to_numeric(g["duration"], errors="coerce").fillna(0.0).astype(float).sum())
-            _accum(phase=str(phase), step_sample=int(step), dev_type=dev_type, ops=ops, trace_sum_s_raw=trace_sum)
-
-    else:
-        # device_step: per-device timeline, split by COMM ops
-        cols = ["phase", "step", "device", "device_type", "op", "shard", "start", "_row", "duration"]
-        sub = df.loc[:, [c for c in cols if c in df.columns]].copy()
-        sub = sub.sort_values(["phase", "step", "device", "start", "_row"], kind="mergesort")
-
-        for (phase, step, device), g in sub.groupby(["phase", "step", "device"], sort=False):
-            if g.empty:
-                continue
-            dev_type = str(g["device_type"].iloc[0])
-
-            cur_ops: List[Tuple[str, int]] = []
-            cur_durs: List[float] = []
-
-            def flush() -> None:
-                nonlocal cur_ops, cur_durs
-                if not cur_ops:
-                    cur_ops = []
-                    cur_durs = []
-                    return
-                trace_sum = float(np.nansum(np.array(cur_durs, dtype=np.float64)))
-                _accum(phase=str(phase), step_sample=int(step), dev_type=dev_type, ops=cur_ops, trace_sum_s_raw=trace_sum)
-                cur_ops = []
-                cur_durs = []
-
-            for _, rr in g.iterrows():
-                op = str(rr["op"]).strip()
-                if op.lower() in _COMM_OPS:
-                    flush()
-                    continue
-                shard = int(rr["shard"]) if ("shard" in rr and pd.notna(rr["shard"])) else -1
-                cur_ops.append((op, shard))
-                d = rr.get("duration", 0.0)
-                try:
-                    cur_durs.append(float(d))
-                except Exception:
-                    cur_durs.append(0.0)
-            flush()
-
-    # finalize rows + derived columns
-    out_rows: List[Dict[str, Any]] = []
-    ds = int(decode_stride) if decode_stride is not None else 1
-    if ds <= 0:
-        ds = 1
-
-    for k, rec in stats.items():
-        cnt = max(1, int(rec.get("count", 0) or 0))
-        trace_sum_raw = float(rec.get("trace_sum_s_raw", 0.0) or 0.0)
-        trace_avg_raw = trace_sum_raw / float(cnt)
-
-        phase = str(rec.get("phase", ""))
-        measured_scale = float(ds) if phase == "decode" else 1.0
-
-        measured_raw = float(rec.get("measured_s_raw", 0.0) or 0.0)
-        measured_scaled = measured_raw * measured_scale
-        trace_avg_scaled = trace_avg_raw
-
-        delta_raw = measured_raw - trace_avg_raw
-        delta_scaled = measured_scaled - trace_avg_scaled
-
-        def _pct(delta: float, base: float) -> float:
-            try:
-                if float(base) == 0.0:
-                    return float("nan")
-                return float(delta) / float(base) * 100.0
-            except Exception:
-                return float("nan")
-
-        out_rows.append({
-            **rec,
-            "trace_avg_s_raw": float(trace_avg_raw),
-            "trace_avg_s_scaled": float(trace_avg_scaled),
-            "measured_s_scaled": float(measured_scaled),
-            "delta_s_raw": float(delta_raw),
-            "delta_pct_raw": _pct(delta_raw, trace_avg_raw),
-            "delta_s_scaled": float(delta_scaled),
-            "delta_pct_scaled": _pct(delta_scaled, trace_avg_scaled),
-        })
-
-    return out_rows
-
 
 def merge(
     schedule_paths: List[str],
     gpu_results_json: Optional[str],
     pim_results_json: Optional[str],
     *,
+    comms_paths: Optional[List[str]] = None,
+    non_overlap: float = 0.0,
     comm_model: str = "schedule",
     pcie_lanes: int = 16,
-    decode_stride: int,
+    decode_stride: int = 1,
+    kv_load_bw_gbs_override: Optional[float] = None,
+    kv_dtype_bytes_override: Optional[float] = None,
+    kv_load_overhead_us_override: Optional[float] = None,
+    n_kv_heads_override: Optional[int] = None,
+    batch_override: Optional[int] = None,
     out_csv: str,
     out_steps_csv: Optional[str] = None,
     allow_missing: bool = False,
-    segment_scope: Optional[str] = None,
     debug: bool = False,
     debug_txt: Optional[str] = None,
 ) -> None:
-    """
-    Merge schedule trace(s) + measured segment latencies into an overlapped end-to-end latency.
-    """
-    if decode_stride is None:
-        raise ValueError("--decode-stride is required")
-    decode_stride = int(decode_stride)
-    if decode_stride <= 0:
-        raise ValueError("--decode-stride must be positive")
+    """Merge schedule trace(s) + measured segment latencies into a layer-scope estimate.
 
-    # load results
+    verification logic:
+      1) Schedule comm ops such as K_write/V_write, allreduce, reduce, scatter, etc are NOT exported.
+         During merge we account for them directly from the schedule, combined using the schedule overlap
+         dimension (device-wise max within a layer).
+      2) From comms trace(s) (optional):
+           - weight_load: treated as a one-time cost and added into prefill_time_s directly (no NON_OVERLAP).
+           - kv_load: accumulated per (phase,step,layer) and added with coarse-grained overlap:
+                 layer_time = base_layer_time + NON_OVERLAP * kv_load_time
+         where base_layer_time is the overlapped makespan across compute + schedule comm ops inside that layer.
+         If comm traces are not provided (or do not contain kv_load), we can optionally *estimate* kv_load from
+         the schedule's QK/SV ops using cfg.kv_load_bw_gbs/kv_dtype_bytes/kv_load_overhead_us.
+      3) GPU and PIM compute are not summed. For each layer, compute time is the maximum across devices
+         (typically max(GPU, PIM)).
+
+    decode_stride is applied as the sampling stride: each sampled decode step represents decode_stride tokens.
+    """
+
+    if decode_stride < 1:
+        raise ValueError(f"decode_stride must be >=1 (got {decode_stride})")
+    if non_overlap < 0.0:
+        raise ValueError(f"non_overlap must be >=0 (got {non_overlap})")
+
+    # ---------- load benchmark results ----------
     gpu_res: Dict[str, float] = {}
     pim_res: Dict[str, float] = {}
-    gpu_weight_load_s_global: float = 0.0
-    pim_weight_load_s_global: float = 0.0
-    gpu_weight_load_by_schedule: Dict[str, Any] = {}
-    pim_weight_load_by_schedule: Dict[str, Any] = {}
-    scope_from_results: Optional[str] = None
-    cfg_dim = 4096
-    cfg_shards = 4
-    cfg_prefill_len = None
+    cfg_meta: Dict[str, Any] = {}
 
-    if gpu_results_json:
-        data = _load_json(gpu_results_json)
-        gpu_res = {k: float(v) for k, v in data.get("results", {}).items()}
+    gpu_data = _load_json(gpu_results_json)
+    pim_data = _load_json(pim_results_json)
+
+    def _coerce_results(d: Dict[str, Any]) -> Dict[str, float]:
+        out: Dict[str, float] = {}
+        for k, v in (d.get("results") or {}).items():
+            try:
+                out[str(k)] = float(v)
+            except Exception:
+                continue
+        return out
+
+    gpu_res = _coerce_results(gpu_data)
+    pim_res = _coerce_results(pim_data)
+
+    # Prefer config from whichever results file exists.
+    if isinstance(gpu_data.get("config"), dict):
+        cfg_meta = gpu_data["config"]
+    elif isinstance(pim_data.get("config"), dict):
+        cfg_meta = pim_data["config"]
+
+    dim = int(cfg_meta.get("dim", 4096))
+    shards = int(cfg_meta.get("shards", 1))
+    shard_policy = str(cfg_meta.get("shard_policy", "fine")).strip().lower()
+    use_coarse = shard_policy in ("coarse", "coarse_majority", "coarse-majority", "majority", "coarsemajority")
+
+    # Optional merge-time overrides for kv_load estimate knobs.
+    # These are useful when you want to re-merge with a different KV load bandwidth/dtype
+    # without regenerating benchmark results.
+    if kv_load_bw_gbs_override is not None:
         try:
-            gpu_weight_load_s_global = float(data.get("weight_load_s", 0.0) or 0.0)
+            cfg_meta["kv_load_bw_gbs"] = float(kv_load_bw_gbs_override)
         except Exception:
-            gpu_weight_load_s_global = 0.0
-        gpu_weight_load_by_schedule = data.get("weight_load_by_schedule", {}) or {}
-        scope_from_results = data.get("segment_scope", scope_from_results)
-        cfg = data.get("config", {}) or {}
-        cfg_dim = int(cfg.get("dim", cfg_dim))
-        cfg_shards = int(cfg.get("shards", cfg_shards))
-        if "prefill_len" in cfg:
-            cfg_prefill_len = int(cfg.get("prefill_len"))
-
-    if pim_results_json:
-        data = _load_json(pim_results_json)
-        pim_res = {k: float(v) for k, v in data.get("results", {}).items()}
+            pass
+    if kv_dtype_bytes_override is not None:
         try:
-            pim_weight_load_s_global = float(data.get("weight_load_s", 0.0) or 0.0)
+            cfg_meta["kv_dtype_bytes"] = float(kv_dtype_bytes_override)
         except Exception:
-            pim_weight_load_s_global = 0.0
-        pim_weight_load_by_schedule = data.get("weight_load_by_schedule", {}) or {}
-        scope_from_results = data.get("segment_scope", scope_from_results)
-        cfg = data.get("config", {}) or {}
-        cfg_dim = int(cfg.get("dim", cfg_dim))
-        cfg_shards = int(cfg.get("shards", cfg_shards))
-        if cfg_prefill_len is None and "prefill_len" in cfg:
-            cfg_prefill_len = int(cfg.get("prefill_len"))
+            pass
+    if kv_load_overhead_us_override is not None:
+        try:
+            cfg_meta["kv_load_overhead_us"] = float(kv_load_overhead_us_override)
+        except Exception:
+            pass
+    if n_kv_heads_override is not None:
+        try:
+            cfg_meta["n_kv_heads"] = int(n_kv_heads_override)
+        except Exception:
+            pass
+    if batch_override is not None:
+        try:
+            cfg_meta["batch"] = int(batch_override)
+        except Exception:
+            pass
 
-    # choose segment scope
-    seg_scope = (segment_scope or scope_from_results or "layer")
-    seg_scope = str(seg_scope).lower()
-    if seg_scope not in ("layer", "device_step"):
-        raise ValueError(f"Unknown segment_scope: {seg_scope}")
+    # ---------- helpers ----------
+    comms_paths = [p for p in (comms_paths or []) if p]
 
-    results_rows: List[Dict[str, Any]] = []
-    steps_rows: List[Dict[str, Any]] = []
+    def _pick_comms_for_schedule(i: int) -> List[str]:
+        if not comms_paths:
+            return []
+        if len(comms_paths) == 1:
+            return comms_paths
+        if len(comms_paths) == len(schedule_paths):
+            return [comms_paths[i]]
+        # fallback: apply all
+        return comms_paths
+    def _lookup_weight_load_from_results(schedule_abs: str) -> float:
+        """Best-effort total weight_load seconds for a given schedule, from results JSON meta."""
+        for d in (gpu_data, pim_data):
+            try:
+                m = d.get("weight_load_by_schedule") or {}
+            except Exception:
+                m = {}
+            rec = m.get(schedule_abs)
+            if isinstance(rec, dict):
+                try:
+                    if rec.get("total_s") is not None:
+                        return float(rec["total_s"])
+                except Exception:
+                    pass
+                try:
+                    return float(max(float(rec.get("gpu_s", 0.0) or 0.0), float(rec.get("pim_s", 0.0) or 0.0)))
+                except Exception:
+                    return 0.0
+
+        g = 0.0
+        p = 0.0
+        try:
+            g = float(gpu_data.get("weight_load_s", 0.0) or 0.0)
+        except Exception:
+            g = 0.0
+        try:
+            p = float(pim_data.get("weight_load_s", 0.0) or 0.0)
+        except Exception:
+            p = 0.0
+        return float(max(g, p))
+
+    def _lookup_latency(dev_type: str, phase: str, step_sample: int, ops: Tuple[Tuple[str, int], ...],) -> Optional[float]:
+        dev = dev_type.strip().lower()
+        if dev == "npu":
+            table = gpu_res
+        elif dev == "pim":
+            table = pim_res
+        else:
+            return None
+
+        # Prefer token-index step key for decode if available; fall back to sample step.
+        if phase == "decode" and decode_stride != 1:
+            tok_step = 1 + int(step_sample) * int(decode_stride)
+            k_tok = SegmentSig(device_type=dev, phase=phase, step=tok_step, ops=ops).to_key()
+            if k_tok in table:
+                return float(table[k_tok])
+
+        k = SegmentSig(device_type=dev, phase=phase, step=int(step_sample), ops=ops).to_key()
+        if k in table:
+            return float(table[k])
+        return None
+
+    def _devicewise_max_sum(g: pd.DataFrame, value_col: str, *, group_cols: List[str], device_col: str = "device",) -> Dict[Tuple[str, int, int], float]:
+        """Sum within each device, then take max across devices for each (phase,step,layer)."""
+        if g.empty:
+            return {}
+        by_dev = (g.groupby(group_cols + [device_col], sort=False)[value_col].sum().reset_index())
+        by_key = by_dev.groupby(group_cols, sort=False)[value_col].max()
+        return {(ph, int(st), int(ly)): float(v) for (ph, st, ly), v in by_key.items()}
+
+    # ---------- main loop ----------
+    rows_out: List[Dict[str, Any]] = []
+    step_rows: List[Dict[str, Any]] = []
 
     dbg_f = None
-    dbg_path = None
-    if debug:
-        dbg_path = Path(debug_txt) if debug_txt else Path(out_csv).with_suffix(".debug.txt")
-        dbg_path.parent.mkdir(parents=True, exist_ok=True)
-        dbg_f = open(str(dbg_path), "w", encoding="utf-8")
-        dbg_f.write(f"# merge debug\n")
-        dbg_f.write(f"# segment_scope={seg_scope} comm_model={comm_model} pcie_lanes={pcie_lanes} decode_stride={decode_stride} allow_missing={allow_missing}\n")
+    if debug and debug_txt:
+        dbg_f = open(debug_txt, "w", encoding="utf-8")
 
-    for sp in schedule_paths:
+    for i, sp in enumerate(schedule_paths):
         p = resolve_existing_path(sp)
         df = load_schedule_csv(str(p))
 
-        # build per-row durations (seconds)
-        if seg_scope == "layer":
-            dur_s, missing_cnt = _build_row_durations_layer_scope(
-                df,
-                gpu_res=gpu_res,
-                pim_res=pim_res,
-                comm_model=comm_model,
-                pcie_lanes=pcie_lanes,
-                decode_stride=decode_stride,
-                dim=cfg_dim,
-                shards=cfg_shards,
-                allow_missing=allow_missing,
-            )
+        comms_for_sched = _pick_comms_for_schedule(i)
+        weight_load_prefill_s = 0.0
+        if comms_for_sched:
+            wl = extract_weight_load_seconds(comms_for_sched, decode_stride=int(decode_stride))
+            weight_load_prefill_s = float(wl.get("total_s", 0.0) or 0.0)
         else:
-            dur_s, missing_cnt = _build_row_durations_device_step_scope(
-                df,
-                gpu_res=gpu_res,
-                pim_res=pim_res,
-                comm_model=comm_model,
-                pcie_lanes=pcie_lanes,
-                decode_stride=decode_stride,
-                dim=cfg_dim,
-                shards=cfg_shards,
-                allow_missing=allow_missing,
-            )
+            weight_load_prefill_s = _lookup_weight_load_from_results(str(p))
 
-        if dbg_f is not None:
-            dbg_f.write(f"\n# schedule={Path(p).name}\n")
-            dbg_rows = _collect_segment_debug_rows(
-                df,
-                seg_scope=seg_scope,
-                decode_stride=int(decode_stride),
-                gpu_res=gpu_res,
-                pim_res=pim_res,
-                allow_missing=bool(allow_missing),
-            )
-            miss_keys = sum(1 for r in dbg_rows if not bool(r.get("found_in_results", False)))
-            dbg_f.write(f"# unique_segments={len(dbg_rows)} missing_keys={miss_keys} missing_instances_in_merge={missing_cnt}\n")
+        # kv_load: per-layer comm; overlap controlled by NON_OVERLAP
+        comm_tbl = extract_layer_comm_seconds(comms_for_sched, df, tags=("kv_load",))
+        kv_map_trace = {
+            (str(r.phase), int(r.step), int(r.layer)): float(getattr(r, "kv_load_s", 0.0))
+            for r in comm_tbl.itertuples(index=False)
+        }
 
-            cols = [
-                "phase","device_type","step_sample","step_used","step_kind",
-                "count","measured_s_raw","trace_avg_s_raw","delta_s_raw","delta_pct_raw",
-                "measured_s_scaled","trace_avg_s_scaled","delta_s_scaled","delta_pct_scaled",
-                "found_in_results","missing_count","key","ops_repr",
-            ]
-            dbg_f.write("\t".join(cols) + "\n")
+        # Optional: estimate kv_load from QK/SV ops when comm trace is missing.
+        kv_map_est: Dict[Tuple[str, int, int], float] = {}
+        try:
+            cfg_kv = WorkloadConfig.from_dict(cfg_meta or {})
+            cfg_kv.decode_stride = int(decode_stride)
+            kv_map_est = estimate_kv_load_seconds_from_ops_csv(df, cfg_kv, decode_stride=int(decode_stride))
+        except Exception:
+            kv_map_est = {}
 
-            def _row_line(r: Dict[str, Any]) -> str:
-                out: List[str] = []
-                for c in cols:
-                    v = r.get(c, "")
-                    if isinstance(v, float):
-                        if np.isfinite(v):
-                            out.append(f"{v:.9g}")
-                        else:
-                            out.append("nan")
-                    else:
-                        out.append(str(v))
-                return "\t".join(out)
+        # Merge policy: use comm-trace kv_load when present (>0), otherwise fall back to estimate.
+        kv_map: Dict[Tuple[str, int, int], float] = dict(kv_map_trace)
+        if kv_map_est:
+            for kk, vv in kv_map_est.items():
+                if float(kv_map.get(kk, 0.0)) <= 0.0:
+                    kv_map[kk] = float(vv)
 
-            # Top-N by absolute delta (scaled)
-            dbg_f.write("# -- top_by_abs_delta_scaled --\n")
-            def _abs_delta_scaled(x: Dict[str, Any]) -> float:
-                try:
-                    v = float(x.get("delta_s_scaled", 0.0) or 0.0)
-                    return float(abs(v)) if np.isfinite(v) else float("inf")
-                except Exception:
-                    return float("inf")
-            for r in sorted(dbg_rows, key=_abs_delta_scaled, reverse=True)[:50]:
-                dbg_f.write(_row_line(r) + "\n")
+        # Compute times per (phase,step,layer) for GPU/PIM.
+        gpu_layer: Dict[Tuple[str, int, int], float] = {}
+        pim_layer: Dict[Tuple[str, int, int], float] = {}
+        missing_segments = 0
 
-            # Full listing in a stable order (easy to diff between runs)
-            dbg_f.write("# -- all_segments_sorted --\n")
-            def _stable_key(x: Dict[str, Any]) -> Tuple[Any, ...]:
-                try:
-                    step_u = int(x.get("step_used", 0) or 0)
-                except Exception:
-                    step_u = 0
-                return (str(x.get("phase","")), str(x.get("device_type","")), step_u, str(x.get("ops_repr","")))
-            for r in sorted(dbg_rows, key=_stable_key):
-                dbg_f.write(_row_line(r) + "\n")
+        if use_coarse:
+            # Coarse-grained shard placement: decide GPU vs PIM per sharded op by majority,
+            # then build one GPU segment and/or one PIM segment per (phase,step,layer).
+            for phase, step, layer, dev_type, ops in _iter_layer_segments_coarse_majority(df, total_shards=int(shards)):
+                lat = _lookup_latency(str(dev_type), str(phase), int(step), tuple(ops))
+                if lat is None:
+                    missing_segments += 1
+                    if not allow_missing and dbg_f:
+                        dbg_f.write(
+                            f"[MISSING] {p.name} phase={phase} step={step} layer={layer} dev={dev_type} ops={len(ops)} (coarse)\n"
+                        )
+                    lat = 0.0
 
-        # busy-time breakdown (already includes decode stride scaling)
+                key = (str(phase), int(step), int(layer))
+                if str(dev_type).strip().lower() == "npu":
+                    gpu_layer[key] = max(gpu_layer.get(key, 0.0), float(lat))
+                elif str(dev_type).strip().lower() == "pim":
+                    pim_layer[key] = max(pim_layer.get(key, 0.0), float(lat))
+        else:
+            comp = df[df["device_type"].astype(str).str.lower().isin(["npu", "pim"])].copy()
+            for (phase, step, layer, device), g in comp.groupby(["phase", "step", "layer", "device"], sort=False):
+                dev_type = str(g["device_type"].iloc[0]).strip().lower()
+                g = g.sort_values(["start", "_row"], kind="mergesort")
+                ops: List[Tuple[str, int]] = []
+                for _, r in g.iterrows():
+                    op = str(r["op"]).strip()
+                    if op.lower() in _COMM_OPS:
+                        continue
+                    ops.append((op, int(r["shard"]) if pd.notna(r["shard"]) else -1))
+                if not ops:
+                    continue
+
+                lat = _lookup_latency(dev_type, str(phase), int(step), tuple(ops))
+                if lat is None:
+                    missing_segments += 1
+                    if not allow_missing and dbg_f:
+                        dbg_f.write(f"[MISSING] {p.name} phase={phase} step={step} layer={layer} dev={dev_type} ops={len(ops)}\n")
+                    lat = 0.0
+
+                key = (str(phase), int(step), int(layer))
+                if dev_type == "npu":
+                    gpu_layer[key] = max(gpu_layer.get(key, 0.0), float(lat))
+                elif dev_type == "pim":
+                    pim_layer[key] = max(pim_layer.get(key, 0.0), float(lat))
+
+        # Schedule comm ops (kv_write / allreduce / reduce / scatter / etc)
         op_l = df["op"].astype(str).str.strip().str.lower()
-        is_comm = op_l.isin(_COMM_OPS).to_numpy()
-        gpu_busy = float(dur_s[(~is_comm) & (df["device_type"].astype(str) == "npu").to_numpy()].sum())
-        pim_busy = float(dur_s[(~is_comm) & (df["device_type"].astype(str) == "pim").to_numpy()].sum())
-        comm_busy = float(dur_s[is_comm].sum())
+        comm_ops_df = df[op_l.isin(_COMM_OPS)].copy()
+        if comm_model.lower() == "none" or comm_ops_df.empty:
+            comm_ops_df["lat_s"] = 0.0
+        elif comm_model.lower() == "schedule":
+            comm_ops_df["lat_s"] = pd.to_numeric(comm_ops_df["duration"], errors="coerce").fillna(0.0).astype(float)
+        else:
+            raise ValueError(f"unknown comm_model: {comm_model}")
+        comm_ops_layer = _devicewise_max_sum(comm_ops_df, "lat_s", group_cols=["phase", "step", "layer"])
 
-        # prefill block
-        prefill_df = df[df["phase"].astype(str) == "prefill"]
-        prefill_time_no_weight_load = _simulate_block_overlap(prefill_df, dur_s)
+        # Schedule other (non-GPU/PIM) ops that are NOT classified as comm ops.
+        other_df = df[(~df["device_type"].astype(str).str.lower().isin(["npu", "pim"])) & (~op_l.isin(_COMM_OPS))].copy()
+        other_layer = _devicewise_max_sum(other_df, "duration", group_cols=["phase", "step", "layer"])
 
-        # --------------------------------------------------
-        # Weight load overhead (optional)
-        # --------------------------------------------------
-        sched_k = str(p)
-        weight_load_gpu_s = float(gpu_weight_load_s_global)
-        weight_load_pim_s = float(pim_weight_load_s_global)
-        weight_load_unknown_s = 0.0
+        # Aggregate per-phase/per-step times by summing layers (layers are sequential).
+        prefill_time_s = 0.0
+        decode_time_s = 0.0
 
-        if isinstance(gpu_weight_load_by_schedule, dict) and sched_k in gpu_weight_load_by_schedule:
-            try:
-                v = gpu_weight_load_by_schedule.get(sched_k) or {}
-                if isinstance(v, dict):
-                    weight_load_gpu_s = float(v.get("gpu_s", weight_load_gpu_s) or 0.0)
-                    weight_load_unknown_s += float(v.get("unknown_s", 0.0) or 0.0)
-            except Exception:
-                pass
+        gpu_busy_s = 0.0
+        pim_busy_s = 0.0
+        sched_comm_s = 0.0
+        sched_other_s = 0.0
+        comm_added_s = 0.0  # after NON_OVERLAP and scaling
+        comm_kv_s = 0.0
 
-        if isinstance(pim_weight_load_by_schedule, dict) and sched_k in pim_weight_load_by_schedule:
-            try:
-                v = pim_weight_load_by_schedule.get(sched_k) or {}
-                if isinstance(v, dict):
-                    weight_load_pim_s = float(v.get("pim_s", weight_load_pim_s) or 0.0)
-                    weight_load_unknown_s += float(v.get("unknown_s", 0.0) or 0.0)
-            except Exception:
-                pass
+        # Prefill (step = -1)
+        pre_layers = sorted(df[df["phase"] == "prefill"]["layer"].unique())
+        for ly in pre_layers:
+            k = ("prefill", -1, int(ly))
+            gpu_s = float(gpu_layer.get(k, 0.0))
+            pim_s = float(pim_layer.get(k, 0.0))
+            compute_max = max(gpu_s, pim_s)
+            comm_s = float(comm_ops_layer.get(k, 0.0))
+            oth_s = float(other_layer.get(k, 0.0))
+            base = max(compute_max, comm_s, oth_s)
+            kv_trace = float(kv_map.get(k, 0.0))
+            add_s = non_overlap * kv_trace
 
-        weight_load_total_s = float(weight_load_gpu_s + weight_load_pim_s)
-        prefill_time = float(prefill_time_no_weight_load + weight_load_total_s)
+            layer_s = base + add_s
+            prefill_time_s += layer_s
 
-        # decode blocks (one per sampled step), strictly sequential across steps
-        decode_time = 0.0
-        decode_df = df[df["phase"].astype(str) == "decode"]
-        steps = sorted(decode_df["step"].unique().tolist()) if len(decode_df) else []
-        for s in steps:
-            blk = decode_df[decode_df["step"] == s]
-            t = _simulate_block_overlap(blk, dur_s)
-            decode_time += float(t)
+            gpu_busy_s += gpu_s
+            pim_busy_s += pim_s
+            sched_comm_s += comm_s
+            sched_other_s += oth_s
+            comm_added_s += add_s
+            comm_kv_s += add_s
 
-            # step detail row (token index + context len for traceability)
-            tok_idx = 1 + int(s) * int(decode_stride)
-            ctx_len = (int(cfg_prefill_len) + tok_idx) if cfg_prefill_len is not None else None
-            steps_rows.append({
-                "schedule": str(Path(p).name),
-                "phase": "decode",
-                "sample_step": int(s),
-                "decode_stride": int(decode_stride),
-                "decode_token_index": int(tok_idx),
-                "decode_context_len": int(ctx_len) if ctx_len is not None else "",
-                "block_time_s": float(t),
-            })
+         # weight_load is charged to prefill as a one-time overhead
+        prefill_time_s += weight_load_prefill_s
 
-        total_time_no_weight_load = float(prefill_time_no_weight_load + decode_time)
-        total_time = float(prefill_time + decode_time)
+        dec = df[df["phase"] == "decode"]
+        dec_steps = sorted(dec["step"].unique())
+        dec_layers = sorted(dec["layer"].unique())
 
-        # Busy-time breakdown: add weight-load to the respective device buckets.
-        gpu_busy_with_weight_load = float(gpu_busy + weight_load_gpu_s)
-        pim_busy_with_weight_load = float(pim_busy + weight_load_pim_s)
+        for st in dec_steps:
+            step_s_per_token = 0.0
+            gpu_step = 0.0
+            pim_step = 0.0
+            comm_step = 0.0
+            oth_step = 0.0
+            add_step = 0.0
 
-        # --------------------------------------------------
-        # Compare with original ops_trace.csv (timeline in the schedule CSV)
-        # --------------------------------------------------
+            for ly in dec_layers:
+                k = ("decode", int(st), int(ly))
+                gpu_s = float(gpu_layer.get(k, 0.0))
+                pim_s = float(pim_layer.get(k, 0.0))
+                compute_max = max(gpu_s, pim_s)
+                comm_s = float(comm_ops_layer.get(k, 0.0))
+                oth_s = float(other_layer.get(k, 0.0))
+                base = max(compute_max, comm_s, oth_s)
+
+                kv_trace = float(kv_map.get(k, 0.0))
+                add_s = non_overlap * kv_trace
+
+                layer_s = base + add_s
+                step_s_per_token += layer_s
+
+                gpu_step += gpu_s
+                pim_step += pim_s
+                comm_step += comm_s
+                oth_step += oth_s
+                add_step += add_s
+
+                # per-tag breakdown (after NON_OVERLAP, before scaling)
+                comm_kv_s += add_s
+
+            step_s = step_s_per_token * float(decode_stride)
+            decode_time_s += step_s
+
+            gpu_busy_s += gpu_step * float(decode_stride)
+            pim_busy_s += pim_step * float(decode_stride)
+            sched_comm_s += comm_step * float(decode_stride)
+            sched_other_s += oth_step * float(decode_stride)
+            comm_added_s += add_step * float(decode_stride)
+
+            step_rows.append(
+                {
+                    "schedule": p.name,
+                    "phase": "decode",
+                    "sample_step": int(st),
+                    "token_index": int(1 + int(st) * int(decode_stride)),
+                    "step_time_s": float(step_s),
+                }
+            )
+
+        total_time_s = prefill_time_s + decode_time_s
+
         trace_t = compute_trace_times_from_ops_csv(df, decode_stride=decode_stride)
-        trace_prefill_s = float(trace_t.get("trace_prefill_s", 0.0) or 0.0)
-        trace_decode_s = float(trace_t.get("trace_decode_s", 0.0) or 0.0)
-        trace_decode_scaled_s = float(trace_t.get("trace_decode_scaled_s", 0.0) or 0.0)
-        trace_total_raw_s = float(trace_t.get("trace_total_raw_s", 0.0) or 0.0)
-        trace_total_scaled_s = float(trace_t.get("trace_total_scaled_s", 0.0) or 0.0)
+        trace_prefill_s = float(trace_t.get("trace_prefill_s", 0.0))
+        trace_decode_s = float(trace_t.get("trace_decode_scaled_s", trace_t.get("trace_decode_s", 0.0)))
+        trace_total_s = float(trace_t.get("trace_total_scaled_s", trace_t.get("trace_total_s", 0.0)))
 
-        def _safe_ratio(delta: float, base: float) -> float:
-            try:
-                base_f = float(base)
-                if base_f == 0.0:
-                    return float("nan")
-                return float(delta) / base_f
-            except Exception:
-                return float("nan")
-
-        delta_prefill_s = float(prefill_time_no_weight_load - trace_prefill_s)
-        delta_decode_s = float(decode_time - trace_decode_scaled_s)
-        delta_total_s = float(total_time_no_weight_load - trace_total_scaled_s)
-
-        delta_prefill_ratio = _safe_ratio(delta_prefill_s, trace_prefill_s)
-        delta_decode_ratio = _safe_ratio(delta_decode_s, trace_decode_scaled_s)
-        delta_total_ratio = _safe_ratio(delta_total_s, trace_total_scaled_s)
-
-        delta_prefill_pct = float(delta_prefill_ratio * 100.0) if np.isfinite(delta_prefill_ratio) else float("nan")
-        delta_decode_pct = float(delta_decode_ratio * 100.0) if np.isfinite(delta_decode_ratio) else float("nan")
-        delta_total_pct = float(delta_total_ratio * 100.0) if np.isfinite(delta_total_ratio) else float("nan")
-
-        results_rows.append({
-            "schedule": str(Path(p).name),
-            "segment_scope": seg_scope,
-            "comm_model": str(comm_model),
-            "pcie_lanes": int(pcie_lanes),
+        row = {
+            "schedule": p.name,
+            "dim": dim,
+            "shards": shards,
             "decode_stride": int(decode_stride),
-            "weight_load_gpu_s": float(weight_load_gpu_s),
-            "weight_load_pim_s": float(weight_load_pim_s),
-            "weight_load_total_s": float(weight_load_total_s),
-            "weight_load_unknown_s": float(weight_load_unknown_s),
-            "prefill_time_no_weight_load_s": float(prefill_time_no_weight_load),
-            "prefill_time_s": float(prefill_time),
-            "decode_time_s": float(decode_time),
-            "total_time_no_weight_load_s": float(total_time_no_weight_load),
-            "total_time_s": float(total_time),
-            "gpu_busy_s": float(gpu_busy_with_weight_load),
-            "pim_busy_s": float(pim_busy_with_weight_load),
-            "comm_busy_s": float(comm_busy),
-            "missing_segments": int(missing_cnt),
-            # ---- schedule trace timeline baseline (ops_trace.csv) ----
+            "non_overlap": float(non_overlap),
+            "prefill_time_s": float(prefill_time_s),
+            "decode_time_s": float(decode_time_s),
+            "total_time_s": float(total_time_s),
             "trace_prefill_s": float(trace_prefill_s),
             "trace_decode_s": float(trace_decode_s),
-            "trace_decode_scaled_s": float(trace_decode_scaled_s),
-            "trace_total_raw_s": float(trace_total_raw_s),
-            "trace_total_scaled_s": float(trace_total_scaled_s),
-            # ---- delta = (merged_no_weight_load - trace_scaled) ----
-            "delta_prefill_s": float(delta_prefill_s),
-            "delta_prefill_ratio": float(delta_prefill_ratio),
-            "delta_prefill_pct": float(delta_prefill_pct),
-            "delta_decode_s": float(delta_decode_s),
-            "delta_decode_ratio": float(delta_decode_ratio),
-            "delta_decode_pct": float(delta_decode_pct),
-            "delta_total_s": float(delta_total_s),
-            "delta_total_ratio": float(delta_total_ratio),
-            "delta_total_pct": float(delta_total_pct),
-        })
+            "trace_total_s": float(trace_total_s),
+            "delta_prefill_s": float(prefill_time_s - trace_prefill_s),
+            "delta_decode_s": float(decode_time_s - trace_decode_s),
+            "delta_total_s": float(total_time_s - trace_total_s),
+            "gpu_busy_s": float(gpu_busy_s),
+            "pim_busy_s": float(pim_busy_s),
+            "schedule_comm_s": float(sched_comm_s),
+            "schedule_other_s": float(sched_other_s),
+            "comm_added_s": float(comm_added_s),
+            "weight_load_prefill_s": float(weight_load_prefill_s),
+            "comm_kv_load_added_s": float(comm_kv_s),
+            "missing_segments": int(missing_segments),
+        }
+        rows_out.append(row)
 
-    # save CSV (no console print)
-    out_csv_p = Path(out_csv)
-    out_csv_p.parent.mkdir(parents=True, exist_ok=True)
-    pd.DataFrame(results_rows).to_csv(str(out_csv_p), index=False)
+        if dbg_f:
+            dbg_f.write(
+                f"[SCHEDULE] {p.name} prefill={prefill_time_s:.6f} (weight_load={weight_load_prefill_s:.6f}) decode={decode_time_s:.6f} total={total_time_s:.6f} "
+                f"missing_segments={missing_segments}\n"
+            )
+
+    if dbg_f:
+        dbg_f.close()
+
+    os.makedirs(os.path.dirname(out_csv) or ".", exist_ok=True)
+    pd.DataFrame(rows_out).to_csv(out_csv, index=False)
 
     if out_steps_csv:
-        out_steps_p = Path(out_steps_csv)
-        out_steps_p.parent.mkdir(parents=True, exist_ok=True)
-        pd.DataFrame(steps_rows).to_csv(str(out_steps_p), index=False)
-
-    if dbg_f is not None:
-        dbg_f.close()
+        os.makedirs(os.path.dirname(out_steps_csv) or ".", exist_ok=True)
+        pd.DataFrame(step_rows).to_csv(out_steps_csv, index=False)
 
 def collect_merge_csv(list_tsv: str, *, out_csv: str, skip_missing: bool = False) -> None:
     """Concatenate multiple per-run merge.csv files into one combined CSV."""
@@ -2937,8 +3282,46 @@ def add_common_model_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--prefill-len", type=int, default=128, dest="prefill_len")
     p.add_argument("--decode-context-lens", type=str, nargs="?", const="auto", default=None,)
 
+    p.add_argument("--shard-policy", type=str, default="coarse_majority", choices=["fine","coarse_majority"],
+                   help="shard placement policy for verification: fine keeps per-shard placement; coarse_majority chooses GPU if > half shards on GPU else PIM")
+
     p.add_argument("--device", type=str, default="cuda", help="cuda or cpu (GPU benchmark side)")
     p.add_argument("--gpu-dtype", type=str, default="fp16", dest="gpu_dtype")
+
+    p.add_argument(
+        "--kv-load-bw-gbs",
+        type=float,
+        default=0.0,
+        help="Estimated KV-cache load bandwidth in GB/s (decode). Set >0 to enable implicit kv_load before QK/SV.",
+    )
+    p.add_argument(
+        "--kv-dtype-bytes",
+        type=float,
+        default=2.0,
+        dest="kv_dtype_bytes",
+        help="Bytes per KV element for kv_load estimate (per K or per V). Default=2 (fp16/bf16).",
+    )
+    p.add_argument(
+        "--kv-load-overhead-us",
+        type=float,
+        default=0.0,
+        dest="kv_load_overhead_us",
+        help="Fixed overhead per KV-load event (per shard/op), in microseconds.",
+    )
+    p.add_argument(
+        "--n-kv-heads",
+        type=int,
+        default=None,
+        dest="n_kv_heads",
+        help="Optional KV head count for GQA/MQA. If omitted, defaults to n_heads.",
+    )
+    p.add_argument(
+        "--batch",
+        type=int,
+        default=1,
+        dest="batch",
+        help="Optional batch size for KV-load bytes estimate (default=1).",
+    )
 
     # PIM config
     p.add_argument("--pim-dram-column", type=int, default=256)
@@ -2958,11 +3341,9 @@ def add_common_model_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--pim-trace-dir", type=str, default=None, help="trace output dir when keeping traces")
     p.add_argument("--pim-no-override-ramulator-config", action="store_true",
                    help="do not rewrite channels/banks/devices into ramulator config (NOT recommended)")
-
-
     # segmenting
-    p.add_argument("--segment-scope", type=str, default="layer", choices=["layer","device_step"],
-                   help="how to form segments from operator-level schedule")
+    p.add_argument("--segment-scope", type=str, default="layer", choices=["layer"],
+                   help="segment granularity")
 
 def build_cfg_from_args(args: argparse.Namespace) -> WorkloadConfig:
     cfg = WorkloadConfig()
@@ -2984,6 +3365,15 @@ def build_cfg_from_args(args: argparse.Namespace) -> WorkloadConfig:
     cfg.device = str(getattr(args, "device", cfg.device))
     cfg.gpu_dtype = str(getattr(args, "gpu_dtype", cfg.gpu_dtype))
 
+    cfg.kv_load_bw_gbs = float(getattr(args, "kv_load_bw_gbs", cfg.kv_load_bw_gbs))
+    cfg.kv_dtype_bytes = float(getattr(args, "kv_dtype_bytes", cfg.kv_dtype_bytes))
+    cfg.kv_load_overhead_us = float(getattr(args, "kv_load_overhead_us", cfg.kv_load_overhead_us))
+    if hasattr(args, "n_kv_heads"):
+        v = getattr(args, "n_kv_heads")
+        cfg.n_kv_heads = None if v is None else int(v)
+    if hasattr(args, "batch"):
+        cfg.batch = int(getattr(args, "batch"))
+
     cfg.pim_dram_column = int(getattr(args, "pim_dram_column", cfg.pim_dram_column))
     cfg.pim_dram_row = int(getattr(args, "pim_dram_row", cfg.pim_dram_row))
     cfg.pim_burst_length = int(getattr(args, "pim_burst_length", cfg.pim_burst_length))
@@ -3001,6 +3391,8 @@ def build_cfg_from_args(args: argparse.Namespace) -> WorkloadConfig:
     cfg.pim_trace_dir = getattr(args, "pim_trace_dir", cfg.pim_trace_dir)
 
     cfg.segment_scope = str(getattr(args, "segment_scope", cfg.segment_scope))
+
+    cfg.shard_policy = str(getattr(args, "shard_policy", cfg.shard_policy))
 
     # decode stride (used to generate decode-context-lens / shape inference)
     if hasattr(args, "decode_stride") and getattr(args, "decode_stride") is not None:
@@ -3030,7 +3422,7 @@ def main(argv: Optional[List[str]] = None) -> None:
     p_exp = sub.add_parser("export", help="export gpu_tasks.json and pim_tasks.json (segment-level) from schedule csv(s)")
     p_exp.add_argument("--schedule", type=str, default=None, help="single schedule csv path")
     p_exp.add_argument("--schedules", type=str, nargs="+", default=None, help="schedule csv paths (one or more)")
-    p_exp.add_argument("--comms", type=str, default=None, help="(optional) single comms trace csv path (for weight_load accounting)")
+    p_exp.add_argument("--comms", type=str, default=None, help="(optional) single comms trace csv path (weight_load/kv_load, layer mapping)")
     p_exp.add_argument("--comms-traces", type=str, nargs="+", default=None,
                        help="(optional) comms trace csv paths (one or more); if same count as --schedules, treated as paired")
     p_exp.add_argument("--out-dir", type=str, default=".", help="output directory")
@@ -3046,6 +3438,11 @@ def main(argv: Optional[List[str]] = None) -> None:
     p_gpu.add_argument("--iters", type=int, default=10)
     p_gpu.add_argument("--device", type=str, default=None, help="override device in tasks config (cuda|cpu)")
     p_gpu.add_argument("--gpu-dtype", type=str, default=None, dest="gpu_dtype", help="override dtype (fp16|bf16|fp32)")
+
+    p_gpu.add_argument("--debug", action="store_true",
+                       help="Verbose GPU debug: print per-segment per-op shapes/timings/memory stats (very noisy)")
+    p_gpu.add_argument("--debug-txt", type=str, default=None,
+                       help="(optional) also write the --debug log to this file")
 
     # run-pim
     # Only requires two files to drive ramulator:
@@ -3064,6 +3461,12 @@ def main(argv: Optional[List[str]] = None) -> None:
     p_pim.add_argument("--pim-num-devices", type=int, default=None,
                        help="Override PIM device/DIMM count (used as FC_devices for model-parallel mapping). "
                             "This overrides the value stored in pim_tasks.json.")
+    p_pim.add_argument("--debug", action="store_true",
+                       help="Verbose debug: print all resolved configs + per-op parameters/latencies (very noisy)")
+    p_pim.add_argument("--debug-txt", type=str, default=None,
+                       help="(optional) also write the --debug log to this file")
+    p_pim.add_argument("--no-cache", action="store_true",
+                       help="Disable CostModel PIM latency cache (force ramulator runs for every op)")
     # merge
     p_m = sub.add_parser("merge", help="merge schedule(s) with gpu_results.json + pim_results.json (segment-level)")
     p_m.add_argument("--schedule", type=str, default=None, help="single schedule csv path")
@@ -3074,14 +3477,29 @@ def main(argv: Optional[List[str]] = None) -> None:
     p_m.add_argument("--pcie-lanes", type=int, default=16)
     p_m.add_argument("--decode-stride", type=int, required=True,
                      help="decode stride used in simulation; decode_token_index = 1 + step*stride")
+    p_m.add_argument("--comms", type=str, default=None,
+                     help="(optional) single comms trace csv path; used for weight_load/kv_load accumulation")
+    p_m.add_argument("--comms-traces", type=str, nargs="+", default=None,
+                     help="(optional) comms trace csv paths; if same count as --schedules, treated as paired")
+    p_m.add_argument("--non-overlap", type=float, default=1.0,
+                     help="NON_OVERLAP factor for kv_load comm time per layer: layer = base_layer_time + NON_OVERLAP*kv_load_time (weight_load is always added to prefill)")
+    # KV-load estimate override knobs (optional). If provided, they override the values stored in *_results.json config.
+    p_m.add_argument("--kv-load-bw-gbs", type=float, default=None,
+                     help="Override config.kv_load_bw_gbs for implicit kv_load estimate (GB/s).")
+    p_m.add_argument("--kv-dtype-bytes", type=float, default=None, dest="kv_dtype_bytes",
+                     help="Override config.kv_dtype_bytes for implicit kv_load estimate.")
+    p_m.add_argument("--kv-load-overhead-us", type=float, default=None, dest="kv_load_overhead_us",
+                     help="Override config.kv_load_overhead_us for implicit kv_load estimate.")
+    p_m.add_argument("--n-kv-heads", type=int, default=None, dest="n_kv_heads",
+                     help="Override config.n_kv_heads for implicit kv_load estimate.")
+    p_m.add_argument("--batch", type=int, default=None,
+                     help="Override config.batch for implicit kv_load estimate.")
     p_m.add_argument("--out-csv", type=str, required=True,
                      help="where to save merged latency report (csv)")
     p_m.add_argument("--out-steps-csv", type=str, default=None,
                      help="(optional) save per-decode-step block latency (csv)")
     p_m.add_argument("--allow-missing", action="store_true",
                      help="if a segment key is missing in results, treat its cost as 0 instead of error")
-    p_m.add_argument("--segment-scope", type=str, default=None, choices=["layer","device_step"],
-                     help="override segment scope used to parse schedules (default: inferred from results or 'layer')")
     p_m.add_argument("--debug", action="store_true",
                      help="write per-segment (measured vs schedule-trace) comparison into a txt file")
     p_m.add_argument("--debug-txt", type=str, default=None,
@@ -3100,7 +3518,7 @@ def main(argv: Optional[List[str]] = None) -> None:
     p_all = sub.add_parser("all", help="single-machine mode: export -> run both -> merge")
     p_all.add_argument("--schedule", type=str, default=None, help="single schedule csv path")
     p_all.add_argument("--schedules", type=str, nargs="+", default=None)
-    p_all.add_argument("--comms", type=str, default=None, help="(optional) single comms trace csv path (for weight_load accounting)")
+    p_all.add_argument("--comms", type=str, default=None, help="(optional) single comms trace csv path (weight_load/kv_load, layer-scope)")
     p_all.add_argument("--comms-traces", type=str, nargs="+", default=None,
                        help="(optional) comms trace csv paths (one or more); if same count as --schedules, treated as paired")
     p_all.add_argument("--out-dir", type=str, default=".", help="where to place tasks/results")
@@ -3112,6 +3530,8 @@ def main(argv: Optional[List[str]] = None) -> None:
     p_all.add_argument("--pcie-lanes", type=int, default=16)
     p_all.add_argument("--decode-stride", type=int, required=True,
                        help="decode stride used in simulation; decode_token_index = 1 + step*stride")
+    p_all.add_argument("--non-overlap", type=float, default=1.0,
+                       help="NON_OVERLAP factor for kv_load comm time per layer (weight_load is always added to prefill)")
     p_all.add_argument("--merge-out-csv", type=str, default=None,
                        help="where to save merged latency report (csv); default: <out-dir>/<prefix>.merge.csv")
     p_all.add_argument("--merge-out-steps-csv", type=str, default=None,
@@ -3135,7 +3555,7 @@ def main(argv: Optional[List[str]] = None) -> None:
         return
 
     if args.cmd == "run-gpu":
-        run_gpu(args.tasks, args.out, warmup=args.warmup, iters=args.iters, device=args.device, gpu_dtype=args.gpu_dtype)
+        run_gpu(args.tasks, args.out, warmup=args.warmup, iters=args.iters, device=args.device, gpu_dtype=args.gpu_dtype, debug=bool(getattr(args, "debug", False)), debug_txt=getattr(args, "debug_txt", None))
         return
 
     if args.cmd == "run-pim":
@@ -3147,6 +3567,9 @@ def main(argv: Optional[List[str]] = None) -> None:
             ramulator_config=args.pim_ramulator_config,
             pim_hw_json=args.pim_hw_json,
             pim_num_devices=args.pim_num_devices,
+            debug=bool(getattr(args, 'debug', False)),
+            debug_txt=getattr(args, 'debug_txt', None),
+            no_cache=bool(getattr(args, 'no_cache', False)),
         )
         return
 
@@ -3156,12 +3579,19 @@ def main(argv: Optional[List[str]] = None) -> None:
         schedule_paths = ([args.schedule] if getattr(args, "schedule", None) else (args.schedules or []))
         if not schedule_paths:
             raise SystemExit("merge requires --schedule or --schedules")
+        comms_paths = ([args.comms] if getattr(args, "comms", None) else (getattr(args, "comms_traces", None) or []))
         merge(schedule_paths, args.gpu_results, args.pim_results,
+              comms_paths=comms_paths, non_overlap=args.non_overlap,
               comm_model=args.comm_model, pcie_lanes=args.pcie_lanes,
               decode_stride=args.decode_stride,
+              kv_load_bw_gbs_override=getattr(args, "kv_load_bw_gbs", None),
+              kv_dtype_bytes_override=getattr(args, "kv_dtype_bytes", None),
+              kv_load_overhead_us_override=getattr(args, "kv_load_overhead_us", None),
+              n_kv_heads_override=getattr(args, "n_kv_heads", None),
+              batch_override=getattr(args, "batch", None),
               out_csv=args.out_csv,
               out_steps_csv=args.out_steps_csv,
-              allow_missing=args.allow_missing, segment_scope=args.segment_scope,
+              allow_missing=args.allow_missing,
               debug=args.debug, debug_txt=args.debug_txt)
         return
 
@@ -3199,11 +3629,12 @@ def main(argv: Optional[List[str]] = None) -> None:
         merge(schedule_paths,
               str(gpu_res_path) if gpu_res_path else None,
               str(pim_res_path) if pim_res_path else None,
+              comms_paths=comms_paths, non_overlap=args.non_overlap,
               comm_model=args.comm_model, pcie_lanes=args.pcie_lanes,
               decode_stride=args.decode_stride,
               out_csv=(args.merge_out_csv or str(Path(out_dir)/f"{prefix}.merge.csv")),
               out_steps_csv=(args.merge_out_steps_csv),
-              allow_missing=args.allow_missing, segment_scope=cfg.segment_scope,
+              allow_missing=args.allow_missing,
               debug=args.debug, debug_txt=args.debug_txt)
         return
 

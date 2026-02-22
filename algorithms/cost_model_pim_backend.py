@@ -24,8 +24,32 @@ from threading import Lock
 from datetime import datetime
 import logging
 
-from config import attach_local_debug_filter, PIM_FREQ_GHZ, GB_FREQ_GHZ
-from stats_recorder import get_simulation_logger
+
+def _ensure_repo_root_on_syspath() -> None:
+    try:
+        here = Path(__file__).resolve()
+    except Exception:
+        return
+
+    # Search current dir and ancestors for config.py
+    for parent in (here.parent, *here.parents):
+        try:
+            if (parent / 'config.py').is_file():
+                sp = str(parent)
+                if sp not in sys.path:
+                    sys.path.insert(0, sp)
+                return
+        except Exception:
+            continue
+
+
+try:
+    from config import attach_local_debug_filter, PIM_FREQ_GHZ, GB_FREQ_GHZ  # type: ignore
+    from stats_recorder import get_simulation_logger  # type: ignore
+except ModuleNotFoundError:
+    _ensure_repo_root_on_syspath()
+    from config import attach_local_debug_filter, PIM_FREQ_GHZ, GB_FREQ_GHZ  # type: ignore
+    from stats_recorder import get_simulation_logger  # type: ignore
 
 logger = logging.getLogger(__name__)
 attach_local_debug_filter(logger, lambda: False)

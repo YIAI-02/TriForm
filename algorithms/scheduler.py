@@ -347,26 +347,72 @@ class SchedulerBase:
             return None
         return None
          
-    def _kv_mapped_pim_name_for_layer(self, layer: int) -> Optional[str]:
-        """Return mapped pim device name for a layer, if label provides it."""
+    def _kv_place(self, label: Optional[PlanLabel] = None) -> str:
+        """Normalize KV placement tag."""
+        lb = label if label is not None else getattr(self, 'label', None)
+        if lb is None:
+            return 'host'
+
+        # 1) Explicit tag
         try:
-            m = getattr(self.label, "kv_layer_to_pim", None)
+            kp = getattr(lb, 'kv_place', None)
+            if kp is not None:
+                s = str(kp).strip().lower()
+                if s in ('pim', 'aim'):
+                    return 'pim'
+                if s in ('npu', 'gpu', 'device'):
+                    return 'npu'
+                if s in ('host', 'cpu', 'dram'):
+                    return 'host'
         except Exception:
-            m = None
-        if not isinstance(m, Mapping) or not m:
+            pass
+
+        # 2) Backward compat flags
+        try:
+            if bool(getattr(lb, 'kv_in_pim', False)):
+                return 'pim'
+        except Exception:
+            pass
+        try:
+            if bool(getattr(lb, 'kv_in_npu', False)):
+                return 'npu'
+        except Exception:
+            pass
+
+        # 3) Heuristic: if a target NPU is set, treat as NPU KV
+        try:
+            if getattr(lb, 'kv_npu_device', None):
+                return 'npu'
+        except Exception:
+            pass
+
+        return 'host'
+
+    def _kv_npu_device(self, label: Optional[PlanLabel] = None) -> Optional[DeviceSpec]:
+        """Return the designated KV-storage NPU device (single-device KV), or None."""
+        lb = label if label is not None else getattr(self, 'label', None)
+        if lb is None:
             return None
-        # Allow int or str keys.
-        if layer in m:
-            try:
-                return str(m[layer])
-            except Exception:
-                return None
-        s = str(int(layer))
-        if s in m:
-            try:
-                return str(m[s])
-            except Exception:
-                return None
+        if self._kv_place(lb) != 'npu':
+            return None
+
+        # Prefer explicit pinned device name
+        try:
+            name = getattr(lb, 'kv_npu_device', None)
+        except Exception:
+            name = None
+        if name:
+            dev = self.cluster.devices.get(str(name))
+            if dev is not None and str(getattr(dev, 'type', '')).lower() == 'npu':
+                return dev
+        # Fallback: if not specified, choose the first available NPU
+        try:
+            npus = self.cluster.devices_by_type("npu") or []
+            if npus:
+                return npus[0]
+        except Exception:
+            pass
+
         return None
 
     def _kv_pim_for_node(self, node: Any) -> Optional[DeviceSpec]:
@@ -423,33 +469,53 @@ class SchedulerBase:
         name = str(getattr(node, "name", "")).upper()
         if name not in ("K_WRITE", "V_WRITE", "KV_WRITE"):
             return None
+        kv_place = self._kv_place(self.label)
 
+        # KV on PIM: write must go to the mapped PIM shard.
+        if kv_place == 'pim':
+            return self._kv_pim_for_node(node)
 
-        if bool(getattr(self.label, "kv_in_pim", False)):
-            mapped = self._kv_pim_for_node(node)
-            return mapped
+        if kv_place == 'npu':
+            return self._kv_npu_device(self.label)
         return self.cost.get_host_device()
 
     def _node_allowed_on(self, node: TaskNode, dev: DeviceSpec) -> bool:
 
         # ---- 0) KV-write hard rule (override operator/baseline allow-list) ----
-        try:
-            kv_in_pim = bool(getattr(self.label, "kv_in_pim", False))
-        except Exception:
-            kv_in_pim = False
+        kv_place = self._kv_place(self.label)
 
         name_up = str(getattr(node, "name", "") or "").upper()
         dev_type = str(getattr(dev, "type", "") or "").lower()
         dev_name = str(getattr(dev, "name", "") or "")
     
-        # KV write ops under KV-on-PIM: must execute on the mapped PIM.
-        if kv_in_pim and name_up in ("K_WRITE", "V_WRITE", "KV_WRITE"):
-            if dev_type != "pim":
-                return False
-            mapped = self._kv_pim_for_node(node)
-            if mapped is None:
-                return False  # mapping unavailable -> conservative
-            return dev_name == str(getattr(mapped, "name", ""))
+        # KV write ops must execute on the KV-storage device.
+        if name_up in ("K_WRITE", "V_WRITE", "KV_WRITE"):
+            # KV stored on PIM: write must go to the mapped PIM shard.
+            if kv_place == "pim":
+                if dev_type != "pim":
+                    return False
+                mapped = self._kv_pim_for_node(node)
+                if mapped is None:
+                    # If mapping is unavailable, fall back to first PIM (same as _earliest_finish_on_device)
+                    pim_devs = self.cluster.devices_by_type("pim") or []
+                    if not pim_devs:
+                        return False
+                    return dev_name == str(getattr(pim_devs[0], "name", ""))
+                return dev_name == str(getattr(mapped, "name", ""))
+
+            # KV stored on NPU: write must go to the designated KV NPU.
+            if kv_place == "npu":
+                if dev_type != "npu":
+                    return False
+                tgt = self._kv_npu_device(self.label)
+                if tgt is None:
+                    return False
+                return dev_name == str(getattr(tgt, "name", ""))
+
+            # KV stored on host: write must execute on the host (CPU) device.
+            host = self.cost.get_host_device()
+            host_name = str(getattr(host, "name", "")) if host is not None else ""
+            return dev_name == host_name
 
         # ---- 1) Communication primitives (collectives / transfers) ----
         try:
@@ -464,7 +530,7 @@ class SchedulerBase:
             return dev_name == host_name
 
         # ---- 2) KV locality restriction (multi-PIM KV placement) ----
-        if kv_in_pim:
+        if kv_place == 'pim':
             kv_local_ops = {
                 "K", "V",
                 "QK", "SOFTMAX", "SV",
@@ -473,8 +539,8 @@ class SchedulerBase:
                 mapped = self._kv_pim_for_node(node)
                 if mapped is None:
                     return False
-                if dev_name != str(getattr(mapped, "name", "")):
-                    return False
+                return dev_name == str(getattr(mapped, "name", ""))
+            
 
         # ---- 3) operator-level allow-list ----
         allowed = getattr(node, "allowed", None)
@@ -540,13 +606,14 @@ class SchedulerBase:
         
         #---------------------1. KV write specially (write KV cache back)
         if node.name.upper() in ("K_WRITE", "V_WRITE", "KV_WRITE"):
-            kv_in_pim = bool(getattr(self.label, "kv_in_pim", False))
+            kv_place = self._kv_place(label)
             _, out_write_nd = self.cost.estimate_activation_bytes(node, batch, seq_len, phase_eff)
             size_nd = self.cost.format_size(out_write_nd, "ND")
-            if commit:
-                logger.debug("[kv-write] node=%s target=%s kv_in_pim=%s bytes_nd=%d", nid, getattr(dev, 'name', dev), bool(kv_in_pim), int(out_write_nd or 0))
+            logger.debug(
+                "[kv-write] node=%s target=%s kv_place=%s bytes_nd=%s", nid, dev.name, kv_place, out_write_nd
+            )
 
-            if kv_in_pim:
+            if kv_place == 'pim':
                 pim_devs = self.cluster.devices_by_type("pim")
                 if not pim_devs:
                     raise RuntimeError("kv_in_pim is True but no PIM device exists")
@@ -557,11 +624,9 @@ class SchedulerBase:
                 ready_kv = self._ready_time_for_device(g, nid, target_pim, phase_eff, commit)
                 start = max(float(self.avail.get(target_pim.name, 0.0)), float(ready_kv))
                 finish = start + float(self.cost.pim_write_time(int(out_write_nd), target_pim))
-                if commit:
-                    logger.debug(
-                        "[kv-write] node=%s -> %s dur=%.4f", nid, target_pim.name,
-                        float(max(0.0, finish - start)),
-                    )
+                logger.debug(
+                    "[kv-write] node=%s target_pim=%s start=%.4f finish=%.4f", nid, target_pim.name, start, finish
+                )
                 if commit:
                     self.avail[target_pim.name] = float(finish)
                     self._node_finish_time[nid] = float(finish)
@@ -569,27 +634,55 @@ class SchedulerBase:
                     self._node_out_fmt[nid] = "ND"
                     self._act_resident[(str(target_pim.name), str(nid))] = 0
                 return float(start), float(finish)
-            else:
-                # kv in host: convert on source device then send to host
-                host = self.cost.get_host_device()
-                ready_kv = self._ready_time_for_device(g, nid, dev, phase_eff, commit)
-                conv_start = max(float(self.avail.get(dev.name, 0.0)), float(ready_kv))
-                conv_cost = self.cost.format_conversion_time(size_nd, self.cost.device_preferred_fmt(dev), "ND", dev)
-                _, l2e = self.comm.reserve(dev.name, host.name, size_nd, earliest=conv_start + conv_cost, commit=commit, tag="kv_write")
-                link_end = float(l2e)
-                host_wr_t = float(self.cost.cpu_write_time(int(size_nd), host))
-                wr_start = max(float(self.avail.get(host.name, 0.0)), float(link_end))
-                finish = float(wr_start + host_wr_t)
-                if commit:
+
+            if kv_place == 'npu':
+                target_npu = self._kv_npu_device(label)
+                if target_npu is None:
+                    # No NPU exists (or label inconsistent) -> fall back to host.
+                    kv_place = 'host'
+                else:
+                    # Ensure the K/V activation is available on the target NPU before the store.
+                    ready_kv = self._ready_time_for_device(g, nid, target_npu, phase_eff, commit)
+                    start = max(float(self.avail.get(target_npu.name, 0.0)), float(ready_kv))
+
+                    # Convert to ND for KV cache storage if needed.
+                    src_fmt = str(self.cost.device_preferred_fmt(target_npu))
+                    conv_cost = 0.0
+                    if src_fmt != 'ND':
+                        conv_cost = float(self.cost.format_conversion_time(int(size_nd), str(src_fmt), 'ND', target_npu))
+
+                    # Model a bandwidth-limited store into the KV-cache region.
+                    write_t = float(self.cost.mem_time(int(size_nd), target_npu))
+                    finish = float(start + conv_cost + write_t)
+
                     logger.debug(
-                        "[kv-write] node=%s %s->host dur=%.4f", nid, dev.name, float(max(0.0, finish - conv_start)))
-                if commit:
-                    self.avail[dev.name] = max(self.avail.get(dev.name, 0.0), link_end)
-                    self.avail[host.name] = max(self.avail.get(host.name, 0.0), finish)
-                    self._node_finish_time[nid] = finish
-                    self._node_placement[nid] = host.name
-                    self._node_out_fmt[nid] = "ND"
-                return float(conv_start), float(finish)
+                        "[kv-write] node=%s target_npu=%s start=%.4f finish=%.4f", nid, target_npu.name, start, finish
+                    )
+                    if commit:
+                        self.avail[target_npu.name] = float(finish)
+                        self._node_finish_time[nid] = float(finish)
+                        self._node_placement[nid] = str(target_npu.name)
+                        self._node_out_fmt[nid] = "ND"
+                        self._act_resident[(str(target_npu.name), str(nid))] = 0
+                    return float(start), float(finish)
+
+            # KV on host: convert on source device then send to host
+            host = self.cost.get_host_device()
+            ready_kv = self._ready_time_for_device(g, nid, dev, phase_eff, commit)
+            conv_start = max(float(self.avail.get(dev.name, 0.0)), float(ready_kv))
+            conv_cost = self.cost.format_conversion_time(size_nd, self.cost.device_preferred_fmt(dev), "ND", dev)
+            _, l2e = self.comm.reserve(dev.name, host.name, size_nd, earliest=conv_start + conv_cost, commit=commit, tag="kv_write")
+            finish = float(l2e)
+            logger.debug(
+                "[kv-write] node=%s dev=%s -> host start=%.4f finish=%.4f", nid, dev.name, conv_start, finish
+            )
+            if commit:
+                self.avail[dev.name] = max(self.avail.get(dev.name, 0.0), finish)
+                self.avail[host.name] = max(self.avail.get(host.name, 0.0), finish)
+                self._node_finish_time[nid] = finish
+                self._node_placement[nid] = host.name
+                self._node_out_fmt[nid] = "ND"
+            return float(conv_start), float(finish)
                 
         #---------------------1b. Communication primitives -------------------
         attrs = getattr(node, "attrs", {}) or {}
@@ -624,28 +717,50 @@ class SchedulerBase:
                 dev_fmt = str(self.cost.device_preferred_fmt(dev))
                 size_nd = int(self.cost.format_size(int(kv_bytes), "ND"))
 
-                if bool(getattr(label, "kv_in_pim", False)):
-                    # KV cache is sharded on PIMs by KV head. For a shard, KV should come from a single mapped PIM.
+                kv_node_id = str(getattr(node, 'id', getattr(node, 'nid', nid)) or nid)
+                kv_layer = self._node_layer_id(node)
+                kv_hr = self._node_kv_head_range(node)
+                kv_h0 = kv_h1 = None
+                if kv_hr is not None:
+                    try:
+                        kv_h0, kv_h1 = int(kv_hr[0]), int(kv_hr[1])
+                    except Exception:
+                        kv_h0 = kv_h1 = None
+
+                def _kv_extra(*, kv_place_used: str, route: str, hop: str) -> dict:
+                    ex = {
+                        'payload': 'kv_cache',
+                        'action': 'load',
+                        'node_id': kv_node_id,
+                        'op': str(getattr(node, 'name', '') or ''),
+                        # QK consumes K-cache; SV consumes V-cache (for attention).
+                        'kv_role': ('K' if str(getattr(node, 'name', '')).upper() == 'QK' else ('V' if str(getattr(node, 'name', '')).upper() == 'SV' else '')),
+                        'kv_place': str(kv_place_used),
+                        'bytes_nd': int(kv_bytes),
+                        # Keep both naming conventions so downstream parsers can use either.
+                        'from_fmt': 'ND',
+                        'to_fmt': str(dev_fmt),
+                        'src_fmt': 'ND',
+                        'wire_fmt': 'ND',
+                        'dst_fmt': str(dev_fmt),
+                        'route': str(route),
+                        'hop': str(hop),
+                    }
+                    if kv_layer is not None:
+                        ex['layer'] = int(kv_layer)
+                    if kv_h0 is not None:
+                        ex['kv_head_start'] = int(kv_h0)
+                    if kv_h1 is not None:
+                        ex['kv_head_end'] = int(kv_h1)
+                    return ex
+
+                kv_place = self._kv_place(label)
+
+                # KV in PIM (sharded by KV head). For a shard, KV should come from a single mapped PIM.
+                if kv_place == 'pim':
                     src_pim = self._kv_pim_for_node(node)
                     if src_pim is None:
-                        # Fallback: treat as host-resident KV
-                        host = self.cost.get_host_device()
-                        if str(dev.name) == str(host.name):
-                            mem_t = float(self.cost.cpu_read_time(int(kv_bytes), host))
-                            rd_start = max(float(self.avail.get(host.name, 0.0)), float(ready))
-                            rd_end = rd_start + mem_t
-                            if commit:
-                                self.avail[host.name] = rd_end
-                            kv_ready = max(kv_ready, rd_end)
-                        else:
-                            host_rd_t = float(self.cost.cpu_read_time(int(size_nd), host))
-                            rd_start = max(float(self.avail.get(host.name, 0.0)), float(ready))
-                            rd_end = float(rd_start + host_rd_t)
-                            if commit:
-                                self.avail[host.name] = max(float(self.avail.get(host.name, 0.0)), float(rd_end))
-                            _, xfer_end = self.comm.reserve(host.name, dev.name, size_nd, earliest=float(rd_end), commit=commit, tag="kv_load")
-                            conv_t = float(self.cost.format_conversion_time(int(size_nd), "ND", dev_fmt, dev))
-                            kv_ready = max(kv_ready, float(xfer_end) + float(NONOVERLAP_TIME) * conv_t)
+                        kv_place = 'host'
                     else:
                         # If we execute on the same PIM and are in trace mode, the trace already models KV traffic.
                         if (
@@ -670,36 +785,114 @@ class SchedulerBase:
                                 t_direct = float(self.cost.comm_cost(src_pim, dev, int(size_nd)))
                                 if math.isfinite(t_direct):
                                     _, xfer_end = self.comm.reserve(
-                                        src_pim.name, dev.name, int(size_nd),
-                                        earliest=float(rd_end), commit=commit, tag="kv_load",
+                                        src_pim.name,
+                                        dev.name,
+                                        int(size_nd),
+                                        earliest=float(rd_end),
+                                        commit=commit,
+                                        tag="kv_load",
+                                        extra=_kv_extra(kv_place_used='pim', route='direct', hop='pim_to_dst'),
                                     )
                                 else:
                                     _, t1_end = self.comm.reserve(
-                                        src_pim.name, host.name, int(size_nd),
-                                        earliest=float(rd_end), commit=commit, tag="kv_load",
+                                        src_pim.name,
+                                        host.name,
+                                        int(size_nd),
+                                        earliest=float(rd_end),
+                                        commit=commit,
+                                        tag="kv_load",
+                                        extra=_kv_extra(kv_place_used='pim', route='host', hop='pim_to_host'),
                                     )
                                     _, xfer_end = self.comm.reserve(
-                                        host.name, dev.name, int(size_nd),
-                                        earliest=float(t1_end), commit=commit, tag="kv_load",
+                                        host.name,
+                                        dev.name,
+                                        int(size_nd),
+                                        earliest=float(t1_end),
+                                        commit=commit,
+                                        tag="kv_load",
+                                        extra=_kv_extra(kv_place_used='pim', route='host', hop='host_to_dst'),
                                     )
                                 conv_t = float(self.cost.format_conversion_time(int(size_nd), "ND", dev_fmt, dev))
                                 kv_ready = max(kv_ready, float(xfer_end) + conv_t)
 
-                else:
-                    host = self.cost.get_host_device()
-                    host_rd_t = float(self.cost.cpu_read_time(int(size_nd), host))
-                    rd_start = max(float(self.avail.get(host.name, 0.0)), float(ready))
-                    rd_end = float(rd_start + host_rd_t)
-                    if commit:
-                        self.avail[host.name] = max(float(self.avail.get(host.name, 0.0)), float(rd_end))
+                # KV fixed on an NPU (kv_place='npu'): load KV from that NPU.
+                if kv_place == 'npu':
+                    src_npu = self._kv_npu_device(label)
+                    if src_npu is None:
+                        kv_place = 'host'
+                    else:
+                        # Read from src NPU memory (serialize by NPU availability)
+                        rd_t = float(self.cost.mem_time(int(size_nd), src_npu))
+                        rd_start = max(float(self.avail.get(src_npu.name, 0.0)), float(ready))
+                        rd_end = rd_start + rd_t
+                        if commit:
+                            self.avail[src_npu.name] = rd_end
 
-                    l2s, l2e = self.comm.reserve(host.name, dev.name, size_nd, earliest=float(rd_end), commit=commit, tag="kv_load")
-                    kv_ready = max(kv_ready, float(l2s)
-                        + float(self.cost.combine_transfer_and_convert(host, dev, int(size_nd), "ND", str(self.cost.device_preferred_fmt(dev)),)
+                        if str(dev.name) == str(src_npu.name):
+                            # Local read; include optional ND->dev_fmt conversion.
+                            conv_t = float(self.cost.format_conversion_time(int(size_nd), "ND", dev_fmt, dev))
+                            kv_ready = max(kv_ready, float(rd_end) + conv_t)
+                        else:
+                            # Transfer KV to target device (prefer direct, otherwise via host)
+                            host = self.cost.get_host_device()
+                            t_direct = float(self.cost.comm_cost(src_npu, dev, int(size_nd)))
+                            if math.isfinite(t_direct):
+                                _, xfer_end = self.comm.reserve(
+                                    src_npu.name,
+                                    dev.name,
+                                    int(size_nd),
+                                    earliest=float(rd_end),
+                                    commit=commit,
+                                    tag="kv_load",
+                                    extra=_kv_extra(kv_place_used='npu', route='direct', hop='npu_to_dst'),
+                                )
+                            else:
+                                _, t1_end = self.comm.reserve(
+                                    src_npu.name,
+                                    host.name,
+                                    int(size_nd),
+                                    earliest=float(rd_end),
+                                    commit=commit,
+                                    tag="kv_load",
+                                    extra=_kv_extra(kv_place_used='npu', route='host', hop='npu_to_host'),
+                                )
+                                _, xfer_end = self.comm.reserve(
+                                    host.name,
+                                    dev.name,
+                                    int(size_nd),
+                                    earliest=float(t1_end),
+                                    commit=commit,
+                                    tag="kv_load",
+                                    extra=_kv_extra(kv_place_used='npu', route='host', hop='host_to_dst'),
+                                )
+                            conv_t = float(self.cost.format_conversion_time(int(size_nd), "ND", dev_fmt, dev))
+                            kv_ready = max(kv_ready, float(xfer_end) + conv_t)
+
+                # KV on host (explicit or fallback)
+                if kv_place == 'host':
+                    host = self.cost.get_host_device()
+                    l2s, _ = self.comm.reserve(
+                        host.name,
+                        dev.name,
+                        size_nd,
+                        earliest=float(ready),
+                        commit=commit,
+                        tag="kv_load",
+                        extra=_kv_extra(kv_place_used='host', route='host', hop='host_to_dst'),
+                    )
+                    kv_ready = max(
+                        kv_ready,
+                        float(l2s)
+                        + float(
+                            self.cost.combine_transfer_and_convert(
+                                host,
+                                dev,
+                                int(size_nd),
+                                "ND",
+                                str(self.cost.device_preferred_fmt(dev)),
+                            )
                         ),
                     )
-                if commit:
-                    logger.debug("[kv-load] node=%s target=%s kv_ready=%.4f", nid, dev.name, kv_ready)
 
         #---------------------3. normal weight load + compute + activation handling
         start = max(float(self.avail.get(dev.name, 0.0)), kv_ready)
@@ -715,13 +908,26 @@ class SchedulerBase:
             out_read_nd, out_write_nd = self.cost.estimate_activation_bytes(node, self.batch, self.seq_len, phase)
             out_nd = max(int(out_write_nd), int(out_read_nd))
 
-            #TODO：check activation residency or host store
-            if self.buffer.pim_reserve_activation(dev.name, out_nd, commit=True):
-                # Activation stays resident on this device.
-                self._act_resident[(dev.name, nid)] = out_nd
+            # ---- Activation residency / spill policy ----
+            keep_local = False
+            try:
+                keep_local = bool(self.buffer.pim_reserve_activation(dev.name, out_nd, commit=False))
+            except Exception:
+                keep_local = False
+
+            if keep_local:
+                ok = False
+                try:
+                    ok = bool(self.buffer.pim_reserve_activation(dev.name, out_nd, commit=True))
+                except Exception:
+                    ok = False
+
+                if ok:
+                    self._act_resident[(dev.name, nid)] = out_nd
+                else:
+                    src_fmt = self.cost.device_preferred_fmt(dev)
+                    self._ensure_host_store(nid, dev, out_nd, src_fmt, finish, commit=True)
             else:
-                # Unified policy (same as PIM): evict weights first; if still
-                # cannot fit, spill activation to host.
                 src_fmt = self.cost.device_preferred_fmt(dev)
                 self._ensure_host_store(nid, dev, out_nd, src_fmt, finish, commit=True)
         return float(start), float(finish)
@@ -1058,8 +1264,7 @@ class SchedulerBase:
             udev = self._node_placement.get(u)
             if udev and (udev, u) in self._act_resident and self._act_refcnt[u] == 0:
                 bytes_kept = int(self._act_resident.pop((udev, u), 0))
-                self.buffer.pim_release_activation(udev, bytes_kept, commit=True)
-
+                self.buffer.pim_release_activation(str(udev), bytes_kept, commit=True)
 
     def _get_graph_index(self, g):
         cache = getattr(self, "_graph_index_cache", None)
@@ -1274,7 +1479,16 @@ class SchedulerBase:
         if wsize_nd <= 0:
             return 0.0
 
-        # skip any host->PIM link load and skip PIM-side weight-loading latency.
+        def _ondevice_weight_mem_load_s(bytes_nd: int) -> float:
+            bytes_nd = int(bytes_nd or 0)
+            if bytes_nd <= 0:
+                return 0.0
+            fmt = self.cost.device_preferred_fmt(dev)
+            bytes_dev = int(self.cost.format_size(int(bytes_nd), str(fmt)))
+            return float(self.cost.mem_time(int(bytes_dev), dev))
+
+        full_mem_load = float(_ondevice_weight_mem_load_s(int(wsize_nd)))
+
         if str(getattr(dev, 'type', '')).lower() == 'pim' and self._weights_preloaded_on_pim():
             if commit:
                 try:
@@ -1282,7 +1496,7 @@ class SchedulerBase:
                         self._weight_sizes[wid] = int(wsize_nd)
                 except Exception:
                     pass
-            return 0.0
+            return float(full_mem_load)
 
         # --- size-aware cache lookup (ND bytes) ---
         cached_nd = 0
@@ -1306,7 +1520,7 @@ class SchedulerBase:
                             cache.touch(wid)
                         except Exception:
                             pass
-                    return 0.0
+                    return float(full_mem_load)
             except Exception:
                 pass
 
@@ -1317,12 +1531,18 @@ class SchedulerBase:
                     cache.touch(wid)
                 except Exception:
                     pass
-            return 0.0
+            return float(full_mem_load)
 
         # Need to fetch only the missing bytes
         need_nd = int(wsize_nd - max(0, cached_nd))
         if need_nd <= 0:
-            return 0.0
+            # Defensive: treat as full hit.
+            if commit and cache is not None:
+                try:
+                    cache.touch(wid)
+                except Exception:
+                    pass
+            return float(full_mem_load)
 
         host = self.cost.get_host_device()
 
@@ -1381,8 +1601,7 @@ class SchedulerBase:
 
         return float(end - float(earliest))
 
-    
-    #NOTE: need check if there is any repetition
+
     def _ensure_host_store(self, u: str, pred_dev: DeviceSpec,bytes_nd: int, src_fmt: str, pred_finish: float, commit: bool) -> float:
         t_done = self._node_host_store_end.get(u)
         if t_done is not None:

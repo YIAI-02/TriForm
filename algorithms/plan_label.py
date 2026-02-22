@@ -1,13 +1,14 @@
 from __future__ import annotations
-from config import attach_local_debug_filter
-from dataclasses import dataclass, field
-from typing import Dict, Set, List
+
 import logging
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Set, Literal
+
+from config import attach_local_debug_filter
 
 logger = logging.getLogger(__name__)
 attach_local_debug_filter(logger, lambda: False)
-
-
+KVPlace = Literal["host", "pim", "npu"]
 @dataclass
 class PlanLabel:
     # Whether KV cache is stored on PIM (otherwise on host/CPU memory).
@@ -19,21 +20,28 @@ class PlanLabel:
     # Total KV cache bytes reserved on PIM (0 if kv_in_pim=False).
     kv_total_bytes: int = 0
 
-    # ---- Layer-based KV partitioning ----
-    kv_bytes_per_layer: int = 0
-    kv_layer_to_pim: Dict[int, str] = field(default_factory=dict)   # layer_id -> pim_name
-    kv_bytes_by_pim: Dict[str, int] = field(default_factory=dict)   # pim_name -> bytes
 
     # ---- KV-head-based KV partitioning (preferred for TP) ----
     # kv_head_id -> pim_name
     kv_head_to_pim: Dict[int, str] = field(default_factory=dict)
     # pim_name -> list[kv_head_id]
     kv_heads_by_pim: Dict[str, List[int]] = field(default_factory=dict)
+    kv_bytes_by_pim: Dict[str, int] = field(default_factory=dict)
     # Optional: which dimension is used for KV partitioning ('layer' or 'kv_head').
-    kv_partition_dim: str = "layer"
+    kv_partition_dim: str = "kv_head"
 
     # ---- PIM static weight budget ----
     pim_weight_capacity_bytes: int = 0
 
-    # Optional: pin selected FC weights on PIM (weight_id set).
-    pinned_fc_on_pim: Set[str] = field(default_factory=set)
+    kv_place: KVPlace = "host"
+    kv_in_npu: bool = False
+
+    kv_npu_device: Optional[str] = None
+
+    kv_total_bytes_all: int = 0
+    kv_total_bytes_on_pim: int = 0
+    kv_total_bytes_on_npu: int = 0
+    kv_total_bytes_on_host: int = 0
+
+    trace_ops_csv: Optional[str] = None
+    trace_comms_csv: Optional[str] = None

@@ -7,6 +7,7 @@ You can optionally override log locations:
 GPU_LOG_DIR=/path/logs_gpu \
 PIM_LOG_DIR=/path/logs_pim \
 MERGE_LOG_DIR=/path/logs_merge \
+export PYTHONPATH="$PWD:$PWD/algorithm:$PWD/algorithms:${PYTHONPATH:-}"
 LOG_ROOT=/path/to/my_logs \
   ./verify/run_verify.sh ./verify/jobs_sweep.tsv \
     ./verify/run_gpu_wm2_param.slurm \
@@ -30,7 +31,8 @@ MERGE_SLURM=${4:-"$SCRIPT_DIR/run_merge_param.slurm"}
 # -------- user-tunable defaults --------
 PY_SCRIPT=${PY_SCRIPT:-"$REPO_ROOT/verify/schedule_deploy_verify.py"}
 OUT_ROOT=${OUT_ROOT:-"$REPO_ROOT/verify/out"}
-SEGMENT_SCOPE=${SEGMENT_SCOPE:-device_step}
+SEGMENT_SCOPE=${SEGMENT_SCOPE:-layer}
+SHARD_POLICY=${SHARD_POLICY:-fine}  # fine | coarse_majority
 
 LOG_ROOT=${LOG_ROOT:-""}
 GPU_LOG_DIR=${GPU_LOG_DIR:-""}
@@ -48,6 +50,13 @@ DEFAULT_DECODE_STRIDE=${DEFAULT_DECODE_STRIDE:-128}
 # Multi-value expansion (used only when TSV column is empty)
 PREFILL_LENS=${PREFILL_LENS:-"4096"}
 DECODE_STRIDES=${DECODE_STRIDES:-"128"}      
+NON_OVERLAP=${NON_OVERLAP:-1}      
+
+KV_LOAD_BW_GBS=${KV_LOAD_BW_GBS:-"2048"}
+KV_DTYPE_BYTES=${KV_DTYPE_BYTES:-2}         # fp16/bf16=2, int8=1
+KV_LOAD_OVERHEAD_US=${KV_LOAD_OVERHEAD_US:-0}
+N_KV_HEADS=${N_KV_HEADS:-""}                # GQA/MQA 用；空表示用 n_heads
+BATCH=${BATCH:-1}
 
 # run-gpu benchmark args
 WARMUP=${WARMUP:-3}
@@ -66,7 +75,6 @@ PIM_NUM_DEVICES=${PIM_NUM_DEVICES:-4}
 COMM_MODEL=${COMM_MODEL:-schedule}
 PCIE_LANES=${PCIE_LANES:-16}
 ALLOW_MISSING=${ALLOW_MISSING:-1}
-SEGMENT_SCOPE_OVERRIDE=${SEGMENT_SCOPE_OVERRIDE:-""}
 WRITE_STEPS_CSV=${WRITE_STEPS_CSV:-0}  # 1 to also write per-step csv
 
 MERGE_DEBUG=${MERGE_DEBUG:-1}
@@ -395,11 +403,21 @@ while IFS=$'\t,' read -r schedule_csv comms_csv prefix out_dir prefill_len decod
         --segment-scope "$SEGMENT_SCOPE" \
         --prefill-len "$pre" \
         --decode-stride "$dec" \
-        --cfg "$cfg")
+        --cfg "$cfg" \
+        --shard-policy "$SHARD_POLICY")
 
       if [[ -n "$comms_csv" ]]; then
         export_cmd+=(--comms "$comms_csv")
       fi
+      if [[ -n "${KV_LOAD_BW_GBS}" ]]; then
+        export_cmd+=(--kv-load-bw-gbs "$KV_LOAD_BW_GBS")
+      fi
+      export_cmd+=(--kv-dtype-bytes "$KV_DTYPE_BYTES")
+      export_cmd+=(--kv-load-overhead-us "$KV_LOAD_OVERHEAD_US")
+      if [[ -n "${N_KV_HEADS}" ]]; then
+        export_cmd+=(--n-kv-heads "$N_KV_HEADS")
+      fi
+      export_cmd+=(--batch "$BATCH")
 
       echo "  [combo] export: ${export_cmd[*]}" >&2
       "${export_cmd[@]}"
@@ -418,8 +436,9 @@ while IFS=$'\t,' read -r schedule_csv comms_csv prefix out_dir prefill_len decod
       gpu_ok="$out_dir/$prefix_combo.gpu.ok"
       pim_ok="$out_dir/$prefix_combo.pim.ok"
 
-      # Clean stale outputs to avoid merging old results when a job fails.
-      rm -f "$gpu_ok" "$pim_ok" "$gpu_res" "$pim_res" "$merge_csv" "$debug_txt" "$steps_csv"
+      gpu_debug_txt="$out_dir/$prefix_combo.gpu_debug.log"
+      
+      rm -f "$gpu_ok" "$pim_ok" "$gpu_res" "$pim_res" "$merge_csv" "$debug_txt" "$steps_csv" "$gpu_debug_txt"
 
       if [[ ! -f "$gpu_tasks" ]]; then
         echo "  [combo] ERROR: missing $gpu_tasks" >&2
@@ -437,7 +456,7 @@ while IFS=$'\t,' read -r schedule_csv comms_csv prefix out_dir prefill_len decod
         -J "gpu_${prefix_combo}" \
         --chdir="$job_chdir" \
         -o "$gpu_log_dir/%x.%j.out" -e "$gpu_log_dir/%x.%j.err" \
-        --export=ALL,LOG_DIR="$gpu_log_dir",OUT_DIR="$out_dir",PREFIX="$prefix_combo",PY_SCRIPT="$PY_ABS",TASKS_JSON="$gpu_tasks",OUT_JSON="$gpu_res",WARMUP="$WARMUP",ITERS="$ITERS",DEVICE="$DEVICE",GPU_DTYPE="$GPU_DTYPE",OK_FILE="$gpu_ok" \
+        --export=ALL,LOG_DIR="$gpu_log_dir",OUT_DIR="$out_dir",PREFIX="$prefix_combo",PY_SCRIPT="$PY_ABS",TASKS_JSON="$gpu_tasks",OUT_JSON="$gpu_res",WARMUP="$WARMUP",ITERS="$ITERS",DEVICE="$DEVICE",GPU_DTYPE="$GPU_DTYPE",OK_FILE="$gpu_ok",GPU_DEBUG_TXT="$gpu_debug_txt"\
         "$GPU_SLURM_ABS")
 
       echo "  [combo] submitted run-gpu: jobid=$jid_gpu" >&2
@@ -466,7 +485,7 @@ while IFS=$'\t,' read -r schedule_csv comms_csv prefix out_dir prefill_len decod
         --dependency="$dep" \
         --chdir="$job_chdir" \
         -o "$merge_log_dir/%x.%j.out" -e "$merge_log_dir/%x.%j.err" \
-        --export=ALL,LOG_DIR="$merge_log_dir",GPU_LOG_DIR="$gpu_log_dir",PIM_LOG_DIR="$pim_log_dir",OUT_DIR="$out_dir",PREFIX="$prefix_combo",PY_SCRIPT="$PY_ABS",SCHEDULE_CSV="$schedule_csv",GPU_RESULTS_JSON="$gpu_res",PIM_RESULTS_JSON="$pim_res",GPU_OK_FILE="$gpu_ok",PIM_OK_FILE="$pim_ok",COMM_MODEL="$COMM_MODEL",PCIE_LANES="$PCIE_LANES",DECODE_STRIDE="$dec",OUT_CSV="$merge_csv",OUT_STEPS_CSV="$out_steps",ALLOW_MISSING="$ALLOW_MISSING",SEGMENT_SCOPE_OVERRIDE="$SEGMENT_SCOPE_OVERRIDE",DEBUG_MERGE="$MERGE_DEBUG",DEBUG_TXT="$debug_txt" \
+        --export=ALL,LOG_DIR="$merge_log_dir",GPU_LOG_DIR="$gpu_log_dir",PIM_LOG_DIR="$pim_log_dir",OUT_DIR="$out_dir",PREFIX="$prefix_combo",PY_SCRIPT="$PY_ABS",SCHEDULE_CSV="$schedule_csv",GPU_RESULTS_JSON="$gpu_res",PIM_RESULTS_JSON="$pim_res",GPU_OK_FILE="$gpu_ok",PIM_OK_FILE="$pim_ok",COMM_MODEL="$COMM_MODEL",PCIE_LANES="$PCIE_LANES",COMMS_CSV="$comms_csv",NON_OVERLAP="$NON_OVERLAP",DECODE_STRIDE="$dec",OUT_CSV="$merge_csv",OUT_STEPS_CSV="$out_steps",ALLOW_MISSING="$ALLOW_MISSING",DEBUG_MERGE="$MERGE_DEBUG",DEBUG_TXT="$debug_txt" \
         "$MERGE_SLURM_ABS")
 
       echo "  [combo] submitted merge: jobid=$jid_merge  (will write: $merge_csv)" >&2

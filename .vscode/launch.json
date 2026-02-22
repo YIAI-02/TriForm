@@ -17,9 +17,7 @@
                 "--config",
                 "./examples/evaluate_test_config.json",
                 "--debug",
-                "--pim_fast_mode",
-                "--npu_backend",
-                "fast_mode",
+                "--pim_fast_mode"
             ],
             "cwd": "${workspaceFolder}/algorithms",            
         }

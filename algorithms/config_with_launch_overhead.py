@@ -182,8 +182,8 @@ COMPUTE_UTILIZATION = {
     'npu': {
         'enabled': True,
         'curve': 'sigmoid',
-        'min_util': 0.3,
-        'max_util': 0.8,
+        'min_util': 0.05,
+        'max_util': 0.2,
         'flops_low': 5e7,     # <= 0.5 GFLOPs -> near min_util
         'flops_high': 5e12,   # >= 5TFLOPs -> near max_util
         'knee_flops': 1.5e11,  #defualt sqrt(low*high) ≈ 1.58e10
@@ -200,25 +200,25 @@ KERNEL_LAUNCH_OVERHEAD = {
     'apply_backends': ['fast'],
 
     'phase_scale': {
-        'prefill': 0.0,
-        'decode': 0.5,
+        'prefill': 0.1,
+        'decode': 1.0,
     },
     'scale_by_time_scale': False,
     'default_us': 0.0,
 
     'by_category_us': {
         'norm': 70.5,
-        'softmax': 0.0,
+        'softmax': 18.4,
         'activation': 14.2,
         'elem': 13.7,
         'gemm': 24.0,
     },
 
     'by_op_us': {
-        'score': 0.0,   # QK
-        'output': 0.0,  # SV
-        'ffn_up': 31.1,     # ffn_w3
-        'ffn_gate': 34.1,   # ffn_w1
-        'ffn_down': 32.5,   # ffn_w2
+        'score': 42.0,   # QK
+        'output': 28.1,  # SV
+        'ffn_up': 21.1,     # ffn_w3
+        'ffn_gate': 24.1,   # ffn_w1
+        'ffn_down': 22.5,   # ffn_w2
     },
 }

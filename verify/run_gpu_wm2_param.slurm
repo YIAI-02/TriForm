@@ -74,6 +74,8 @@ fi
 cmd=(python "$PY_SCRIPT" run-gpu \
     --tasks "$TASKS_JSON" \
     --out "$OUT_JSON" \
+    --debug \
+    --debug-txt "${GPU_DEBUG_TXT:-./gpu_debug.log}"
     --warmup "$WARMUP" --iters "$ITERS")
 
 if [[ -n "${DEVICE}" ]]; then

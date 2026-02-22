@@ -57,6 +57,8 @@ PIM_LOG_DIR="${PIM_LOG_DIR:-}"
 COMM_MODEL="${COMM_MODEL:-schedule}"
 PCIE_LANES="${PCIE_LANES:-16}"
 DECODE_STRIDE="${DECODE_STRIDE:-1}"
+NON_OVERLAP="${NON_OVERLAP:-1.0}"
+COMMS_CSV="${COMMS_CSV:-}"
 OUT_CSV="${OUT_CSV:-}"
 OUT_STEPS_CSV="${OUT_STEPS_CSV:-}"
 
@@ -74,7 +76,6 @@ fi
 OUT_CSV="${OUT_CSV:-merge_report.csv}"
 
 ALLOW_MISSING="${ALLOW_MISSING:-1}"
-SEGMENT_SCOPE_OVERRIDE="${SEGMENT_SCOPE_OVERRIDE:-}"
 
 DEBUG_MERGE="${DEBUG_MERGE:-0}"
 DEBUG_TXT="${DEBUG_TXT:-}"
@@ -121,10 +122,10 @@ echo "[slurm] GPU_RESULTS_JSON=${GPU_RESULTS_JSON:-<none>}"
 echo "[slurm] PIM_RESULTS_JSON=${PIM_RESULTS_JSON:-<none>}"
 echo "[slurm] GPU_OK_FILE=${GPU_OK_FILE:-<none>}"
 echo "[slurm] PIM_OK_FILE=${PIM_OK_FILE:-<none>}"
-echo "[slurm] COMM_MODEL=${COMM_MODEL} PCIE_LANES=${PCIE_LANES} DECODE_STRIDE=${DECODE_STRIDE}"
+echo "[slurm] COMM_MODEL=${COMM_MODEL} PCIE_LANES=${PCIE_LANES} DECODE_STRIDE=${DECODE_STRIDE} NON_OVERLAP=${NON_OVERLAP}"
+echo "[slurm] COMMS_CSV=${COMMS_CSV:-<none>}"
 echo "[slurm] OUT_CSV=${OUT_CSV}"
 echo "[slurm] OUT_STEPS_CSV=${OUT_STEPS_CSV:-<none>}"
-echo "[slurm] ALLOW_MISSING=${ALLOW_MISSING} SEGMENT_SCOPE_OVERRIDE=${SEGMENT_SCOPE_OVERRIDE:-<unset>}"
 
 if [[ -n "$GPU_OK_FILE" && ! -f "$GPU_OK_FILE" ]]; then
   echo "[slurm] ERROR: GPU stage failed or did not finish cleanly (missing GPU_OK_FILE=$GPU_OK_FILE)" >&2
@@ -155,6 +156,7 @@ cmd=(python "$PY_SCRIPT" merge \
   --comm-model "$COMM_MODEL" \
   --pcie-lanes "$PCIE_LANES" \
   --decode-stride "$DECODE_STRIDE" \
+  --non-overlap "$NON_OVERLAP" \
   --out-csv "$OUT_CSV")
 
 if [[ -n "${GPU_RESULTS_JSON}" && "${GPU_RESULTS_JSON}" != "-" ]]; then
@@ -163,14 +165,14 @@ fi
 if [[ -n "${PIM_RESULTS_JSON}" && "${PIM_RESULTS_JSON}" != "-" ]]; then
   cmd+=(--pim-results "$PIM_RESULTS_JSON")
 fi
+if [[ -n "${COMMS_CSV}" ]]; then
+  cmd+=(--comms "$COMMS_CSV")
+fi
 if [[ -n "${OUT_STEPS_CSV}" ]]; then
   cmd+=(--out-steps-csv "$OUT_STEPS_CSV")
 fi
 if [[ "${ALLOW_MISSING}" == "1" || "${ALLOW_MISSING}" == "true" ]]; then
   cmd+=(--allow-missing)
-fi
-if [[ -n "${SEGMENT_SCOPE_OVERRIDE}" ]]; then
-  cmd+=(--segment-scope "$SEGMENT_SCOPE_OVERRIDE")
 fi
 
 if [[ "${DEBUG_MERGE}" == "1" || "${DEBUG_MERGE}" == "true" ]]; then

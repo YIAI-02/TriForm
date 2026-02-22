@@ -96,7 +96,8 @@ class StatsRecorder:
     ) -> None:
         def _type(name: Optional[str]) -> str:
             n = (name or "").lower()
-            if "npu" in n:
+            # Treat typical accelerator names as NPU as well (e.g., GPU0).
+            if "npu" in n or "gpu" in n or "cuda" in n:
                 return "npu"
             if "pim" in n:
                 return "pim"

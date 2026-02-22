@@ -3,23 +3,23 @@
   "model_variant": "7b",
   "dtype": "fp16",
   "batch": 1,
-  "prefill_len": 4096,
+  "prefill_len": 1024,
   "decode_len": 1024,
   "decode_sample_stride": 128,
   "pim_config_path": "./aim_simulator/PIM_AiM.json",
   "gb_config_path": "./aim_simulator/gb.json",
   "ramulator_config_path": "./aim_simulator/example.yaml",
-  "simulation_log_file": "./output/evaluate_single_test/hardware_1gpu/pim_simulation.txt",
-  "result_dir": "./output/evaluate_single_test/hardware_1gpu/",
-  "hardware_json": "./examples/hardware_1gpu.json",
+  "simulation_log_file": "./output/evaluate_single_test/hardware_1aim/pim_simulation.txt",
+  "result_dir": "./output/evaluate_single_test/hardware_1aim/",
+  "hardware_json": "./examples/hardware_1aim.json",
   "algo": [
     "heft"
   ],
   "baselines": [
   ],
-  "tp_qkv": 4,
-  "tp_ffn": 4,
+  "tp_qkv": 1,
+  "tp_ffn": 1,
   "npu_backend": "fast_mode",
   "dump_graph": true,
-  "dump_graph_dir": "./output/evaluate_single_test/hardware_1gpu/graph_dumps"
+  "dump_graph_dir": "./output/evaluate_single_test/hardware_1aim/graph_dumps"
 }
