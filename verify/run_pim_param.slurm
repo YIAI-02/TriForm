@@ -43,12 +43,19 @@ PREFIX="${PREFIX:-}"
 
 TASKS_JSON="${TASKS_JSON:-}"
 OUT_JSON="${OUT_JSON:-}"
+PIM_DEBUG="${PIM_DEBUG:-0}"
+PIM_DEBUG_TXT="${PIM_DEBUG_TXT:-}"
+PIM_NO_CACHE="${PIM_NO_CACHE:-0}"
 
 if [[ -z "$TASKS_JSON" && -n "$OUT_DIR" && -n "$PREFIX" ]]; then
   TASKS_JSON="${OUT_DIR%/}/${PREFIX}.pim_tasks.json"
 fi
 if [[ -z "$OUT_JSON" && -n "$OUT_DIR" && -n "$PREFIX" ]]; then
   OUT_JSON="${OUT_DIR%/}/${PREFIX}.pim_results.json"
+fi
+
+if [[ -z "$PIM_DEBUG_TXT" && -n "$OUT_DIR" && -n "$PREFIX" ]]; then
+  PIM_DEBUG_TXT="${OUT_DIR%/}/${PREFIX}.pim_debug.log"
 fi
 
 # Backward-compatible defaults
@@ -73,6 +80,9 @@ echo "[slurm] PIM_RAMULATOR_CONFIG=${PIM_RAMULATOR_CONFIG}"
 echo "[slurm] PIM_HW_JSON=${PIM_HW_JSON}"
 echo "[slurm] PIM_RAMULATOR_BIN=${PIM_RAMULATOR_BIN}"
 echo "[slurm] PIM_NUM_DEVICES=${PIM_NUM_DEVICES}"
+echo "[slurm] PIM_DEBUG=${PIM_DEBUG}"
+echo "[slurm] PIM_DEBUG_TXT=${PIM_DEBUG_TXT:-<none>}"
+echo "[slurm] PIM_NO_CACHE=${PIM_NO_CACHE}"
 echo "[slurm] OK_FILE=${OK_FILE:-<none>}"
 if [[ ! -f "$TASKS_JSON" ]]; then
   echo "[slurm] ERROR: TASKS_JSON not found: $TASKS_JSON" >&2
@@ -105,6 +115,17 @@ cmd=(python "$PY_SCRIPT" run-pim \
 
 if [[ -n "${CENT_SIM_ROOT}" ]]; then
   cmd+=(--cent-sim-root "$CENT_SIM_ROOT")
+fi
+
+if [[ "${PIM_DEBUG}" != "0" ]]; then
+  cmd+=(--debug)
+  if [[ -n "${PIM_DEBUG_TXT}" ]]; then
+    cmd+=(--debug-txt "$PIM_DEBUG_TXT")
+  fi
+fi
+
+if [[ "${PIM_NO_CACHE}" != "0" ]]; then
+  cmd+=(--no-cache)
 fi
 
 echo "[slurm] Running: ${cmd[*]}"

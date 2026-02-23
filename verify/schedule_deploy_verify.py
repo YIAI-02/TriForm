@@ -1321,6 +1321,7 @@ class GPUBackend:
         debug_logger: Optional[Any] = None,
         seg_key: Optional[str] = None,
         task_meta: Optional[Dict[str, Any]] = None,
+        debug_store: Optional[Dict[str, Any]] = None,
     ) -> float:
         """Benchmark one segment.
 
@@ -1600,6 +1601,48 @@ class GPUBackend:
                 f"  {j:3d}  {sig.op:<8} {sig.shard:2d}  {io_s:<46}  {t_ms:9.3f}ms  {_fmt_flops(fl):>10}  {tflops:8.2f}  {_fmt_bytes(by):>10}  {gbs:8.2f}"
             )
 
+        # Optional structured debug payload (stored into gpu_results.json when enabled)
+        if isinstance(debug_store, dict):
+            try:
+                per_op_dbg: List[Dict[str, Any]] = []
+                for j, ((sig, sh), t_s) in enumerate(zip(plan, per_op_s)):
+                    ins, out = _op_io(sig.op, sh)
+                    per_op_dbg.append(
+                        {
+                            "idx": int(j),
+                            "op": str(sig.op),
+                            "shard": int(sig.shard),
+                            "phase": str(seg.phase),
+                            "step": int(seg.step),
+                            "T": int(sh.query_len),
+                            "K": int(sh.key_len),
+                            "dim": int(sh.dim),
+                            "shard_dim": int(sh.shard_dim),
+                            "ffn_shard_dim": int(sh.ffn_shard_dim),
+                            "heads_per_shard": int(sh.heads_per_shard),
+                            "head_dim": int(sh.head_dim),
+                            "inputs": [{"name": n, "shape": [int(x) for x in shape]} for n, shape in ins if shape],
+                            "output": {"name": out[0], "shape": [int(x) for x in out[1]]} if out[1] else {"name": out[0], "shape": []},
+                            "latency_s": float(t_s),
+                            "est_flops": float(_op_flops(sig.op, sh)),
+                            "est_bytes": float(_op_bytes(sig.op, sh)),
+                        }
+                    )
+
+                debug_store[str(key_s)] = {
+                    "segment_key": str(key_s),
+                    "device_type": str(seg.device_type),
+                    "phase": str(seg.phase),
+                    "step": int(seg.step),
+                    "count_hint": int(cnt),
+                    "ops_repr": str(ops_repr) if ops_repr is not None else seg.ops_repr(),
+                    "segment_latency_s": float(seg_s),
+                    "sum_per_op_s": float(total_ops_s),
+                    "per_op": per_op_dbg,
+                }
+            except Exception:
+                pass
+
         lbl = "cuda_events" if self.device.type == "cuda" else "wall_time"
         log(f"[gpu-debug] segment avg latency ({lbl}): {seg_s*1000.0:.3f} ms")
         log(f"[gpu-debug] sum(per-op)               : {total_ops_s*1000.0:.3f} ms (ratio={total_ops_s/seg_s if seg_s>0 else 0.0:.3f})")
@@ -1766,6 +1809,7 @@ class PIMBackendViaCostModel:
 
         # Model dict cache (keyed by (dim, heads, kv_heads, ffn_dim, seqlen)).
         self._model_dict_cache: Dict[Tuple[int, int, int, int, int], Dict[str, Any]] = {}
+        self.debug_segments: Optional[Dict[str, Any]] = {} if self.debug else None
 
         self._print_debug_header()
 
@@ -1864,9 +1908,100 @@ class PIMBackendViaCostModel:
         self._model_dict_cache[key] = md
         return md
 
-    def benchmark_segment(self, seg: SegmentSig) -> float:
+    def benchmark_segment(
+        self,
+        seg: SegmentSig,
+        *,
+        seg_key: Optional[str] = None,
+        task_meta: Optional[Dict[str, Any]] = None,
+    ) -> float:
+        # Try to surface the CostModel constant used for cycles->sec.
+        try:
+            from config import PIM_FREQ_GHZ as CM_PIM_FREQ_GHZ  # type: ignore
+        except Exception:
+            CM_PIM_FREQ_GHZ = None  # type: ignore
+
+        key_s = seg_key or seg.to_key()
+        meta = task_meta or {}
+        try:
+            cnt = int(meta.get("count_hint", 0))
+        except Exception:
+            cnt = 0
+        ops_repr = meta.get("ops_repr", None)
+
+        # Local helper: format logical tensor shapes (not the internal CENT tensors).
+        def _fmt_shape(shape: Tuple[int, ...]) -> str:
+            return "x".join(str(int(x)) for x in shape)
+
+        def _op_io_logical(op: str, sh: OpShape) -> Tuple[List[Tuple[str, Tuple[int, ...]]], Tuple[str, Tuple[int, ...]]]:
+            """Logical op I/O shapes (aligned with infer_op_shape)."""
+            D = int(sh.dim)
+            Sd = int(sh.shard_dim)
+            Fsd = int(sh.ffn_shard_dim)
+            T = int(sh.query_len)
+            H = int(sh.heads_per_shard)
+            Hd = int(sh.head_dim)
+            K = int(sh.key_len)
+
+            if op == "LN":
+                return [("x", (T, D)), ("w", (D,))], ("y", (T, D))
+            if op in ("Q", "K", "V"):
+                return [("x", (T, D)), ("w", (Sd, D))], ("y", (T, Sd))
+            if op == "O":
+                return [("x", (T, Sd)), ("w", (D, Sd))], ("y", (T, D))
+            if op in ("FFN_W1", "FFN_W3"):
+                return [("x", (T, D)), ("w", (Fsd, D))], ("y", (T, Fsd))
+            if op == "SwiGLU":
+                return [("a", (T, Fsd)), ("b", (T, Fsd))], ("y", (T, Fsd))
+            if op == "FFN_W2":
+                return [("x", (T, Fsd)), ("w", (D, Fsd))], ("y", (T, D))
+            if op == "Add":
+                return [("a", (T, D)), ("b", (T, D))], ("y", (T, D))
+            if op == "QK":
+                return [("q", (H, T, Hd)), ("k", (H, Hd, K))], ("y", (H, T, K))
+            if op == "Softmax":
+                return [("scores", (H, T, K))], ("y", (H, T, K))
+            if op == "SV":
+                return [("p", (H, T, K)), ("v", (H, K, Hd))], ("y", (H, T, Hd))
+            return [("?", tuple())], ("?", tuple())
+
+        # Debug segment header + op list (logical shapes)
+        if self.debug:
+            self._dbg.log("=" * 88)
+            self._dbg.log(f"[pim-debug] segment_key={key_s}")
+            self._dbg.log(f"[pim-debug] sig: device_type={seg.device_type} phase={seg.phase} step={seg.step} (count_hint={cnt})")
+            if ops_repr:
+                self._dbg.log(f"[pim-debug] ops_repr: {ops_repr}")
+            self._dbg.log(
+                f"[pim-debug] cfg: shard_policy={self.cfg.shard_policy!r} shards={int(self.cfg.shards)} "
+                f"dim={int(self.cfg.dim)} ffn_dim={int(self.cfg.ffn_dim)} n_heads={int(self.cfg.n_heads)} "
+                f"n_kv_heads={(int(self.cfg.n_kv_heads) if self.cfg.n_kv_heads is not None else 'auto->n_heads')}"
+            )
+            self._dbg.log(f"[pim-debug] pim_config={self.pim_config}")
+            self._dbg.log(f"[pim-debug] ramulator_config={self.ramulator_config}")
+            self._dbg.log(f"[pim-debug] cost_model config.PIM_FREQ_GHZ={CM_PIM_FREQ_GHZ}")
+            self._dbg.log("[pim-debug] op plan (logical shapes inferred from schedule cfg):")
+            for j, (op, shard) in enumerate(seg.ops):
+                if str(op).strip().lower() in _COMM_OPS:
+                    continue
+                sig = OpSig(device_type="pim", phase=str(seg.phase), step=int(seg.step), op=str(op), shard=int(shard))
+                sh = infer_op_shape(sig, self.cfg)
+                ins, out = _op_io_logical(str(op), sh)
+                ins_s = " + ".join([f"{n}=[{_fmt_shape(shape)}]" for n, shape in ins if shape])
+                out_s = f"{out[0]}=[{_fmt_shape(out[1])}]" if out[1] else out[0]
+                self._dbg.log(
+                    f"  - op#{j:02d}  op={str(op):<8} shard={int(shard):<2d}  {ins_s}  ->  {out_s}  (T={int(sh.query_len)}, K={int(sh.key_len)})"
+                )
+
+            self._dbg.log(
+                "[pim-debug] NOTE: CENT(AiM) trace backend internally uses x shape (1,1,dim) and handles prefill by repeating ops;\n"
+                "           the table below shows the *effective parameters* passed into cost_model_pim_backend for each op."
+            )
+
         total = 0.0
-        for (op, shard) in seg.ops:
+        per_op_dbg: List[Dict[str, Any]] = []
+
+        for j, (op, shard) in enumerate(seg.ops):
             if str(op).strip().lower() in _COMM_OPS:
                 continue
 
@@ -1878,16 +2013,19 @@ class PIMBackendViaCostModel:
             cache_hit = None
             if self.debug and self.use_cache:
                 try:
-                    cache_hit = self.cm._pim_cache.get(op_norm, str(seg.phase), dim, n_heads, n_kv_heads, ffn_dim, seqlen, self.pim_config, self.ramulator_config)
+                    cache_hit = self.cm._pim_cache.get(
+                        op_norm,
+                        str(seg.phase),
+                        int(dim),
+                        int(n_heads),
+                        int(n_kv_heads),
+                        int(ffn_dim),
+                        int(seqlen),
+                        self.pim_config,
+                        self.ramulator_config,
+                    )
                 except Exception:
                     cache_hit = None
-
-            if self.debug:
-                self._dbg.log(
-                    f"[run-pim][debug] seg phase={seg.phase} step={seg.step} op={op!r} -> norm={op_norm!r} shard={shard} "
-                    f"dim={dim} heads={n_heads} kv_heads={n_kv_heads} ffn_dim={ffn_dim} seqlen={seqlen} qlen={qlen} "
-                    f"cache_hit={'Y' if cache_hit is not None else 'N'}"
-                )
 
             model_dict = self._get_model_dict(dim=dim, n_heads=n_heads, n_kv_heads=n_kv_heads, ffn_dim=ffn_dim, seqlen=seqlen)
 
@@ -1898,7 +2036,7 @@ class PIMBackendViaCostModel:
 
             sec = float(
                 self.cm._get_pim_latency_via_trace(
-                    op=str(op),
+                    op=op_norm,
                     pim_config=self.pim_config,
                     ramulator_config=self.ramulator_config,
                     dim=int(dim),
@@ -1917,8 +2055,59 @@ class PIMBackendViaCostModel:
             )
 
             total += sec
+
+            cycles_est = None
+            try:
+                if CM_PIM_FREQ_GHZ is not None and float(CM_PIM_FREQ_GHZ) > 0.0:
+                    cycles_est = int(round(float(sec) * float(CM_PIM_FREQ_GHZ) * 1e9))
+            except Exception:
+                cycles_est = None
+
+            per_op_dbg.append(
+                {
+                    "idx": int(j),
+                    "op": str(op),
+                    "op_norm": str(op_norm),
+                    "shard": int(shard),
+                    "phase": str(seg.phase),
+                    "step": int(seg.step),
+                    "dim": int(dim),
+                    "n_heads": int(n_heads),
+                    "n_kv_heads": int(n_kv_heads),
+                    "ffn_dim": int(ffn_dim),
+                    "seqlen": int(seqlen),
+                    "qlen": int(qlen),
+                    "cache_hit": bool(cache_hit is not None) if self.use_cache else False,
+                    "latency_s": float(sec),
+                    "cycles_est": int(cycles_est) if cycles_est is not None else None,
+                    "trace_prefix": str(trace_prefix) if trace_prefix else None,
+                }
+            )
+
             if self.debug:
-                self._dbg.log(f"[run-pim][debug]   -> latency_s={sec:.6e} (accum={total:.6e})")
+                extra = f" cycles≈{cycles_est}" if cycles_est is not None else ""
+                self._dbg.log(
+                    f"[pim-debug] op#{j:02d} op={str(op):<8} norm={op_norm:<10} sh={int(shard):<2d} "
+                    f"dim={int(dim):<5d} heads={int(n_heads):<3d} kv_heads={int(n_kv_heads):<3d} ffn_dim={int(ffn_dim):<6d} "
+                    f"seqlen={int(seqlen):<6d} qlen={int(qlen):<3d} cache={'Y' if (cache_hit is not None and self.use_cache) else 'N'} "
+                    f"lat={sec*1e3:9.3f}ms{extra}"
+                )
+
+        if self.debug:
+            self._dbg.log(f"[pim-debug] segment total latency: {total*1e3:.3f} ms")
+
+        if self.debug_segments is not None:
+            self.debug_segments[key_s] = {
+                "segment_key": key_s,
+                "device_type": str(seg.device_type),
+                "phase": str(seg.phase),
+                "step": int(seg.step),
+                "count_hint": int(cnt),
+                "ops_repr": str(ops_repr) if ops_repr is not None else seg.ops_repr(),
+                "total_s": float(total),
+                "per_op": per_op_dbg,
+            }
+
         return float(total)
 # ==========================================================
 # JSON helpers
@@ -2322,6 +2511,7 @@ def run_gpu(
                 log(f"[run-gpu][debug] nvidia-smi snapshot: {out}")
 
     backend = GPUBackend(cfg)
+    debug_segments: Optional[Dict[str, Any]] = {} if dbg.enabled else None
     try:
         for i, t in enumerate(tasks):
             key = t["key"]
@@ -2336,6 +2526,7 @@ def run_gpu(
                 debug_logger=dbg,
                 seg_key=key,
                 task_meta=t,
+                debug_store=debug_segments,
             )
             results[key] = float(sec)
 
@@ -2359,6 +2550,8 @@ def run_gpu(
         "env": {"gpu": gpu_info},
         "results": results,
     }
+    if dbg.enabled and debug_segments:
+        out["debug_segments"] = debug_segments
     _save_json(outp, out)
     log(f"[run-gpu] wrote {outp}")
     return outp
@@ -2473,7 +2666,7 @@ def run_pim(
             key = t["key"]
             ops = tuple((x["op"], int(x.get("shard",-1))) for x in t.get("ops", []))
             sig = SegmentSig(device_type="pim", phase=str(t["sig"]["phase"]), step=int(t["sig"]["step"]), ops=ops)
-            sec = backend.benchmark_segment(sig)
+            sec = backend.benchmark_segment(sig, seg_key=str(key), task_meta=t)
             results[key] = float(sec)
             if (i + 1) % 50 == 0 or (i + 1) == len(tasks):
                 print(f"  progress {i+1}/{len(tasks)}")
@@ -2498,6 +2691,8 @@ def run_pim(
         "weight_load_by_schedule": weight_load_by_schedule,
         "results": results,
     }
+    if getattr(cfg, "debug", False) and getattr(backend, "debug_segments", None):
+        out["debug_segments"] = backend.debug_segments
     _save_json(outp, out)
     print(f"[run-pim] wrote {outp}")
     return outp
@@ -2823,6 +3018,17 @@ def merge(
     if non_overlap < 0.0:
         raise ValueError(f"non_overlap must be >=0 (got {non_overlap})")
 
+    # If caller enabled --debug but did not provide --debug-txt, default to <out_csv>.debug.txt
+    if debug and (not debug_txt):
+        try:
+            oc = Path(out_csv).expanduser()
+            if str(oc).lower().endswith(".csv"):
+                debug_txt = str(oc)[:-4] + ".debug.txt"
+            else:
+                debug_txt = str(oc) + ".debug.txt"
+        except Exception:
+            debug_txt = str(out_csv) + ".debug.txt"
+
     # ---------- load benchmark results ----------
     gpu_res: Dict[str, float] = {}
     pim_res: Dict[str, float] = {}
@@ -2830,6 +3036,20 @@ def merge(
 
     gpu_data = _load_json(gpu_results_json)
     pim_data = _load_json(pim_results_json)
+
+    # Optional structured debug payloads from run-gpu/run-pim
+    gpu_dbg_map: Dict[str, Any] = {}
+    pim_dbg_map: Dict[str, Any] = {}
+    try:
+        if isinstance(gpu_data.get("debug_segments"), dict):
+            gpu_dbg_map = gpu_data.get("debug_segments") or {}
+    except Exception:
+        gpu_dbg_map = {}
+    try:
+        if isinstance(pim_data.get("debug_segments"), dict):
+            pim_dbg_map = pim_data.get("debug_segments") or {}
+    except Exception:
+        pim_dbg_map = {}
 
     def _coerce_results(d: Dict[str, Any]) -> Dict[str, float]:
         out: Dict[str, float] = {}
@@ -2947,6 +3167,36 @@ def merge(
             return float(table[k])
         return None
 
+    def _lookup_latency_with_key(
+        dev_type: str,
+        phase: str,
+        step_sample: int,
+        ops: Tuple[Tuple[str, int], ...],
+    ) -> Tuple[Optional[float], Optional[str], Optional[int], str]:
+        """Like _lookup_latency(), but also returns the matched key + matched step.
+
+        Returns: (lat_s, key, step_used, mode)
+          mode in {'tok_step','sample_step','miss','unknown_dev'}
+        """
+        dev = dev_type.strip().lower()
+        if dev == "npu":
+            table = gpu_res
+        elif dev == "pim":
+            table = pim_res
+        else:
+            return (None, None, None, "unknown_dev")
+
+        if phase == "decode" and decode_stride != 1:
+            tok_step = 1 + int(step_sample) * int(decode_stride)
+            k_tok = SegmentSig(device_type=dev, phase=phase, step=int(tok_step), ops=ops).to_key()
+            if k_tok in table:
+                return (float(table[k_tok]), str(k_tok), int(tok_step), "tok_step")
+
+        k = SegmentSig(device_type=dev, phase=phase, step=int(step_sample), ops=ops).to_key()
+        if k in table:
+            return (float(table[k]), str(k), int(step_sample), "sample_step")
+        return (None, None, None, "miss")
+
     def _devicewise_max_sum(g: pd.DataFrame, value_col: str, *, group_cols: List[str], device_col: str = "device",) -> Dict[Tuple[str, int, int], float]:
         """Sum within each device, then take max across devices for each (phase,step,layer)."""
         if g.empty:
@@ -2958,6 +3208,10 @@ def merge(
     # ---------- main loop ----------
     rows_out: List[Dict[str, Any]] = []
     step_rows: List[Dict[str, Any]] = []
+
+    # Optional: debug CSV outputs (segment-level + row-level) emitted when --debug.
+    seg_debug_frames: List[pd.DataFrame] = []
+    row_debug_frames: List[pd.DataFrame] = []
 
     dbg_f = None
     if debug and debug_txt:
@@ -3047,6 +3301,231 @@ def merge(
                     gpu_layer[key] = max(gpu_layer.get(key, 0.0), float(lat))
                 elif dev_type == "pim":
                     pim_layer[key] = max(pim_layer.get(key, 0.0), float(lat))
+
+        # ---------- debug: segment-level and row-level diffs ----------
+        if debug:
+            try:
+                # Segment-level diff: compare schedule's own compute durations (ops.csv) vs measured latency.
+                # Note: schedule durations are for sampled decode steps; we include both raw and scaled (x decode_stride).
+                op_l = df["op"].astype(str).str.strip().str.lower()
+                is_comm = op_l.isin(_COMM_OPS)
+                comp_all = df[~is_comm].copy()
+                comp_all["duration_s"] = pd.to_numeric(comp_all["duration"], errors="coerce").fillna(0.0).astype(float)
+
+                seg_rows: List[Dict[str, Any]] = []
+
+                if use_coarse:
+                    # Rebuild coarse-majority segments with trace sums.
+                    total_shards = int(shards)
+                    comp_np = comp_all[comp_all["device_type"].astype(str).str.lower().isin(["npu", "pim"])].copy()
+                    for (phase, step, layer), g_all in comp_np.groupby(["phase", "step", "layer"], sort=False):
+                        # Group by (node_id, op) to find per-op majority device.
+                        g_all = g_all.sort_values(["start", "_row"], kind="mergesort")
+                        items: List[Tuple[Tuple[Any, Any], pd.DataFrame, int, int]] = []
+                        for (nid, op), gg in g_all.groupby(["node_id", "op"], sort=False):
+                            dtypes = gg["device_type"].astype(str).str.lower().tolist()
+                            npu_ct = sum(1 for x in dtypes if x == "npu")
+                            pim_ct = sum(1 for x in dtypes if x == "pim")
+                            items.append(((nid, op), gg, npu_ct, pim_ct))
+
+                        # Accumulate per pseudo segment.
+                        gpu_ops: List[Tuple[str, int]] = []
+                        pim_ops: List[Tuple[str, int]] = []
+                        gpu_trace_s = 0.0
+                        pim_trace_s = 0.0
+                        for (nid_op, gg, npu_ct, pim_ct) in items:
+                            # Choose by majority: GPU if > half shards, else PIM.
+                            chosen = "npu" if npu_ct > (total_shards / 2.0) else "pim"
+                            gg = gg.sort_values(["start", "_row"], kind="mergesort")
+                            op_name = str(gg["op"].iloc[0]).strip()
+                            # In coarse mode, we attribute the *sum across shards* to the chosen device.
+                            trace_sum = float(pd.to_numeric(gg["duration"], errors="coerce").fillna(0.0).sum())
+                            shard_vals = gg["shard"].tolist()
+                            shard_set = sorted({int(s) for s in shard_vals if pd.notna(s)})
+                            is_sharded = (len(shard_set) >= 2)
+                            if chosen == "npu":
+                                gpu_trace_s += trace_sum
+                                if is_sharded:
+                                    for s in range(total_shards):
+                                        gpu_ops.append((op_name, int(s)))
+                                else:
+                                    gpu_ops.append((op_name, -1))
+                            else:
+                                pim_trace_s += trace_sum
+                                pim_ops.append((op_name, -1))
+
+                        for dev_type, ops, trace_s in (("npu", gpu_ops, gpu_trace_s), ("pim", pim_ops, pim_trace_s)):
+                            if not ops:
+                                continue
+                            ops_t = tuple(ops)
+                            lat_s, lat_key, step_used, mode = _lookup_latency_with_key(dev_type, str(phase), int(step), ops_t)
+                            scale = float(decode_stride) if str(phase) == "decode" else 1.0
+                            seg_rows.append(
+                                {
+                                    "schedule": p.name,
+                                    "phase": str(phase),
+                                    "sample_step": int(step),
+                                    "token_index": int(1 + int(step) * int(decode_stride)) if str(phase) == "decode" else int(step),
+                                    "layer": int(layer),
+                                    "device": "<coarse>",
+                                    "device_type": str(dev_type),
+                                    "n_ops": int(len(ops_t)),
+                                    "ops_repr": SegmentSig(device_type=str(dev_type), phase=str(phase), step=int(step), ops=ops_t).ops_repr(),
+                                    "schedule_sum_s": float(trace_s),
+                                    "measured_s": float(lat_s) if lat_s is not None else None,
+                                    "measured_key": lat_key,
+                                    "measured_step": step_used,
+                                    "measured_mode": mode,
+                                    "schedule_sum_scaled_s": float(trace_s) * scale,
+                                    "measured_scaled_s": float(lat_s) * scale if lat_s is not None else None,
+                                }
+                            )
+                else:
+                    # Fine mode: one segment per (phase,step,layer,device) for npu/pim
+                    comp_np = comp_all[comp_all["device_type"].astype(str).str.lower().isin(["npu", "pim"])].copy()
+                    for (phase, step, layer, device), g in comp_np.groupby(["phase", "step", "layer", "device"], sort=False):
+                        dev_type = str(g["device_type"].iloc[0]).strip().lower()
+                        g = g.sort_values(["start", "_row"], kind="mergesort")
+                        ops: List[Tuple[str, int]] = []
+                        for _, r in g.iterrows():
+                            op = str(r["op"]).strip()
+                            if op.lower() in _COMM_OPS:
+                                continue
+                            ops.append((op, int(r["shard"]) if pd.notna(r["shard"]) else -1))
+                        if not ops:
+                            continue
+                        ops_t = tuple(ops)
+                        trace_s = float(pd.to_numeric(g["duration"], errors="coerce").fillna(0.0).sum())
+                        lat_s, lat_key, step_used, mode = _lookup_latency_with_key(dev_type, str(phase), int(step), ops_t)
+                        scale = float(decode_stride) if str(phase) == "decode" else 1.0
+                        seg_rows.append(
+                            {
+                                "schedule": p.name,
+                                "phase": str(phase),
+                                "sample_step": int(step),
+                                "token_index": int(1 + int(step) * int(decode_stride)) if str(phase) == "decode" else int(step),
+                                "layer": int(layer),
+                                "device": str(device),
+                                "device_type": str(dev_type),
+                                "n_ops": int(len(ops_t)),
+                                "ops_repr": SegmentSig(device_type=str(dev_type), phase=str(phase), step=int(step), ops=ops_t).ops_repr(),
+                                "schedule_sum_s": float(trace_s),
+                                "measured_s": float(lat_s) if lat_s is not None else None,
+                                "measured_key": lat_key,
+                                "measured_step": step_used,
+                                "measured_mode": mode,
+                                "schedule_sum_scaled_s": float(trace_s) * scale,
+                                "measured_scaled_s": float(lat_s) * scale if lat_s is not None else None,
+                            }
+                        )
+
+                if seg_rows:
+                    seg_df = pd.DataFrame(seg_rows)
+                    # Derived deltas/ratios
+                    seg_df["delta_s"] = seg_df["measured_s"] - seg_df["schedule_sum_s"]
+                    seg_df["ratio"] = seg_df["measured_s"] / seg_df["schedule_sum_s"].replace({0.0: np.nan})
+                    seg_df["delta_scaled_s"] = seg_df["measured_scaled_s"] - seg_df["schedule_sum_scaled_s"]
+                    seg_df["ratio_scaled"] = seg_df["measured_scaled_s"] / seg_df["schedule_sum_scaled_s"].replace({0.0: np.nan})
+                    seg_debug_frames.append(seg_df)
+
+                    if dbg_f:
+                        dbg_f.write(f"[DEBUG] {p.name}: segment diff (top 20 by |delta_scaled_s|)\n")
+                        tmp = seg_df.copy()
+                        tmp = tmp[tmp["measured_scaled_s"].notna() & (tmp["schedule_sum_scaled_s"] > 0.0)]
+                        tmp["abs_delta"] = (tmp["delta_scaled_s"]).abs()
+                        tmp = tmp.sort_values(["abs_delta"], ascending=False).head(20)
+
+                        def _summ_ops_breakdown(dev: str, key: Optional[str]) -> str:
+                            if not key:
+                                return ""
+                            m = gpu_dbg_map if str(dev).lower() == "npu" else pim_dbg_map
+                            rec = m.get(str(key)) if isinstance(m, dict) else None
+                            if not isinstance(rec, dict):
+                                return ""
+                            per = rec.get("per_op")
+                            if not isinstance(per, list) or not per:
+                                return ""
+                            agg: Dict[str, float] = {}
+                            for it in per:
+                                try:
+                                    nm = str(it.get("op_norm") or it.get("op") or "?")
+                                    agg[nm] = agg.get(nm, 0.0) + float(it.get("latency_s", 0.0) or 0.0)
+                                except Exception:
+                                    continue
+                            top = sorted(agg.items(), key=lambda kv: kv[1], reverse=True)[:5]
+                            return ", ".join([f"{k}={v*1e3:.2f}ms" for k, v in top])
+
+                        for _, rr in tmp.iterrows():
+                            dbg_f.write(
+                                f"  phase={rr['phase']} step={int(rr['sample_step'])} tok={int(rr['token_index'])} layer={int(rr['layer'])} "
+                                f"dev={rr['device_type']} device={rr['device']} n_ops={int(rr['n_ops'])} "
+                                f"sched={float(rr['schedule_sum_scaled_s']):.6f}s meas={(float(rr['measured_scaled_s']) if pd.notna(rr['measured_scaled_s']) else float('nan')):.6f}s "
+                                f"delta={float(rr['delta_scaled_s']):+.6f}s ratio={float(rr['ratio_scaled'] if pd.notna(rr['ratio_scaled']) else float('nan')):.3f} "
+                                f"mode={rr['measured_mode']}\n"
+                            )
+                            bd = _summ_ops_breakdown(str(rr["device_type"]), rr.get("measured_key"))
+                            if bd:
+                                dbg_f.write(f"    per-op(top5): {bd}\n")
+
+                # Row-level diff (fine only): compare each ops.csv row duration vs merged row duration.
+                if (not use_coarse):
+                    try:
+                        dur_s, missing_row = _build_row_durations_layer_scope(
+                            df,
+                            gpu_res=gpu_res,
+                            pim_res=pim_res,
+                            comm_model=str(comm_model),
+                            pcie_lanes=int(pcie_lanes),
+                            decode_stride=int(decode_stride),
+                            dim=int(dim),
+                            shards=int(shards),
+                            allow_missing=True,
+                        )
+                        raw_s = pd.to_numeric(df["duration"], errors="coerce").fillna(0.0).astype(float)
+                        phase_s = df["phase"].astype(str)
+                        scale = np.where(phase_s == "decode", float(decode_stride), 1.0)
+                        sched_scaled = raw_s.to_numpy(dtype=float) * scale
+                        merged_scaled = np.asarray(dur_s, dtype=float)
+
+                        # _build_row_durations_layer_scope() currently scales decode compute rows but leaves comm rows
+                        # as-is. For comparison against merge totals, scale comm rows too.
+                        op_l2 = df["op"].astype(str).str.strip().str.lower()
+                        is_comm2 = op_l2.isin(_COMM_OPS).to_numpy(dtype=bool)
+                        dec_mask = (phase_s == "decode").to_numpy(dtype=bool)
+                        merged_scaled = merged_scaled.copy()
+                        merged_scaled[dec_mask & is_comm2] *= float(decode_stride)
+
+                        row_df = df.copy()
+                        row_df["schedule"] = p.name
+                        row_df["schedule_duration_s"] = raw_s
+                        row_df["schedule_duration_scaled_s"] = sched_scaled
+                        row_df["merged_duration_scaled_s"] = merged_scaled
+                        row_df["delta_scaled_s"] = row_df["merged_duration_scaled_s"] - row_df["schedule_duration_scaled_s"]
+                        denom = row_df["schedule_duration_scaled_s"].replace({0.0: np.nan})
+                        row_df["ratio_scaled"] = row_df["merged_duration_scaled_s"] / denom
+                        row_df["missing_segments_row_scope"] = int(missing_row)
+                        row_debug_frames.append(row_df)
+
+                        if dbg_f:
+                            dbg_f.write(
+                                f"[DEBUG] {p.name}: row diff (top 20 by |delta_scaled_s|, fine mode only; missing_segments_row_scope={int(missing_row)})\n"
+                            )
+                            tmp2 = row_df.copy()
+                            tmp2["abs_delta"] = tmp2["delta_scaled_s"].abs()
+                            tmp2 = tmp2.sort_values(["abs_delta"], ascending=False).head(20)
+                            for _, rr in tmp2.iterrows():
+                                dbg_f.write(
+                                    f"  phase={rr['phase']} step={int(rr['step'])} layer={int(rr['layer'])} dev={rr['device_type']} device={rr['device']} "
+                                    f"op={str(rr['op']).strip()} shard={int(rr['shard']) if pd.notna(rr['shard']) else -1} "
+                                    f"sched={float(rr['schedule_duration_scaled_s']):.6f}s merged={float(rr['merged_duration_scaled_s']):.6f}s "
+                                    f"delta={float(rr['delta_scaled_s']):+.6f}s ratio={float(rr['ratio_scaled'] if pd.notna(rr['ratio_scaled']) else float('nan')):.3f}\n"
+                                )
+                    except Exception as e:
+                        if dbg_f:
+                            dbg_f.write(f"[DEBUG] {p.name}: row diff skipped due to error: {e}\n")
+            except Exception as e:
+                if dbg_f:
+                    dbg_f.write(f"[DEBUG] {p.name}: segment/row diff generation failed: {e}\n")
 
         # Schedule comm ops (kv_write / allreduce / reduce / scatter / etc)
         op_l = df["op"].astype(str).str.strip().str.lower()
@@ -3196,6 +3675,31 @@ def merge(
 
     if dbg_f:
         dbg_f.close()
+
+    # Write debug CSV outputs (only when --debug)
+    if debug:
+        try:
+            out_base = str(Path(out_csv).expanduser())
+        except Exception:
+            out_base = str(out_csv)
+        if out_base.lower().endswith(".csv"):
+            seg_path = out_base[:-4] + ".seg_debug.csv"
+            row_path = out_base[:-4] + ".row_debug.csv"
+        else:
+            seg_path = out_base + ".seg_debug.csv"
+            row_path = out_base + ".row_debug.csv"
+        try:
+            if seg_debug_frames:
+                os.makedirs(os.path.dirname(seg_path) or ".", exist_ok=True)
+                pd.concat(seg_debug_frames, ignore_index=True).to_csv(seg_path, index=False)
+        except Exception:
+            pass
+        try:
+            if row_debug_frames:
+                os.makedirs(os.path.dirname(row_path) or ".", exist_ok=True)
+                pd.concat(row_debug_frames, ignore_index=True).to_csv(row_path, index=False)
+        except Exception:
+            pass
 
     os.makedirs(os.path.dirname(out_csv) or ".", exist_ok=True)
     pd.DataFrame(rows_out).to_csv(out_csv, index=False)

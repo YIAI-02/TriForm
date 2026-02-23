@@ -4,8 +4,9 @@
 # Render one graph to SVG (default):
 python visualize_task_graph.py -i ./output/graph_dumps/*_full.json
 
+
 # Render multiple graphs to a directory, output PNG:
-python visualize_task_graph.py -i ../algorithms/output/evaluate_single_test/hardware_config_scale_down_12pima/graph_dumps/llama_7b_B1_S4096_T1024_int8_1770879232535227374_full.json -o ./viz --format png
+python visualize_task_graph.py -i ../algorithms/output/evaluate_single_test/hardware_1gpu/graph_dumps/llama_7b_B1_S1024_T1024_fp16_1771723688413999095_full.json -o ./viz --format png
 """
 
 from __future__ import annotations

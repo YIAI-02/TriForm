@@ -70,6 +70,9 @@ PIM_RAMULATOR_CONFIG=${PIM_RAMULATOR_CONFIG:-"$REPO_ROOT/algorithms/aim_simulato
 PIM_HW_JSON=${PIM_HW_JSON:-"$REPO_ROOT/algorithms/aim_simulator/PIM_AiM.json"}
 PIM_RAMULATOR_BIN=${PIM_RAMULATOR_BIN:-"$REPO_ROOT/algorithms/ramulator2"}
 PIM_NUM_DEVICES=${PIM_NUM_DEVICES:-4}
+# run-pim debug (optional)
+PIM_DEBUG=${PIM_DEBUG:-1}       # 1 to enable verbose per-op debug logging
+PIM_NO_CACHE=${PIM_NO_CACHE:-1} # 1 to disable CostModel PIM cache (forces ramulator per-op)
 
 # merge args
 COMM_MODEL=${COMM_MODEL:-schedule}
@@ -437,8 +440,9 @@ while IFS=$'\t,' read -r schedule_csv comms_csv prefix out_dir prefill_len decod
       pim_ok="$out_dir/$prefix_combo.pim.ok"
 
       gpu_debug_txt="$out_dir/$prefix_combo.gpu_debug.log"
+      pim_debug_txt="$out_dir/$prefix_combo.pim_debug.log"
       
-      rm -f "$gpu_ok" "$pim_ok" "$gpu_res" "$pim_res" "$merge_csv" "$debug_txt" "$steps_csv" "$gpu_debug_txt"
+      rm -f "$gpu_ok" "$pim_ok" "$gpu_res" "$pim_res" "$merge_csv" "$debug_txt" "$steps_csv" "$gpu_debug_txt" "$pim_debug_txt"
 
       if [[ ! -f "$gpu_tasks" ]]; then
         echo "  [combo] ERROR: missing $gpu_tasks" >&2
@@ -466,7 +470,7 @@ while IFS=$'\t,' read -r schedule_csv comms_csv prefix out_dir prefill_len decod
         -J "pim_${prefix_combo}" \
         --chdir="$job_chdir" \
         -o "$pim_log_dir/%x.%j.out" -e "$pim_log_dir/%x.%j.err" \
-        --export=ALL,LOG_DIR="$pim_log_dir",OUT_DIR="$out_dir",PREFIX="$prefix_combo",PY_SCRIPT="$PY_ABS",TASKS_JSON="$pim_tasks",OUT_JSON="$pim_res",CENT_SIM_ROOT="$CENT_SIM_ROOT_ABS",PIM_RAMULATOR_CONFIG="$PIM_RAMULATOR_CONFIG_ABS",PIM_HW_JSON="$PIM_HW_JSON_ABS",PIM_RAMULATOR_BIN="$PIM_RAMULATOR_BIN_ABS",PIM_NUM_DEVICES="$PIM_NUM_DEVICES",OK_FILE="$pim_ok" \
+        --export=ALL,LOG_DIR="$pim_log_dir",OUT_DIR="$out_dir",PREFIX="$prefix_combo",PY_SCRIPT="$PY_ABS",TASKS_JSON="$pim_tasks",OUT_JSON="$pim_res",CENT_SIM_ROOT="$CENT_SIM_ROOT_ABS",PIM_RAMULATOR_CONFIG="$PIM_RAMULATOR_CONFIG_ABS",PIM_HW_JSON="$PIM_HW_JSON_ABS",PIM_RAMULATOR_BIN="$PIM_RAMULATOR_BIN_ABS",PIM_NUM_DEVICES="$PIM_NUM_DEVICES",OK_FILE="$pim_ok",PIM_DEBUG="$PIM_DEBUG",PIM_DEBUG_TXT="$pim_debug_txt",PIM_NO_CACHE="$PIM_NO_CACHE" \
         "$PIM_SLURM_ABS")
 
       echo "  [combo] submitted run-pim: jobid=$jid_pim" >&2
