@@ -32,7 +32,7 @@ MERGE_SLURM=${4:-"$SCRIPT_DIR/run_merge_param.slurm"}
 PY_SCRIPT=${PY_SCRIPT:-"$REPO_ROOT/verify/schedule_deploy_verify.py"}
 OUT_ROOT=${OUT_ROOT:-"$REPO_ROOT/verify/out"}
 SEGMENT_SCOPE=${SEGMENT_SCOPE:-layer}
-SHARD_POLICY=${SHARD_POLICY:-fine}  # fine | coarse_majority
+SHARD_POLICY=${SHARD_POLICY:-coarse_majority}  # fine | coarse_majority
 
 LOG_ROOT=${LOG_ROOT:-""}
 GPU_LOG_DIR=${GPU_LOG_DIR:-""}
@@ -50,9 +50,9 @@ DEFAULT_DECODE_STRIDE=${DEFAULT_DECODE_STRIDE:-128}
 # Multi-value expansion (used only when TSV column is empty)
 PREFILL_LENS=${PREFILL_LENS:-"4096"}
 DECODE_STRIDES=${DECODE_STRIDES:-"128"}      
-NON_OVERLAP=${NON_OVERLAP:-1}      
+NON_OVERLAP=${NON_OVERLAP:-0.2}      
 
-KV_LOAD_BW_GBS=${KV_LOAD_BW_GBS:-"2048"}
+KV_LOAD_BW_GBS=${KV_LOAD_BW_GBS:-"16384"}
 KV_DTYPE_BYTES=${KV_DTYPE_BYTES:-2}         # fp16/bf16=2, int8=1
 KV_LOAD_OVERHEAD_US=${KV_LOAD_OVERHEAD_US:-0}
 N_KV_HEADS=${N_KV_HEADS:-""}                # GQA/MQA 用；空表示用 n_heads

@@ -483,6 +483,27 @@ class PimTraceBackend(PimBackendBase):
         if traceable:
             try:
                 model_dict = cm.get_model_dict()
+
+                # --- Shard-aware dims (TP) ---
+                attrs = (ctx.attrs or {}) if isinstance(ctx.attrs, dict) else {}
+                hd = int(attrs.get('head_dim', 0) or 0)
+                q_dim = int(attrs.get('q_dim', 0) or 0)
+                kv_dim = int(attrs.get('kv_dim', 0) or 0)
+                o_dim = int(attrs.get('o_dim', 0) or 0)
+
+                if hd <= 0:
+                    try:
+                        hd = int(int(ctx.dim) // max(1, int(ctx.n_heads)))
+                    except Exception:
+                        hd = 0
+                if q_dim <= 0 and hd > 0:
+                    q_dim = int(max(1, int(ctx.n_heads)) * int(hd))
+                if kv_dim <= 0 and hd > 0:
+                    kv_dim = int(max(1, int(ctx.n_kv_heads)) * int(hd))
+                if o_dim <= 0:
+                    # Attention output (pre-WO) is typically q_dim.
+                    o_dim = int(q_dim) if q_dim > 0 else 0
+
                 compute_time = float(
                     _get_pim_latency_via_trace(
                         op=str(op_norm),
@@ -496,6 +517,10 @@ class PimTraceBackend(PimBackendBase):
                         phase=str(ctx.phase),
                         model_dict=model_dict,
                         use_cache=bool(cm.pim_cache_enabled),
+                        head_dim=int(hd) if int(hd) > 0 else None,
+                        q_dim=int(q_dim) if int(q_dim) > 0 else None,
+                        kv_dim=int(kv_dim) if int(kv_dim) > 0 else None,
+                        o_dim=int(o_dim) if int(o_dim) > 0 else None,
                     )
                 )
                 return float(compute_time)

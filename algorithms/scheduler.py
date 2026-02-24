@@ -531,15 +531,13 @@ class SchedulerBase:
 
         # ---- 2) KV locality restriction (multi-PIM KV placement) ----
         if kv_place == 'pim':
-            kv_local_ops = {
-                "K", "V",
-                "QK", "SOFTMAX", "SV",
-            }
+            kv_local_ops = {"K","V","QK","SOFTMAX","SV"}
             if name_up in kv_local_ops and dev_type == "pim":
                 mapped = self._kv_pim_for_node(node)
                 if mapped is None:
                     return False
-                return dev_name == str(getattr(mapped, "name", ""))
+                if dev_name != str(getattr(mapped, "name", "")):
+                    return False
             
 
         # ---- 3) operator-level allow-list ----

@@ -601,94 +601,22 @@ def add_llama_block(
     g.add_edge(nid_Add1, nid_Add2)
 
 
-def add_mpt_block(g: TaskGraph, l: int, shape: ModelShape, dtype_bytes: int):
-    """MPT style: attention + GELU MLP (NO head-splitting)."""
+def add_mpt_block(
+    g: TaskGraph,
+    l: int,
+    shape: ModelShape,
+    dtype_bytes: int,
+    cfg: Optional[Dict] = None,
+):
+    """MPT style: attention + GELU MLP.
 
-    b = int(shape.batch)
-    dim, ffn = int(shape.dim), int(shape.ffn_dim)
-    qh, kvh, hd = int(shape.n_heads), int(shape.n_kv_heads), int(shape.head_dim)
-    q_dim, kv_dim, o_in_dim = int(qh * hd), int(kvh * hd), int(qh * hd)
-
-    base_attr = {
-        "layer": int(l),
-        "batch": int(b),
-        "dim": int(dim),
-        "ffn_dim": int(ffn),
-        "q_heads": int(qh),
-        "kv_heads": int(kvh),
-        "n_heads": int(qh),
-        "n_kv_heads": int(kvh),
-        "head_dim": int(hd),
-        "q_dim": int(q_dim),
-        "kv_dim": int(kv_dim),
-        "o_dim": int(o_in_dim),
-    }
-
-    nid_LN1 = f"L{l}_LN1"
-    g.add_node(TaskNode(nid_LN1, "LN", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("LN")))
-    if l > 0:
-        g.add_edge(f"L{l-1}_Add2", nid_LN1)
-
-    nid_Add1 = f"L{l}_Add1"
-    g.add_node(TaskNode(nid_Add1, "Add", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("Add")))
-    x_in = f"L{l-1}_Add2" if l > 0 else None
-
-    _add_attention_llama_style_unsplit(
-        g,
-        l=l,
-        shape=shape,
-        dtype_bytes=int(dtype_bytes),
-        base_attr=base_attr,
-        ln_nid=nid_LN1,
-        x_in=x_in,
-        add1_nid=nid_Add1,
-    )
-
-    # LN2 + GELU MLP
-    nid_LN2 = f"L{l}_LN2"
-    nid_W1 = f"L{l}_FFN_W1"
-    nid_G = f"L{l}_GELU"
-    nid_W2 = f"L{l}_FFN_W2"
-    nid_Add2 = f"L{l}_Add2"
-
-    g.add_node(TaskNode(nid_LN2, "LN", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("LN")))
-    g.add_node(
-        TaskNode(
-            nid_W1,
-            "FFN_W1",
-            flops=0.0,
-            weight_id=f"L{l}_W1",
-            weight_size=int(dim * ffn * dtype_bytes),
-            attrs=dict(base_attr),
-            allowed=get_op_allowed("FFN_W1"),
-        )
-    )
-    g.add_node(TaskNode(nid_G, "GELU", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("GELU")))
-    g.add_node(
-        TaskNode(
-            nid_W2,
-            "FFN_W2",
-            flops=0.0,
-            weight_id=f"L{l}_W2",
-            weight_size=int(ffn * dim * dtype_bytes),
-            attrs=dict(base_attr),
-            allowed=get_op_allowed("FFN_W2"),
-        )
-    )
-    g.add_node(TaskNode(nid_Add2, "Add", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("Add")))
-
-    g.add_edge(nid_Add1, nid_LN2)
-    g.add_edge(nid_LN2, nid_W1)
-    g.add_edge(nid_W1, nid_G)
-    g.add_edge(nid_G, nid_W2)
-    g.add_edge(nid_W2, nid_Add2)
-    g.add_edge(nid_Add1, nid_Add2)
-
-
-def add_palm_block(g: TaskGraph, l: int, shape: ModelShape, dtype_bytes: int):
-    """PaLM uses pre-LN and PARALLEL residual: x + Attn(LN(x)) + MLP(LN(x)).
-
-    NO tensor-parallel / NO head-splitting.
+    Sharding rules:
+    - Attention:
+        * Q/K/V are column-parallel (head-group shards) when tp_qkv_effective > 1.
+        * WO is row-parallel => topology-dependent collective (ALLREDUCE vs REDUCE+SCATTER).
+    - MLP:
+        * W1 is column-parallel on ffn_dim when tp_ffn_effective > 1.
+        * W2 is row-parallel => topology-dependent collective.
     """
 
     b = int(shape.batch)
@@ -711,6 +639,176 @@ def add_palm_block(g: TaskGraph, l: int, shape: ModelShape, dtype_bytes: int):
         "o_dim": int(o_in_dim),
     }
 
+    tp_qkv = int((cfg or {}).get('tp_qkv_effective', 1) or 1)
+    tp_ffn = int((cfg or {}).get('tp_ffn_effective', 1) or 1)
+
+    nid_LN1 = f"L{l}_LN1"
+    g.add_node(TaskNode(nid_LN1, "LN", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("LN")))
+    if l > 0:
+        g.add_edge(f"L{l-1}_Add2", nid_LN1)
+
+    nid_Add1 = f"L{l}_Add1"
+    g.add_node(TaskNode(nid_Add1, "Add", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("Add")))
+    x_in = f"L{l-1}_Add2" if l > 0 else None
+
+    if tp_qkv > 1:
+        _add_attention_llama_style_tp(
+            g,
+            l=l,
+            shape=shape,
+            dtype_bytes=int(dtype_bytes),
+            base_attr=base_attr,
+            ln_nid=nid_LN1,
+            x_in=x_in,
+            add1_nid=nid_Add1,
+            tp_qkv=int(tp_qkv),
+            cfg=cfg,
+        )
+    else:
+        _add_attention_llama_style_unsplit(
+            g,
+            l=l,
+            shape=shape,
+            dtype_bytes=int(dtype_bytes),
+            base_attr=base_attr,
+            ln_nid=nid_LN1,
+            x_in=x_in,
+            add1_nid=nid_Add1,
+        )
+
+    # LN2 + GELU MLP
+    nid_LN2 = f"L{l}_LN2"
+    nid_W1 = f"L{l}_FFN_W1"
+    nid_G = f"L{l}_GELU"
+    nid_W2 = f"L{l}_FFN_W2"
+    nid_Add2 = f"L{l}_Add2"
+
+    g.add_node(TaskNode(nid_LN2, "LN", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("LN")))
+    g.add_node(TaskNode(nid_Add2, "Add", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("Add")))
+
+    g.add_edge(nid_Add1, nid_LN2)
+
+    if tp_ffn > 1:
+        ffn_sh = int(ffn // tp_ffn)
+        w2_shards: List[str] = []
+
+        for si in range(int(tp_ffn)):
+            sh_attr = dict(base_attr)
+            sh_attr.update({"ffn_dim": int(ffn_sh), "tp_ffn": int(tp_ffn), "ffn_shard": int(si)})
+
+            nid_W1_s = f"L{l}_FFN_W1_s{si}"
+            nid_G_s = f"L{l}_GELU_s{si}"
+            nid_W2_s = f"L{l}_FFN_W2_s{si}"
+
+            g.add_node(
+                TaskNode(
+                    nid_W1_s,
+                    "FFN_W1",
+                    flops=0.0,
+                    weight_id=f"L{l}_W1_s{si}",
+                    weight_size=int(dim * ffn_sh * dtype_bytes),
+                    attrs=dict(sh_attr),
+                    allowed=get_op_allowed("FFN_W1"),
+                )
+            )
+            g.add_node(TaskNode(nid_G_s, "GELU", flops=0.0, attrs=dict(sh_attr), allowed=get_op_allowed("GELU")))
+            g.add_node(
+                TaskNode(
+                    nid_W2_s,
+                    "FFN_W2",
+                    flops=0.0,
+                    weight_id=f"L{l}_W2_s{si}",
+                    # FFN_W2 is row-parallel: shard rows of the ffn_dim.
+                    weight_size=int(ffn_sh * dim * dtype_bytes),
+                    attrs=dict(sh_attr),
+                    allowed=get_op_allowed("FFN_W2"),
+                )
+            )
+
+            g.add_edge(nid_LN2, nid_W1_s)
+            g.add_edge(nid_W1_s, nid_G_s)
+            g.add_edge(nid_G_s, nid_W2_s)
+            w2_shards.append(nid_W2_s)
+
+        nid_COL = _insert_row_parallel_collective(
+            g,
+            l=l,
+            tag='FFN',
+            base_attr=base_attr,
+            inputs=w2_shards,
+            cfg=cfg,
+        )
+        g.add_edge(nid_COL, nid_Add2)
+    else:
+        g.add_node(
+            TaskNode(
+                nid_W1,
+                "FFN_W1",
+                flops=0.0,
+                weight_id=f"L{l}_W1",
+                weight_size=int(dim * ffn * dtype_bytes),
+                attrs=dict(base_attr),
+                allowed=get_op_allowed("FFN_W1"),
+            )
+        )
+        g.add_node(TaskNode(nid_G, "GELU", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("GELU")))
+        g.add_node(
+            TaskNode(
+                nid_W2,
+                "FFN_W2",
+                flops=0.0,
+                weight_id=f"L{l}_W2",
+                weight_size=int(ffn * dim * dtype_bytes),
+                attrs=dict(base_attr),
+                allowed=get_op_allowed("FFN_W2"),
+            )
+        )
+
+        g.add_edge(nid_LN2, nid_W1)
+        g.add_edge(nid_W1, nid_G)
+        g.add_edge(nid_G, nid_W2)
+        g.add_edge(nid_W2, nid_Add2)
+
+    g.add_edge(nid_Add1, nid_Add2)
+
+
+def add_palm_block(
+    g: TaskGraph,
+    l: int,
+    shape: ModelShape,
+    dtype_bytes: int,
+    cfg: Optional[Dict] = None,
+):
+    """PaLM uses pre-LN and PARALLEL residual: x + Attn(LN(x)) + MLP(LN(x)).
+
+    Sharding rules:
+    - Attention: tp_qkv_effective (head-parallel) with topology-dependent WO collective.
+    - MLP: tp_ffn_effective (W1 column-parallel, W2 row-parallel) with topology-dependent collective.
+    """
+
+    b = int(shape.batch)
+    dim, ffn = int(shape.dim), int(shape.ffn_dim)
+    qh, kvh, hd = int(shape.n_heads), int(shape.n_kv_heads), int(shape.head_dim)
+    q_dim, kv_dim, o_in_dim = int(qh * hd), int(kvh * hd), int(qh * hd)
+
+    base_attr = {
+        "layer": int(l),
+        "batch": int(b),
+        "dim": int(dim),
+        "ffn_dim": int(ffn),
+        "q_heads": int(qh),
+        "kv_heads": int(kvh),
+        "n_heads": int(qh),
+        "n_kv_heads": int(kvh),
+        "head_dim": int(hd),
+        "q_dim": int(q_dim),
+        "kv_dim": int(kv_dim),
+        "o_dim": int(o_in_dim),
+    }
+
+    tp_qkv = int((cfg or {}).get('tp_qkv_effective', 1) or 1)
+    tp_ffn = int((cfg or {}).get('tp_ffn_effective', 1) or 1)
+
     nid_LN = f"L{l}_LN"
     g.add_node(TaskNode(nid_LN, "LN", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("LN")))
     if l > 0:
@@ -721,52 +819,118 @@ def add_palm_block(g: TaskGraph, l: int, shape: ModelShape, dtype_bytes: int):
     nid_Add_Attn = f"L{l}_Add_attn"
     g.add_node(TaskNode(nid_Add_Attn, "Add", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("Add")))
 
-    _add_attention_llama_style_unsplit(
-        g,
-        l=l,
-        shape=shape,
-        dtype_bytes=int(dtype_bytes),
-        base_attr=base_attr,
-        ln_nid=nid_LN,
-        x_in=x_in,
-        add1_nid=nid_Add_Attn,
-    )
+    if tp_qkv > 1:
+        _add_attention_llama_style_tp(
+            g,
+            l=l,
+            shape=shape,
+            dtype_bytes=int(dtype_bytes),
+            base_attr=base_attr,
+            ln_nid=nid_LN,
+            x_in=x_in,
+            add1_nid=nid_Add_Attn,
+            tp_qkv=int(tp_qkv),
+            cfg=cfg,
+        )
+    else:
+        _add_attention_llama_style_unsplit(
+            g,
+            l=l,
+            shape=shape,
+            dtype_bytes=int(dtype_bytes),
+            base_attr=base_attr,
+            ln_nid=nid_LN,
+            x_in=x_in,
+            add1_nid=nid_Add_Attn,
+        )
 
-    # MLP branch (unsplit) reading from the same LN
+    # MLP branch reading from the same LN
     nid_W1 = f"L{l}_FFN_W1"
     nid_ACT = f"L{l}_GELU"
     nid_W2 = f"L{l}_FFN_W2"
-    g.add_node(
-        TaskNode(
-            nid_W1,
-            "FFN_W1",
-            flops=0.0,
-            weight_id=f"L{l}_W1",
-            weight_size=int(dim * ffn * dtype_bytes),
-            attrs=dict(base_attr),
-            allowed=get_op_allowed("FFN_W1"),
+
+    if tp_ffn > 1:
+        ffn_sh = int(ffn // tp_ffn)
+        w2_shards: List[str] = []
+        for si in range(int(tp_ffn)):
+            sh_attr = dict(base_attr)
+            sh_attr.update({"ffn_dim": int(ffn_sh), "tp_ffn": int(tp_ffn), "ffn_shard": int(si)})
+
+            nid_W1_s = f"L{l}_FFN_W1_s{si}"
+            nid_ACT_s = f"L{l}_GELU_s{si}"
+            nid_W2_s = f"L{l}_FFN_W2_s{si}"
+
+            g.add_node(
+                TaskNode(
+                    nid_W1_s,
+                    "FFN_W1",
+                    flops=0.0,
+                    weight_id=f"L{l}_W1_s{si}",
+                    weight_size=int(dim * ffn_sh * dtype_bytes),
+                    attrs=dict(sh_attr),
+                    allowed=get_op_allowed("FFN_W1"),
+                )
+            )
+            g.add_node(TaskNode(nid_ACT_s, "GELU", flops=0.0, attrs=dict(sh_attr), allowed=get_op_allowed("GELU")))
+            g.add_node(
+                TaskNode(
+                    nid_W2_s,
+                    "FFN_W2",
+                    flops=0.0,
+                    weight_id=f"L{l}_W2_s{si}",
+                    weight_size=int(ffn_sh * dim * dtype_bytes),
+                    attrs=dict(sh_attr),
+                    allowed=get_op_allowed("FFN_W2"),
+                )
+            )
+
+            g.add_edge(nid_LN, nid_W1_s)
+            g.add_edge(nid_W1_s, nid_ACT_s)
+            g.add_edge(nid_ACT_s, nid_W2_s)
+            w2_shards.append(nid_W2_s)
+
+        nid_COL = _insert_row_parallel_collective(
+            g,
+            l=l,
+            tag='FFN',
+            base_attr=base_attr,
+            inputs=w2_shards,
+            cfg=cfg,
         )
-    )
-    g.add_node(TaskNode(nid_ACT, "GELU", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("GELU")))
-    g.add_node(
-        TaskNode(
-            nid_W2,
-            "FFN_W2",
-            flops=0.0,
-            weight_id=f"L{l}_W2",
-            weight_size=int(ffn * dim * dtype_bytes),
-            attrs=dict(base_attr),
-            allowed=get_op_allowed("FFN_W2"),
+        nid_MLP_OUT = nid_COL
+    else:
+        g.add_node(
+            TaskNode(
+                nid_W1,
+                "FFN_W1",
+                flops=0.0,
+                weight_id=f"L{l}_W1",
+                weight_size=int(dim * ffn * dtype_bytes),
+                attrs=dict(base_attr),
+                allowed=get_op_allowed("FFN_W1"),
+            )
         )
-    )
-    g.add_edge(nid_LN, nid_W1)
-    g.add_edge(nid_W1, nid_ACT)
-    g.add_edge(nid_ACT, nid_W2)
+        g.add_node(TaskNode(nid_ACT, "GELU", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("GELU")))
+        g.add_node(
+            TaskNode(
+                nid_W2,
+                "FFN_W2",
+                flops=0.0,
+                weight_id=f"L{l}_W2",
+                weight_size=int(ffn * dim * dtype_bytes),
+                attrs=dict(base_attr),
+                allowed=get_op_allowed("FFN_W2"),
+            )
+        )
+        g.add_edge(nid_LN, nid_W1)
+        g.add_edge(nid_W1, nid_ACT)
+        g.add_edge(nid_ACT, nid_W2)
+        nid_MLP_OUT = nid_W2
 
     nid_Add2 = f"L{l}_Add2"
     g.add_node(TaskNode(nid_Add2, "Add", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("Add")))
     g.add_edge(nid_Add_Attn, nid_Add2)
-    g.add_edge(nid_W2, nid_Add2)
+    g.add_edge(nid_MLP_OUT, nid_Add2)
 
 
 # =============================================================================
@@ -789,7 +953,7 @@ class MPTDef:
     def build(self, shape: ModelShape, dtype_bytes: int, cfg: Optional[Dict] = None) -> TaskGraph:
         g = TaskGraph()
         for l in range(int(shape.layer_num)):
-            add_mpt_block(g, l, shape, int(dtype_bytes))
+            add_mpt_block(g, l, shape, int(dtype_bytes), cfg=cfg)
         return g
 
 
@@ -799,7 +963,7 @@ class PaLMDef:
     def build(self, shape: ModelShape, dtype_bytes: int, cfg: Optional[Dict] = None) -> TaskGraph:
         g = TaskGraph()
         for l in range(int(shape.layer_num)):
-            add_palm_block(g, l, shape, int(dtype_bytes))
+            add_palm_block(g, l, shape, int(dtype_bytes), cfg=cfg)
         return g
 
 
@@ -826,7 +990,6 @@ class MixtralDef:
         return max(1, min(int(total), int(math.ceil(float(baseline) * guard))))
 
     def build(self, shape: ModelShape, dtype_bytes: int, cfg: Optional[Dict] = None) -> TaskGraph:
-        """Mixtral MoE (NO head-splitting)."""
         g = TaskGraph()
 
         experts = int(getattr(shape, "experts_per_layer", 1) or 1)
@@ -842,6 +1005,11 @@ class MixtralDef:
         dim, ffn = int(shape.dim), int(shape.ffn_dim)
         qh, kvh, hd = int(shape.n_heads), int(shape.n_kv_heads), int(shape.head_dim)
         q_dim, kv_dim, o_in_dim = int(qh * hd), int(kvh * hd), int(qh * hd)
+
+        tp_qkv = int((cfg or {}).get('tp_qkv_effective', 1) or 1)
+        # For MoE, prefer an explicit tp_moe_effective; otherwise reuse tp_ffn_effective.
+        tp_moe = int((cfg or {}).get('tp_moe_effective', (cfg or {}).get('tp_ffn_effective', 1) or 1) or 1)
+        tp_moe = max(1, int(tp_moe))
 
         for l in range(int(shape.layer_num)):
             base_attr = {
@@ -860,41 +1028,57 @@ class MixtralDef:
                 "experts": int(experts),
                 "top_k": int(top_k),
                 "moe_imbalance_factor": float(moe_imbalance),
+                "tp_qkv": int(tp_qkv),
+                "tp_moe": int(tp_moe),
             }
 
             # Attention part (LLaMA-style, LN1 here)
             nid_LN1 = f"L{l}_LN1"
             g.add_node(TaskNode(nid_LN1, "LN", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("LN")))
             if l > 0:
-                g.add_edge(f"L{l-1}_K_write", nid_LN1)
-                g.add_edge(f"L{l-1}_V_write", nid_LN1)
+                g.add_edge(f"L{l-1}_Add2", nid_LN1)
 
             nid_Add1 = f"L{l}_Add1"
             g.add_node(TaskNode(nid_Add1, "Add", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("Add")))
             x_in = f"L{l-1}_Add2" if l > 0 else None
 
-            _add_attention_llama_style_unsplit(
-                g,
-                l=l,
-                shape=shape,
-                dtype_bytes=int(dtype_bytes),
-                base_attr=base_attr,
-                ln_nid=nid_LN1,
-                x_in=x_in,
-                add1_nid=nid_Add1,
-            )
+            if tp_qkv > 1:
+                _add_attention_llama_style_tp(
+                    g,
+                    l=l,
+                    shape=shape,
+                    dtype_bytes=int(dtype_bytes),
+                    base_attr=base_attr,
+                    ln_nid=nid_LN1,
+                    x_in=x_in,
+                    add1_nid=nid_Add1,
+                    tp_qkv=int(tp_qkv),
+                    cfg=cfg,
+                )
+            else:
+                _add_attention_llama_style_unsplit(
+                    g,
+                    l=l,
+                    shape=shape,
+                    dtype_bytes=int(dtype_bytes),
+                    base_attr=base_attr,
+                    ln_nid=nid_LN1,
+                    x_in=x_in,
+                    add1_nid=nid_Add1,
+                )
 
             # LN2
             nid_LN2 = f"L{l}_LN2"
             g.add_node(TaskNode(nid_LN2, "LN", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("LN")))
             g.add_edge(nid_Add1, nid_LN2)
 
-            # Experts (unsplit weights). Router is not explicitly modeled here; we just add active experts.
             expert_outputs: List[str] = []
             for e in range(int(active_experts)):
+                expert_shard = int(e % tp_moe) if tp_moe > 0 else 0
                 expert_attr = {
                     **base_attr,
                     "expert": int(e),
+                    "expert_shard": int(expert_shard),
                     "experts": int(experts),
                     "active_experts": int(active_experts),
                     "top_k": int(top_k),
@@ -948,28 +1132,76 @@ class MixtralDef:
 
                 expert_outputs.append(nid_W2)
 
-            # Router (combine expert outputs; modeled as a single op)
-            nid_router = f"L{l}_Router"
-            g.add_node(
-                TaskNode(
-                    nid_router,
-                    "MoE_Router",
-                    flops=0.0,
-                    attrs={
-                        **base_attr,
-                        "experts": int(experts),
-                        "active_experts": int(active_experts),
-                        "top_k": int(top_k),
-                        "moe_imbalance": float(moe_imbalance),
-                    },
-                    allowed=get_op_allowed("MoE_Router"),
-                )
-            )
-            g.add_edge(nid_LN2, nid_router)
-            for out in expert_outputs:
-                g.add_edge(out, nid_router)
+            # Routers: if tp_moe>1, we build one router per expert shard (partial combine), then a
+            # topology-dependent collective to get the final MoE output.
+            if tp_moe > 1:
+                router_outputs: List[str] = []
 
-            nid_MLP_OUT = nid_router
+                for si in range(int(tp_moe)):
+                    # Collect experts owned by this shard.
+                    local_expert_outs = [
+                        out for e, out in enumerate(expert_outputs) if int(e % tp_moe) == int(si)
+                    ]
+                    if not local_expert_outs:
+                        continue
+
+                    nid_router_s = f"L{l}_Router_s{si}"
+                    g.add_node(
+                        TaskNode(
+                            nid_router_s,
+                            "MoE_Router",
+                            flops=0.0,
+                            attrs={
+                                **base_attr,
+                                "experts": int(experts),
+                                "active_experts": int(active_experts),
+                                "top_k": int(top_k),
+                                "moe_imbalance": float(moe_imbalance),
+                                "tp_moe": int(tp_moe),
+                                "moe_shard": int(si),
+                            },
+                            allowed=get_op_allowed("MoE_Router"),
+                        )
+                    )
+                    g.add_edge(nid_LN2, nid_router_s)
+                    for out in local_expert_outs:
+                        g.add_edge(out, nid_router_s)
+                    router_outputs.append(nid_router_s)
+
+                if len(router_outputs) == 1:
+                    nid_MLP_OUT = router_outputs[0]
+                else:
+                    nid_MLP_OUT = _insert_row_parallel_collective(
+                        g,
+                        l=l,
+                        tag='MoE',
+                        base_attr=base_attr,
+                        inputs=router_outputs,
+                        cfg=cfg,
+                    )
+            else:
+                nid_router = f"L{l}_Router"
+                g.add_node(
+                    TaskNode(
+                        nid_router,
+                        "MoE_Router",
+                        flops=0.0,
+                        attrs={
+                            **base_attr,
+                            "experts": int(experts),
+                            "active_experts": int(active_experts),
+                            "top_k": int(top_k),
+                            "moe_imbalance": float(moe_imbalance),
+                            "tp_moe": int(tp_moe),
+                        },
+                        allowed=get_op_allowed("MoE_Router"),
+                    )
+                )
+                g.add_edge(nid_LN2, nid_router)
+                for out in expert_outputs:
+                    g.add_edge(out, nid_router)
+
+                nid_MLP_OUT = nid_router
 
             # Residual Add2
             nid_Add2 = f"L{l}_Add2"

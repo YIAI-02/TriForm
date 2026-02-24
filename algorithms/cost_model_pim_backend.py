@@ -290,22 +290,49 @@ def _emit_single_op_trace(
     n_kv_heads: int,
     ffn_dim: int,
     seqlens: Optional[List[int]],
+    *,
+    head_dim: Optional[int] = None,
+    q_dim: Optional[int] = None,
+    kv_dim: Optional[int] = None,
+    o_dim: Optional[int] = None,
 ) -> None:
 
     channel_lst, FC_total_banks, channels_required = _calc_channels(block)
-    head_dim = dim // max(1, n_heads)
+    hd = int(head_dim) if (head_dim is not None and int(head_dim) > 0) else int(dim // max(1, int(n_heads)))
+    q_dim_eff = int(q_dim) if (q_dim is not None and int(q_dim) > 0) else int(max(1, int(n_heads)) * max(1, int(hd)))
+    kv_dim_eff = int(kv_dim) if (kv_dim is not None and int(kv_dim) > 0) else int(max(1, int(n_kv_heads)) * max(1, int(hd)))
+    o_dim_eff = int(o_dim) if (o_dim is not None and int(o_dim) > 0) else int(q_dim_eff)
+
+    @contextlib.contextmanager
+    def _temp_block_attrs(**updates):
+        old: Dict[str, Any] = {}
+        for k, v in updates.items():
+            if hasattr(block, k):
+                try:
+                    old[k] = getattr(block, k)
+                    setattr(block, k, v)
+                except Exception:
+                    pass
+        try:
+            yield
+        finally:
+            for k, v in old.items():
+                try:
+                    setattr(block, k, v)
+                except Exception:
+                    pass
     if op in ('q_proj', 'k_proj', 'v_proj', 'wo_proj', 'ffn_up', 'ffn_gate', 'ffn_down'):
         if op == 'q_proj':
-            row_tag, V, N = ('wq_row_index', dim, dim)
+            row_tag, V, N = ('wq_row_index', int(dim), int(q_dim_eff))
             block.Vector_Matrix_Mul_weight_pim_only_trace(channel_lst, getattr(block, row_tag), V, N, FC_total_banks, 'breakdown_sa_weight')
         elif op == 'k_proj':
-            row_tag, V, N = ('wk_row_index', dim, n_kv_heads * head_dim)
+            row_tag, V, N = ('wk_row_index', int(dim), int(kv_dim_eff))
             block.Vector_Matrix_Mul_weight_pim_only_trace(channel_lst, getattr(block, row_tag), V, N, FC_total_banks, 'breakdown_sa_weight')
         elif op == 'v_proj':
-            row_tag, V, N = ('wv_row_index', dim, n_kv_heads * head_dim)
+            row_tag, V, N = ('wv_row_index', int(dim), int(kv_dim_eff))
             block.Vector_Matrix_Mul_weight_pim_only_trace(channel_lst, getattr(block, row_tag), V, N, FC_total_banks, 'breakdown_sa_weight')
         elif op == 'wo_proj':
-            row_tag, V, N = ('wo_row_index', dim, dim)
+            row_tag, V, N = ('wo_row_index', int(o_dim_eff), int(dim))
             block.Vector_Matrix_Mul_weight_pim_only_trace(channel_lst, getattr(block, row_tag), V, N, FC_total_banks, 'breakdown_sa_weight')
         elif op == 'ffn_up':
             row_tag, V, N = ('w3_row_index', dim, ffn_dim)
@@ -319,23 +346,27 @@ def _emit_single_op_trace(
     elif op in ('score', 'softmax', 'output'):
         for S in seqlens or [1]:
             if op == 'score':
-                block.Vector_Matrix_Mul_score_pim_only_trace(block.cache_k_row_index, S, 'breakdown_sa_score')
+                with _temp_block_attrs(n_heads=int(n_heads), n_kv_heads=int(n_kv_heads), head_dim=int(hd), dim=int(q_dim_eff)):
+                    block.Vector_Matrix_Mul_score_pim_only_trace(block.cache_k_row_index, S, 'breakdown_sa_score')
             elif op == 'output':
-                block.Vector_Matrix_Mul_output_pim_only_trace(block.cache_v_row_index, S, 'breakdown_sa_output')
+                with _temp_block_attrs(n_heads=int(n_heads), n_kv_heads=int(n_kv_heads), head_dim=int(hd), dim=int(q_dim_eff)):
+                    block.Vector_Matrix_Mul_output_pim_only_trace(block.cache_v_row_index, S, 'breakdown_sa_output')
             elif op == 'softmax':
                 rows_per_score = (S - 1) // block.DRAM_column + 1
                 for r in range(rows_per_score):
                     op_size = block.DRAM_column // block.burst_length if r < rows_per_score - 1 else (S - block.DRAM_column * r - 1) // block.burst_length + 1
                     block.EWMUL_only_trace(channel_lst, block.scores_row_index + r, op_size)
-                block.time['RD_SBK'] += block.timing_constant['RD_SBK'] + S * block.n_heads // block.burst_length
-                block.load_from_EWMUL_score_only_trace(channels_required, block.scores_row_index, block.total_banks, 2, S)
-                block.time['WR_SBK'] += block.timing_constant['WR_SBK'] + S * block.n_heads // block.burst_length
-                block.store_for_EWMUL_score_only_trace(channels_required, block.scores_row_index, block.total_banks, 0, S)
+                with _temp_block_attrs(n_heads=int(n_heads)):
+                    block.time['RD_SBK'] += block.timing_constant['RD_SBK'] + S * int(n_heads) // block.burst_length
+                    block.load_from_EWMUL_score_only_trace(channels_required, block.scores_row_index, block.total_banks, 2, S)
+                    block.time['WR_SBK'] += block.timing_constant['WR_SBK'] + S * int(n_heads) // block.burst_length
+                    block.store_for_EWMUL_score_only_trace(channels_required, block.scores_row_index, block.total_banks, 0, S)
                 rows_per_score = (S - 1) // block.DRAM_column + 1
                 for r in range(rows_per_score):
                     op_size = block.DRAM_column // block.burst_length if r < rows_per_score - 1 else (S - block.DRAM_column * r - 1) // block.burst_length + 1
                     block.EWMUL_only_trace(channel_lst, block.scores_row_index + r, op_size)
-                block.load_from_EWMUL_score_only_trace(channels_required, block.scores_row_index, block.total_banks, 2, S)
+                with _temp_block_attrs(n_heads=int(n_heads)):
+                    block.load_from_EWMUL_score_only_trace(channels_required, block.scores_row_index, block.total_banks, 2, S)
     elif op == 'rmsnorm':
         input_len = (dim - 1) // (block.total_banks // 2) + 1
         block.WR_BIAS_only_trace(channel_lst)
@@ -355,7 +386,7 @@ def _emit_single_op_trace(
         block.load_from_EWMUL_input_only_trace(channels_required, ew_banks, 2, block.SANorm_row_index, ew_len)
         block.SYNC_only_trace()
     elif op == 'rope':
-        ew_len = (head_dim - 1) // (block.total_banks // 4) + 1
+        ew_len = (hd - 1) // (block.total_banks // 4) + 1
         ew_size = (ew_len - 1) // block.burst_length + 1
         block.store_for_EWMUL_input_only_trace(block.channels_per_block, (dim - 1) // ew_len + 1, 1, block.xq_row_index, ew_len)
         block.EWMUL_only_trace(channel_lst, block.xq_row_index, ew_size)
@@ -389,6 +420,10 @@ def _generate_pim_trace(
     n_kv_heads: int,
     ffn_dim: int,
     seqlen: Optional[int],
+    head_dim: Optional[int],
+    q_dim: Optional[int],
+    kv_dim: Optional[int],
+    o_dim: Optional[int],
     phase: str,
     trace_file: Path,
     model_dict: Optional[Dict] = None,
@@ -414,10 +449,16 @@ def _generate_pim_trace(
             seqlens_list: List[int] = list(range(1, S + 1))
         else:
             seqlens_list = [S]
-        _emit_single_op_trace(block, op, dim, n_heads, n_kv_heads, ffn_dim, seqlens_list)
+        _emit_single_op_trace(
+            block, op, int(dim), int(n_heads), int(n_kv_heads), int(ffn_dim), seqlens_list,
+            head_dim=head_dim, q_dim=q_dim, kv_dim=kv_dim, o_dim=o_dim,
+        )
     else:
         for _ in range(T):
-            _emit_single_op_trace(block, op, dim, n_heads, n_kv_heads, ffn_dim, None)
+            _emit_single_op_trace(
+                block, op, int(dim), int(n_heads), int(n_kv_heads), int(ffn_dim), None,
+                head_dim=head_dim, q_dim=q_dim, kv_dim=kv_dim, o_dim=o_dim,
+            )
 
     # Finalize trace once.
     if hasattr(block, 'finish'):
@@ -723,12 +764,22 @@ class PIMLatencyCache:
         n_kv_heads: int,
         ffn_dim: int,
         seqlen: Optional[int],
+        head_dim: Optional[int],
+        q_dim: Optional[int],
+        kv_dim: Optional[int],
+        o_dim: Optional[int],
         pim_config: Path,
         ramulator_config: Path,
     ) -> str:
         ph = str(phase or '').strip().lower() or 'decode'
 
-        params = f'{op}|{ph}|{int(dim)}|{int(n_heads)}|{int(n_kv_heads)}|{int(ffn_dim)}|{int(seqlen) if seqlen is not None else -1}'
+        params = (
+            f'{op}|{ph}|{int(dim)}|{int(n_heads)}|{int(n_kv_heads)}|{int(ffn_dim)}|{int(seqlen) if seqlen is not None else -1}'
+            f'|hd={int(head_dim) if head_dim is not None else -1}'
+            f'|q={int(q_dim) if q_dim is not None else -1}'
+            f'|kv={int(kv_dim) if kv_dim is not None else -1}'
+            f'|o={int(o_dim) if o_dim is not None else -1}'
+        )
         cfgs = f'{_file_signature(pim_config)}|{_file_signature(ramulator_config)}'
         key = f'v2|{params}|{cfgs}'
         return hashlib.md5(key.encode()).hexdigest()
@@ -742,10 +793,14 @@ class PIMLatencyCache:
         n_kv_heads: int,
         ffn_dim: int,
         seqlen: Optional[int],
+        head_dim: Optional[int],
+        q_dim: Optional[int],
+        kv_dim: Optional[int],
+        o_dim: Optional[int],
         pim_config: Path,
         ramulator_config: Path,
     ) -> Optional[float]:
-        key = self._make_key(op, phase, dim, n_heads, n_kv_heads, ffn_dim, seqlen, pim_config, ramulator_config)
+        key = self._make_key(op, phase, dim, n_heads, n_kv_heads, ffn_dim, seqlen, head_dim, q_dim, kv_dim, o_dim, pim_config, ramulator_config)
         with self.lock:
             v = self.cache.get(key)
         try:
@@ -762,11 +817,15 @@ class PIMLatencyCache:
         n_kv_heads: int,
         ffn_dim: int,
         seqlen: Optional[int],
+        head_dim: Optional[int],
+        q_dim: Optional[int],
+        kv_dim: Optional[int],
+        o_dim: Optional[int],
         pim_config: Path,
         ramulator_config: Path,
         latency: float,
     ):
-        key = self._make_key(op, phase, dim, n_heads, n_kv_heads, ffn_dim, seqlen, pim_config, ramulator_config)
+        key = self._make_key(op, phase, dim, n_heads, n_kv_heads, ffn_dim, seqlen, head_dim, q_dim, kv_dim, o_dim, pim_config, ramulator_config)
         with self.lock:
             self.cache[key] = float(latency)
             self._save_cache()
@@ -783,6 +842,10 @@ def _get_pim_latency_via_trace(
     n_kv_heads: int,
     ffn_dim: int,
     seqlen: Optional[int],
+    head_dim: Optional[int] = None,
+    q_dim: Optional[int] = None,
+    kv_dim: Optional[int] = None,
+    o_dim: Optional[int] = None,
     phase: str = "decode",
     model_dict: Optional[Dict] = None,
     use_cache: bool = True,
@@ -804,7 +867,16 @@ def _get_pim_latency_via_trace(
         sim_logger._log(f"[PIM] normalize op '{orig_op}' -> '{op}'")
     
     if use_cache:
-        cached = _pim_cache.get(op, ph, dim, n_heads, n_kv_heads, ffn_dim, seqlen, pim_config, ramulator_config)
+        cached = _pim_cache.get(
+            op, ph,
+            int(dim), int(n_heads), int(n_kv_heads), int(ffn_dim),
+            (int(seqlen) if seqlen is not None else None),
+            (int(head_dim) if head_dim is not None else None),
+            (int(q_dim) if q_dim is not None else None),
+            (int(kv_dim) if kv_dim is not None else None),
+            (int(o_dim) if o_dim is not None else None),
+            pim_config, ramulator_config,
+        )
         if cached is not None:
             return cached
     msg = f"[PIM] Computing latency for {op} phase={ph} (dim={dim}, heads={n_heads}, seq={seqlen})"
@@ -822,6 +894,10 @@ def _get_pim_latency_via_trace(
             n_kv_heads=int(n_kv_heads),
             ffn_dim=int(ffn_dim),
             seqlen=int(seqlen) if seqlen is not None else None,
+            head_dim=int(head_dim) if head_dim is not None else None,
+            q_dim=int(q_dim) if q_dim is not None else None,
+            kv_dim=int(kv_dim) if kv_dim is not None else None,
+            o_dim=int(o_dim) if o_dim is not None else None,
             phase=ph,
             trace_file=trace_path,
             model_dict=model_dict,
@@ -836,7 +912,17 @@ def _get_pim_latency_via_trace(
             latency = 0.0
         sim_logger._log(f'[PIM] Latency computed: {latency:.6e} seconds ({cycles} cycles)')
         if use_cache:
-            _pim_cache.set(op, ph, dim, n_heads, n_kv_heads, ffn_dim, seqlen, pim_config, ramulator_config, latency)
+            _pim_cache.set(
+                op, ph,
+                int(dim), int(n_heads), int(n_kv_heads), int(ffn_dim),
+                (int(seqlen) if seqlen is not None else None),
+                (int(head_dim) if head_dim is not None else None),
+                (int(q_dim) if q_dim is not None else None),
+                (int(kv_dim) if kv_dim is not None else None),
+                (int(o_dim) if o_dim is not None else None),
+                pim_config, ramulator_config,
+                float(latency),
+            )
         return latency
     except Exception as e:
         sim_logger._log(f'[PIM] Error during latency computation: {e}')

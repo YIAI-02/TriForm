@@ -9,17 +9,24 @@
   "pim_config_path": "./aim_simulator/PIM_AiM.json",
   "gb_config_path": "./aim_simulator/gb.json",
   "ramulator_config_path": "./aim_simulator/example.yaml",
-  "simulation_log_file": "./output/evaluate_single_test/hardware_4aim/pim_simulation.txt",
-  "result_dir": "./output/evaluate_single_test/hardware_4aim/",
-  "hardware_json": "./examples/hardware_4aim.json",
+  "simulation_log_file": "./output/evaluate_single_test/hardware_1gpu_4aim/pim_simulation.txt",
+  "result_dir": "./output/evaluate_single_test/hardware_1gpu_4aim/",
+  "hardware_json": "./examples/hardware_1gpu_4aim.json",
   "algo": [
+    "hefthint",
     "heft"
   ],
   "baselines": [
+    "pd",
+    "attn_on_pim",
+    "weights_on_pim",
+    "ianus",
+    "facil",
+    "attacc"
   ],
-  "tp_qkv": 1,
-  "tp_ffn": 1,
+  "tp_qkv": 4,
+  "tp_ffn": 4,
   "npu_backend": "fast_mode",
   "dump_graph": true,
-  "dump_graph_dir": "./output/evaluate_single_test/hardware_4aim/graph_dumps"
+  "dump_graph_dir": "./output/evaluate_single_test/hardware_1gpu_4aim/graph_dumps"
 }

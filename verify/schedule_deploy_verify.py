@@ -1871,8 +1871,15 @@ class PIMBackendViaCostModel:
         self._dbg.log(f"[run-pim][debug] cost_model config.PIM_FREQ_GHZ={CM_PIM_FREQ_GHZ}")
         self._dbg.log("=" * 80)
 
-    def _pim_params_for_op(self, *, op: str, shard: int, phase: str, step: int) -> Tuple[int, int, int, int, int, int]:
-        """Return (dim, n_heads, n_kv_heads, ffn_dim, seqlen, query_len) for this op."""
+
+    def _pim_params_for_op(
+        self,
+        *,
+        op: str,
+        shard: int,
+        phase: str,
+        step: int,
+    ) -> Tuple[int, int, int, int, int, int, int, int, int, int]:
         sig = OpSig(device_type='pim', phase=str(phase), step=int(step), op=str(op), shard=int(shard))
         sh = infer_op_shape(sig, self.cfg)
 
@@ -1881,21 +1888,25 @@ class PIMBackendViaCostModel:
         fine = shard_policy in ('fine',)
 
         n_kv_total = int(self.cfg.n_kv_heads) if self.cfg.n_kv_heads is not None else int(self.cfg.n_heads)
+        dim = int(sh.dim)
 
         if fine and int(shard) >= 0 and shards > 1:
-            dim = int(sh.shard_dim)
             n_heads = int(max(1, sh.heads_per_shard))
             ffn_dim = int(max(1, sh.ffn_shard_dim))
             n_kv_heads = int(max(1, n_kv_total // shards))
         else:
-            dim = int(sh.dim)
             n_heads = int(max(1, self.cfg.n_heads))
             ffn_dim = int(max(1, self.cfg.ffn_dim))
             n_kv_heads = int(max(1, n_kv_total))
 
+        head_dim = int(max(1, sh.head_dim))
+        q_dim = int(max(1, int(n_heads) * int(head_dim)))
+        kv_dim = int(max(1, int(n_kv_heads) * int(head_dim)))
+        o_dim = int(max(1, int(q_dim)))
+
         seqlen = int(max(1, sh.key_len))
         qlen = int(max(1, sh.query_len))
-        return dim, n_heads, n_kv_heads, ffn_dim, seqlen, qlen
+        return dim, n_heads, n_kv_heads, ffn_dim, seqlen, qlen, head_dim, q_dim, kv_dim, o_dim
 
     def _get_model_dict(self, *, dim: int, n_heads: int, n_kv_heads: int, ffn_dim: int, seqlen: int) -> Dict[str, Any]:
         key = (int(dim), int(n_heads), int(n_kv_heads), int(ffn_dim), int(seqlen))
@@ -2000,12 +2011,16 @@ class PIMBackendViaCostModel:
 
         total = 0.0
         per_op_dbg: List[Dict[str, Any]] = []
+        base_dim = int(self.cfg.dim)
+        base_n_heads = int(self.cfg.n_heads)
+        base_n_kv_heads = int(self.cfg.n_kv_heads) if self.cfg.n_kv_heads is not None else int(self.cfg.n_heads)
+        base_ffn_dim = int(self.cfg.ffn_dim)
 
         for j, (op, shard) in enumerate(seg.ops):
             if str(op).strip().lower() in _COMM_OPS:
                 continue
 
-            dim, n_heads, n_kv_heads, ffn_dim, seqlen, qlen = self._pim_params_for_op(
+            dim, n_heads, n_kv_heads, ffn_dim, seqlen, qlen, head_dim, q_dim, kv_dim, o_dim = self._pim_params_for_op(
                 op=str(op), shard=int(shard), phase=str(seg.phase), step=int(seg.step)
             )
             op_norm = self.cm._normalize_pim_op(str(op))
@@ -2021,13 +2036,17 @@ class PIMBackendViaCostModel:
                         int(n_kv_heads),
                         int(ffn_dim),
                         int(seqlen),
+                        int(head_dim),
+                        int(q_dim),
+                        int(kv_dim),
+                        int(o_dim),
                         self.pim_config,
                         self.ramulator_config,
                     )
                 except Exception:
                     cache_hit = None
 
-            model_dict = self._get_model_dict(dim=dim, n_heads=n_heads, n_kv_heads=n_kv_heads, ffn_dim=ffn_dim, seqlen=seqlen)
+            model_dict = self._get_model_dict(dim=base_dim, n_heads=base_n_heads, n_kv_heads=base_n_kv_heads, ffn_dim=base_ffn_dim, seqlen=seqlen)
 
             # Provide a stable prefix so traces are easy to correlate (if kept).
             trace_prefix = None
@@ -2047,6 +2066,10 @@ class PIMBackendViaCostModel:
                     phase=str(seg.phase),
                     model_dict=model_dict,
                     use_cache=bool(self.use_cache),
+                    head_dim=int(head_dim),
+                    q_dim=int(q_dim),
+                    kv_dim=int(kv_dim),
+                    o_dim=int(o_dim),
                     ramulator_timeout_s=int(getattr(self.cfg, 'pim_ramulator_timeout_s', 300) or 300),
                     keep_traces=bool(getattr(self.cfg, 'pim_keep_traces', False)),
                     trace_dir=(Path(self.cfg.pim_trace_dir).expanduser().resolve() if getattr(self.cfg, 'pim_trace_dir', None) else None),
@@ -2073,6 +2096,10 @@ class PIMBackendViaCostModel:
                     "step": int(seg.step),
                     "dim": int(dim),
                     "n_heads": int(n_heads),
+                    "head_dim": int(head_dim),
+                    "q_dim": int(q_dim),
+                    "kv_dim": int(kv_dim),
+                    "o_dim": int(o_dim),
                     "n_kv_heads": int(n_kv_heads),
                     "ffn_dim": int(ffn_dim),
                     "seqlen": int(seqlen),
@@ -2088,7 +2115,7 @@ class PIMBackendViaCostModel:
                 extra = f" cycles≈{cycles_est}" if cycles_est is not None else ""
                 self._dbg.log(
                     f"[pim-debug] op#{j:02d} op={str(op):<8} norm={op_norm:<10} sh={int(shard):<2d} "
-                    f"dim={int(dim):<5d} heads={int(n_heads):<3d} kv_heads={int(n_kv_heads):<3d} ffn_dim={int(ffn_dim):<6d} "
+                    f"dim={int(dim):<5d} heads={int(n_heads):<3d} hd={int(head_dim):<3d} q_dim={int(q_dim):<5d} kv_heads={int(n_kv_heads):<3d} kv_dim={int(kv_dim):<5d} o_dim={int(o_dim):<5d} ffn_dim={int(ffn_dim):<6d} "
                     f"seqlen={int(seqlen):<6d} qlen={int(qlen):<3d} cache={'Y' if (cache_hit is not None and self.use_cache) else 'N'} "
                     f"lat={sec*1e3:9.3f}ms{extra}"
                 )

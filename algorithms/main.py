@@ -641,11 +641,77 @@ def simulate_decode_progressive(sched: SchedulerBase, cfg: Dict, graph: TaskGrap
     # Be defensive even if the user guarantees divisibility.
     n_blocks = int(decode_len // stride) if (decode_len % stride == 0) else int(math.ceil(decode_len / stride))
 
-    for b in range(n_blocks):
+    start_block_idx = 0
+    if decode_len > 0 and stride > 1:
+        # --- Token 0: always simulate and DO NOT scale by stride.
+        _advance_to(global_end)
+        t0 = 0
+        cur_len0 = int(prefill_len + t0)
+        block_begin0 = float(global_end)
+        sched.set_seq_len(cur_len0)
+        dec_sched0 = sched.schedule(graph, phase='decode')
+        token0_end = float(sched.makespan(dec_sched0))
+        step0 = max(0.0, float(token0_end - block_begin0))
+        steps_serialized.append({
+            't': int(t0),
+            'seq_len': int(cur_len0),
+            'step_time': float(step0),
+            'estimated': False,
+            'schedule': _serialize_schedule(dec_sched0, phase='decode', token_idx=t0),
+        })
+
+        # If there is only one decode token, we're done.
+        if decode_len == 1:
+            global_end = float(token0_end)
+            _advance_to(global_end)
+            return (float(global_end - prefill_end), steps_serialized)
+
+        # --- Token 1: simulate and use it to estimate the remaining tokens in the first block.
+        # First block token count may be smaller than stride when decode_len < stride.
+        first_block_tokens = int(min(stride, decode_len))
+
+        _advance_to(token0_end)
+        t1 = 1
+        cur_len1 = int(prefill_len + t1)
+        block_begin1 = float(token0_end)
+        sched.set_seq_len(cur_len1)
+        dec_sched1 = sched.schedule(graph, phase='decode')
+        token1_end = float(sched.makespan(dec_sched1))
+        step1 = max(0.0, float(token1_end - block_begin1))
+        steps_serialized.append({
+            't': int(t1),
+            'seq_len': int(cur_len1),
+            'step_time': float(step1),
+            'estimated': False,
+            'schedule': _serialize_schedule(dec_sched1, phase='decode', token_idx=t1),
+        })
+
+        # Fill the rest of the first block using token-1's latency.
+        # Requirement: use 2nd token * (stride-1) (or (first_block_tokens-1) if shorter).
+        for u in range(2, int(first_block_tokens)):
+            steps_serialized.append({
+                't': int(u),
+                'seq_len': int(prefill_len + u),
+                'step_time': float(step1),
+                'estimated': True,
+                'schedule': None,
+            })
+
+        global_end = float(token0_end + float(step1) * float(first_block_tokens - 1))
+        _advance_to(global_end)
+        start_block_idx = 1  # block-0 already covered (tokens [0, first_block_tokens))
+
+    for b in range(start_block_idx, n_blocks):
         block_start = int(b * stride)
-        t = int(block_start)  # sample at block end
+        t = int(block_start)  # sample at block start
         cur_len = int(prefill_len + t)
         block_tokens = int(min(stride, max(0, decode_len - block_start)))
+
+        # If the first block was handled by the special-case above, skip any overlap.
+        if b == 0 and start_block_idx == 1:
+            continue
+        if block_tokens <= 0:
+            continue
 
         # Advance the device/comm timelines to the current global time.
         _advance_to(global_end)
