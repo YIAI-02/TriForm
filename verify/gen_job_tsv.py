@@ -3,8 +3,10 @@
 
 '''
 python3 ./verify/gen_job_tsv.py \
-  --input ./algorithms/output/evaluate_single_test/ \
+  --input ./algorithms/output/experiment_1gpu_4aim/hw_hardware_1gpu_4aim \
   --output ./verify/jobs_sweep.tsv
+
+  
 '''
 import argparse
 import os

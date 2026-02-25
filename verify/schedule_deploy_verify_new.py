@@ -59,6 +59,8 @@ python ./verify/schedule_deploy_verify.py export \
   --comm-model schedule \
   --decode-stride 128 \
   --out-csv ./verify/out/merge_report_hefthint.csv
+
+decode 有多少个 token（多少个 step）：由 schedule 的 decode 行数决定
 """
 
 from __future__ import annotations
@@ -435,7 +437,7 @@ def decode_token_index_from_sample_step(step_sample: int, stride: int) -> int:
         return 0
     if s == 1:
         return 1
-    return int((s - 1) * st - 1)
+    return int((s - 1) * st)
 
 def compute_decode_step_scale_map(
     schedule_df: pd.DataFrame,
@@ -472,56 +474,66 @@ def compute_decode_step_scale_map(
     # stride==1 -> no expansion
     if st == 1:
         return ({int(s): 1 for s in dec_steps}, "stride1", None)
+
+    # Try to parse decode_len from filename
     decode_len: Optional[int] = None
     try:
         _, decode_len = parse_prefill_decode_len_from_path(schedule_path or "")
     except Exception:
         decode_len = None
+
+    # If decode_len is unknown, we can still apply the new scaling policy when the trace
+    # clearly contains the (t=0,t=1) special-case. We infer decode_len assuming full blocks.
     if decode_len is None:
-        raise ValueError(
-            "decode_len must be parsed from schedule filename (e.g., '*decode_1024*'). "
-            f"Got schedule_path={schedule_path!r}."
-        )
+        if len(dec_steps) >= 2 and dec_steps[0] == 0 and dec_steps[1] == 1:
+            # Assume decode_len is divisible by stride and that the trace includes:
+            # 2 samples for the first block + 1 sample for each remaining block.
+            decode_len = int(max(1, (len(dec_steps) - 1) * st))
+            mode = "token0_token1_infer_len"
+        else:
+            return ({int(s): st for s in dec_steps}, "unknown", None)
+    else:
+        mode = "uniform"
+
     decode_len_i = int(decode_len)
     if decode_len_i <= 0:
-        raise ValueError(f"decode_len must be > 0 (got {decode_len_i}) from {schedule_path!r}")
+        return ({int(s): 0 for s in dec_steps}, mode, decode_len_i)
 
-    # Latest sampling/scaling policy (always):
-    #   step 0 -> token 0, scale 1
-    #   step 1 -> token 1, scale (stride-1)
-    #   step >=2 -> sample at token (k*stride-1), scale stride (last block clipped)
-    mode = "token0_token1"
+    # Decide whether the trace matches the new simulator sampling pattern:
+    # expected decode sample count = n_blocks + 1 (token0 + token1 + remaining block samples)
+    n_blocks = int((decode_len_i + st - 1) // st)
+    is_token0_token1 = (
+        decode_len_i > 1
+        and st > 1
+        and len(dec_steps) >= 2
+        and dec_steps[0] == 0
+        and dec_steps[1] == 1
+        and len(dec_steps) == int(n_blocks + 1)
+    )
+
     scale_by_step: Dict[int, int] = {}
 
-    # Optional sanity check: warn if sample count doesn't match the expected pattern.
-    try:
-        if decode_len_i > 1 and st > 1:
-            n_blocks = int((decode_len_i + st - 1) // st)
-            expected = int(n_blocks + 1)
-            if len(dec_steps) != expected or (dec_steps and dec_steps[0] != 0) or (len(dec_steps) > 1 and dec_steps[1] != 1):
-                print(
-                    f"[warn] decode sampling steps mismatch for {os.path.basename(str(schedule_path or ''))}: "
-                    f"decode_len={decode_len_i} stride={st} expected_steps={expected} got_steps={len(dec_steps)} "
-                    f"(first_steps={dec_steps[:4]})",
-                    file=sys.stderr,
-                )
-    except Exception:
-        pass
+    if is_token0_token1:
+        mode = "token0_token1"
+        first_block_tokens = int(min(st, decode_len_i))
+        scale_by_step[0] = 1
+        scale_by_step[1] = max(0, int(first_block_tokens - 1))
 
-    for s in dec_steps:
-        si = int(s)
-        if si <= 0:
-            scale_by_step[si] = 1
-            continue
-        if si == 1:
-            # token 1 represents the remaining tokens in the first block.
-            scale_by_step[si] = max(0, min(int(st - 1), int(decode_len_i - 1)))
-            continue
-        # step>=2: block index b = step-1, represents tokens [b*stride .. (b+1)*stride-1].
-        b = int(si - 1)
-        block_start = int(b * st)
-        remaining = int(decode_len_i - block_start)
-        scale_by_step[si] = max(0, min(int(st), remaining))
+        for s in dec_steps:
+            if int(s) <= 1:
+                continue
+            b = int(s - 1)  # block index (1..)
+            block_start = int(b * st)
+            remaining = int(decode_len_i - block_start)
+            scale_by_step[int(s)] = max(0, min(st, remaining))
+    else:
+        # Legacy: each sampled step represents one block worth of tokens.
+        # If decode_len is known, clip the last block.
+        mode = "uniform"
+        for s in dec_steps:
+            block_start = int(int(s) * st)
+            remaining = int(decode_len_i - block_start)
+            scale_by_step[int(s)] = max(0, min(st, remaining))
 
     return scale_by_step, mode, decode_len_i
 
@@ -905,8 +917,7 @@ def estimate_kv_load_seconds_from_ops_csv(
                 return int(dcl_list[int(step)])
             except Exception:
                 pass
-        tok = int(decode_token_index_from_sample_step(int(step), int(ds)))
-        return int(prefill_len + 1 + tok)
+        return int(prefill_len + 1 + int(step) * ds)
 
     # Filter QK/SV ops in decode.
     ph = schedule_df.get("phase")
@@ -1059,18 +1070,10 @@ def infer_op_shape(sig: OpSig, cfg: WorkloadConfig) -> OpShape:
             stride = int(getattr(cfg, "decode_stride", 1) or 1)
             if stride <= 0:
                 stride = 1
-            tok = int(decode_token_index_from_sample_step(int(sig.step), int(stride)))
-            K = int(cfg.prefill_len + 1 + tok)
+            K = int(cfg.prefill_len + 1 + int(sig.step) * stride)
         else:
             if sig.step < 0 or sig.step >= len(cfg.decode_context_lens):
-                if cfg.decode_context_lens:
-                    K = int(cfg.decode_context_lens[-1])
-                else:
-                    stride = int(getattr(cfg, "decode_stride", 1) or 1)
-                    if stride <= 0:
-                        stride = 1
-                    tok = int(decode_token_index_from_sample_step(int(sig.step), int(stride)))
-                    K = int(cfg.prefill_len + 1 + tok)
+                K = int(cfg.decode_context_lens[-1]) if cfg.decode_context_lens else int(cfg.prefill_len + 1 + sig.step)
             else:
                 K = int(cfg.decode_context_lens[sig.step])
         T = 1
@@ -2505,14 +2508,7 @@ def export_tasks(
         stride = int(getattr(cfg, "decode_stride", 1) or 1)
         if stride <= 0:
             stride = 1
-        cfg.decode_context_lens = (
-            [
-                int(cfg.prefill_len + 1 + int(decode_token_index_from_sample_step(int(i), int(stride))))
-                for i in range(max_decode_steps)
-            ]
-            if max_decode_steps > 0
-            else []
-        )
+        cfg.decode_context_lens = [int(cfg.prefill_len + 1 + i * stride) for i in range(max_decode_steps)] if max_decode_steps > 0 else []
 
     # collect unique segments over all schedules
     uniq: Dict[str, SegmentSig] = {}
@@ -2964,14 +2960,30 @@ def _build_row_durations_layer_scope(
             dur_s[idxs] = w
             continue
 
+        # Segment signature lookup:
+        # - Current decode sampling uses *sample-step* ids in schedule (0..N-1).
+        # - Some result tables may key decode segments by the corresponding *token index*.
+        #   We try token-index first, then fall back to sample-step.
         step_i = int(step)
-        seg = SegmentSig(device_type=dev_type, phase=str(phase), step=int(step_i), ops=tuple(ops))
-        if dev_type_n == "npu":
-            total_lat = _try_lookup_segment_latency(seg, gpu_res)
-        elif dev_type_n == "pim":
-            total_lat = _try_lookup_segment_latency(seg, pim_res)
+        step_keys: List[int] = []
+        if str(phase) == "decode" and int(decode_stride) != 1:
+            st = int(decode_stride)
+            step_keys.append(int(decode_token_index_from_sample_step(step_i, st)))
+            step_keys.append(int(step_i))
         else:
-            total_lat = None
+            step_keys.append(int(step_i))
+
+        total_lat: Optional[float] = None
+        for sk in step_keys:
+            seg = SegmentSig(device_type=dev_type, phase=str(phase), step=int(sk), ops=tuple(ops))
+            if dev_type_n == "npu":
+                total_lat = _try_lookup_segment_latency(seg, gpu_res)
+            elif dev_type_n == "pim":
+                total_lat = _try_lookup_segment_latency(seg, pim_res)
+            else:
+                total_lat = None
+            if total_lat is not None:
+                break
 
         if total_lat is None:
             if allow_missing:
@@ -3303,6 +3315,15 @@ def merge(
         else:
             return None
 
+        # Prefer token-index step key for decode if available; fall back to sample step.
+        if phase == "decode" and decode_stride != 1:
+            st = int(decode_stride)
+
+            tok_step = decode_token_index_from_sample_step(int(step_sample), st)
+            k_tok = SegmentSig(device_type=dev, phase=phase, step=int(tok_step), ops=ops).to_key()
+            if k_tok in table:
+                return float(table[k_tok])
+
         k = SegmentSig(device_type=dev, phase=phase, step=int(step_sample), ops=ops).to_key()
         if k in table:
             return float(table[k])
@@ -3317,7 +3338,7 @@ def merge(
         """Like _lookup_latency(), but also returns the matched key + matched step.
 
         Returns: (lat_s, key, step_used, mode)
-          mode in {'sample_step','miss','unknown_dev'}
+          mode in {'tok_step','sample_step','miss','unknown_dev'}
         """
         dev = dev_type.strip().lower()
         if dev == "npu":
@@ -3326,6 +3347,13 @@ def merge(
             table = pim_res
         else:
             return (None, None, None, "unknown_dev")
+
+        if phase == "decode" and decode_stride != 1:
+            st = int(decode_stride)
+            tok_step = decode_token_index_from_sample_step(int(step_sample), st)
+            k_tok = SegmentSig(device_type=dev, phase=phase, step=int(tok_step), ops=ops).to_key()
+            if k_tok in table:
+                return (float(table[k_tok]), str(k_tok), int(tok_step), "tok_step")
 
         k = SegmentSig(device_type=dev, phase=phase, step=int(step_sample), ops=ops).to_key()
         if k in table:
@@ -3501,7 +3529,10 @@ def merge(
                             lat_s, lat_key, step_used, mode = _lookup_latency_with_key(dev_type, str(phase), int(step), ops_t)
                             if str(phase) == "decode":
                                 scale = float(decode_scale_by_step.get(int(step), int(decode_stride)))
-                                tok_idx = int(decode_token_index_from_sample_step(int(step), int(decode_stride)))
+                                if str(decode_scale_mode).startswith("token0_token1"):
+                                    tok_idx = int(decode_token_index_from_sample_step(int(step), int(decode_stride)))
+                                else:
+                                    tok_idx = int(1 + int(step) * int(decode_stride))
                             else:
                                 scale = 1.0
                                 tok_idx = int(step)
@@ -3544,7 +3575,10 @@ def merge(
                         lat_s, lat_key, step_used, mode = _lookup_latency_with_key(dev_type, str(phase), int(step), ops_t)
                         if str(phase) == "decode":
                             scale = float(decode_scale_by_step.get(int(step), int(decode_stride)))
-                            tok_idx = int(decode_token_index_from_sample_step(int(step), int(decode_stride)))
+                            if str(decode_scale_mode).startswith("token0_token1"):
+                                tok_idx = int(decode_token_index_from_sample_step(int(step), int(decode_stride)))
+                            else:
+                                tok_idx = int(1 + int(step) * int(decode_stride))
                         else:
                             scale = 1.0
                             tok_idx = int(step)
@@ -3779,7 +3813,9 @@ def merge(
                     "schedule": p.name,
                     "phase": "decode",
                     "sample_step": int(st),
-                    "token_index": int(decode_token_index_from_sample_step(int(st), int(decode_stride))),
+                    "token_index": int(decode_token_index_from_sample_step(int(st), int(decode_stride)))
+                    if str(decode_scale_mode).startswith("token0_token1")
+                    else int(1 + int(st) * int(decode_stride)),
                     "tokens": int(scale_tokens),
                     "step_time_s": float(step_s),
                     "step_time_per_token_s": float(step_s_per_token),

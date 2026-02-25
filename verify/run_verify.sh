@@ -32,7 +32,7 @@ MERGE_SLURM=${4:-"$SCRIPT_DIR/run_merge_param.slurm"}
 PY_SCRIPT=${PY_SCRIPT:-"$REPO_ROOT/verify/schedule_deploy_verify.py"}
 OUT_ROOT=${OUT_ROOT:-"$REPO_ROOT/verify/out"}
 SEGMENT_SCOPE=${SEGMENT_SCOPE:-layer}
-SHARD_POLICY=${SHARD_POLICY:-coarse_majority}  # fine | coarse_majority
+SHARD_POLICY=${SHARD_POLICY:-fine}  # fine | coarse_majority
 
 LOG_ROOT=${LOG_ROOT:-""}
 GPU_LOG_DIR=${GPU_LOG_DIR:-""}

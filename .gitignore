@@ -17,3 +17,4 @@ __pycache__/
 submodules/CENT
 submodules/LLMCompass
 verify/evaluate_single_test
+verify/hw_hardware_1gpu_4aim

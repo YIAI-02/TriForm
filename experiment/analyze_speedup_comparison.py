@@ -4,8 +4,9 @@
 
 1) 批量：
 python analyze_speedup_comparison.py \
-  --output-root ../algorithms/output/experiment_gpu_aim \
-  --out-dir ../figs/speedup/experiment_gpu_aim
+  --output-root ../algorithms/output/experiment_1gpu_4aim \
+  --out-dir ../figs/speedup/experiment_1gpu_4aim
+
 
 不要传hw_ 这一层目录
 

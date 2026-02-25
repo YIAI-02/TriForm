@@ -6,18 +6,18 @@ shopt -s nullglob
 # Single source of truth
 # =========================
 CONFIG_FILE="${CONFIG_FILE:-./examples/evaluate_len_sweep_config.json}"
-OUTPUT_ROOT="${OUTPUT_ROOT:-./output/experiment_gpu_aim}"
+OUTPUT_ROOT="${OUTPUT_ROOT:-./output/experiment_1gpu_4aim}"
 
 # Sweep dims
 MODEL_FAMILY_VARIANTS=(
   # "mixtral:8x7b"
   # "palm:62b"
-  "qwen:1.8b 7b"
-  "llama:7b 70b"
+  # "qwen:1.8b 7b"
+  "llama:7b 13b 70b"
 )
 
-PREFILLS=(1024 2048 4096 8192)
-DECODES=(1024 2048 4096 8192)
+PREFILLS=(1292 403 2393 5283)
+DECODES=(262 58 42 50)
 
 # Hardware sweep (edit here, or use --hardware_glob)
 HARDWARE_CONFIGS=(
@@ -26,13 +26,13 @@ HARDWARE_CONFIGS=(
 
 # Run knobs
 STRIDE="${STRIDE:-128}"
-DTYPE="${DTYPE:-int8}"
+DTYPE="${DTYPE:-bf16}"
 BATCHES_STR="${BATCHES:-${BATCH:-"1 4 8 16 32"}}"
 
 declare -a BATCHES
 
 NPU_FAST=1
-PIM_FAST=1
+PIM_FAST=0
 DEBUG=0
 HARDWARE_GLOB=""
 JOBS="${JOBS:-}"

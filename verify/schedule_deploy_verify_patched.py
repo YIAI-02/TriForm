@@ -430,6 +430,7 @@ def decode_token_index_from_sample_step(step_sample: int, stride: int) -> int:
     s = int(step_sample)
     st = int(stride) if stride is not None else 1
     if st <= 1:
+        # stride==1: no sampling, each step is exactly one token.
         return s
     if s <= 0:
         return 0
@@ -2964,6 +2965,8 @@ def _build_row_durations_layer_scope(
             dur_s[idxs] = w
             continue
 
+        # Segment signature lookup (latest convention):
+        # - `step` is the sampled step id from ops_trace.csv (prefill=-1, decode=0..N-1)
         step_i = int(step)
         seg = SegmentSig(device_type=dev_type, phase=str(phase), step=int(step_i), ops=tuple(ops))
         if dev_type_n == "npu":
