@@ -3,10 +3,6 @@
 	url = https://github.com/Yufeng98/CENT.git
 	ignore = dirty
 
-[submodule "submodules/ONNXim"]
-	path = submodules/ONNXim
-	url = git@github.com:PSAL-POSTECH/ONNXim.git
-
 [submodule "submodules/LLMCompass"]
 	path = submodules/LLMCompass
 	url = https://github.com/PrincetonUniversity/LLMCompass.git

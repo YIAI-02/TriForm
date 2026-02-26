@@ -13,11 +13,11 @@ MODEL_FAMILY_VARIANTS=(
   # "mixtral:8x7b"
   # "palm:62b"
   # "qwen:1.8b 7b"
-  "llama:7b 13b 70b"
+  "llama:7b"
 )
 
 PREFILLS=(1292 403 2393 5283)
-DECODES=(262 58 42 50)
+DECODES=(262 42)
 
 # Hardware sweep (edit here, or use --hardware_glob)
 HARDWARE_CONFIGS=(
@@ -25,9 +25,9 @@ HARDWARE_CONFIGS=(
 )
 
 # Run knobs
-STRIDE="${STRIDE:-128}"
+STRIDE="${STRIDE:-24}"
 DTYPE="${DTYPE:-bf16}"
-BATCHES_STR="${BATCHES:-${BATCH:-"1 4 8 16 32"}}"
+BATCHES_STR="${BATCHES:-${BATCH:-"1"}}"
 
 declare -a BATCHES
 

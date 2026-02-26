@@ -182,7 +182,7 @@ COMPUTE_UTILIZATION = {
     'npu': {
         'enabled': True,
         'curve': 'sigmoid',
-        'min_util': 0.3,
+        'min_util': 0.4,
         'max_util': 0.8,
         'flops_low': 5e7,     # <= 0.5 GFLOPs -> near min_util
         'flops_high': 5e12,   # >= 5TFLOPs -> near max_util
@@ -215,8 +215,8 @@ KERNEL_LAUNCH_OVERHEAD = {
     },
 
     'by_op_us': {
-        'score': 0.0,   # QK
-        'output': 0.0,  # SV
+        'score': 5.0,   # QK
+        'output': 5.0,  # SV
         'ffn_up': 31.1,     # ffn_w3
         'ffn_gate': 34.1,   # ffn_w1
         'ffn_down': 32.5,   # ffn_w2

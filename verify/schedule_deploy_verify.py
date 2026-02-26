@@ -597,23 +597,35 @@ def load_comms_csv(path: str) -> pd.DataFrame:
     return df
 
 
-def extract_weight_load_seconds(
+def extract_weight_load_seconds_by_phase(
     comms_paths: List[str],
-    *,
-    decode_stride: int = 1,
-) -> Dict[str, float]:
-    """Aggregate `weight_load` durations from comms trace(s)."""
-    gpu_s = 0.0
-    pim_s = 0.0
-    unknown_s = 0.0
+) -> Dict[str, Dict[str, float]]:
+    """Aggregate `weight_load` durations from comms trace(s), split by phase.
+
+    Returns a dict:
+        {
+          "<phase>": {"gpu_s": ..., "pim_s": ..., "unknown_s": ..., "total_s": ...},
+          "all":     {"gpu_s": ..., "pim_s": ..., "unknown_s": ..., "total_s": ...},
+        }
+    """
 
     if not comms_paths:
-        return {"gpu_s": 0.0, "pim_s": 0.0, "total_s": 0.0, "unknown_s": 0.0}
+        return {
+            "all": {"gpu_s": 0.0, "pim_s": 0.0, "total_s": 0.0, "unknown_s": 0.0},
+        }
 
     rows: List[pd.DataFrame] = []
 
     def _norm_str(s: pd.Series) -> pd.Series:
         return s.astype(str).fillna("").replace("nan", "", regex=False).str.strip()
+
+    def _norm_phase(s: pd.Series) -> pd.Series:
+        ph = s.astype(str).fillna("prefill").replace("nan", "prefill", regex=False).str.strip().str.lower()
+        ph = ph.where(ph != "", "prefill")
+        # common aliases
+        ph = ph.str.replace(r"^pre.*", "prefill", regex=True)
+        ph = ph.str.replace(r"^dec.*", "decode", regex=True)
+        return ph
 
     for cp in comms_paths:
         p = resolve_existing_path(cp)
@@ -629,6 +641,12 @@ def extract_weight_load_seconds(
             continue
 
         wl["duration"] = pd.to_numeric(wl["duration"], errors="coerce").fillna(0.0).astype(float)
+
+        # phase
+        if "phase" in wl.columns:
+            phase = _norm_phase(wl["phase"])
+        else:
+            phase = pd.Series(["prefill"] * len(wl), index=wl.index)
 
         # destination-based classification
         dst = _norm_str(wl["dst"]) if "dst" in wl.columns else pd.Series([""] * len(wl), index=wl.index)
@@ -651,6 +669,8 @@ def extract_weight_load_seconds(
         gpu_mask = gpu_mask & (~pim_mask)
 
         cls = np.where(pim_mask.to_numpy(), "pim", np.where(gpu_mask.to_numpy(), "gpu", "unknown"))
+
+        # weight key: try node_id/weight_id/op in order
         wkey = pd.Series([""] * len(wl), index=wl.index)
         if "node_id" in wl.columns:
             nid = _norm_str(wl["node_id"])
@@ -664,44 +684,97 @@ def extract_weight_load_seconds(
         # last resort: stable per-row id inside this comms trace
         wkey = wkey.where(wkey != "", pd.Series([f"ROW{i}" for i in range(len(wl))], index=wl.index))
 
-        rows.append(pd.DataFrame({
-            "class": cls,
-            "dst": dst_norm.to_numpy(),
-            "wkey": wkey.to_numpy(),
-            "duration": wl["duration"].to_numpy(dtype=np.float64),
-        }))
+        rows.append(
+            pd.DataFrame(
+                {
+                    "phase": phase.to_numpy(),
+                    "class": cls,
+                    "dst": dst_norm.to_numpy(),
+                    "wkey": wkey.to_numpy(),
+                    "duration": wl["duration"].to_numpy(dtype=np.float64),
+                }
+            )
+        )
 
     if not rows:
-        return {"gpu_s": 0.0, "pim_s": 0.0, "total_s": 0.0, "unknown_s": 0.0}
+        return {
+            "all": {"gpu_s": 0.0, "pim_s": 0.0, "total_s": 0.0, "unknown_s": 0.0},
+        }
 
     all_wl = pd.concat(rows, ignore_index=True)
 
+    # De-dup: same weight key to same dst within the same phase -> take max duration
     uniq = (
-        all_wl.groupby(["class", "dst", "wkey"], dropna=False)["duration"]
+        all_wl.groupby(["phase", "class", "dst", "wkey"], dropna=False)["duration"]
         .max()
         .reset_index()
     )
+
+    # Sum per destination
     per_dst = (
-        uniq.groupby(["class", "dst"], dropna=False)["duration"]
+        uniq.groupby(["phase", "class", "dst"], dropna=False)["duration"]
         .sum()
         .reset_index()
     )
 
-    pim_by = per_dst[per_dst["class"] == "pim"].set_index("dst")["duration"].to_dict()
-    gpu_by = per_dst[per_dst["class"] == "gpu"].set_index("dst")["duration"].to_dict()
-    unk_by = per_dst[per_dst["class"] == "unknown"].set_index("dst")["duration"].to_dict()
+    out: Dict[str, Dict[str, float]] = {}
+    phases = [str(p) for p in sorted(per_dst["phase"].dropna().unique())]
+    for ph in phases:
+        sub = per_dst[per_dst["phase"] == ph]
 
-    pim_part = max(pim_by.values()) if pim_by else 0.0
-    gpu_part = max(gpu_by.values()) if gpu_by else 0.0
-    unk_part = sum(unk_by.values()) if unk_by else 0.0
+        pim_by = sub[sub["class"] == "pim"].set_index("dst")["duration"].to_dict()
+        gpu_by = sub[sub["class"] == "gpu"].set_index("dst")["duration"].to_dict()
+        unk_by = sub[sub["class"] == "unknown"].set_index("dst")["duration"].to_dict()
 
-    pim_s = float(pim_part)
-    gpu_s = float(gpu_part + unk_part)
-    unknown_s = float(unk_part)
+        pim_part = max(pim_by.values()) if pim_by else 0.0
+        gpu_part = max(gpu_by.values()) if gpu_by else 0.0
+        unk_part = sum(unk_by.values()) if unk_by else 0.0
 
-    total_s = max(float(gpu_s), float(pim_s))
-    return {"gpu_s": float(gpu_s), "pim_s": float(pim_s), "total_s": total_s, "unknown_s": float(unknown_s)}
+        # Unknown is conservatively charged to GPU/NPU side to avoid undercount.
+        gpu_s = float(gpu_part + unk_part)
+        pim_s = float(pim_part)
+        unknown_s = float(unk_part)
 
+        # IMPORTANT: do NOT overlap GPU vs PIM weight loads (add them).
+        total_s = float(gpu_s + pim_s)
+
+        out[str(ph)] = {
+            "gpu_s": float(gpu_s),
+            "pim_s": float(pim_s),
+            "unknown_s": float(unknown_s),
+            "total_s": float(total_s),
+        }
+
+    # "all": sum across phases (phases are sequential)
+    all_gpu = float(sum(float(out[p].get("gpu_s", 0.0) or 0.0) for p in out.keys()))
+    all_pim = float(sum(float(out[p].get("pim_s", 0.0) or 0.0) for p in out.keys()))
+    all_unk = float(sum(float(out[p].get("unknown_s", 0.0) or 0.0) for p in out.keys()))
+    out["all"] = {
+        "gpu_s": float(all_gpu),
+        "pim_s": float(all_pim),
+        "unknown_s": float(all_unk),
+        "total_s": float(all_gpu + all_pim),
+    }
+    return out
+
+
+def extract_weight_load_seconds(
+    comms_paths: List[str],
+    *,
+    decode_stride: int = 1,
+) -> Dict[str, float]:
+    """Aggregate `weight_load` durations from comms trace(s).
+
+    Backward-compatible wrapper over :func:`extract_weight_load_seconds_by_phase`.
+    """
+    by_phase = extract_weight_load_seconds_by_phase(comms_paths)
+    rec = by_phase.get("all", {}) if isinstance(by_phase, dict) else {}
+    return {
+        "gpu_s": float(rec.get("gpu_s", 0.0) or 0.0),
+        "pim_s": float(rec.get("pim_s", 0.0) or 0.0),
+        "total_s": float(rec.get("total_s", 0.0) or 0.0),
+        "unknown_s": float(rec.get("unknown_s", 0.0) or 0.0),
+    }
 
 # ==========================================================
 # Layer-scope comm accumulation (kv_load)
@@ -3278,7 +3351,7 @@ def merge(
                 except Exception:
                     pass
                 try:
-                    return float(max(float(rec.get("gpu_s", 0.0) or 0.0), float(rec.get("pim_s", 0.0) or 0.0)))
+                    return float(float(rec.get("gpu_s", 0.0) or 0.0) + float(rec.get("pim_s", 0.0) or 0.0))
                 except Exception:
                     return 0.0
 
@@ -3363,11 +3436,50 @@ def merge(
 
         comms_for_sched = _pick_comms_for_schedule(i)
         weight_load_prefill_s = 0.0
+        weight_load_decode_s = 0.0
+
+        weight_load_prefill_gpu_s = 0.0
+        weight_load_prefill_pim_s = 0.0
+        weight_load_prefill_unknown_s = 0.0
+
+        weight_load_decode_gpu_s = 0.0
+        weight_load_decode_pim_s = 0.0
+        weight_load_decode_unknown_s = 0.0
+
         if comms_for_sched:
-            wl = extract_weight_load_seconds(comms_for_sched, decode_stride=int(decode_stride))
-            weight_load_prefill_s = float(wl.get("total_s", 0.0) or 0.0)
+            wl_ph = extract_weight_load_seconds_by_phase(comms_for_sched)
+            pre = wl_ph.get("prefill", {}) if isinstance(wl_ph, dict) else {}
+            dec = wl_ph.get("decode", {}) if isinstance(wl_ph, dict) else {}
+
+            # If there are other phases in the comm trace, conservatively charge them to prefill.
+            other_gpu_s = 0.0
+            other_pim_s = 0.0
+            other_unk_s = 0.0
+            try:
+                for k, v in (wl_ph or {}).items():
+                    if k in ("prefill", "decode", "all"):
+                        continue
+                    if not isinstance(v, dict):
+                        continue
+                    other_gpu_s += float(v.get("gpu_s", 0.0) or 0.0)
+                    other_pim_s += float(v.get("pim_s", 0.0) or 0.0)
+                    other_unk_s += float(v.get("unknown_s", 0.0) or 0.0)
+            except Exception:
+                pass
+            other_total_s = float(other_gpu_s + other_pim_s)
+
+            weight_load_prefill_gpu_s = float(pre.get("gpu_s", 0.0) or 0.0) + float(other_gpu_s)
+            weight_load_prefill_pim_s = float(pre.get("pim_s", 0.0) or 0.0) + float(other_pim_s)
+            weight_load_prefill_unknown_s = float(pre.get("unknown_s", 0.0) or 0.0) + float(other_unk_s)
+            weight_load_prefill_s = float(pre.get("total_s", 0.0) or 0.0) + float(other_total_s)
+
+            weight_load_decode_gpu_s = float(dec.get("gpu_s", 0.0) or 0.0)
+            weight_load_decode_pim_s = float(dec.get("pim_s", 0.0) or 0.0)
+            weight_load_decode_unknown_s = float(dec.get("unknown_s", 0.0) or 0.0)
+            weight_load_decode_s = float(dec.get("total_s", 0.0) or 0.0)
         else:
-            weight_load_prefill_s = _lookup_weight_load_from_results(str(p))
+            weight_load_prefill_s = wl_total
+            weight_load_prefill_gpu_s = wl_total
 
         # kv_load: per-layer comm; overlap controlled by NON_OVERLAP
         comm_tbl = extract_layer_comm_seconds(comms_for_sched, df, tags=("kv_load",))
@@ -3725,8 +3837,10 @@ def merge(
             comm_added_s += add_s
             comm_kv_s += add_s
 
-         # weight_load is charged to prefill as a one-time overhead
+                # weight_load: charge each phase separately 
         prefill_time_s += weight_load_prefill_s
+        gpu_busy_s += weight_load_prefill_gpu_s
+        pim_busy_s += weight_load_prefill_pim_s
 
         dec = df[df["phase"] == "decode"]
         dec_steps = sorted(dec["step"].unique())
@@ -3786,6 +3900,11 @@ def merge(
                 }
             )
 
+        # weight_load during decode phase (no GPU-vs-PIM overlap)
+        decode_time_s += weight_load_decode_s
+        gpu_busy_s += weight_load_decode_gpu_s
+        pim_busy_s += weight_load_decode_pim_s
+
         total_time_s = prefill_time_s + decode_time_s
 
         trace_t = compute_trace_times_from_ops_csv(df, decode_stride=decode_stride)
@@ -3813,7 +3932,18 @@ def merge(
             "schedule_comm_s": float(sched_comm_s),
             "schedule_other_s": float(sched_other_s),
             "comm_added_s": float(comm_added_s),
+
             "weight_load_prefill_s": float(weight_load_prefill_s),
+            "weight_load_decode_s": float(weight_load_decode_s),
+            "weight_load_total_s": float(weight_load_prefill_s + weight_load_decode_s),
+
+            "weight_load_prefill_gpu_s": float(weight_load_prefill_gpu_s),
+            "weight_load_prefill_pim_s": float(weight_load_prefill_pim_s),
+            "weight_load_prefill_unknown_s": float(weight_load_prefill_unknown_s),
+            "weight_load_decode_gpu_s": float(weight_load_decode_gpu_s),
+            "weight_load_decode_pim_s": float(weight_load_decode_pim_s),
+            "weight_load_decode_unknown_s": float(weight_load_decode_unknown_s),
+
             "comm_kv_load_added_s": float(comm_kv_s),
             "missing_segments": int(missing_segments),
         }
@@ -3821,7 +3951,7 @@ def merge(
 
         if dbg_f:
             dbg_f.write(
-                f"[SCHEDULE] {p.name} prefill={prefill_time_s:.6f} (weight_load={weight_load_prefill_s:.6f}) decode={decode_time_s:.6f} total={total_time_s:.6f} "
+                f"[SCHEDULE] {p.name} prefill={prefill_time_s:.6f} (wl_prefill={weight_load_prefill_s:.6f}, wl_decode={weight_load_decode_s:.6f}) decode={decode_time_s:.6f} total={total_time_s:.6f} "
                 f"missing_segments={missing_segments}\n"
             )
 

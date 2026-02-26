@@ -4,10 +4,10 @@
 Plot experiment results from *merge_all.csv files.
 find . -type f -print > files.txt
 python3 plot_exp1_verify.py \
-  --file-list ../verify/hw_hardware_1gpu_4aim/st128/llama_7b_bf16_b1_s128/files.txt \
-  --search-dir /path/to/verify/evaluate_single_test/hardware_1gpu_4aim \
+  --file-list ../verify/hw_hardware_1gpu_4aim/st24/llama_7b_bf16_b1_s24/files.txt \
   --output ../figs/evaluate_single_test/hardware_1gpu_4aim/exp1.pdf 
   
+  --search-dir /path/to/verify/evaluate_single_test/hardware_1gpu_4aim \
   --dims "1024x1024,1024x2048,2048x2048,4096x4096" \
     
 """
