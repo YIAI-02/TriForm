@@ -4,11 +4,12 @@
 Plot experiment results from *merge_all.csv files.
 find . -type f -print > files.txt
 python3 plot_exp1_verify.py \
-  --file-list ../verify/hw_hardware_1gpu_4aim/st24/llama_7b_bf16_b1_s24/files.txt \
-  --output ../figs/evaluate_single_test/hardware_1gpu_4aim/exp1.pdf 
+  --file-list ../verify/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/files.txt \
+  --dims "128x67, 128x128, 262x67, 262x262" \
+  --output ../figs/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/exp1.pdf 
   
   --search-dir /path/to/verify/evaluate_single_test/hardware_1gpu_4aim \
-  --dims "1024x1024,1024x2048,2048x2048,4096x4096" \
+    
     
 """
 
@@ -29,7 +30,19 @@ from matplotlib.lines import Line2D
 
 
 # --- Config ---
+# Strategy order: keep preferred methods first, but ALWAYS put hefthint at the very end.
 PREFERRED_ORDER: List[str] = ["pd", "ianus", "facil", "hefthint"]
+
+# Display name overrides (only affects x-axis tick labels).
+DISPLAY_NAME_MAP: Dict[str, str] = {
+    # user-facing label for hefthint
+    "hefthint": "this work",
+}
+
+# Manually exclude strategies from plotting (edit this list if you want).
+# You can also pass the same via CLI: --exclude ianus,facil
+MANUAL_EXCLUDE: List[str] = ["ianus"]
+
 # For plotting label "hefthint", candidates on disk can be either "heft" or "hefthint"
 HEFT_VARIANTS: List[str] = ["heft", "hefthint"]
 
@@ -273,11 +286,52 @@ def build_dim_results(idx: Dict[Tuple[int, int], Dict[str, List[Path]]],
     return out
 
 
+def pretty_strategy_name(strategy_key: str) -> str:
+    """Human-facing label for x-axis ticks."""
+    return DISPLAY_NAME_MAP.get(strategy_key, strategy_key)
+
+
+def format_speedup(sp: float) -> str:
+    """Format speedup multiplier text shown next to speedup points."""
+    if not np.isfinite(sp):
+        return ""
+    if sp >= 100:
+        return f"{sp:.0f}×"
+    if sp >= 10:
+        return f"{sp:.1f}×"
+    return f"{sp:.2f}×"
+
+
+def _normalize_strategy_token(s: str) -> str:
+    """Normalize strategy tokens for exclude-list matching (case-insensitive, alias-aware)."""
+    raw = (s or "").strip().lower()
+    compact = re.sub(r"[\s_\-]+", "", raw)
+
+    # aliases for hefthint
+    if compact in {"thiswork", "hefthint", "heft"}:
+        return "hefthint"
+
+    return raw
+
+
+def parse_exclude_arg(exclude_arg: Optional[str]) -> List[str]:
+    if not exclude_arg:
+        return []
+    parts = [p.strip() for p in exclude_arg.split(",")]
+    return [p for p in parts if p]
+
+
 def strategy_order(res: Dict[str, Metrics]) -> List[str]:
     present = list(res.keys())
-    order: List[str] = [s for s in PREFERRED_ORDER if s in res]
-    rest = sorted([s for s in present if s not in set(PREFERRED_ORDER)])
-    return order + rest
+    # Keep preferred order (except hefthint), then any other discovered strategies,
+    # and ALWAYS put hefthint at the very end if present.
+    preferred_no_heft = [s for s in PREFERRED_ORDER if s != "hefthint"]
+    order: List[str] = [s for s in preferred_no_heft if s in res]
+    rest = sorted([s for s in present if s not in set(PREFERRED_ORDER) and s != "hefthint"])
+    order += rest
+    if "hefthint" in res:
+        order.append("hefthint")
+    return order
 
 
 def plot_results(dim_results: Dict[Tuple[int, int], Dict[str, Metrics]],
@@ -324,7 +378,8 @@ def plot_results(dim_results: Dict[Tuple[int, int], Dict[str, Metrics]],
 
     # Headroom for arrows/text
     y_max = max_time * 1.25
-    sp_max = max(1.2, max_speedup * 1.15)
+    # Extra headroom for per-point speedup labels
+    sp_max = max(1.2, max_speedup * 1.30)
 
     # Dynamic figure width (keeps labels readable when there are many strategies)
     per_subplot_w = max(4.5, 0.45 * max_categories)
@@ -396,21 +451,23 @@ def plot_results(dim_results: Dict[Tuple[int, int], Dict[str, Metrics]],
 
         ax.set_title(f"{lin}x{lout}")
         ax.set_xticks(x)
-        ax.set_xticklabels(order, rotation=30, ha="right", fontsize=9)
+        ax.set_xticklabels([pretty_strategy_name(a) for a in order], rotation=30, ha="right", fontsize=9)
         ax.set_ylim(0, y_max)
 
         if i == 0:
             ax.set_ylabel("Time (s)")
 
         # Mean error arrows (between trace_total and meas_total)
-        cap_half = bar_w * 1.25  # spans across both bars
+        # Place the arrow above the *shorter* of the two bars (instead of in-between).
+        cap_half = bar_w * 0.55  # cap spans roughly one bar width
         for j in range(n):
             yt = trace_total[j]
             ym = meas_total[j]
             if not (np.isfinite(yt) and np.isfinite(ym)):
                 continue
 
-            xc = x[j]
+            # Arrow x-position: align with the shorter bar
+            xc = pos_trace[j] if yt <= ym else pos_meas[j]
             ax.plot([xc - cap_half, xc + cap_half], [yt, yt], color="k", lw=border_lw, zorder=5)
             ax.plot([xc - cap_half, xc + cap_half], [ym, ym], color="k", lw=border_lw, zorder=5)
             ax.annotate(
@@ -440,6 +497,22 @@ def plot_results(dim_results: Dict[Tuple[int, int], Dict[str, Metrics]],
 
         ax2.plot(x, speedup, color="k", lw=border_lw * 0.8, marker="o", markersize=4, zorder=10)
         ax2.set_ylim(0, sp_max)
+
+        # Label speedup at each point
+        for j, sp in enumerate(speedup):
+            if not np.isfinite(sp):
+                continue
+            ax2.annotate(
+                format_speedup(float(sp)),
+                xy=(x[j], float(sp)),
+                textcoords="offset points",
+                xytext=(0, 6),
+                ha="center",
+                va="bottom",
+                fontsize=7,
+                color="k",
+                zorder=11,
+            )
 
         # Only show speedup ticks on the right-most visible subplot
         if i == min(len(dims), 4) - 1:
@@ -488,6 +561,9 @@ def main() -> None:
     ap.add_argument("--output", type=str, default="plot.png", help="Output image path.")
     ap.add_argument("--title", type=str, default=None, help="Figure title.")
     ap.add_argument("--no-error-text", action="store_true", help="Do not draw % text for mean error.")
+    ap.add_argument("--exclude", type=str, default=None,
+                    help="Comma-separated strategy names to exclude from plotting (case-insensitive). "
+                         "Example: --exclude ianus,facil . Aliases: 'this work'/'heft' -> hefthint.")
     ap.add_argument("--dpi", type=int, default=200)
     ap.add_argument("--border-lw", type=float, default=1.0, help="Bar outline / spine linewidth.")
     ap.add_argument("--show", action="store_true", help="Show interactively (in addition to saving).")
@@ -528,6 +604,19 @@ def main() -> None:
         print(f"[WARN] only found {len(dims)} dims; remaining subplots will be blank.", file=sys.stderr)
 
     dim_results = build_dim_results(idx, dims)
+
+    # Apply manual/CLI excludes
+    exclude_tokens: List[str] = []
+    exclude_tokens.extend(MANUAL_EXCLUDE)
+    exclude_tokens.extend(parse_exclude_arg(args.exclude))
+    exclude_set = {_normalize_strategy_token(t) for t in exclude_tokens if t and _normalize_strategy_token(t)}
+
+    if exclude_set:
+        for dim in list(dim_results.keys()):
+            res = dim_results.get(dim, {})
+            for k in list(res.keys()):
+                if _normalize_strategy_token(k) in exclude_set:
+                    res.pop(k, None)
 
     plot_results(
         dim_results=dim_results,

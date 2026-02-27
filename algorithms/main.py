@@ -321,6 +321,10 @@ def _make_label_from_kv_plan(
     setattr(label, 'kv_total_bytes_raw', int(KV_total_bytes))
     setattr(label, 'kv_dtype_bytes', float(kv_plan.get('kv_dtype_bytes', 0.0) or 0.0))
     setattr(label, 'tp_qkv_effective', int(kv_plan.get('tp_qkv_effective', 1) or 1))
+    # Tensor-parallel shard knobs (used by cost model/NPU backends).
+    setattr(label, 'tp_qkv', int(cfg.get('tp_qkv', 1) or 1))
+    setattr(label, 'tp_ffn', int(cfg.get('tp_ffn', 1) or 1))
+    setattr(label, 'tp_ffn_effective', int(cfg.get('tp_ffn', 1) or 1))
     setattr(label, 'pim_total_capacity_bytes', int(pim_bytes_total))
     setattr(label, 'weights_preloaded_on_pim', bool(weights_preloaded_on_pim))
 
@@ -861,7 +865,7 @@ def run(cfg: Dict):
     if _cluster_type_count(cluster, 'npu') <= 0:
         npu_backend = None
     pim_fast_mode = bool(cfg.get('pim_fast_mode', False))
-    cost = CostModel(cluster, dtype=cfg.get('dtype', 'fp16'), pim_config_path=pim_config_path, gb_config_path=gb_config_path, ramulator_config_path=ramulator_config_path,  simulation_log_file=sim_log_file, debug_traces=False, model_dict=model_dict, npu_backend=npu_backend, pim_fast_mode=pim_fast_mode)
+    cost = CostModel(cluster, dtype=cfg.get('dtype', 'fp16'), pim_config_path=pim_config_path, gb_config_path=gb_config_path, ramulator_config_path=ramulator_config_path,  simulation_log_file=sim_log_file, debug_traces=False, model_dict=model_dict, npu_backend=npu_backend, pim_fast_mode=pim_fast_mode, tp_qkv=int(cfg.get('tp_qkv', 1) or 1), tp_ffn=int(cfg.get('tp_ffn', 1) or 1))
     cost.logger.start_simulation()
     fmt_map: Dict[str, str] = {}
     prev_total: float|None = None
@@ -1609,7 +1613,7 @@ def _eval_one_baseline(cfg: Dict, policy: str) -> Dict:
         simulation_log_file=sim_log_path,
         model_dict=model_dict,
         pim_fast_mode=pim_fast_mode,
-        npu_backend=npu_backend,
+        npu_backend=npu_backend
     )
 
     try:
@@ -1796,7 +1800,7 @@ def _run_strategy_once(strategy: str, cfg: Dict, *, shared_graph=None, shared_sh
         simulation_log_file=sim_log_path,
         model_dict=model_dict,
         npu_backend=npu_backend,
-        pim_fast_mode=pim_fast_mode,
+        pim_fast_mode=pim_fast_mode
     )
 
     try:

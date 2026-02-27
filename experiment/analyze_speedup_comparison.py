@@ -4,8 +4,8 @@
 
 1) 批量：
 python analyze_speedup_comparison.py \
-  --output-root ../algorithms/output/experiment_1gpu_4aim \
-  --out-dir ../figs/speedup/experiment_1gpu_4aim
+  --output-root ../algorithms/output/experiment_1gpu_2aim\
+  --out-dir ../figs/speedup/experiment_1gpu_2aim
 
 
 不要传hw_ 这一层目录
@@ -29,19 +29,16 @@ from typing import Dict, Iterable, Iterator, List, Optional, Sequence, Tuple
 
 import numpy as np
 
-# 脚本保存图片用 Agg，避免无显示环境报错
 import matplotlib
 matplotlib.use("Agg")  # noqa: E402
 import matplotlib.pyplot as plt  # noqa: E402
 
-
-# ===== 颜色（按你的要求） =====
 COL_PREFILL = "#326568"
 COL_DECODE = "#A2D091"
 COL_SPEEDUP = "#000000"
 
 # ===== 算法排序（按你的要求）=====
-# 顺序：pd, attn_on_pim, weights_on_pim, facil, attacc, ianus, heft, hefthint
+# 顺序：pd, attn_on_pim, weights_on_pim, facil, attacc, ianus, hefthint（heft 与 hefthint 会二选一画成 hefthint）
 PREFERRED_ORDER = [
     "pd",
     "attn_on_pim",
@@ -61,7 +58,7 @@ ALIASES = {
     "hefthint": "this work",  # backward compatibility
 }
 
-# 要去掉的算法
+# 要去掉的算法（注意：heft 不单独画；会与 hefthint 取总时长更小者，统一画成 hefthint）
 EXCLUDE_ALGOS = {"heft"}
 
 
@@ -140,6 +137,114 @@ def _load_baseline_compare(
             float(r.get("total_time_s", 0.0)),
         )
     return case, time_map, cfg
+
+
+
+
+def _strip_algo_prefix(policy: str) -> str:
+    """把 'algo:xxx' 统一成 'xxx'。"""
+    if policy.startswith("algo:"):
+        return policy.split(":", 1)[1]
+    return policy
+
+
+def _effective_total_s(t: Tuple[float, float, float]) -> float:
+    """total_time_s 可能为 0；这种情况下用 prefill+decode 作为 total。"""
+    pre, de, tot = t
+    tot = float(tot)
+    if tot > 0:
+        return tot
+    return float(pre) + float(de)
+
+
+def _choose_heft_or_hefthint_for_plot(
+    time_map: Dict[str, Tuple[float, float, float]],
+    *,
+    case: Tuple[int, int],
+    fp: Optional[Path] = None,
+) -> Dict[str, Tuple[float, float, float]]:
+    """在 time_map 里，如果同时存在 heft 与 hefthint，则选总时长更小者来画。
+
+    - 图上统一显示成 'hefthint'（不单独画 'heft'）。
+    - 在日志里打印本次实际采用的是哪一个（heft / hefthint）。
+
+    返回新的 time_map（不会修改原 dict）。
+    """
+
+    # 找出所有 policy 中 base name 为 'heft' / 'hefthint' 的条目
+    # 兼容：有些旧数据可能用 'this work' 作为 policy 名
+    hint_names = {"hefthint", "this work"}
+
+    heft_keys = [k for k in time_map.keys() if _strip_algo_prefix(k) == "heft"]
+    hint_keys = [k for k in time_map.keys() if _strip_algo_prefix(k) in hint_names]
+
+    if not heft_keys and not hint_keys:
+        return time_map
+
+    def best_of(keys: List[str]) -> Tuple[Optional[str], Optional[float]]:
+        best_k: Optional[str] = None
+        best_t: Optional[float] = None
+        for k in keys:
+            t = _effective_total_s(time_map[k])
+            if best_t is None or t < best_t:
+                best_t = t
+                best_k = k
+        return best_k, best_t
+
+    best_heft_k, best_heft_t = best_of(heft_keys) if heft_keys else (None, None)
+    best_hint_k, best_hint_t = best_of(hint_keys) if hint_keys else (None, None)
+
+    chosen_k: Optional[str] = None
+    chosen_from: str = ""
+
+    if best_heft_k is not None and best_hint_k is not None:
+        # 总时长更小者胜；若相等，优先保留 hefthint（更符合命名）
+        assert best_heft_t is not None and best_hint_t is not None
+        if best_heft_t < best_hint_t:
+            chosen_k = best_heft_k
+            chosen_from = "heft"
+        else:
+            chosen_k = best_hint_k
+            chosen_from = "hefthint"
+    elif best_heft_k is not None:
+        chosen_k = best_heft_k
+        chosen_from = "heft"
+    else:
+        chosen_k = best_hint_k
+        chosen_from = "hefthint"
+
+    # 新 map：移除所有 heft/hefthint 原始条目，统一塞回 'algo:hefthint'
+    new_map: Dict[str, Tuple[float, float, float]] = dict(time_map)
+    for k in heft_keys + hint_keys:
+        new_map.pop(k, None)
+
+    if chosen_k is not None:
+        new_map["algo:hefthint"] = time_map[chosen_k]
+
+    # 日志
+    S, T = case
+    tag = fp.name if fp is not None else "<unknown file>"
+
+    if best_heft_k is not None and best_hint_k is not None:
+        assert best_heft_t is not None and best_hint_t is not None
+        print(
+            f"[SELECT] {tag} (prefill={S}, decode={T}): plot 'hefthint' using {chosen_from} "
+            f"(heft={best_heft_t:.6g}s, hefthint={best_hint_t:.6g}s)"
+        )
+    else:
+        only = "heft" if best_heft_k is not None else "hefthint"
+        tot_only = best_heft_t if best_heft_t is not None else best_hint_t
+        if tot_only is not None:
+            print(
+                f"[SELECT] {tag} (prefill={S}, decode={T}): only {only} present; plot as 'hefthint' "
+                f"(total={tot_only:.6g}s)"
+            )
+        else:
+            print(
+                f"[SELECT] {tag} (prefill={S}, decode={T}): only {only} present; plot as 'hefthint'"
+            )
+
+    return new_map
 
 
 def _safe_filename(s: str, max_len: int = 240) -> str:
@@ -262,6 +367,7 @@ def plot_compare_grid(files: Sequence[Path], *, outfile: Path, sharey: bool = Fa
     loaded = []
     for fp in files:
         case, tm, _ = _load_baseline_compare(fp)
+        tm = _choose_heft_or_hefthint_for_plot(tm, case=case, fp=fp)
         loaded.append((case, fp, tm))
 
     loaded.sort(key=lambda x: (x[0][0], x[0][1]))

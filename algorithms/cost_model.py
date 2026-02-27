@@ -40,13 +40,13 @@ from cost_model_npu_llmcompass_backend import (
     _llmcompass_simulate_layernorm_s,
     _llmcompass_simulate_gelu_s,
 )
-from cost_model_npu_json_backend import (
-    _map_op_to_mmad_dims,
-    _predict_mmad_latency_us_from_json,
-    _predict_softmax_latency_us_from_json,
-    _predict_gelu_latency_us_from_json,
-    _predict_layernorm_latency_us_from_json,
-)
+# from cost_model_npu_json_backend import (
+#     _map_op_to_mmad_dims,
+#     _predict_mmad_latency_us_from_json,
+#     _predict_softmax_latency_us_from_json,
+#     _predict_gelu_latency_us_from_json,
+#     _predict_layernorm_latency_us_from_json,
+# )
 
 logger = logging.getLogger(__name__)
 attach_local_debug_filter(logger, lambda: True)
@@ -316,17 +316,19 @@ class NpuAscend310BJsonBackend(NpuBackendBase):
     name = 'ascend_310b_json'
 
     def estimate_s(self, cm: "CostModel", node: TaskNode, dev: DeviceSpec, ctx: NpuOpContext) -> float:
+        op = (ctx.op_key or '').strip().lower()
+
         # (a) Softmax
-        if ctx.op_key == 'softmax':
+        if op == 'softmax':
             M_rows = max(1, int(ctx.batch) * max(1, int(ctx.q_heads)) * max(1, int(ctx.q_len)))
-            is_dense = str(ctx.attn_pattern).lower() in ('dense','none','off','disabled')
+            is_dense = str(ctx.attn_pattern).lower() in ('dense', 'none', 'off', 'disabled')
             if str(ctx.phase) == 'prefill':
                 K_cols = int(ctx.seq_len if is_dense else ctx.kv_len)
             else:
                 K_cols = int(ctx.kv_len)
             causal_for_model = bool(ctx.causal) and not (str(ctx.phase) == 'prefill' and (not is_dense))
-            us = _predict_softmax_latency_us_from_json(M_rows, K_cols, phase=ctx.phase, causal=causal_for_model)
-            logger.debug(str(f'[NPU-SOFTMAX][JSON] M={M_rows} K={K_cols} phase={ctx.phase} causal={ctx.causal} us={us}'))
+            us = _predict_softmax_latency_us_from_json(int(M_rows), int(K_cols), phase=ctx.phase, causal=causal_for_model)
+            logger.debug(str(f'[NPU-SOFTMAX][ASCEND] M={M_rows} K={K_cols} phase={ctx.phase} causal={ctx.causal} us={us}'))
             if us is not None:
                 return float(max(float(us) * 1e-06, float(ctx.mem_s)))
             return float(self._fallback_fast_s(cm, node, dev, ctx))
@@ -584,6 +586,14 @@ class CostModel:
         self.debug_traces = debug_traces
         self.pim_fast_mode = pim_fast_mode  # When True, skip all trace simulations
         self.npu_backend = _normalize_npu_backend(npu_backend) if npu_backend is not None else (_normalize_npu_backend('fast'))
+        try:
+            self.tp_qkv = max(1, int(tp_qkv or 1))
+        except Exception:
+            self.tp_qkv = 1
+        try:
+            self.tp_ffn = max(1, int(tp_ffn or 1))
+        except Exception:
+            self.tp_ffn = 1
         self.logger = get_simulation_logger(simulation_log_file)
         self.pim_cache_enabled = True
         self._shared_model_dict: Optional[Dict] = model_dict

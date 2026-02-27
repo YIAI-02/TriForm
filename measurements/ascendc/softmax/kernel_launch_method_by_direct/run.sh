@@ -8,6 +8,10 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ======================================================================================================================
 
+CURRENT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+cd "$CURRENT_DIR"
+TOP_DIR="$CURRENT_DIR"   # parent directory of ./build, used for profiling outputs
+
 SHORT=r:,v:,
 LONG=run-mode:,soc-version:,
 OPTS=$(getopt -a --options $SHORT --longoptions $LONG -- "$@")
@@ -31,8 +35,10 @@ do
 done
 
 # export SOFTMAX_CASE=1024x2048
-export SOFTMAX_CASES="128x128,128x512,256x1024,256x2048,512x1024,512x2048,512x3072,512x4096,1024x4096"
-
+# export SOFTMAX_CASES="128x128,128x512,256x1024,256x2048,512x1024,512x2048,512x3072,512x4096,1024x4096"
+# export SOFTMAX_CASES="256x127,256x128,256x129,256x255,256x256,256x257,256x512"
+# export SOFTMAX_CASES="32x256,64x256,128x256,256x256,512x256,1024x256"
+export SOFTMAX_CASES="32x512,64x512,128x512,256x512,512x512,1024x512"
 rm -rf build
 mkdir build
 cd build
@@ -69,12 +75,18 @@ elif [ "${RUN_MODE}" = "sim" ]; then
             export SOFTMAX_CASE="${C}"
             unset SOFTMAX_CASES
             echo "[msprof] Simulating case ${C}"
-            msprof op simulator --application=./softmax_direct_kernel_op
+            OUT_DIR="${TOP_DIR}/${C}"
+            mkdir -p "${OUT_DIR}"
+            msprof op simulator --application=./softmax_direct_kernel_op --output="${OUT_DIR}"
             idx=$((idx+1))
         done
         unset SOFTMAX_CASE
     else
-        msprof op simulator --application=./softmax_direct_kernel_op
+        OUT_NAME="${SOFTMAX_CASE:-single}"
+        OUT_DIR="${TOP_DIR}/${OUT_NAME}"
+        mkdir -p "${OUT_DIR}"
+        echo "[msprof] Simulating case ${OUT_NAME}, output -> ${OUT_DIR}"
+        msprof op simulator --application=./softmax_direct_kernel_op --output="${OUT_DIR}"
     fi
 elif [ "${RUN_MODE}" = "cpu" ]; then
     ./softmax_direct_kernel_op

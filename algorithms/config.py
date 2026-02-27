@@ -167,10 +167,10 @@ SCHED_DEFAULT: str = "heft"
 SCHED_JOINT_LK_ENABLE: bool = True
 SCHED_JOINT_LK_H: int = 3
 SCHED_JOINT_LK_GAMMA: float = 0.2
-SCHED_JOINT_LK_CONSIST_LAMBDA: float = 0
+SCHED_JOINT_LK_CONSIST_LAMBDA: float = 8
 SCHED_JOINT_LK_PLAN_HINT_MAX: int =  3
 # Weight-reuse bias gain multiplier (eta in bias formula)
-SCHED_WEIGHT_BIAS_ETA: float = 100
+SCHED_WEIGHT_BIAS_ETA: float = 50
 
 
 # -------------------------------------------------------------------------------------------------

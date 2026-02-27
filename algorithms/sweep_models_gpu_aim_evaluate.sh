@@ -6,7 +6,7 @@ shopt -s nullglob
 # Single source of truth
 # =========================
 CONFIG_FILE="${CONFIG_FILE:-./examples/evaluate_len_sweep_config.json}"
-OUTPUT_ROOT="${OUTPUT_ROOT:-./output/experiment_1gpu_4aim}"
+OUTPUT_ROOT="${OUTPUT_ROOT:-./output/experiment_1gpu_2aim_star}"
 
 # Sweep dims
 MODEL_FAMILY_VARIANTS=(
@@ -16,12 +16,12 @@ MODEL_FAMILY_VARIANTS=(
   "llama:7b"
 )
 
-PREFILLS=(1292 403 2393 5283)
-DECODES=(262 42)
+PREFILLS=(128 262 403 1292 2393 5283)
+DECODES=(67 128 262 403 1292 2393)
 
 # Hardware sweep (edit here, or use --hardware_glob)
 HARDWARE_CONFIGS=(
-  ./examples/hardware_1gpu_4aim.json
+  ./examples/hardware_1gpu_2aim_star.json
 )
 
 # Run knobs

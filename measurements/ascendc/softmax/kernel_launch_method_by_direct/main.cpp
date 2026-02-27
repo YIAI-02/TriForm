@@ -433,8 +433,8 @@ static void RunOneCaseNPU(uint32_t M, uint32_t K, uint32_t iters, uint32_t warmu
 int32_t main(int32_t, char **)
 {
     // 读取环境变量（均为可选）
-    uint32_t warmup = GetEnvU32("SOFTMAX_WARMUP", 2); // 每 case 预热次数
-    uint32_t iters = GetEnvU32("SOFTMAX_ITERS", 10);  // 每 case 计次
+    uint32_t warmup = GetEnvU32("SOFTMAX_WARMUP", 1); // 每 case 预热次数
+    uint32_t iters = GetEnvU32("SOFTMAX_ITERS", 1);  // 每 case 计次
     auto cases = ParseCasesFromEnv();
     if (cases.empty())
         cases = DefaultCases();

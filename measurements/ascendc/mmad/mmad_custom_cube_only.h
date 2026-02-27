@@ -192,7 +192,7 @@ private:
     __aicore__ inline void CopyOut()
     {
         AscendC::LocalTensor<float> c1Local = outQueueCO1.DeQue<float>();
-        AscendC::FixpipeParamsV220 fixpipeParams;
+        AscendC::FixpipeParamsV220 fixpipeParams{};
         fixpipeParams.nSize = n;
         fixpipeParams.mSize = m;
         fixpipeParams.srcStride = m;
@@ -202,8 +202,11 @@ private:
         fixpipeParams.srcNdStride = 0;
         fixpipeParams.dstNdStride = 0;
         AscendC::Fixpipe(cGM, c1Local, fixpipeParams);
+        // AscendC::Fixpipe<float, float, AscendC::CFG_ROW_MAJOR>(cGM, c1Local, fixpipeParams);
         outQueueCO1.FreeTensor(c1Local);
     }
+
+
 
 private:
     AscendC::TPipe pipe;
