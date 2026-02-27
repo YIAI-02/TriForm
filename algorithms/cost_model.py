@@ -40,13 +40,12 @@ from cost_model_npu_llmcompass_backend import (
     _llmcompass_simulate_layernorm_s,
     _llmcompass_simulate_gelu_s,
 )
-# from cost_model_npu_json_backend import (
-#     _map_op_to_mmad_dims,
-#     _predict_mmad_latency_us_from_json,
-#     _predict_softmax_latency_us_from_json,
-#     _predict_gelu_latency_us_from_json,
-#     _predict_layernorm_latency_us_from_json,
-# )
+from cost_model_npu_ascend_backend import (
+    _predict_mmad_latency_us_from_lut,
+    _predict_softmax_latency_us_from_lut,
+    _predict_gelu_latency_us_from_lut,
+    _predict_layernorm_latency_us_from_lut,
+)
 
 logger = logging.getLogger(__name__)
 attach_local_debug_filter(logger, lambda: True)
@@ -311,93 +310,146 @@ class NpuLlmCompassBackend(NpuBackendBase):
             f"Node={getattr(node, 'name', '?')}"
         )
 
+class NpuAscend310BLutBackend(NpuBackendBase):
+    """Ascend 310B LUT backend.
 
-class NpuAscend310BJsonBackend(NpuBackendBase):
-    name = 'ascend_310b_json'
+    Uses lookup-table (CSV/JSON/XLSX) for:
+      - MMAD/GEMM/BMM (via mmad_lut.*)
+      - Softmax (via softmax_lut.*)
+      - Norm (RMSNorm/LN/etc., via rmsnorm_lut.* or layernorm_lut.*)
+      - Activation (GELU as proxy for any activation, via gelu_lut.*)
+
+    If a key is missing, the LUT module performs interpolation.
+    """
+
+    name = 'ascend_310b_lut'
 
     def estimate_s(self, cm: "CostModel", node: TaskNode, dev: DeviceSpec, ctx: NpuOpContext) -> float:
         op = (ctx.op_key or '').strip().lower()
 
-        # (a) Softmax
+        # (a) Elementwise / bookkeeping
+        if op in ('add', 'identity', 'allreduce', 'k_write', 'v_write', 'kv_write'):
+            logger.debug(str(f'[NPU-ELEM][ASCEND-LUT] op={op} mem_s={ctx.mem_s}'))
+            return float(ctx.mem_s)
+
+        # (b) Softmax
         if op == 'softmax':
             M_rows = max(1, int(ctx.batch) * max(1, int(ctx.q_heads)) * max(1, int(ctx.q_len)))
             is_dense = str(ctx.attn_pattern).lower() in ('dense', 'none', 'off', 'disabled')
             if str(ctx.phase) == 'prefill':
-                K_cols = int(ctx.seq_len if is_dense else ctx.kv_len)
+                K_cols = max(1, int(ctx.seq_len if is_dense else ctx.kv_len))
             else:
-                K_cols = int(ctx.kv_len)
-            causal_for_model = bool(ctx.causal) and not (str(ctx.phase) == 'prefill' and (not is_dense))
-            us = _predict_softmax_latency_us_from_json(int(M_rows), int(K_cols), phase=ctx.phase, causal=causal_for_model)
-            logger.debug(str(f'[NPU-SOFTMAX][ASCEND] M={M_rows} K={K_cols} phase={ctx.phase} causal={ctx.causal} us={us}'))
+                K_cols = max(1, int(ctx.kv_len))
+
+            us = _predict_softmax_latency_us_from_lut(int(M_rows), int(K_cols), phase=str(ctx.phase), causal=bool(ctx.causal))
+            logger.debug(str(f'[NPU-SOFTMAX][ASCEND-LUT] M={M_rows} K={K_cols} phase={ctx.phase} causal={ctx.causal} us={us}'))
             if us is not None:
                 return float(max(float(us) * 1e-06, float(ctx.mem_s)))
             return float(self._fallback_fast_s(cm, node, dev, ctx))
 
-        # (b) Activation (GELU proxy)
-        if ctx.op_key in NPU_ACT_KEYS:
-            data_len = max(1, int(ctx.batch)) * max(1, int(ctx.q_len)) * max(1, int(ctx.ffn_dim))
-            us = _predict_gelu_latency_us_from_json(int(data_len))
-            logger.debug(str(f'[NPU-ACT][JSON] data_len={data_len} us={us}'))
+        # (c) Activation (GELU proxy -> treat as any activation function)
+        if op in NPU_ACT_KEYS:
+            width = int(ctx.ffn_dim if int(ctx.ffn_dim) > 0 else int(ctx.dim))
+            data_len = max(1, int(ctx.batch)) * max(1, int(ctx.q_len)) * max(1, width)
+            us = _predict_gelu_latency_us_from_lut(int(data_len))
+            logger.debug(str(f'[NPU-ACT][ASCEND-LUT] op={op} data_len={data_len} us={us}'))
             if us is not None:
                 return float(max(float(us) * 1e-06, float(ctx.mem_s)))
             return float(self._fallback_fast_s(cm, node, dev, ctx))
 
-        # (c) Norm
-        if _is_norm_like(ctx.op_key):
-            rows = max(1, int(ctx.batch)) * (int(ctx.seq_len) if str(ctx.phase) == 'prefill' else 1)
-            us = _predict_layernorm_latency_us_from_json(int(rows), int(ctx.dim))
-            logger.debug(str(f'[NPU-NORM][JSON] op={ctx.op_key} rows={rows} width={ctx.dim} us={us}'))
+        # (d) Norm (RMSNorm LUT is treated as generic norm LUT)
+        if _is_norm_like(op):
+            rows = max(1, int(ctx.batch) * max(1, int(ctx.q_len)))
+            width = max(1, int(ctx.dim))
+            us = _predict_layernorm_latency_us_from_lut(int(rows), int(width))
+            logger.debug(str(f'[NPU-NORM][ASCEND-LUT] op={op} rows={rows} width={width} us={us}'))
             if us is not None:
                 return float(max(float(us) * 1e-06, float(ctx.mem_s)))
             return float(self._fallback_fast_s(cm, node, dev, ctx))
 
-        # (d) MMAD
-        dims = _map_op_to_mmad_dims(
-            ctx.op_key,
-            int(ctx.dim),
-            int(ctx.q_heads),
-            int(ctx.kv_heads),
-            int(ctx.ffn_dim if ctx.ffn_dim > 0 else ctx.dim),
-            int(ctx.seq_len),
-        ) if ctx.op_key else None
+        # (e) MMAD / GEMM / BMM
+        if op in NPU_GEMM_KEYS:
+            # ---- Attention core: BMM folded into GEMM ----
+            if op in ('score', 'output'):
+                bmm_batch = max(1, int(ctx.batch) * max(1, int(ctx.q_heads)))
+                M_mm = max(1, int(bmm_batch) * max(1, int(ctx.q_len)))
 
-        if dims is not None:
-            M, N, K, reps = dims
-            try:
-                qh_eff = max(1, int(ctx.q_heads))
-                hd_eff = int(ctx.head_dim if ctx.head_dim > 0 else (ctx.dim // qh_eff))
-                kv_len_eff = max(1, int(ctx.kv_len))
-                if ctx.op_key == 'score':
-                    M, N, K = 1, max(1, kv_len_eff), max(1, hd_eff)
-                    reps = max(1, qh_eff * max(1, int(ctx.q_len)))
-                elif ctx.op_key == 'output':
-                    M, N, K = 1, max(1, hd_eff), max(1, kv_len_eff)
-                    reps = max(1, qh_eff * max(1, int(ctx.q_len)))
-                elif ctx.op_key in ('q_proj','k_proj','v_proj','wo_proj','ffn_up','ffn_gate','ffn_down'):
-                    reps = max(1, int(ctx.q_len))
-            except Exception as _e:
-                logger.debug(str(f'[NPU-MMAD][JSON] phase-aware adjust skipped: {_e}'))
+                is_dense = str(ctx.attn_pattern).lower() in ('dense', 'none', 'off', 'disabled')
+                if str(ctx.phase) == 'prefill':
+                    Tk = max(1, int(ctx.seq_len if is_dense else ctx.kv_len))
+                else:
+                    Tk = max(1, int(ctx.kv_len))
 
-            us = _predict_mmad_latency_us_from_json(int(M), int(N), int(K))
-            logger.debug(str(f'[NPU-MMAD][JSON] M={M} N={N} K={K} reps={reps} us={us}'))
+                Dh = int(ctx.head_dim) if int(ctx.head_dim) > 0 else 0
+                if Dh <= 0:
+                    try:
+                        Dh = max(1, int(int(ctx.dim) // max(1, int(ctx.q_heads))))
+                    except Exception:
+                        Dh = 1
+
+                if op == 'score':
+                    N_mm = int(Tk)
+                    K_mm = int(Dh)
+                else:
+                    N_mm = int(Dh)
+                    K_mm = int(Tk)
+
+            # ---- Projections / FFN: GEMM (fold batch*tokens into M) ----
+            else:
+                M_mm = max(1, int(ctx.batch) * max(1, int(ctx.q_len)))
+
+                if op == 'q_proj':
+                    K_mm = max(1, int(ctx.dim))
+                    N_mm = max(1, int(ctx.q_dim) if int(ctx.q_dim) > 0 else int(ctx.dim))
+                elif op in ('k_proj', 'v_proj'):
+                    K_mm = max(1, int(ctx.dim))
+                    N_mm = max(1, int(ctx.kv_dim) if int(ctx.kv_dim) > 0 else int(ctx.dim))
+                elif op == 'wo_proj':
+                    # [B*T, o_dim] x [o_dim, D]
+                    K_mm = max(1, int(ctx.o_dim) if int(ctx.o_dim) > 0 else int(ctx.dim))
+                    N_mm = max(1, int(ctx.dim))
+                elif op in ('ffn_up', 'ffn_gate'):
+                    K_mm = max(1, int(ctx.dim))
+                    N_mm = max(1, int(ctx.ffn_dim) if int(ctx.ffn_dim) > 0 else int(4 * int(ctx.dim)))
+                elif op == 'ffn_down':
+                    K_mm = max(1, int(ctx.ffn_dim) if int(ctx.ffn_dim) > 0 else int(4 * int(ctx.dim)))
+                    N_mm = max(1, int(ctx.dim))
+                else:
+                    return float(self._fallback_fast_s(cm, node, dev, ctx))
+
+            us = _predict_mmad_latency_us_from_lut(int(M_mm), int(N_mm), int(K_mm))
+            logger.debug(str(f'[NPU-MMAD][ASCEND-LUT] op={op} M={M_mm} N={N_mm} K={K_mm} us={us}'))
             if us is not None:
-                total_s = float(us) * 1e-6 * max(1, int(reps)) * max(1, int(ctx.batch))
-                return float(max(total_s, float(ctx.mem_s)))
+                return float(max(float(us) * 1e-06, float(ctx.mem_s)))
             return float(self._fallback_fast_s(cm, node, dev, ctx))
 
-        # Fallback
+        # (f) Unknown -> fallback
         return float(self._fallback_fast_s(cm, node, dev, ctx))
 
 
 def build_npu_backend(backend: Optional[str]) -> NpuBackendBase:
-    b = _normalize_npu_backend(backend)
+    raw = (backend or '').strip().lower()
+    try:
+        b = _normalize_npu_backend(backend)
+    except Exception:
+        b = raw or 'fast'
+
+    if not b:
+        b = 'fast'
+
     if b == 'fast':
         return NpuFastBackend()
     if b == 'llmcompass':
         return NpuLlmCompassBackend()
-    if b == 'ascend_310b_json':
-        return NpuAscend310BJsonBackend()
-    raise ValueError(f"Unsupported npu_backend='{backend}'. Expected one of: fast, llmcompass, ascend_310b_json")
+
+    # Ascend 310B LUT (keep old name as alias)
+    if b in ('ascend_310b_lut', 'ascend_310b', 'ascend310b', 'ascend'):
+        return NpuAscend310BLutBackend()
+
+    raise ValueError(
+        f"Unsupported npu_backend='{backend}'. "
+        f"Expected one of: fast, llmcompass, ascend_310b_lut (alias ascend_310b_json)"
+    )
 
 # ---------------------------------------------------------------------------
 # PIM backends
@@ -577,7 +629,7 @@ def build_pim_backend(pim_fast_mode: bool) -> PimBackendBase:
 
 
 class CostModel:
-    def __init__(self, cluster: Cluster, dtype: str='fp16', pim_config_path: Optional[Path]=None, gb_config_path: Optional[Path]=None, ramulator_config_path: Optional[Path]=None, simulation_log_file: Optional[Path]=None, debug_traces: bool=False, model_dict: Optional[Dict]=None, pim_fast_mode: bool=False,npu_backend: Optional[str]=None):
+    def __init__(self, cluster: Cluster, dtype: str='fp16', pim_config_path: Optional[Path]=None, gb_config_path: Optional[Path]=None, ramulator_config_path: Optional[Path]=None, simulation_log_file: Optional[Path]=None, debug_traces: bool=False, model_dict: Optional[Dict]=None, pim_fast_mode: bool=False, npu_backend: Optional[str]=None, tp_qkv: int=1, tp_ffn: int=1):
         self.cluster = cluster
         self.dtype = dtype
         self.pim_config_path = pim_config_path

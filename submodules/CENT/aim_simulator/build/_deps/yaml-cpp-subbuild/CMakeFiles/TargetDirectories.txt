@@ -1,3 +1,0 @@
-/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/_deps/yaml-cpp-subbuild/CMakeFiles/yaml-cpp-populate.dir
-/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/_deps/yaml-cpp-subbuild/CMakeFiles/edit_cache.dir
-/lustre/home/2501111916/workspace/XPUPIM/TriForm/submodules/CENT/aim_simulator/build/_deps/yaml-cpp-subbuild/CMakeFiles/rebuild_cache.dir

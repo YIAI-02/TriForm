@@ -470,19 +470,24 @@ def _estimate_total_time_for_label(
     return float(t_prefill), float(t_decode), float(t_prefill + t_decode)
 
  
+
 def _normalize_npu_backend(backend):
-    """Normalize npu_backend strings to canonical: fast / ascend_310b_json / llmcompass."""
+    """Normalize npu_backend strings to canonical: fast / ascend_310b_lut / llmcompass."""
     if backend is None:
         return None
     b = str(backend).strip().lower().replace('-', '_')
     b = b.replace(' ', '_')
     if b in ('fast', 'fastmode', 'fast_mode'):
         return 'fast'
+    if b in ('ascend_310b_lut', 'ascend310b_lut', 'ascend_lut', 'lut', 'runtime_lut'):
+        return 'ascend_310b_lut'
     if b in ('ascend_310b_json', 'ascend310b_json', 'ascend_json', 'json', 'runtime_json', 'ascend_310b'):
         return 'ascend_310b_json'
     if b in ('llmcompass', 'llm_compass'):
         return 'llmcompass'
-    raise ValueError(f"Unknown npu_backend='{backend}'. Expected one of: fast, ascend_310b_json, llmcompass")
+    raise ValueError(
+        f"Unknown npu_backend='{backend}'. Expected one of: fast, ascend_310b_lut, ascend_310b_json, llmcompass"
+    )
 
 
 def auto_select_kv_policy(
@@ -2217,7 +2222,7 @@ def main():
 
         # npu_backend is mandatory: must be explicitly specified in config or CLI
         if cfg.get('npu_backend', None) is None:
-            raise ValueError("Missing required config key: 'npu_backend'. Choose from: fast, ascend_310b_json, llmcompass")
+            raise ValueError("Missing required config key: 'npu_backend'. Choose from: fast, ascend_310b_lut, ascend_310b_json, llmcompass")
         cfg['npu_backend'] = _normalize_npu_backend(cfg.get('npu_backend'))
 
         # result_dir always encodes batch: <base>/<family>_<variant>_<dtype>_b<batch>
