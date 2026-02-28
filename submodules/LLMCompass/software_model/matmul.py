@@ -22,7 +22,7 @@ class BatchedMatmul(Operator):
         self.output_shape = None
 
     def __call__(self, input1: Tensor, input2: Tensor) -> Tensor:
-        # [b, M, K] * [b, K, N] = [b, M, N]  每个 batch element 有自己的一份右矩阵
+        # [b, M, K] * [b, K, N] = [b, M, N]
         assert self.data_type == input1.data_type
         assert self.data_type == input2.data_type
         self.input1_shape = input1.shape
@@ -129,7 +129,7 @@ class Matmul(Operator):
         self.best_mapping = None
 
     def __call__(self, input1: Tensor, input2: Tensor) -> Tensor:
-        # [bs, M, K] * [K, N] = [bs, M, N] input2 没有batch，所有bs共享一个右矩阵
+        # [bs, M, K] * [K, N] = [bs, M, N]
         assert self.data_type == input1.data_type
         assert self.data_type == input2.data_type
         self.input1_shape = input1.shape

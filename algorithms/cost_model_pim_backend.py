@@ -25,6 +25,10 @@ from threading import Lock
 from datetime import datetime
 import logging
 
+PIM_TRACE_SCALE_REPEATS: bool = str(os.environ.get("PIM_TRACE_SCALE_REPEATS", "1")).strip().lower() not in {
+    "0", "false", "no", "off",
+}
+
 
 def _ensure_repo_root_on_syspath() -> None:
     try:
@@ -427,6 +431,7 @@ def _generate_pim_trace(
     phase: str,
     trace_file: Path,
     model_dict: Optional[Dict] = None,
+    batch: int = 1,
 ) -> None:
     op = _normalize_pim_op(op)
     if model_dict is None:
@@ -442,6 +447,11 @@ def _generate_pim_trace(
     ph = str(phase or '').strip().lower()
     is_prefill = (ph == 'prefill')
 
+    try:
+        B = max(1, int(batch or 1))
+    except Exception:
+        B = 1
+
     # Prefill: query_len == key_len == S. Decode: query_len == 1.
     T = int(S if is_prefill else 1)
     if op in ('score', 'softmax', 'output'):
@@ -449,16 +459,18 @@ def _generate_pim_trace(
             seqlens_list: List[int] = list(range(1, S + 1))
         else:
             seqlens_list = [S]
-        _emit_single_op_trace(
-            block, op, int(dim), int(n_heads), int(n_kv_heads), int(ffn_dim), seqlens_list,
-            head_dim=head_dim, q_dim=q_dim, kv_dim=kv_dim, o_dim=o_dim,
-        )
-    else:
-        for _ in range(T):
+        for _ in range(B):
             _emit_single_op_trace(
-                block, op, int(dim), int(n_heads), int(n_kv_heads), int(ffn_dim), None,
+                block, op, int(dim), int(n_heads), int(n_kv_heads), int(ffn_dim), seqlens_list,
                 head_dim=head_dim, q_dim=q_dim, kv_dim=kv_dim, o_dim=o_dim,
             )
+    else:
+        for _ in range(B):
+            for _ in range(T):
+                _emit_single_op_trace(
+                    block, op, int(dim), int(n_heads), int(n_kv_heads), int(ffn_dim), None,
+                    head_dim=head_dim, q_dim=q_dim, kv_dim=kv_dim, o_dim=o_dim,
+                )
 
     # Finalize trace once.
     if hasattr(block, 'finish'):
@@ -770,10 +782,16 @@ class PIMLatencyCache:
         o_dim: Optional[int],
         pim_config: Path,
         ramulator_config: Path,
+        batch: int = 1,
     ) -> str:
         ph = str(phase or '').strip().lower() or 'decode'
 
-        params = (
+        try:
+            b = max(1, int(batch or 1))
+        except Exception:
+            b = 1
+
+        params_base = (
             f'{op}|{ph}|{int(dim)}|{int(n_heads)}|{int(n_kv_heads)}|{int(ffn_dim)}|{int(seqlen) if seqlen is not None else -1}'
             f'|hd={int(head_dim) if head_dim is not None else -1}'
             f'|q={int(q_dim) if q_dim is not None else -1}'
@@ -781,7 +799,11 @@ class PIMLatencyCache:
             f'|o={int(o_dim) if o_dim is not None else -1}'
         )
         cfgs = f'{_file_signature(pim_config)}|{_file_signature(ramulator_config)}'
-        key = f'v2|{params}|{cfgs}'
+
+        if int(b) == 1:
+            key = f'v2|{params_base}|{cfgs}'
+        else:
+            key = f'v3|{params_base}|b={int(b)}|{cfgs}'
         return hashlib.md5(key.encode()).hexdigest()
 
     def get(
@@ -799,8 +821,9 @@ class PIMLatencyCache:
         o_dim: Optional[int],
         pim_config: Path,
         ramulator_config: Path,
+        batch: int = 1,
     ) -> Optional[float]:
-        key = self._make_key(op, phase, dim, n_heads, n_kv_heads, ffn_dim, seqlen, head_dim, q_dim, kv_dim, o_dim, pim_config, ramulator_config)
+        key = self._make_key(op, phase, dim, n_heads, n_kv_heads, ffn_dim, seqlen, head_dim, q_dim, kv_dim, o_dim, pim_config, ramulator_config, batch=batch)
         with self.lock:
             v = self.cache.get(key)
         try:
@@ -824,8 +847,9 @@ class PIMLatencyCache:
         pim_config: Path,
         ramulator_config: Path,
         latency: float,
+        batch: int = 1,
     ):
-        key = self._make_key(op, phase, dim, n_heads, n_kv_heads, ffn_dim, seqlen, head_dim, q_dim, kv_dim, o_dim, pim_config, ramulator_config)
+        key = self._make_key(op, phase, dim, n_heads, n_kv_heads, ffn_dim, seqlen, head_dim, q_dim, kv_dim, o_dim, pim_config, ramulator_config, batch=batch)
         with self.lock:
             self.cache[key] = float(latency)
             self._save_cache()
@@ -842,6 +866,7 @@ def _get_pim_latency_via_trace(
     n_kv_heads: int,
     ffn_dim: int,
     seqlen: Optional[int],
+    batch: int = 1,
     head_dim: Optional[int] = None,
     q_dim: Optional[int] = None,
     kv_dim: Optional[int] = None,
@@ -860,12 +885,134 @@ def _get_pim_latency_via_trace(
 
     if model_dict is None:
         raise ValueError('Model dictionary must be provided for PIM latency computation')
+
+    try:
+        b = max(1, int(batch or 1))
+    except Exception:
+        b = 1
+
     ph = str(phase or '').strip().lower() or 'decode'
     sim_logger = get_simulation_logger()
     sim_logger.record_simulation(op, dim, n_heads, n_kv_heads, ffn_dim, seqlen)
     if orig_op != op:
         sim_logger._log(f"[PIM] normalize op '{orig_op}' -> '{op}'")
-    
+
+    # ------------------------------------------------------------------
+    # Fast(er) mode: simulate one instance, then scale by batch/prefill.
+    # ------------------------------------------------------------------
+    if PIM_TRACE_SCALE_REPEATS:
+        # Scale factor requested by caller.
+        scale = 1
+        try:
+            scale *= max(1, int(b))
+        except Exception:
+            scale *= 1
+
+        if ph == 'prefill':
+            try:
+                s = int(seqlen) if seqlen is not None else 1
+                scale *= max(1, s)
+            except Exception:
+                scale *= 1
+
+        # We generate a "unit" trace that corresponds to one token in decode
+        # (batch=1). Prefill is approximated by multiplying by prefill length.
+        base_ph = 'decode'
+        base_b = 1
+
+        if use_cache:
+            cached_base = _pim_cache.get(
+                op, base_ph,
+                int(dim), int(n_heads), int(n_kv_heads), int(ffn_dim),
+                (int(seqlen) if seqlen is not None else None),
+                (int(head_dim) if head_dim is not None else None),
+                (int(q_dim) if q_dim is not None else None),
+                (int(kv_dim) if kv_dim is not None else None),
+                (int(o_dim) if o_dim is not None else None),
+                pim_config, ramulator_config,
+                batch=int(base_b),
+            )
+            if cached_base is not None:
+                return float(cached_base) * float(scale)
+
+        msg = (
+            f"[PIM] Computing latency for {op} phase={ph} "
+            f"(scaled: base_phase={base_ph}, base_batch={base_b}, scale={scale}; "
+            f"dim={dim}, heads={n_heads}, seq={seqlen}, batch={b})"
+        )
+        sim_logger._log(msg)
+
+        # Trace directory handling (keep_traces/trace_dir are best-effort).
+        if keep_traces or trace_dir is not None:
+            out_dir = Path(trace_dir) if trace_dir is not None else Path('./debug_pim_traces')
+            out_dir.mkdir(parents=True, exist_ok=True)
+            tmp_dir = out_dir
+            cleanup = False
+        else:
+            tmp_dir = Path(tempfile.mkdtemp(prefix='pim_trace_'))
+            cleanup = True
+
+        try:
+            prefix = str(trace_prefix or '').strip() or op
+            trace_path = tmp_dir / f'{prefix}_{base_ph}_unit.trace'
+            sim_logger._log(f'[PIM] Generating unit trace: {trace_path}')
+            _generate_pim_trace(
+                op=op,
+                pim_config=pim_config,
+                dim=int(dim),
+                n_heads=int(n_heads),
+                n_kv_heads=int(n_kv_heads),
+                ffn_dim=int(ffn_dim),
+                seqlen=int(seqlen) if seqlen is not None else None,
+                head_dim=int(head_dim) if head_dim is not None else None,
+                q_dim=int(q_dim) if q_dim is not None else None,
+                kv_dim=int(kv_dim) if kv_dim is not None else None,
+                o_dim=int(o_dim) if o_dim is not None else None,
+                phase=base_ph,
+                trace_file=trace_path,
+                model_dict=model_dict,
+                batch=int(base_b),
+            )
+            sim_logger._log('[PIM] Unit trace generation completed')
+            sim_logger._log('[PIM] Starting ramulator simulation (unit trace)...')
+            timeout_s = int(ramulator_timeout_s) if ramulator_timeout_s else 3000
+            cycles = _run_ramulator(trace_path, ramulator_config, timeout=timeout_s)
+            if PIM_FREQ_GHZ > 0.0:
+                base_latency = float(cycles) / (PIM_FREQ_GHZ * 1000000000.0)
+            else:
+                base_latency = 0.0
+            total_latency = float(base_latency) * float(scale)
+            sim_logger._log(
+                f'[PIM] Latency computed: base={base_latency:.6e}s ({cycles} cycles), '
+                f'scale={scale} => total={total_latency:.6e}s'
+            )
+            if use_cache:
+                _pim_cache.set(
+                    op, base_ph,
+                    int(dim), int(n_heads), int(n_kv_heads), int(ffn_dim),
+                    (int(seqlen) if seqlen is not None else None),
+                    (int(head_dim) if head_dim is not None else None),
+                    (int(q_dim) if q_dim is not None else None),
+                    (int(kv_dim) if kv_dim is not None else None),
+                    (int(o_dim) if o_dim is not None else None),
+                    pim_config, ramulator_config,
+                    float(base_latency),
+                    batch=int(base_b),
+                )
+            return float(total_latency)
+        except Exception as e:
+            sim_logger._log(f'[PIM] Error during latency computation (scaled mode): {e}')
+            raise
+        finally:
+            if cleanup:
+                try:
+                    shutil.rmtree(tmp_dir, ignore_errors=True)
+                except Exception as e:
+                    sim_logger._log(f'[PIM] Warning: Failed to cleanup temp dir {tmp_dir}: {e}')
+
+    # ------------------------------------------------------------------
+    # Original mode: explicitly unroll batch/prefill into the trace.
+    # ------------------------------------------------------------------
     if use_cache:
         cached = _pim_cache.get(
             op, ph,
@@ -876,10 +1023,12 @@ def _get_pim_latency_via_trace(
             (int(kv_dim) if kv_dim is not None else None),
             (int(o_dim) if o_dim is not None else None),
             pim_config, ramulator_config,
+            batch=int(b),
         )
         if cached is not None:
-            return cached
-    msg = f"[PIM] Computing latency for {op} phase={ph} (dim={dim}, heads={n_heads}, seq={seqlen})"
+            return float(cached)
+
+    msg = f"[PIM] Computing latency for {op} phase={ph} (dim={dim}, heads={n_heads}, seq={seqlen}, batch={b})"
     sim_logger._log(msg)
 
     temp_dir = Path(tempfile.mkdtemp(prefix='pim_trace_'))
@@ -901,9 +1050,10 @@ def _get_pim_latency_via_trace(
             phase=ph,
             trace_file=trace_path,
             model_dict=model_dict,
-         )
-        sim_logger._log(f'[PIM] Trace generation completed')
-        sim_logger._log(f'[PIM] Starting ramulator simulation...')
+            batch=int(b),
+        )
+        sim_logger._log('[PIM] Trace generation completed')
+        sim_logger._log('[PIM] Starting ramulator simulation...')
         timeout_s = int(ramulator_timeout_s) if ramulator_timeout_s else 3000
         cycles = _run_ramulator(trace_path, ramulator_config, timeout=timeout_s)
         if PIM_FREQ_GHZ > 0.0:
@@ -922,8 +1072,9 @@ def _get_pim_latency_via_trace(
                 (int(o_dim) if o_dim is not None else None),
                 pim_config, ramulator_config,
                 float(latency),
+                batch=int(b),
             )
-        return latency
+        return float(latency)
     except Exception as e:
         sim_logger._log(f'[PIM] Error during latency computation: {e}')
         raise

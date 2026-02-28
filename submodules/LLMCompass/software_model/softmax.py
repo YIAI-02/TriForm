@@ -18,8 +18,8 @@ class Softmax(Operator):
     def __call__(self, input: Tensor) -> Tensor:
         assert self.data_type == input.data_type
         self.shape = input.shape
-        self.M = size(input.shape[:-1]) #M 是前面所有维度的乘积
-        self.N = input.shape[-1] #N 是最后一维
+        self.M = size(input.shape[:-1])
+        self.N = input.shape[-1]
         self.computational_graph = self.ComputationalGraph(
             self.M, self.N, self.data_type
         )

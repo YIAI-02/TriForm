@@ -64,6 +64,19 @@ NPU_GEMM_KEYS = {
     'q_proj','k_proj','v_proj','wo_proj','ffn_up','ffn_gate','ffn_down','score','output',
 }
 
+
+def _normalize_npu_backend_safe(backend: Optional[str]) -> str:
+    raw = (backend or '').strip().lower()
+    if not raw:
+        raw = 'fast'
+    try:
+        b = _normalize_npu_backend(backend)
+        if b:
+            return str(b)
+    except Exception:
+        pass
+    return raw
+
 # NPU op-name aliases (graph node labels -> canonical backend keys)
 _NPU_OP_ALIASES: Dict[str, str] = {
     # Attention projections
@@ -309,6 +322,8 @@ class NpuLlmCompassBackend(NpuBackendBase):
             f"gemm-like ({sorted(NPU_GEMM_KEYS)}), elem-like(add/identity/...). "
             f"Node={getattr(node, 'name', '?')}"
         )
+
+
 
 class NpuAscend310BLutBackend(NpuBackendBase):
     """Ascend 310B LUT backend.
@@ -568,6 +583,7 @@ class PimTraceBackend(PimBackendBase):
                         n_kv_heads=int(ctx.n_kv_heads),
                         ffn_dim=int(ctx.ffn_dim),
                         seqlen=int(ctx.seq_len) if int(ctx.seq_len) > 0 else None,
+                        batch=int(ctx.batch) if int(ctx.batch) > 0 else 1,
                         phase=str(ctx.phase),
                         model_dict=model_dict,
                         use_cache=bool(cm.pim_cache_enabled),
@@ -637,7 +653,7 @@ class CostModel:
         self.ramulator_config_path = ramulator_config_path
         self.debug_traces = debug_traces
         self.pim_fast_mode = pim_fast_mode  # When True, skip all trace simulations
-        self.npu_backend = _normalize_npu_backend(npu_backend) if npu_backend is not None else (_normalize_npu_backend('fast'))
+        self.npu_backend = _normalize_npu_backend_safe(npu_backend)
         try:
             self.tp_qkv = max(1, int(tp_qkv or 1))
         except Exception:
@@ -670,10 +686,7 @@ class CostModel:
 
     def _ensure_backend_impls(self) -> None:
         """(Re)build backend objects if user changes npu_backend / pim_fast_mode after __init__."""
-        try:
-            npu_name = _normalize_npu_backend(self.npu_backend)
-        except Exception:
-            npu_name = 'fast'
+        npu_name = _normalize_npu_backend_safe(self.npu_backend)
         if npu_name is None:
             npu_name = 'fast'
         if npu_name != getattr(self, '_npu_backend_impl_name', None):
