@@ -1,0 +1,2 @@
+[slurm] ERROR: PIM stage failed or did not finish cleanly (missing PIM_OK_FILE=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/facil_128x1292.pim.ok)
+[slurm] Hint: check PIM logs under: /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/logs/pim

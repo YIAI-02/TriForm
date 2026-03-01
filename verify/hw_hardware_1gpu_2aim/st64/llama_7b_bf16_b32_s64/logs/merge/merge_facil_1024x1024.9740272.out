@@ -1,0 +1,16 @@
+[slurm] jobid=9740272 nodelist=l01c02n1
+[slurm] host=l01c02n1
+[slurm] pwd=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b32_s64
+[slurm] starting at Sat Feb 28 09:06:01 CST 2026
+[slurm] PY_SCRIPT=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/schedule_deploy_verify.py
+[slurm] SCHEDULE_CSV=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/output/experiment_1gpu_2aim/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b32_s64/algo_facil/facil_prefill-1024xdecode_1024_ops_trace.csv
+[slurm] GPU_RESULTS_JSON=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b32_s64/facil_1024x1024.gpu_results.json
+[slurm] PIM_RESULTS_JSON=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b32_s64/facil_1024x1024.pim_results.json
+[slurm] GPU_OK_FILE=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b32_s64/facil_1024x1024.gpu.ok
+[slurm] PIM_OK_FILE=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b32_s64/facil_1024x1024.pim.ok
+[slurm] COMM_MODEL=schedule PCIE_LANES=16 DECODE_STRIDE=64 NON_OVERLAP=0.2
+[slurm] COMMS_CSV=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/output/experiment_1gpu_2aim/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b32_s64/algo_facil/facil_prefill-1024xdecode_1024_comms_trace.csv
+[slurm] OUT_CSV=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b32_s64/facil_1024x1024.merge.csv
+[slurm] OUT_STEPS_CSV=<none>
+[slurm] Running: python /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/schedule_deploy_verify.py merge --schedule /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/output/experiment_1gpu_2aim/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b32_s64/algo_facil/facil_prefill-1024xdecode_1024_ops_trace.csv --comm-model schedule --pcie-lanes 16 --decode-stride 64 --non-overlap 0.2 --out-csv /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b32_s64/facil_1024x1024.merge.csv --batch 1 --gpu-results /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b32_s64/facil_1024x1024.gpu_results.json --pim-results /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b32_s64/facil_1024x1024.pim_results.json --comms /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/output/experiment_1gpu_2aim/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b32_s64/algo_facil/facil_prefill-1024xdecode_1024_comms_trace.csv --allow-missing --debug --debug-txt /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b32_s64/facil_1024x1024.merge.debug.txt
+[slurm] done at Sat Feb 28 09:06:07 CST 2026

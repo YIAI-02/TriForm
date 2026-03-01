@@ -1,0 +1,3050 @@
+{
+  "version": 3,
+  "task_type": "segment",
+  "backend": "gpu",
+  "segment_scope": "layer",
+  "config": {
+    "dim": 4096,
+    "ffn_dim": 11008,
+    "n_heads": 32,
+    "shards": 2,
+    "prefill_len": 1024,
+    "decode_context_lens": [
+      1025,
+      1026
+    ],
+    "decode_stride": 64,
+    "device": "cuda",
+    "gpu_dtype": "bf16",
+    "kv_load_bw_gbs": 16384.0,
+    "kv_dtype_bytes": 2.0,
+    "kv_load_overhead_us": 0.0,
+    "n_kv_heads": null,
+    "batch": 1,
+    "pim_dram_column": 256,
+    "pim_dram_row": 64,
+    "pim_burst_length": 16,
+    "pim_num_banks": 8,
+    "pim_num_channels": 4,
+    "pim_threads": 1,
+    "pim_reuse_size": 32,
+    "pim_num_devices": 1,
+    "pim_ramulator_bin": null,
+    "pim_ramulator_config": null,
+    "pim_freq_ghz": 1.0,
+    "pim_ramulator_timeout_s": 3000,
+    "pim_keep_traces": false,
+    "pim_trace_dir": null,
+    "pim_hw_json_path": null,
+    "debug": true,
+    "segment_scope": "layer",
+    "shard_policy": "fine"
+  },
+  "weight_load_s": 0.4005126953124928,
+  "weight_load_by_schedule": {
+    "/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/output/experiment_1gpu_2aim/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b32_s64/algo_hefthint/hefthint_prefill-1024xdecode_64_ops_trace.csv": {
+      "gpu_s": 0.4005126953124928,
+      "pim_s": 0.0,
+      "unknown_s": 0.0,
+      "total_s": 0.4005126953124928
+    }
+  },
+  "env": {
+    "gpu": {
+      "requested_device": "cuda",
+      "cuda_visible_devices": "0",
+      "torch_available": true,
+      "torch_version": "2.8.0+cu126",
+      "torch_cuda_version": "12.6",
+      "torch_hip_version": null,
+      "cudnn_available": true,
+      "cudnn_version": 91002,
+      "cuda_available": true,
+      "cuda_device_count": 1,
+      "device_index": 0,
+      "name": "NVIDIA A100-PCIE-40GB",
+      "multi_processor_count": 108,
+      "compute_capability": "8.0",
+      "warp_size": 32,
+      "max_threads_per_multiprocessor": 2048,
+      "shared_memory_per_block_bytes": 49152,
+      "nvidia_smi_L": "GPU 0: NVIDIA A100-PCIE-40GB (UUID: GPU-4cd2dd8b-d779-5b24-29b5-80b860f437dd)",
+      "nvidia_smi_query": "NVIDIA A100-PCIE-40GB, GPU-4cd2dd8b-d779-5b24-29b5-80b860f437dd, 560.35.03, 40960"
+    }
+  },
+  "results": {
+    "npu|decode|0|e5ae44816972d771c5a74a0449ecdbdf": 0.000629043197631836,
+    "npu|decode|1|e5ae44816972d771c5a74a0449ecdbdf": 0.0006247424125671387,
+    "npu|prefill|-1|32cc3ecab0873bb05654e273d69c9222": 0.004600422286987305
+  },
+  "debug_segments": {
+    "npu|decode|0|e5ae44816972d771c5a74a0449ecdbdf": {
+      "segment_key": "npu|decode|0|e5ae44816972d771c5a74a0449ecdbdf",
+      "device_type": "npu",
+      "phase": "decode",
+      "step": 0,
+      "count_hint": 32,
+      "ops_repr": "LN:-1,Q:0,Q:1,K:0,K:1,V:0,V:1,Softmax:0,Softmax:1,O:0,O:1,Add:-1,LN:-1,FFN_W3:0,FFN_W3:1,FFN_W1:0,SwiGLU:0,FFN_W2:0,FFN_W1:1,SwiGLU:1,FFN_W2:1,Add:-1",
+      "segment_latency_s": 0.000629043197631836,
+      "sum_per_op_s": 0.0007815168015658855,
+      "per_op": [
+        {
+          "idx": 0,
+          "op": "LN",
+          "shard": -1,
+          "phase": "decode",
+          "step": 0,
+          "T": 1,
+          "K": 1025,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1,
+                4096
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              4096
+            ]
+          },
+          "latency_s": 7.147520110011101e-05,
+          "est_flops": 20480.0,
+          "est_bytes": 24576.0
+        },
+        {
+          "idx": 1,
+          "op": "Q",
+          "shard": 0,
+          "phase": "decode",
+          "step": 0,
+          "T": 1,
+          "K": 1025,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1,
+                4096
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                2048,
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              2048
+            ]
+          },
+          "latency_s": 5.191679894924163e-05,
+          "est_flops": 16777216.0,
+          "est_bytes": 16789504.0
+        },
+        {
+          "idx": 2,
+          "op": "Q",
+          "shard": 1,
+          "phase": "decode",
+          "step": 0,
+          "T": 1,
+          "K": 1025,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1,
+                4096
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                2048,
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              2048
+            ]
+          },
+          "latency_s": 3.276799991726875e-05,
+          "est_flops": 16777216.0,
+          "est_bytes": 16789504.0
+        },
+        {
+          "idx": 3,
+          "op": "K",
+          "shard": 0,
+          "phase": "decode",
+          "step": 0,
+          "T": 1,
+          "K": 1025,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1,
+                4096
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                2048,
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              2048
+            ]
+          },
+          "latency_s": 3.276799991726875e-05,
+          "est_flops": 16777216.0,
+          "est_bytes": 16789504.0
+        },
+        {
+          "idx": 4,
+          "op": "K",
+          "shard": 1,
+          "phase": "decode",
+          "step": 0,
+          "T": 1,
+          "K": 1025,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1,
+                4096
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                2048,
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              2048
+            ]
+          },
+          "latency_s": 3.276799991726875e-05,
+          "est_flops": 16777216.0,
+          "est_bytes": 16789504.0
+        },
+        {
+          "idx": 5,
+          "op": "V",
+          "shard": 0,
+          "phase": "decode",
+          "step": 0,
+          "T": 1,
+          "K": 1025,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1,
+                4096
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                2048,
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              2048
+            ]
+          },
+          "latency_s": 3.3075200021266935e-05,
+          "est_flops": 16777216.0,
+          "est_bytes": 16789504.0
+        },
+        {
+          "idx": 6,
+          "op": "V",
+          "shard": 1,
+          "phase": "decode",
+          "step": 0,
+          "T": 1,
+          "K": 1025,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1,
+                4096
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                2048,
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              2048
+            ]
+          },
+          "latency_s": 3.3484800159931186e-05,
+          "est_flops": 16777216.0,
+          "est_bytes": 16789504.0
+        },
+        {
+          "idx": 7,
+          "op": "Softmax",
+          "shard": 0,
+          "phase": "decode",
+          "step": 0,
+          "T": 1,
+          "K": 1025,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "scores",
+              "shape": [
+                1,
+                16,
+                1,
+                1025
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              16,
+              1,
+              1025
+            ]
+          },
+          "latency_s": 2.1811199933290482e-05,
+          "est_flops": 82000.0,
+          "est_bytes": 65600.0
+        },
+        {
+          "idx": 8,
+          "op": "Softmax",
+          "shard": 1,
+          "phase": "decode",
+          "step": 0,
+          "T": 1,
+          "K": 1025,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "scores",
+              "shape": [
+                1,
+                16,
+                1,
+                1025
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              16,
+              1,
+              1025
+            ]
+          },
+          "latency_s": 1.8943999893963337e-05,
+          "est_flops": 82000.0,
+          "est_bytes": 65600.0
+        },
+        {
+          "idx": 9,
+          "op": "O",
+          "shard": 0,
+          "phase": "decode",
+          "step": 0,
+          "T": 1,
+          "K": 1025,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1,
+                2048
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                4096,
+                2048
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              4096
+            ]
+          },
+          "latency_s": 2.8057599626481537e-05,
+          "est_flops": 16777216.0,
+          "est_bytes": 16789504.0
+        },
+        {
+          "idx": 10,
+          "op": "O",
+          "shard": 1,
+          "phase": "decode",
+          "step": 0,
+          "T": 1,
+          "K": 1025,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1,
+                2048
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                4096,
+                2048
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              4096
+            ]
+          },
+          "latency_s": 2.775039989501238e-05,
+          "est_flops": 16777216.0,
+          "est_bytes": 16789504.0
+        },
+        {
+          "idx": 11,
+          "op": "Add",
+          "shard": -1,
+          "phase": "decode",
+          "step": 0,
+          "T": 1,
+          "K": 1025,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "a",
+              "shape": [
+                1,
+                1,
+                4096
+              ]
+            },
+            {
+              "name": "b",
+              "shape": [
+                1,
+                1,
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              4096
+            ]
+          },
+          "latency_s": 9.42080020904541e-06,
+          "est_flops": 4096.0,
+          "est_bytes": 24576.0
+        },
+        {
+          "idx": 12,
+          "op": "LN",
+          "shard": -1,
+          "phase": "decode",
+          "step": 0,
+          "T": 1,
+          "K": 1025,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1,
+                4096
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              4096
+            ]
+          },
+          "latency_s": 4.485119916498661e-05,
+          "est_flops": 20480.0,
+          "est_bytes": 24576.0
+        },
+        {
+          "idx": 13,
+          "op": "FFN_W3",
+          "shard": 0,
+          "phase": "decode",
+          "step": 0,
+          "T": 1,
+          "K": 1025,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1,
+                4096
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                5504,
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              5504
+            ]
+          },
+          "latency_s": 6.0825600102543824e-05,
+          "est_flops": 45088768.0,
+          "est_bytes": 45107968.0
+        },
+        {
+          "idx": 14,
+          "op": "FFN_W3",
+          "shard": 1,
+          "phase": "decode",
+          "step": 0,
+          "T": 1,
+          "K": 1025,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1,
+                4096
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                5504,
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              5504
+            ]
+          },
+          "latency_s": 4.6796800941228865e-05,
+          "est_flops": 45088768.0,
+          "est_bytes": 45107968.0
+        },
+        {
+          "idx": 15,
+          "op": "FFN_W1",
+          "shard": 0,
+          "phase": "decode",
+          "step": 0,
+          "T": 1,
+          "K": 1025,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1,
+                4096
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                5504,
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              5504
+            ]
+          },
+          "latency_s": 4.730880111455918e-05,
+          "est_flops": 45088768.0,
+          "est_bytes": 45107968.0
+        },
+        {
+          "idx": 16,
+          "op": "SwiGLU",
+          "shard": 0,
+          "phase": "decode",
+          "step": 0,
+          "T": 1,
+          "K": 1025,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "a",
+              "shape": [
+                1,
+                1,
+                5504
+              ]
+            },
+            {
+              "name": "b",
+              "shape": [
+                1,
+                1,
+                5504
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              5504
+            ]
+          },
+          "latency_s": 1.576959975063801e-05,
+          "est_flops": 33024.0,
+          "est_bytes": 33024.0
+        },
+        {
+          "idx": 17,
+          "op": "FFN_W2",
+          "shard": 0,
+          "phase": "decode",
+          "step": 0,
+          "T": 1,
+          "K": 1025,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1,
+                5504
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                4096,
+                5504
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              4096
+            ]
+          },
+          "latency_s": 4.9868799373507496e-05,
+          "est_flops": 45088768.0,
+          "est_bytes": 45107968.0
+        },
+        {
+          "idx": 18,
+          "op": "FFN_W1",
+          "shard": 1,
+          "phase": "decode",
+          "step": 0,
+          "T": 1,
+          "K": 1025,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1,
+                4096
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                5504,
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              5504
+            ]
+          },
+          "latency_s": 4.730880111455918e-05,
+          "est_flops": 45088768.0,
+          "est_bytes": 45107968.0
+        },
+        {
+          "idx": 19,
+          "op": "SwiGLU",
+          "shard": 1,
+          "phase": "decode",
+          "step": 0,
+          "T": 1,
+          "K": 1025,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "a",
+              "shape": [
+                1,
+                1,
+                5504
+              ]
+            },
+            {
+              "name": "b",
+              "shape": [
+                1,
+                1,
+                5504
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              5504
+            ]
+          },
+          "latency_s": 1.5667199715971948e-05,
+          "est_flops": 33024.0,
+          "est_bytes": 33024.0
+        },
+        {
+          "idx": 20,
+          "op": "FFN_W2",
+          "shard": 1,
+          "phase": "decode",
+          "step": 0,
+          "T": 1,
+          "K": 1025,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1,
+                5504
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                4096,
+                5504
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              4096
+            ]
+          },
+          "latency_s": 4.945920072495938e-05,
+          "est_flops": 45088768.0,
+          "est_bytes": 45107968.0
+        },
+        {
+          "idx": 21,
+          "op": "Add",
+          "shard": -1,
+          "phase": "decode",
+          "step": 0,
+          "T": 1,
+          "K": 1025,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "a",
+              "shape": [
+                1,
+                1,
+                4096
+              ]
+            },
+            {
+              "name": "b",
+              "shape": [
+                1,
+                1,
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              4096
+            ]
+          },
+          "latency_s": 9.420800022780895e-06,
+          "est_flops": 4096.0,
+          "est_bytes": 24576.0
+        }
+      ]
+    },
+    "npu|decode|1|e5ae44816972d771c5a74a0449ecdbdf": {
+      "segment_key": "npu|decode|1|e5ae44816972d771c5a74a0449ecdbdf",
+      "device_type": "npu",
+      "phase": "decode",
+      "step": 1,
+      "count_hint": 32,
+      "ops_repr": "LN:-1,Q:0,Q:1,K:0,K:1,V:0,V:1,Softmax:0,Softmax:1,O:0,O:1,Add:-1,LN:-1,FFN_W3:0,FFN_W3:1,FFN_W1:0,SwiGLU:0,FFN_W2:0,FFN_W1:1,SwiGLU:1,FFN_W2:1,Add:-1",
+      "segment_latency_s": 0.0006247424125671387,
+      "sum_per_op_s": 0.0007757824026048183,
+      "per_op": [
+        {
+          "idx": 0,
+          "op": "LN",
+          "shard": -1,
+          "phase": "decode",
+          "step": 1,
+          "T": 1,
+          "K": 1026,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1,
+                4096
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              4096
+            ]
+          },
+          "latency_s": 6.963200122117996e-05,
+          "est_flops": 20480.0,
+          "est_bytes": 24576.0
+        },
+        {
+          "idx": 1,
+          "op": "Q",
+          "shard": 0,
+          "phase": "decode",
+          "step": 1,
+          "T": 1,
+          "K": 1026,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1,
+                4096
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                2048,
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              2048
+            ]
+          },
+          "latency_s": 5.0995200127363204e-05,
+          "est_flops": 16777216.0,
+          "est_bytes": 16789504.0
+        },
+        {
+          "idx": 2,
+          "op": "Q",
+          "shard": 1,
+          "phase": "decode",
+          "step": 1,
+          "T": 1,
+          "K": 1026,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1,
+                4096
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                2048,
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              2048
+            ]
+          },
+          "latency_s": 3.3587200194597243e-05,
+          "est_flops": 16777216.0,
+          "est_bytes": 16789504.0
+        },
+        {
+          "idx": 3,
+          "op": "K",
+          "shard": 0,
+          "phase": "decode",
+          "step": 1,
+          "T": 1,
+          "K": 1026,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1,
+                4096
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                2048,
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              2048
+            ]
+          },
+          "latency_s": 3.246079981327057e-05,
+          "est_flops": 16777216.0,
+          "est_bytes": 16789504.0
+        },
+        {
+          "idx": 4,
+          "op": "K",
+          "shard": 1,
+          "phase": "decode",
+          "step": 1,
+          "T": 1,
+          "K": 1026,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1,
+                4096
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                2048,
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              2048
+            ]
+          },
+          "latency_s": 3.2972799986600885e-05,
+          "est_flops": 16777216.0,
+          "est_bytes": 16789504.0
+        },
+        {
+          "idx": 5,
+          "op": "V",
+          "shard": 0,
+          "phase": "decode",
+          "step": 1,
+          "T": 1,
+          "K": 1026,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1,
+                4096
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                2048,
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              2048
+            ]
+          },
+          "latency_s": 3.338240012526513e-05,
+          "est_flops": 16777216.0,
+          "est_bytes": 16789504.0
+        },
+        {
+          "idx": 6,
+          "op": "V",
+          "shard": 1,
+          "phase": "decode",
+          "step": 1,
+          "T": 1,
+          "K": 1026,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1,
+                4096
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                2048,
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              2048
+            ]
+          },
+          "latency_s": 3.358720019459725e-05,
+          "est_flops": 16777216.0,
+          "est_bytes": 16789504.0
+        },
+        {
+          "idx": 7,
+          "op": "Softmax",
+          "shard": 0,
+          "phase": "decode",
+          "step": 1,
+          "T": 1,
+          "K": 1026,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "scores",
+              "shape": [
+                1,
+                16,
+                1,
+                1026
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              16,
+              1,
+              1026
+            ]
+          },
+          "latency_s": 2.2425600141286848e-05,
+          "est_flops": 82080.0,
+          "est_bytes": 65664.0
+        },
+        {
+          "idx": 8,
+          "op": "Softmax",
+          "shard": 1,
+          "phase": "decode",
+          "step": 1,
+          "T": 1,
+          "K": 1026,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "scores",
+              "shape": [
+                1,
+                16,
+                1,
+                1026
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              16,
+              1,
+              1026
+            ]
+          },
+          "latency_s": 1.822720058262348e-05,
+          "est_flops": 82080.0,
+          "est_bytes": 65664.0
+        },
+        {
+          "idx": 9,
+          "op": "O",
+          "shard": 0,
+          "phase": "decode",
+          "step": 1,
+          "T": 1,
+          "K": 1026,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1,
+                2048
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                4096,
+                2048
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              4096
+            ]
+          },
+          "latency_s": 2.7443199977278712e-05,
+          "est_flops": 16777216.0,
+          "est_bytes": 16789504.0
+        },
+        {
+          "idx": 10,
+          "op": "O",
+          "shard": 1,
+          "phase": "decode",
+          "step": 1,
+          "T": 1,
+          "K": 1026,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1,
+                2048
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                4096,
+                2048
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              4096
+            ]
+          },
+          "latency_s": 2.69311998039484e-05,
+          "est_flops": 16777216.0,
+          "est_bytes": 16789504.0
+        },
+        {
+          "idx": 11,
+          "op": "Add",
+          "shard": -1,
+          "phase": "decode",
+          "step": 1,
+          "T": 1,
+          "K": 1026,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "a",
+              "shape": [
+                1,
+                1,
+                4096
+              ]
+            },
+            {
+              "name": "b",
+              "shape": [
+                1,
+                1,
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              4096
+            ]
+          },
+          "latency_s": 9.523200150579211e-06,
+          "est_flops": 4096.0,
+          "est_bytes": 24576.0
+        },
+        {
+          "idx": 12,
+          "op": "LN",
+          "shard": -1,
+          "phase": "decode",
+          "step": 1,
+          "T": 1,
+          "K": 1026,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1,
+                4096
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              4096
+            ]
+          },
+          "latency_s": 4.280319884419441e-05,
+          "est_flops": 20480.0,
+          "est_bytes": 24576.0
+        },
+        {
+          "idx": 13,
+          "op": "FFN_W3",
+          "shard": 0,
+          "phase": "decode",
+          "step": 1,
+          "T": 1,
+          "K": 1026,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1,
+                4096
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                5504,
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              5504
+            ]
+          },
+          "latency_s": 6.062079966068268e-05,
+          "est_flops": 45088768.0,
+          "est_bytes": 45107968.0
+        },
+        {
+          "idx": 14,
+          "op": "FFN_W3",
+          "shard": 1,
+          "phase": "decode",
+          "step": 1,
+          "T": 1,
+          "K": 1026,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1,
+                4096
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                5504,
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              5504
+            ]
+          },
+          "latency_s": 4.710400104522706e-05,
+          "est_flops": 45088768.0,
+          "est_bytes": 45107968.0
+        },
+        {
+          "idx": 15,
+          "op": "FFN_W1",
+          "shard": 0,
+          "phase": "decode",
+          "step": 1,
+          "T": 1,
+          "K": 1026,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1,
+                4096
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                5504,
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              5504
+            ]
+          },
+          "latency_s": 4.710400104522706e-05,
+          "est_flops": 45088768.0,
+          "est_bytes": 45107968.0
+        },
+        {
+          "idx": 16,
+          "op": "SwiGLU",
+          "shard": 0,
+          "phase": "decode",
+          "step": 1,
+          "T": 1,
+          "K": 1026,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "a",
+              "shape": [
+                1,
+                1,
+                5504
+              ]
+            },
+            {
+              "name": "b",
+              "shape": [
+                1,
+                1,
+                5504
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              5504
+            ]
+          },
+          "latency_s": 1.5462399646639823e-05,
+          "est_flops": 33024.0,
+          "est_bytes": 33024.0
+        },
+        {
+          "idx": 17,
+          "op": "FFN_W2",
+          "shard": 0,
+          "phase": "decode",
+          "step": 1,
+          "T": 1,
+          "K": 1026,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1,
+                5504
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                4096,
+                5504
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              4096
+            ]
+          },
+          "latency_s": 4.9971199408173553e-05,
+          "est_flops": 45088768.0,
+          "est_bytes": 45107968.0
+        },
+        {
+          "idx": 18,
+          "op": "FFN_W1",
+          "shard": 1,
+          "phase": "decode",
+          "step": 1,
+          "T": 1,
+          "K": 1026,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1,
+                4096
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                5504,
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              5504
+            ]
+          },
+          "latency_s": 4.700160101056099e-05,
+          "est_flops": 45088768.0,
+          "est_bytes": 45107968.0
+        },
+        {
+          "idx": 19,
+          "op": "SwiGLU",
+          "shard": 1,
+          "phase": "decode",
+          "step": 1,
+          "T": 1,
+          "K": 1026,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "a",
+              "shape": [
+                1,
+                1,
+                5504
+              ]
+            },
+            {
+              "name": "b",
+              "shape": [
+                1,
+                1,
+                5504
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              5504
+            ]
+          },
+          "latency_s": 1.5462399646639823e-05,
+          "est_flops": 33024.0,
+          "est_bytes": 33024.0
+        },
+        {
+          "idx": 20,
+          "op": "FFN_W2",
+          "shard": 1,
+          "phase": "decode",
+          "step": 1,
+          "T": 1,
+          "K": 1026,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1,
+                5504
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                4096,
+                5504
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              4096
+            ]
+          },
+          "latency_s": 4.9971199780702594e-05,
+          "est_flops": 45088768.0,
+          "est_bytes": 45107968.0
+        },
+        {
+          "idx": 21,
+          "op": "Add",
+          "shard": -1,
+          "phase": "decode",
+          "step": 1,
+          "T": 1,
+          "K": 1026,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "a",
+              "shape": [
+                1,
+                1,
+                4096
+              ]
+            },
+            {
+              "name": "b",
+              "shape": [
+                1,
+                1,
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1,
+              4096
+            ]
+          },
+          "latency_s": 9.113600198179482e-06,
+          "est_flops": 4096.0,
+          "est_bytes": 24576.0
+        }
+      ]
+    },
+    "npu|prefill|-1|32cc3ecab0873bb05654e273d69c9222": {
+      "segment_key": "npu|prefill|-1|32cc3ecab0873bb05654e273d69c9222",
+      "device_type": "npu",
+      "phase": "prefill",
+      "step": -1,
+      "count_hint": 32,
+      "ops_repr": "LN:-1,Q:0,Q:1,K:0,K:1,V:0,V:1,QK:0,QK:1,Softmax:0,SV:0,O:0,Softmax:1,SV:1,O:1,Add:-1,LN:-1,FFN_W3:0,FFN_W3:1,FFN_W1:0,FFN_W1:1,SwiGLU:0,FFN_W2:0,SwiGLU:1,FFN_W2:1,Add:-1",
+      "segment_latency_s": 0.004600422286987305,
+      "sum_per_op_s": 0.004708147235587239,
+      "per_op": [
+        {
+          "idx": 0,
+          "op": "LN",
+          "shard": -1,
+          "phase": "prefill",
+          "step": -1,
+          "T": 1024,
+          "K": 1024,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1024,
+                4096
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1024,
+              4096
+            ]
+          },
+          "latency_s": 0.00011827200278639793,
+          "est_flops": 20971520.0,
+          "est_bytes": 16785408.0
+        },
+        {
+          "idx": 1,
+          "op": "Q",
+          "shard": 0,
+          "phase": "prefill",
+          "step": -1,
+          "T": 1024,
+          "K": 1024,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1024,
+                4096
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                2048,
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1024,
+              2048
+            ]
+          },
+          "latency_s": 0.00016005119830369947,
+          "est_flops": 17179869184.0,
+          "est_bytes": 29360128.0
+        },
+        {
+          "idx": 2,
+          "op": "Q",
+          "shard": 1,
+          "phase": "prefill",
+          "step": -1,
+          "T": 1024,
+          "K": 1024,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1024,
+                4096
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                2048,
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1024,
+              2048
+            ]
+          },
+          "latency_s": 0.00015861760079860689,
+          "est_flops": 17179869184.0,
+          "est_bytes": 29360128.0
+        },
+        {
+          "idx": 3,
+          "op": "K",
+          "shard": 0,
+          "phase": "prefill",
+          "step": -1,
+          "T": 1024,
+          "K": 1024,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1024,
+                4096
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                2048,
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1024,
+              2048
+            ]
+          },
+          "latency_s": 0.00015861759930849075,
+          "est_flops": 17179869184.0,
+          "est_bytes": 29360128.0
+        },
+        {
+          "idx": 4,
+          "op": "K",
+          "shard": 1,
+          "phase": "prefill",
+          "step": -1,
+          "T": 1024,
+          "K": 1024,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1024,
+                4096
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                2048,
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1024,
+              2048
+            ]
+          },
+          "latency_s": 0.00015892479717731473,
+          "est_flops": 17179869184.0,
+          "est_bytes": 29360128.0
+        },
+        {
+          "idx": 5,
+          "op": "V",
+          "shard": 0,
+          "phase": "prefill",
+          "step": -1,
+          "T": 1024,
+          "K": 1024,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1024,
+                4096
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                2048,
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1024,
+              2048
+            ]
+          },
+          "latency_s": 0.0001596415966749191,
+          "est_flops": 17179869184.0,
+          "est_bytes": 29360128.0
+        },
+        {
+          "idx": 6,
+          "op": "V",
+          "shard": 1,
+          "phase": "prefill",
+          "step": -1,
+          "T": 1024,
+          "K": 1024,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1024,
+                4096
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                2048,
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1024,
+              2048
+            ]
+          },
+          "latency_s": 0.00015902719944715498,
+          "est_flops": 17179869184.0,
+          "est_bytes": 29360128.0
+        },
+        {
+          "idx": 7,
+          "op": "QK",
+          "shard": 0,
+          "phase": "prefill",
+          "step": -1,
+          "T": 1024,
+          "K": 1024,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "q",
+              "shape": [
+                1,
+                16,
+                1024,
+                128
+              ]
+            },
+            {
+              "name": "k",
+              "shape": [
+                1,
+                16,
+                128,
+                1024
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              16,
+              1024,
+              1024
+            ]
+          },
+          "latency_s": 0.0001411072000861168,
+          "est_flops": 4294967296.0,
+          "est_bytes": 41943040.0
+        },
+        {
+          "idx": 8,
+          "op": "QK",
+          "shard": 1,
+          "phase": "prefill",
+          "step": -1,
+          "T": 1024,
+          "K": 1024,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "q",
+              "shape": [
+                1,
+                16,
+                1024,
+                128
+              ]
+            },
+            {
+              "name": "k",
+              "shape": [
+                1,
+                16,
+                128,
+                1024
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              16,
+              1024,
+              1024
+            ]
+          },
+          "latency_s": 0.00014202879816293715,
+          "est_flops": 4294967296.0,
+          "est_bytes": 41943040.0
+        },
+        {
+          "idx": 9,
+          "op": "Softmax",
+          "shard": 0,
+          "phase": "prefill",
+          "step": -1,
+          "T": 1024,
+          "K": 1024,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "scores",
+              "shape": [
+                1,
+                16,
+                1024,
+                1024
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              16,
+              1024,
+              1024
+            ]
+          },
+          "latency_s": 9.482240229845049e-05,
+          "est_flops": 83886080.0,
+          "est_bytes": 67108864.0
+        },
+        {
+          "idx": 10,
+          "op": "SV",
+          "shard": 0,
+          "phase": "prefill",
+          "step": -1,
+          "T": 1024,
+          "K": 1024,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "p",
+              "shape": [
+                1,
+                16,
+                1024,
+                1024
+              ]
+            },
+            {
+              "name": "v",
+              "shape": [
+                1,
+                16,
+                1024,
+                128
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              16,
+              1024,
+              128
+            ]
+          },
+          "latency_s": 7.065600156784058e-05,
+          "est_flops": 4294967296.0,
+          "est_bytes": 41943040.0
+        },
+        {
+          "idx": 11,
+          "op": "O",
+          "shard": 0,
+          "phase": "prefill",
+          "step": -1,
+          "T": 1024,
+          "K": 1024,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1024,
+                2048
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                4096,
+                2048
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1024,
+              4096
+            ]
+          },
+          "latency_s": 0.0001949696034193039,
+          "est_flops": 17179869184.0,
+          "est_bytes": 29360128.0
+        },
+        {
+          "idx": 12,
+          "op": "Softmax",
+          "shard": 1,
+          "phase": "prefill",
+          "step": -1,
+          "T": 1024,
+          "K": 1024,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "scores",
+              "shape": [
+                1,
+                16,
+                1024,
+                1024
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              16,
+              1024,
+              1024
+            ]
+          },
+          "latency_s": 8.929280042648315e-05,
+          "est_flops": 83886080.0,
+          "est_bytes": 67108864.0
+        },
+        {
+          "idx": 13,
+          "op": "SV",
+          "shard": 1,
+          "phase": "prefill",
+          "step": -1,
+          "T": 1024,
+          "K": 1024,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "p",
+              "shape": [
+                1,
+                16,
+                1024,
+                1024
+              ]
+            },
+            {
+              "name": "v",
+              "shape": [
+                1,
+                16,
+                1024,
+                128
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              16,
+              1024,
+              128
+            ]
+          },
+          "latency_s": 7.08608016371727e-05,
+          "est_flops": 4294967296.0,
+          "est_bytes": 41943040.0
+        },
+        {
+          "idx": 14,
+          "op": "O",
+          "shard": 1,
+          "phase": "prefill",
+          "step": -1,
+          "T": 1024,
+          "K": 1024,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1024,
+                2048
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                4096,
+                2048
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1024,
+              4096
+            ]
+          },
+          "latency_s": 0.0001941504031419754,
+          "est_flops": 17179869184.0,
+          "est_bytes": 29360128.0
+        },
+        {
+          "idx": 15,
+          "op": "Add",
+          "shard": -1,
+          "phase": "prefill",
+          "step": -1,
+          "T": 1024,
+          "K": 1024,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "a",
+              "shape": [
+                1,
+                1024,
+                4096
+              ]
+            },
+            {
+              "name": "b",
+              "shape": [
+                1,
+                1024,
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1024,
+              4096
+            ]
+          },
+          "latency_s": 2.0172799378633497e-05,
+          "est_flops": 4194304.0,
+          "est_bytes": 25165824.0
+        },
+        {
+          "idx": 16,
+          "op": "LN",
+          "shard": -1,
+          "phase": "prefill",
+          "step": -1,
+          "T": 1024,
+          "K": 1024,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1024,
+                4096
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1024,
+              4096
+            ]
+          },
+          "latency_s": 0.00010874879956245423,
+          "est_flops": 20971520.0,
+          "est_bytes": 16785408.0
+        },
+        {
+          "idx": 17,
+          "op": "FFN_W3",
+          "shard": 0,
+          "phase": "prefill",
+          "step": -1,
+          "T": 1024,
+          "K": 1024,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1024,
+                4096
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                5504,
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1024,
+              5504
+            ]
+          },
+          "latency_s": 0.0003614720106124878,
+          "est_flops": 46170898432.0,
+          "est_bytes": 64749568.0
+        },
+        {
+          "idx": 18,
+          "op": "FFN_W3",
+          "shard": 1,
+          "phase": "prefill",
+          "step": -1,
+          "T": 1024,
+          "K": 1024,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1024,
+                4096
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                5504,
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1024,
+              5504
+            ]
+          },
+          "latency_s": 0.0003618816018104553,
+          "est_flops": 46170898432.0,
+          "est_bytes": 64749568.0
+        },
+        {
+          "idx": 19,
+          "op": "FFN_W1",
+          "shard": 0,
+          "phase": "prefill",
+          "step": -1,
+          "T": 1024,
+          "K": 1024,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1024,
+                4096
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                5504,
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1024,
+              5504
+            ]
+          },
+          "latency_s": 0.0003607552051544189,
+          "est_flops": 46170898432.0,
+          "est_bytes": 64749568.0
+        },
+        {
+          "idx": 20,
+          "op": "FFN_W1",
+          "shard": 1,
+          "phase": "prefill",
+          "step": -1,
+          "T": 1024,
+          "K": 1024,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1024,
+                4096
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                5504,
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1024,
+              5504
+            ]
+          },
+          "latency_s": 0.00036085760593414305,
+          "est_flops": 46170898432.0,
+          "est_bytes": 64749568.0
+        },
+        {
+          "idx": 21,
+          "op": "SwiGLU",
+          "shard": 0,
+          "phase": "prefill",
+          "step": -1,
+          "T": 1024,
+          "K": 1024,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "a",
+              "shape": [
+                1,
+                1024,
+                5504
+              ]
+            },
+            {
+              "name": "b",
+              "shape": [
+                1,
+                1024,
+                5504
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1024,
+              5504
+            ]
+          },
+          "latency_s": 4.75136011838913e-05,
+          "est_flops": 33816576.0,
+          "est_bytes": 33816576.0
+        },
+        {
+          "idx": 22,
+          "op": "FFN_W2",
+          "shard": 0,
+          "phase": "prefill",
+          "step": -1,
+          "T": 1024,
+          "K": 1024,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1024,
+                5504
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                4096,
+                5504
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1024,
+              4096
+            ]
+          },
+          "latency_s": 0.00047513600587844847,
+          "est_flops": 46170898432.0,
+          "est_bytes": 64749568.0
+        },
+        {
+          "idx": 23,
+          "op": "SwiGLU",
+          "shard": 1,
+          "phase": "prefill",
+          "step": -1,
+          "T": 1024,
+          "K": 1024,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "a",
+              "shape": [
+                1,
+                1024,
+                5504
+              ]
+            },
+            {
+              "name": "b",
+              "shape": [
+                1,
+                1024,
+                5504
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1024,
+              5504
+            ]
+          },
+          "latency_s": 4.546560049057006e-05,
+          "est_flops": 33816576.0,
+          "est_bytes": 33816576.0
+        },
+        {
+          "idx": 24,
+          "op": "FFN_W2",
+          "shard": 1,
+          "phase": "prefill",
+          "step": -1,
+          "T": 1024,
+          "K": 1024,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "x",
+              "shape": [
+                1,
+                1024,
+                5504
+              ]
+            },
+            {
+              "name": "w",
+              "shape": [
+                4096,
+                5504
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1024,
+              4096
+            ]
+          },
+          "latency_s": 0.0004756480008363723,
+          "est_flops": 46170898432.0,
+          "est_bytes": 64749568.0
+        },
+        {
+          "idx": 25,
+          "op": "Add",
+          "shard": -1,
+          "phase": "prefill",
+          "step": -1,
+          "T": 1024,
+          "K": 1024,
+          "dim": 4096,
+          "shard_dim": 2048,
+          "ffn_shard_dim": 5504,
+          "heads_per_shard": 16,
+          "head_dim": 128,
+          "inputs": [
+            {
+              "name": "a",
+              "shape": [
+                1,
+                1024,
+                4096
+              ]
+            },
+            {
+              "name": "b",
+              "shape": [
+                1,
+                1024,
+                4096
+              ]
+            }
+          ],
+          "output": {
+            "name": "y",
+            "shape": [
+              1,
+              1024,
+              4096
+            ]
+          },
+          "latency_s": 1.9455999508500098e-05,
+          "est_flops": 4194304.0,
+          "est_bytes": 25165824.0
+        }
+      ]
+    }
+  }
+}

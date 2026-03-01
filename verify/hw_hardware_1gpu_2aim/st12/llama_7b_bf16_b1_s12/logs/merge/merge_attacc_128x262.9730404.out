@@ -1,0 +1,16 @@
+[slurm] jobid=9730404 nodelist=l01c01n2
+[slurm] host=l01c01n2
+[slurm] pwd=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12
+[slurm] starting at Fri Feb 27 10:04:14 CST 2026
+[slurm] PY_SCRIPT=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/schedule_deploy_verify.py
+[slurm] SCHEDULE_CSV=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/output/experiment_1gpu_2aim/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/algo_attacc/attacc_prefill-128xdecode_262_ops_trace.csv
+[slurm] GPU_RESULTS_JSON=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/attacc_128x262.gpu_results.json
+[slurm] PIM_RESULTS_JSON=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/attacc_128x262.pim_results.json
+[slurm] GPU_OK_FILE=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/attacc_128x262.gpu.ok
+[slurm] PIM_OK_FILE=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/attacc_128x262.pim.ok
+[slurm] COMM_MODEL=schedule PCIE_LANES=16 DECODE_STRIDE=12 NON_OVERLAP=0.2
+[slurm] COMMS_CSV=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/output/experiment_1gpu_2aim/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/algo_attacc/attacc_prefill-128xdecode_262_comms_trace.csv
+[slurm] OUT_CSV=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/attacc_128x262.merge.csv
+[slurm] OUT_STEPS_CSV=<none>
+[slurm] Running: python /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/schedule_deploy_verify.py merge --schedule /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/output/experiment_1gpu_2aim/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/algo_attacc/attacc_prefill-128xdecode_262_ops_trace.csv --comm-model schedule --pcie-lanes 16 --decode-stride 12 --non-overlap 0.2 --out-csv /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/attacc_128x262.merge.csv --gpu-results /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/attacc_128x262.gpu_results.json --pim-results /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/attacc_128x262.pim_results.json --comms /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/output/experiment_1gpu_2aim/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/algo_attacc/attacc_prefill-128xdecode_262_comms_trace.csv --allow-missing --debug --debug-txt /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/attacc_128x262.merge.debug.txt
+[slurm] done at Fri Feb 27 10:04:22 CST 2026

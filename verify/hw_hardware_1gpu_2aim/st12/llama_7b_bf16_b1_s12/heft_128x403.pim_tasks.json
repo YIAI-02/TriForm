@@ -1,0 +1,3671 @@
+{
+  "version": 3,
+  "task_type": "segment",
+  "backend": "pim",
+  "segment_scope": "layer",
+  "schedules": [
+    "/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/output/experiment_1gpu_2aim/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/algo_heft/heft_prefill-128xdecode_403_ops_trace.csv"
+  ],
+  "comms_traces": [
+    "/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/output/experiment_1gpu_2aim/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/algo_heft/heft_prefill-128xdecode_403_comms_trace.csv"
+  ],
+  "weight_load_s": 0.2002563476562464,
+  "weight_load_meta": {
+    "gpu_s": 0.2002563476562462,
+    "pim_s": 0.2002563476562464,
+    "unknown_s": 0.0,
+    "total_s": 0.40051269531249256
+  },
+  "weight_load_by_schedule": {
+    "/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/output/experiment_1gpu_2aim/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/algo_heft/heft_prefill-128xdecode_403_ops_trace.csv": {
+      "gpu_s": 0.2002563476562462,
+      "pim_s": 0.2002563476562464,
+      "unknown_s": 0.0,
+      "total_s": 0.40051269531249256
+    }
+  },
+  "config": {
+    "dim": 4096,
+    "ffn_dim": 11008,
+    "n_heads": 32,
+    "shards": 2,
+    "prefill_len": 128,
+    "decode_context_lens": [
+      129,
+      130,
+      140,
+      152,
+      164,
+      176,
+      188,
+      200,
+      212,
+      224,
+      236,
+      248,
+      260,
+      272,
+      284,
+      296,
+      308,
+      320,
+      332,
+      344,
+      356,
+      368,
+      380,
+      392,
+      404,
+      416,
+      428,
+      440,
+      452,
+      464,
+      476,
+      488,
+      500,
+      512,
+      524
+    ],
+    "decode_stride": 12,
+    "device": "cuda",
+    "gpu_dtype": "fp16",
+    "kv_load_bw_gbs": 16384.0,
+    "kv_dtype_bytes": 2.0,
+    "kv_load_overhead_us": 0.0,
+    "n_kv_heads": null,
+    "batch": 1,
+    "pim_dram_column": 256,
+    "pim_dram_row": 64,
+    "pim_burst_length": 16,
+    "pim_num_banks": 8,
+    "pim_num_channels": 4,
+    "pim_threads": 1,
+    "pim_reuse_size": 32,
+    "pim_num_devices": 1,
+    "pim_ramulator_bin": null,
+    "pim_ramulator_config": null,
+    "pim_freq_ghz": 1.0,
+    "pim_ramulator_timeout_s": 3000,
+    "pim_keep_traces": false,
+    "pim_trace_dir": null,
+    "pim_hw_json_path": null,
+    "debug": false,
+    "segment_scope": "layer",
+    "shard_policy": "fine"
+  },
+  "tasks": [
+    {
+      "key": "pim|decode|0|b7348c562150d7056e668dc50de470a4",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 0
+      },
+      "ops": [
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "K:1,V:1,QK:1,Softmax:1,SV:1,FFN_W3:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|0|dcafad9a16bf548b8b863aaf422ab6e7",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 0
+      },
+      "ops": [
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        },
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        }
+      ],
+      "ops_repr": "LN:-1,K:0,QK:0,Softmax:0,SV:0,O:0,Add:-1,LN:-1,FFN_W3:0,SwiGLU:0,SwiGLU:1,FFN_W2:1,Add:-1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|10|b7348c562150d7056e668dc50de470a4",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 10
+      },
+      "ops": [
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "K:1,V:1,QK:1,Softmax:1,SV:1,FFN_W3:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|10|dcafad9a16bf548b8b863aaf422ab6e7",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 10
+      },
+      "ops": [
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        },
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        }
+      ],
+      "ops_repr": "LN:-1,K:0,QK:0,Softmax:0,SV:0,O:0,Add:-1,LN:-1,FFN_W3:0,SwiGLU:0,SwiGLU:1,FFN_W2:1,Add:-1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|11|b7348c562150d7056e668dc50de470a4",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 11
+      },
+      "ops": [
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "K:1,V:1,QK:1,Softmax:1,SV:1,FFN_W3:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|11|dcafad9a16bf548b8b863aaf422ab6e7",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 11
+      },
+      "ops": [
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        },
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        }
+      ],
+      "ops_repr": "LN:-1,K:0,QK:0,Softmax:0,SV:0,O:0,Add:-1,LN:-1,FFN_W3:0,SwiGLU:0,SwiGLU:1,FFN_W2:1,Add:-1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|12|b7348c562150d7056e668dc50de470a4",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 12
+      },
+      "ops": [
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "K:1,V:1,QK:1,Softmax:1,SV:1,FFN_W3:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|12|dcafad9a16bf548b8b863aaf422ab6e7",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 12
+      },
+      "ops": [
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        },
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        }
+      ],
+      "ops_repr": "LN:-1,K:0,QK:0,Softmax:0,SV:0,O:0,Add:-1,LN:-1,FFN_W3:0,SwiGLU:0,SwiGLU:1,FFN_W2:1,Add:-1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|13|b7348c562150d7056e668dc50de470a4",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 13
+      },
+      "ops": [
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "K:1,V:1,QK:1,Softmax:1,SV:1,FFN_W3:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|13|dcafad9a16bf548b8b863aaf422ab6e7",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 13
+      },
+      "ops": [
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        },
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        }
+      ],
+      "ops_repr": "LN:-1,K:0,QK:0,Softmax:0,SV:0,O:0,Add:-1,LN:-1,FFN_W3:0,SwiGLU:0,SwiGLU:1,FFN_W2:1,Add:-1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|14|b7348c562150d7056e668dc50de470a4",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 14
+      },
+      "ops": [
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "K:1,V:1,QK:1,Softmax:1,SV:1,FFN_W3:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|14|dcafad9a16bf548b8b863aaf422ab6e7",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 14
+      },
+      "ops": [
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        },
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        }
+      ],
+      "ops_repr": "LN:-1,K:0,QK:0,Softmax:0,SV:0,O:0,Add:-1,LN:-1,FFN_W3:0,SwiGLU:0,SwiGLU:1,FFN_W2:1,Add:-1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|15|b7348c562150d7056e668dc50de470a4",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 15
+      },
+      "ops": [
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "K:1,V:1,QK:1,Softmax:1,SV:1,FFN_W3:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|15|dcafad9a16bf548b8b863aaf422ab6e7",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 15
+      },
+      "ops": [
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        },
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        }
+      ],
+      "ops_repr": "LN:-1,K:0,QK:0,Softmax:0,SV:0,O:0,Add:-1,LN:-1,FFN_W3:0,SwiGLU:0,SwiGLU:1,FFN_W2:1,Add:-1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|16|b7348c562150d7056e668dc50de470a4",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 16
+      },
+      "ops": [
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "K:1,V:1,QK:1,Softmax:1,SV:1,FFN_W3:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|16|dcafad9a16bf548b8b863aaf422ab6e7",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 16
+      },
+      "ops": [
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        },
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        }
+      ],
+      "ops_repr": "LN:-1,K:0,QK:0,Softmax:0,SV:0,O:0,Add:-1,LN:-1,FFN_W3:0,SwiGLU:0,SwiGLU:1,FFN_W2:1,Add:-1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|17|b7348c562150d7056e668dc50de470a4",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 17
+      },
+      "ops": [
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "K:1,V:1,QK:1,Softmax:1,SV:1,FFN_W3:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|17|dcafad9a16bf548b8b863aaf422ab6e7",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 17
+      },
+      "ops": [
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        },
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        }
+      ],
+      "ops_repr": "LN:-1,K:0,QK:0,Softmax:0,SV:0,O:0,Add:-1,LN:-1,FFN_W3:0,SwiGLU:0,SwiGLU:1,FFN_W2:1,Add:-1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|18|b7348c562150d7056e668dc50de470a4",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 18
+      },
+      "ops": [
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "K:1,V:1,QK:1,Softmax:1,SV:1,FFN_W3:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|18|dcafad9a16bf548b8b863aaf422ab6e7",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 18
+      },
+      "ops": [
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        },
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        }
+      ],
+      "ops_repr": "LN:-1,K:0,QK:0,Softmax:0,SV:0,O:0,Add:-1,LN:-1,FFN_W3:0,SwiGLU:0,SwiGLU:1,FFN_W2:1,Add:-1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|19|b7348c562150d7056e668dc50de470a4",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 19
+      },
+      "ops": [
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "K:1,V:1,QK:1,Softmax:1,SV:1,FFN_W3:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|19|dcafad9a16bf548b8b863aaf422ab6e7",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 19
+      },
+      "ops": [
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        },
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        }
+      ],
+      "ops_repr": "LN:-1,K:0,QK:0,Softmax:0,SV:0,O:0,Add:-1,LN:-1,FFN_W3:0,SwiGLU:0,SwiGLU:1,FFN_W2:1,Add:-1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|1|b7348c562150d7056e668dc50de470a4",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 1
+      },
+      "ops": [
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "K:1,V:1,QK:1,Softmax:1,SV:1,FFN_W3:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|1|dcafad9a16bf548b8b863aaf422ab6e7",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 1
+      },
+      "ops": [
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        },
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        }
+      ],
+      "ops_repr": "LN:-1,K:0,QK:0,Softmax:0,SV:0,O:0,Add:-1,LN:-1,FFN_W3:0,SwiGLU:0,SwiGLU:1,FFN_W2:1,Add:-1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|20|b7348c562150d7056e668dc50de470a4",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 20
+      },
+      "ops": [
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "K:1,V:1,QK:1,Softmax:1,SV:1,FFN_W3:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|20|dcafad9a16bf548b8b863aaf422ab6e7",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 20
+      },
+      "ops": [
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        },
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        }
+      ],
+      "ops_repr": "LN:-1,K:0,QK:0,Softmax:0,SV:0,O:0,Add:-1,LN:-1,FFN_W3:0,SwiGLU:0,SwiGLU:1,FFN_W2:1,Add:-1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|21|b7348c562150d7056e668dc50de470a4",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 21
+      },
+      "ops": [
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "K:1,V:1,QK:1,Softmax:1,SV:1,FFN_W3:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|21|dcafad9a16bf548b8b863aaf422ab6e7",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 21
+      },
+      "ops": [
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        },
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        }
+      ],
+      "ops_repr": "LN:-1,K:0,QK:0,Softmax:0,SV:0,O:0,Add:-1,LN:-1,FFN_W3:0,SwiGLU:0,SwiGLU:1,FFN_W2:1,Add:-1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|22|b7348c562150d7056e668dc50de470a4",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 22
+      },
+      "ops": [
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "K:1,V:1,QK:1,Softmax:1,SV:1,FFN_W3:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|22|dcafad9a16bf548b8b863aaf422ab6e7",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 22
+      },
+      "ops": [
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        },
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        }
+      ],
+      "ops_repr": "LN:-1,K:0,QK:0,Softmax:0,SV:0,O:0,Add:-1,LN:-1,FFN_W3:0,SwiGLU:0,SwiGLU:1,FFN_W2:1,Add:-1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|23|b7348c562150d7056e668dc50de470a4",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 23
+      },
+      "ops": [
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "K:1,V:1,QK:1,Softmax:1,SV:1,FFN_W3:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|23|dcafad9a16bf548b8b863aaf422ab6e7",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 23
+      },
+      "ops": [
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        },
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        }
+      ],
+      "ops_repr": "LN:-1,K:0,QK:0,Softmax:0,SV:0,O:0,Add:-1,LN:-1,FFN_W3:0,SwiGLU:0,SwiGLU:1,FFN_W2:1,Add:-1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|24|b7348c562150d7056e668dc50de470a4",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 24
+      },
+      "ops": [
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "K:1,V:1,QK:1,Softmax:1,SV:1,FFN_W3:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|24|dcafad9a16bf548b8b863aaf422ab6e7",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 24
+      },
+      "ops": [
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        },
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        }
+      ],
+      "ops_repr": "LN:-1,K:0,QK:0,Softmax:0,SV:0,O:0,Add:-1,LN:-1,FFN_W3:0,SwiGLU:0,SwiGLU:1,FFN_W2:1,Add:-1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|25|b7348c562150d7056e668dc50de470a4",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 25
+      },
+      "ops": [
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "K:1,V:1,QK:1,Softmax:1,SV:1,FFN_W3:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|25|dcafad9a16bf548b8b863aaf422ab6e7",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 25
+      },
+      "ops": [
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        },
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        }
+      ],
+      "ops_repr": "LN:-1,K:0,QK:0,Softmax:0,SV:0,O:0,Add:-1,LN:-1,FFN_W3:0,SwiGLU:0,SwiGLU:1,FFN_W2:1,Add:-1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|26|b7348c562150d7056e668dc50de470a4",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 26
+      },
+      "ops": [
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "K:1,V:1,QK:1,Softmax:1,SV:1,FFN_W3:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|26|dcafad9a16bf548b8b863aaf422ab6e7",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 26
+      },
+      "ops": [
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        },
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        }
+      ],
+      "ops_repr": "LN:-1,K:0,QK:0,Softmax:0,SV:0,O:0,Add:-1,LN:-1,FFN_W3:0,SwiGLU:0,SwiGLU:1,FFN_W2:1,Add:-1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|27|b7348c562150d7056e668dc50de470a4",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 27
+      },
+      "ops": [
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "K:1,V:1,QK:1,Softmax:1,SV:1,FFN_W3:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|27|dcafad9a16bf548b8b863aaf422ab6e7",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 27
+      },
+      "ops": [
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        },
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        }
+      ],
+      "ops_repr": "LN:-1,K:0,QK:0,Softmax:0,SV:0,O:0,Add:-1,LN:-1,FFN_W3:0,SwiGLU:0,SwiGLU:1,FFN_W2:1,Add:-1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|28|b7348c562150d7056e668dc50de470a4",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 28
+      },
+      "ops": [
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "K:1,V:1,QK:1,Softmax:1,SV:1,FFN_W3:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|28|dcafad9a16bf548b8b863aaf422ab6e7",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 28
+      },
+      "ops": [
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        },
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        }
+      ],
+      "ops_repr": "LN:-1,K:0,QK:0,Softmax:0,SV:0,O:0,Add:-1,LN:-1,FFN_W3:0,SwiGLU:0,SwiGLU:1,FFN_W2:1,Add:-1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|29|b7348c562150d7056e668dc50de470a4",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 29
+      },
+      "ops": [
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "K:1,V:1,QK:1,Softmax:1,SV:1,FFN_W3:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|29|dcafad9a16bf548b8b863aaf422ab6e7",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 29
+      },
+      "ops": [
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        },
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        }
+      ],
+      "ops_repr": "LN:-1,K:0,QK:0,Softmax:0,SV:0,O:0,Add:-1,LN:-1,FFN_W3:0,SwiGLU:0,SwiGLU:1,FFN_W2:1,Add:-1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|2|b7348c562150d7056e668dc50de470a4",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 2
+      },
+      "ops": [
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "K:1,V:1,QK:1,Softmax:1,SV:1,FFN_W3:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|2|dcafad9a16bf548b8b863aaf422ab6e7",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 2
+      },
+      "ops": [
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        },
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        }
+      ],
+      "ops_repr": "LN:-1,K:0,QK:0,Softmax:0,SV:0,O:0,Add:-1,LN:-1,FFN_W3:0,SwiGLU:0,SwiGLU:1,FFN_W2:1,Add:-1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|30|b7348c562150d7056e668dc50de470a4",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 30
+      },
+      "ops": [
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "K:1,V:1,QK:1,Softmax:1,SV:1,FFN_W3:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|30|dcafad9a16bf548b8b863aaf422ab6e7",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 30
+      },
+      "ops": [
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        },
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        }
+      ],
+      "ops_repr": "LN:-1,K:0,QK:0,Softmax:0,SV:0,O:0,Add:-1,LN:-1,FFN_W3:0,SwiGLU:0,SwiGLU:1,FFN_W2:1,Add:-1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|31|b7348c562150d7056e668dc50de470a4",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 31
+      },
+      "ops": [
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "K:1,V:1,QK:1,Softmax:1,SV:1,FFN_W3:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|31|dcafad9a16bf548b8b863aaf422ab6e7",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 31
+      },
+      "ops": [
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        },
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        }
+      ],
+      "ops_repr": "LN:-1,K:0,QK:0,Softmax:0,SV:0,O:0,Add:-1,LN:-1,FFN_W3:0,SwiGLU:0,SwiGLU:1,FFN_W2:1,Add:-1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|32|b7348c562150d7056e668dc50de470a4",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 32
+      },
+      "ops": [
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "K:1,V:1,QK:1,Softmax:1,SV:1,FFN_W3:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|32|dcafad9a16bf548b8b863aaf422ab6e7",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 32
+      },
+      "ops": [
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        },
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        }
+      ],
+      "ops_repr": "LN:-1,K:0,QK:0,Softmax:0,SV:0,O:0,Add:-1,LN:-1,FFN_W3:0,SwiGLU:0,SwiGLU:1,FFN_W2:1,Add:-1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|33|b7348c562150d7056e668dc50de470a4",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 33
+      },
+      "ops": [
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "K:1,V:1,QK:1,Softmax:1,SV:1,FFN_W3:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|33|dcafad9a16bf548b8b863aaf422ab6e7",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 33
+      },
+      "ops": [
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        },
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        }
+      ],
+      "ops_repr": "LN:-1,K:0,QK:0,Softmax:0,SV:0,O:0,Add:-1,LN:-1,FFN_W3:0,SwiGLU:0,SwiGLU:1,FFN_W2:1,Add:-1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|34|b7348c562150d7056e668dc50de470a4",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 34
+      },
+      "ops": [
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "K:1,V:1,QK:1,Softmax:1,SV:1,FFN_W3:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|34|dcafad9a16bf548b8b863aaf422ab6e7",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 34
+      },
+      "ops": [
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        },
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        }
+      ],
+      "ops_repr": "LN:-1,K:0,QK:0,Softmax:0,SV:0,O:0,Add:-1,LN:-1,FFN_W3:0,SwiGLU:0,SwiGLU:1,FFN_W2:1,Add:-1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|3|b7348c562150d7056e668dc50de470a4",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 3
+      },
+      "ops": [
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "K:1,V:1,QK:1,Softmax:1,SV:1,FFN_W3:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|3|dcafad9a16bf548b8b863aaf422ab6e7",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 3
+      },
+      "ops": [
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        },
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        }
+      ],
+      "ops_repr": "LN:-1,K:0,QK:0,Softmax:0,SV:0,O:0,Add:-1,LN:-1,FFN_W3:0,SwiGLU:0,SwiGLU:1,FFN_W2:1,Add:-1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|4|b7348c562150d7056e668dc50de470a4",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 4
+      },
+      "ops": [
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "K:1,V:1,QK:1,Softmax:1,SV:1,FFN_W3:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|4|dcafad9a16bf548b8b863aaf422ab6e7",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 4
+      },
+      "ops": [
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        },
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        }
+      ],
+      "ops_repr": "LN:-1,K:0,QK:0,Softmax:0,SV:0,O:0,Add:-1,LN:-1,FFN_W3:0,SwiGLU:0,SwiGLU:1,FFN_W2:1,Add:-1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|5|b7348c562150d7056e668dc50de470a4",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 5
+      },
+      "ops": [
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "K:1,V:1,QK:1,Softmax:1,SV:1,FFN_W3:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|5|dcafad9a16bf548b8b863aaf422ab6e7",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 5
+      },
+      "ops": [
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        },
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        }
+      ],
+      "ops_repr": "LN:-1,K:0,QK:0,Softmax:0,SV:0,O:0,Add:-1,LN:-1,FFN_W3:0,SwiGLU:0,SwiGLU:1,FFN_W2:1,Add:-1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|6|b7348c562150d7056e668dc50de470a4",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 6
+      },
+      "ops": [
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "K:1,V:1,QK:1,Softmax:1,SV:1,FFN_W3:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|6|dcafad9a16bf548b8b863aaf422ab6e7",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 6
+      },
+      "ops": [
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        },
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        }
+      ],
+      "ops_repr": "LN:-1,K:0,QK:0,Softmax:0,SV:0,O:0,Add:-1,LN:-1,FFN_W3:0,SwiGLU:0,SwiGLU:1,FFN_W2:1,Add:-1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|7|b7348c562150d7056e668dc50de470a4",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 7
+      },
+      "ops": [
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "K:1,V:1,QK:1,Softmax:1,SV:1,FFN_W3:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|7|dcafad9a16bf548b8b863aaf422ab6e7",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 7
+      },
+      "ops": [
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        },
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        }
+      ],
+      "ops_repr": "LN:-1,K:0,QK:0,Softmax:0,SV:0,O:0,Add:-1,LN:-1,FFN_W3:0,SwiGLU:0,SwiGLU:1,FFN_W2:1,Add:-1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|8|b7348c562150d7056e668dc50de470a4",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 8
+      },
+      "ops": [
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "K:1,V:1,QK:1,Softmax:1,SV:1,FFN_W3:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|8|dcafad9a16bf548b8b863aaf422ab6e7",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 8
+      },
+      "ops": [
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        },
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        }
+      ],
+      "ops_repr": "LN:-1,K:0,QK:0,Softmax:0,SV:0,O:0,Add:-1,LN:-1,FFN_W3:0,SwiGLU:0,SwiGLU:1,FFN_W2:1,Add:-1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|9|b7348c562150d7056e668dc50de470a4",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 9
+      },
+      "ops": [
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "K:1,V:1,QK:1,Softmax:1,SV:1,FFN_W3:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|9|dcafad9a16bf548b8b863aaf422ab6e7",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 9
+      },
+      "ops": [
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        },
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        }
+      ],
+      "ops_repr": "LN:-1,K:0,QK:0,Softmax:0,SV:0,O:0,Add:-1,LN:-1,FFN_W3:0,SwiGLU:0,SwiGLU:1,FFN_W2:1,Add:-1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|prefill|-1|8a68f52135db5d81f607b2cdbed7cc5b",
+      "sig": {
+        "device_type": "pim",
+        "phase": "prefill",
+        "step": -1
+      },
+      "ops": [
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 0
+        },
+        {
+          "op": "SwiGLU",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        },
+        {
+          "op": "Add",
+          "shard": -1
+        }
+      ],
+      "ops_repr": "K:0,QK:0,Softmax:0,O:0,Add:-1,FFN_W3:0,SwiGLU:0,FFN_W2:1,Add:-1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|prefill|-1|d08fb09a3ca154fc42db61be76f84f8b",
+      "sig": {
+        "device_type": "pim",
+        "phase": "prefill",
+        "step": -1
+      },
+      "ops": [
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W3",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "K:1,V:1,FFN_W3:1",
+      "count_hint": 32
+    }
+  ]
+}

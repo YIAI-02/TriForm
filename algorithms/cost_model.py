@@ -77,6 +77,59 @@ def _normalize_npu_backend_safe(backend: Optional[str]) -> str:
         pass
     return raw
 
+# --------------------------------------------------------------------------------------
+# Device-name matching helpers (hardware.json -> device-specific params)
+# --------------------------------------------------------------------------------------
+_DEVICE_NAME_FAMILY_PATTERNS = (
+    (re.compile(r'(?i)^ascend_?910b(?:_|$)'), 'Ascend_910B'),
+    (re.compile(r'(?i)^(?:nvidia_)?a100(?:_|$)'), 'A100'),
+)
+
+def _device_family_key_from_name(name: str) -> str:
+    """Map hardware.json device "name" to a stable family key (e.g., Ascend_910B / A100)."""
+    s = str(name or '').strip()
+    if not s:
+        return ''
+    for rx, key in _DEVICE_NAME_FAMILY_PATTERNS:
+        try:
+            if rx.match(s):
+                return str(key)
+        except Exception:
+            continue
+    return ''
+
+def _lookup_cfg_by_device_name(cfg: Any, dev: Optional[Any]) -> Any:
+    """Return cfg override from cfg['by_device_name'] (or cfg['by_name']) based on dev.name prefix."""
+    if dev is None or not isinstance(cfg, dict) or not cfg:
+        return None
+    name_map = cfg.get('by_device_name', cfg.get('by_name', None))
+    if not isinstance(name_map, dict) or not name_map:
+        return None
+
+    dev_name = str(getattr(dev, 'name', '') or '').strip()
+    fam = _device_family_key_from_name(dev_name)
+
+    # (1) Prefer canonical family key lookup (Ascend_910B / A100)
+    if fam:
+        if fam in name_map:
+            return name_map.get(fam)
+        if fam.lower() in name_map:
+            return name_map.get(fam.lower())
+        if fam.upper() in name_map:
+            return name_map.get(fam.upper())
+
+    # (2) Fallback: treat keys as raw prefixes
+    if dev_name:
+        dn = dev_name.lower()
+        for k, v in name_map.items():
+            ks = str(k or '').strip()
+            if not ks:
+                continue
+            if dn.startswith(ks.lower()):
+                return v
+
+    return None
+
 # NPU op-name aliases (graph node labels -> canonical backend keys)
 _NPU_OP_ALIASES: Dict[str, str] = {
     # Attention projections
@@ -727,73 +780,82 @@ class CostModel:
 
     def _compute_utilization(self, flops: float, dev: DeviceSpec) -> float:
         """Heuristic utilization of peak compute throughput for small workloads."""
-        try:
-            cfg = getattr(_config, 'COMPUTE_UTILIZATION', None)
-            if not isinstance(cfg, dict) or not cfg:
-                return 1.0
-            dev_type = str(getattr(dev, 'type', '') or '').lower()
-            params = cfg.get(dev_type, cfg.get('default', cfg))
-
-            # Allow simple scalar override (constant utilization).
-            if isinstance(params, (int, float)):
-                u = float(params)
-                return 1.0 if u <= 0 else min(1.0, u)
-            if not isinstance(params, dict):
-                return 1.0
-
-            if not bool(params.get('enabled', True)):
-                return 1.0
-
-            min_u = float(params.get('min_util', params.get('min', 1.0)) or 0.0)
-            max_u = float(params.get('max_util', params.get('max', 1.0)) or 1.0)
-
-            # Clamp to [0, 1]
-            min_u = max(0.0, min(1.0, min_u))
-            max_u = max(0.0, min(1.0, max_u))
-            if max_u <= 0.0:
-                return 1.0
-            if min_u > max_u:
-                min_u, max_u = max_u, min_u
-
-            flops_low = float(params.get('flops_low', params.get('low_flops', 0.0)) or 0.0)
-            flops_high = float(params.get('flops_high', params.get('high_flops', 0.0)) or 0.0)
-            curve = str(params.get('curve', params.get('mode', 'log_linear')) or 'log_linear').strip().lower()
-            power = float(params.get('power', 1.0) or 1.0)
-            power = max(1e-3, power)
-
-            f = float(flops or 0.0)
-            if f <= 0.0:
-                return max(min_u, 1e-6)
-
-            # If thresholds are not configured, treat as constant max utilization.
-            if flops_low <= 0.0 or flops_high <= 0.0 or flops_high <= flops_low:
-                return max(min(max_u, 1.0), 1e-6)
-
-            if f <= flops_low:
-                return max(min_u, 1e-6)
-            if f >= flops_high:
-                return max(max_u, 1e-6)
-
-            if curve in ('linear',):
-                x = (f - flops_low) / (flops_high - flops_low)
-            elif curve in ('sigmoid', 'logistic'):
-                # knee defaults to geometric mean; slope controls steepness.
-                knee = float(params.get('knee_flops', math.sqrt(flops_low * flops_high)) or math.sqrt(flops_low * flops_high))
-                slope = float(params.get('slope', 1.0) or 1.0)
-                knee = max(1.0, knee)
-                x = (math.log10(f) - math.log10(knee)) * slope
-                s = 1.0 / (1.0 + math.exp(-x))
-                u = min_u + (max_u - min_u) * s
-                return max(min(1.0, u), 1e-6)
-            else:
-                x = (math.log10(f) - math.log10(flops_low)) / (math.log10(flops_high) - math.log10(flops_low))
-
-            x = max(0.0, min(1.0, x))
-            x = x ** power
-            u = min_u + (max_u - min_u) * x
-            return max(min(1.0, u), 1e-6)
-        except Exception:
+        cfg = getattr(_config, 'COMPUTE_UTILIZATION', None)
+        if not isinstance(cfg, dict) or not cfg:
             return 1.0
+        dev_type = str(getattr(dev, 'type', '') or '').lower()
+        params = cfg.get(dev_type, cfg.get('default', cfg))
+
+        self._ensure_backend_impls()
+        if dev_type == 'npu' and str(getattr(self, '_npu_backend_impl_name', '') or '').lower() == 'fast':
+            per = _lookup_cfg_by_device_name(cfg, dev)
+            if not isinstance(per, dict) or not per:
+                keys = list((cfg.get('by_device_name', cfg.get('by_name', {})) or {}).keys())
+                raise NpuFastModeConfigError(
+                    f"[NPU][FAST] COMPUTE_UTILIZATION missing by_device_name for dev_name='{getattr(dev,'name','')}'. "
+                    f"available_keys={keys}"
+                )
+            params = per
+
+        # Allow simple scalar override (constant utilization).
+        if isinstance(params, (int, float)):
+            u = float(params)
+            return 1.0 if u <= 0 else min(1.0, u)
+        if not isinstance(params, dict):
+            return 1.0
+
+        if not bool(params.get('enabled', True)):
+            return 1.0
+
+        min_u = float(params.get('min_util', params.get('min', 1.0)) or 0.0)
+        max_u = float(params.get('max_util', params.get('max', 1.0)) or 1.0)
+
+        # Clamp to [0, 1]
+        min_u = max(0.0, min(1.0, min_u))
+        max_u = max(0.0, min(1.0, max_u))
+        if max_u <= 0.0:
+            return 1.0
+        if min_u > max_u:
+            min_u, max_u = max_u, min_u
+
+        flops_low = float(params.get('flops_low', params.get('low_flops', 0.0)) or 0.0)
+        flops_high = float(params.get('flops_high', params.get('high_flops', 0.0)) or 0.0)
+        curve = str(params.get('curve', params.get('mode', 'log_linear')) or 'log_linear').strip().lower()
+        power = float(params.get('power', 1.0) or 1.0)
+        power = max(1e-3, power)
+
+        f = float(flops or 0.0)
+        if f <= 0.0:
+            return max(min_u, 1e-6)
+
+        # If thresholds are not configured, treat as constant max utilization.
+        if flops_low <= 0.0 or flops_high <= 0.0 or flops_high <= flops_low:
+            return max(min(max_u, 1.0), 1e-6)
+
+        if f <= flops_low:
+            return max(min_u, 1e-6)
+        if f >= flops_high:
+            return max(max_u, 1e-6)
+
+        if curve in ('linear',):
+            x = (f - flops_low) / (flops_high - flops_low)
+        elif curve in ('sigmoid', 'logistic'):
+            # knee defaults to geometric mean; slope controls steepness.
+            knee = float(params.get('knee_flops', math.sqrt(flops_low * flops_high)) or math.sqrt(flops_low * flops_high))
+            slope = float(params.get('slope', 1.0) or 1.0)
+            knee = max(1.0, knee)
+            x = (math.log10(f) - math.log10(knee)) * slope
+            s = 1.0 / (1.0 + math.exp(-x))
+            u = min_u + (max_u - min_u) * s
+            return max(min(1.0, u), 1e-6)
+        else:
+            x = (math.log10(f) - math.log10(flops_low)) / (math.log10(flops_high) - math.log10(flops_low))
+
+        x = max(0.0, min(1.0, x))
+        x = x ** power
+        u = min_u + (max_u - min_u) * x
+        return max(min(1.0, u), 1e-6)
+
 
     def effective_tflops(self, flops: float, dev: DeviceSpec) -> float:
         """Peak TFLOPS scaled by utilization."""
@@ -826,16 +888,21 @@ class CostModel:
         cfg = getattr(_config, 'KERNEL_LAUNCH_OVERHEAD', None)
         if not isinstance(cfg, dict) or not cfg:
             return {}
+        merged = dict(cfg)
         if dev is None:
-            return dict(cfg)
-
-        dev_type = str(getattr(dev, 'type', '') or '').lower()
-        per = cfg.get(dev_type, None)
-        if isinstance(per, dict) and per:
-            merged = dict(cfg)
-            merged.update(per)  # shallow merge
             return merged
-        return dict(cfg)
+        dev_type = str(getattr(dev, 'type', '') or '').lower()
+
+        self._ensure_backend_impls()
+        if dev_type == 'npu' and str(getattr(self, '_npu_backend_impl_name', '') or '').lower() == 'fast':
+            per = _lookup_cfg_by_device_name(cfg, dev)
+            if not isinstance(per, dict) or not per:
+                keys = list((cfg.get('by_device_name', cfg.get('by_name', {})) or {}).keys())
+                raise NpuFastModeConfigError(
+                    f"[NPU][FAST] KERNEL_LAUNCH_OVERHEAD missing by_device_name for dev_name='{getattr(dev,'name','')}'. "
+                    f"available_keys={keys}"
+                )
+            return dict(per)
 
     def kernel_launch_overhead_s(self, op_key: str, dev: DeviceSpec, *, phase: str = 'prefill') -> float:
         cfg = self._kernel_launch_cfg(dev)
@@ -1634,13 +1701,9 @@ class CostModel:
                 mem_s=float(mem_t),
             )
             t = float(self._npu_backend_impl.estimate_s(self, node, dev, ctx))
-            overhead = 0.0
-            try:
-                overhead = float(self.kernel_launch_overhead_s(op_key, dev, phase=str(phase)))
-                if bool(self._kernel_launch_cfg(dev).get('scale_by_time_scale', False)):
-                    overhead *= float(time_scale)
-            except Exception:
-                overhead = 0.0
+            overhead = float(self.kernel_launch_overhead_s(op_key, dev, phase=str(phase)))
+            if bool(self._kernel_launch_cfg(dev).get('scale_by_time_scale', False)):
+                overhead *= float(time_scale)
             return float(t) * time_scale + float(overhead)
 
         # ------------------------------------------------------------------

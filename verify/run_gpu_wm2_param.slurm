@@ -36,7 +36,7 @@ PY
 # ----------------------------------------------------------------------
 # Parameters (recommended to pass via `sbatch --export=...`)
 # ----------------------------------------------------------------------
-PY_SCRIPT="${PY_SCRIPT:-schedule_deploy_verify.py}"
+PY_SCRIPT="${PY_SCRIPT:-schedule_deploy_verify_gpu.py}"
 
 OUT_DIR="${OUT_DIR:-}"
 PREFIX="${PREFIX:-}"
@@ -59,11 +59,12 @@ ITERS="${ITERS:-10}"
 DEVICE="${DEVICE:-}"
 GPU_DTYPE="${GPU_DTYPE:-}"
 OK_FILE="${OK_FILE:-}"
+BATCH="${BATCH:-}"
 
 echo "[slurm] PY_SCRIPT=${PY_SCRIPT}"
 echo "[slurm] TASKS_JSON=${TASKS_JSON}"
 echo "[slurm] OUT_JSON=${OUT_JSON}"
-echo "[slurm] WARMUP=${WARMUP} ITERS=${ITERS} DEVICE=${DEVICE:-<default>} GPU_DTYPE=${GPU_DTYPE:-<default>}"
+echo "[slurm] WARMUP=${WARMUP} ITERS=${ITERS} DEVICE=${DEVICE:-<default>} GPU_DTYPE=${GPU_DTYPE:-<default>} BATCH=${BATCH:-<tasks_config>}"
 echo "[slurm] OK_FILE=${OK_FILE:-<none>}"
 
 if [[ ! -f "$TASKS_JSON" ]]; then
@@ -74,15 +75,19 @@ fi
 cmd=(python "$PY_SCRIPT" run-gpu \
     --tasks "$TASKS_JSON" \
     --out "$OUT_JSON" \
+    --warmup "$WARMUP" \
+    --iters "$ITERS" \
     --debug \
-    --debug-txt "${GPU_DEBUG_TXT:-./gpu_debug.log}"
-    --warmup "$WARMUP" --iters "$ITERS")
+    --debug-txt "${GPU_DEBUG_TXT:-./gpu_debug.log}")
 
 if [[ -n "${DEVICE}" ]]; then
   cmd+=(--device "$DEVICE")
 fi
 if [[ -n "${GPU_DTYPE}" ]]; then
   cmd+=(--gpu-dtype "$GPU_DTYPE")
+fi
+if [[ -n "${BATCH}" ]]; then
+  cmd+=(--batch "$BATCH")
 fi
 
 echo "[slurm] Running: ${cmd[*]}"

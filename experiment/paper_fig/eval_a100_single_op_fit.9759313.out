@@ -1,0 +1,37 @@
+[slurm] jobid=9759313 nodelist=l12gpu02
+[slurm] CUDA_VISIBLE_DEVICES=0
+Sat Feb 28 21:00:33 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 560.35.03              Driver Version: 560.35.03      CUDA Version: 12.6     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA A100-PCIE-40GB          On  |   00000000:4B:00.0 Off |                    0 |
+| N/A   28C    P0             34W /  250W |       1MiB /  40960MiB |      0%      Default |
+|                                         |                        |             Disabled |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI        PID   Type   Process name                              GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+torch: 2.8.0+cu126
+cuda available: True
+device: NVIDIA A100-PCIE-40GB
+[slurm] TRIFORM_ROOT=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm
+[slurm] EVAL_SCRIPT=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/experiment/paper_fig/eval_gpu_single_op_fit.py
+[slurm] VERIFY_SCRIPT=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/schedule_deploy_verify.py
+[slurm] OUT_DIR=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/experiment/paper_fig/eval_gpu_single_op_fit_output PREFIX=a100_single_op
+[slurm] warmup=3 iters=5 gpu_dtype=fp16 costmodel_dtype=fp16
+[slurm] batches=1,4,8,16,32 prefill_lens=512,1024,2048
+[slurm] llama_shape_json=<auto>
+[slurm] decode_context_lens=128,256,512,1024 decode_stride=64
+[slurm] phases=decode ops=<default>
+[slurm] device_name=A100_GPU0 a100_tflops=312.0 a100_mem_bw_gbs=1555.0
+[slurm] debug=0 debug_print_n=8
+[slurm] Running: python /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/experiment/paper_fig/eval_gpu_single_op_fit.py --run-gpu --verify-script /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/schedule_deploy_verify.py --out-dir /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/experiment/paper_fig/eval_gpu_single_op_fit_output --prefix a100_single_op --gpu-device cuda --gpu-dtype fp16 --dtype fp16 --batches 1,4,8,16,32 --prefill-lens 512,1024,2048 --decode-context-lens 128,256,512,1024 --decode-stride 64 --phases decode --device-name A100_GPU0 --a100-tflops 312.0 --a100-mem-bw-gbs 1555.0 --warmup 3 --iters 5 --debug-print-n 8

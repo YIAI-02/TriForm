@@ -1,0 +1,63 @@
+[DEBUG] heft_prefill-1024xdecode_256_ops_trace.csv: segment diff (top 20 by |delta_scaled_s|)
+  phase=prefill step=-1 tok=-1 layer=12 dev=npu device=GPU0 n_ops=25 sched=0.019567s meas=0.004126s delta=-0.015441s ratio=0.211 mode=sample_step
+    per-op(top5): FFN_W2=0.86ms, FFN_W3=0.65ms, FFN_W1=0.65ms, O=0.35ms, K=0.29ms
+  phase=prefill step=-1 tok=-1 layer=11 dev=npu device=GPU0 n_ops=25 sched=0.019567s meas=0.004126s delta=-0.015441s ratio=0.211 mode=sample_step
+    per-op(top5): FFN_W2=0.86ms, FFN_W3=0.65ms, FFN_W1=0.65ms, O=0.35ms, K=0.29ms
+  phase=prefill step=-1 tok=-1 layer=8 dev=npu device=GPU0 n_ops=25 sched=0.019567s meas=0.004126s delta=-0.015441s ratio=0.211 mode=sample_step
+    per-op(top5): FFN_W2=0.86ms, FFN_W3=0.65ms, FFN_W1=0.65ms, O=0.35ms, K=0.29ms
+  phase=prefill step=-1 tok=-1 layer=10 dev=npu device=GPU0 n_ops=25 sched=0.019567s meas=0.004126s delta=-0.015441s ratio=0.211 mode=sample_step
+    per-op(top5): FFN_W2=0.86ms, FFN_W3=0.65ms, FFN_W1=0.65ms, O=0.35ms, K=0.29ms
+  phase=prefill step=-1 tok=-1 layer=7 dev=npu device=GPU0 n_ops=25 sched=0.019567s meas=0.004126s delta=-0.015441s ratio=0.211 mode=sample_step
+    per-op(top5): FFN_W2=0.86ms, FFN_W3=0.65ms, FFN_W1=0.65ms, O=0.35ms, K=0.29ms
+  phase=prefill step=-1 tok=-1 layer=9 dev=npu device=GPU0 n_ops=25 sched=0.019567s meas=0.004126s delta=-0.015441s ratio=0.211 mode=sample_step
+    per-op(top5): FFN_W2=0.86ms, FFN_W3=0.65ms, FFN_W1=0.65ms, O=0.35ms, K=0.29ms
+  phase=prefill step=-1 tok=-1 layer=24 dev=npu device=GPU0 n_ops=25 sched=0.019567s meas=0.004126s delta=-0.015441s ratio=0.211 mode=sample_step
+    per-op(top5): FFN_W2=0.86ms, FFN_W3=0.65ms, FFN_W1=0.65ms, O=0.35ms, K=0.29ms
+  phase=prefill step=-1 tok=-1 layer=19 dev=npu device=GPU0 n_ops=25 sched=0.019567s meas=0.004126s delta=-0.015441s ratio=0.211 mode=sample_step
+    per-op(top5): FFN_W2=0.86ms, FFN_W3=0.65ms, FFN_W1=0.65ms, O=0.35ms, K=0.29ms
+  phase=prefill step=-1 tok=-1 layer=18 dev=npu device=GPU0 n_ops=25 sched=0.019567s meas=0.004126s delta=-0.015441s ratio=0.211 mode=sample_step
+    per-op(top5): FFN_W2=0.86ms, FFN_W3=0.65ms, FFN_W1=0.65ms, O=0.35ms, K=0.29ms
+  phase=prefill step=-1 tok=-1 layer=15 dev=npu device=GPU0 n_ops=25 sched=0.019567s meas=0.004126s delta=-0.015441s ratio=0.211 mode=sample_step
+    per-op(top5): FFN_W2=0.86ms, FFN_W3=0.65ms, FFN_W1=0.65ms, O=0.35ms, K=0.29ms
+  phase=prefill step=-1 tok=-1 layer=17 dev=npu device=GPU0 n_ops=25 sched=0.019567s meas=0.004126s delta=-0.015441s ratio=0.211 mode=sample_step
+    per-op(top5): FFN_W2=0.86ms, FFN_W3=0.65ms, FFN_W1=0.65ms, O=0.35ms, K=0.29ms
+  phase=prefill step=-1 tok=-1 layer=16 dev=npu device=GPU0 n_ops=25 sched=0.019567s meas=0.004126s delta=-0.015441s ratio=0.211 mode=sample_step
+    per-op(top5): FFN_W2=0.86ms, FFN_W3=0.65ms, FFN_W1=0.65ms, O=0.35ms, K=0.29ms
+  phase=prefill step=-1 tok=-1 layer=22 dev=npu device=GPU0 n_ops=25 sched=0.019567s meas=0.004126s delta=-0.015441s ratio=0.211 mode=sample_step
+    per-op(top5): FFN_W2=0.86ms, FFN_W3=0.65ms, FFN_W1=0.65ms, O=0.35ms, K=0.29ms
+  phase=prefill step=-1 tok=-1 layer=23 dev=npu device=GPU0 n_ops=25 sched=0.019567s meas=0.004126s delta=-0.015441s ratio=0.211 mode=sample_step
+    per-op(top5): FFN_W2=0.86ms, FFN_W3=0.65ms, FFN_W1=0.65ms, O=0.35ms, K=0.29ms
+  phase=prefill step=-1 tok=-1 layer=20 dev=npu device=GPU0 n_ops=25 sched=0.019567s meas=0.004126s delta=-0.015441s ratio=0.211 mode=sample_step
+    per-op(top5): FFN_W2=0.86ms, FFN_W3=0.65ms, FFN_W1=0.65ms, O=0.35ms, K=0.29ms
+  phase=prefill step=-1 tok=-1 layer=21 dev=npu device=GPU0 n_ops=25 sched=0.019567s meas=0.004126s delta=-0.015441s ratio=0.211 mode=sample_step
+    per-op(top5): FFN_W2=0.86ms, FFN_W3=0.65ms, FFN_W1=0.65ms, O=0.35ms, K=0.29ms
+  phase=prefill step=-1 tok=-1 layer=13 dev=npu device=GPU0 n_ops=25 sched=0.019567s meas=0.004126s delta=-0.015441s ratio=0.211 mode=sample_step
+    per-op(top5): FFN_W2=0.86ms, FFN_W3=0.65ms, FFN_W1=0.65ms, O=0.35ms, K=0.29ms
+  phase=prefill step=-1 tok=-1 layer=14 dev=npu device=GPU0 n_ops=25 sched=0.019567s meas=0.004126s delta=-0.015441s ratio=0.211 mode=sample_step
+    per-op(top5): FFN_W2=0.86ms, FFN_W3=0.65ms, FFN_W1=0.65ms, O=0.35ms, K=0.29ms
+  phase=prefill step=-1 tok=-1 layer=2 dev=npu device=GPU0 n_ops=25 sched=0.019567s meas=0.004126s delta=-0.015441s ratio=0.211 mode=sample_step
+    per-op(top5): FFN_W2=0.86ms, FFN_W3=0.65ms, FFN_W1=0.65ms, O=0.35ms, K=0.29ms
+  phase=prefill step=-1 tok=-1 layer=4 dev=npu device=GPU0 n_ops=25 sched=0.019567s meas=0.004126s delta=-0.015441s ratio=0.211 mode=sample_step
+    per-op(top5): FFN_W2=0.86ms, FFN_W3=0.65ms, FFN_W1=0.65ms, O=0.35ms, K=0.29ms
+[DEBUG] heft_prefill-1024xdecode_256_ops_trace.csv: row diff (top 20 by |delta_scaled_s|, fine mode only; missing_segments_row_scope=0)
+  phase=prefill step=-1 layer=12 dev=npu device=GPU0 op=FFN_W1 shard=1 sched=0.002119s merged=0.000447s delta=-0.001672s ratio=0.211
+  phase=prefill step=-1 layer=12 dev=npu device=GPU0 op=FFN_W1 shard=0 sched=0.002119s merged=0.000447s delta=-0.001672s ratio=0.211
+  phase=prefill step=-1 layer=7 dev=npu device=GPU0 op=FFN_W1 shard=0 sched=0.002119s merged=0.000447s delta=-0.001672s ratio=0.211
+  phase=prefill step=-1 layer=8 dev=npu device=GPU0 op=FFN_W1 shard=1 sched=0.002119s merged=0.000447s delta=-0.001672s ratio=0.211
+  phase=prefill step=-1 layer=8 dev=npu device=GPU0 op=FFN_W1 shard=0 sched=0.002119s merged=0.000447s delta=-0.001672s ratio=0.211
+  phase=prefill step=-1 layer=7 dev=npu device=GPU0 op=FFN_W1 shard=1 sched=0.002119s merged=0.000447s delta=-0.001672s ratio=0.211
+  phase=prefill step=-1 layer=9 dev=npu device=GPU0 op=FFN_W1 shard=0 sched=0.002119s merged=0.000447s delta=-0.001672s ratio=0.211
+  phase=prefill step=-1 layer=9 dev=npu device=GPU0 op=FFN_W1 shard=1 sched=0.002119s merged=0.000447s delta=-0.001672s ratio=0.211
+  phase=prefill step=-1 layer=11 dev=npu device=GPU0 op=FFN_W1 shard=0 sched=0.002119s merged=0.000447s delta=-0.001672s ratio=0.211
+  phase=prefill step=-1 layer=10 dev=npu device=GPU0 op=FFN_W1 shard=1 sched=0.002119s merged=0.000447s delta=-0.001672s ratio=0.211
+  phase=prefill step=-1 layer=10 dev=npu device=GPU0 op=FFN_W1 shard=0 sched=0.002119s merged=0.000447s delta=-0.001672s ratio=0.211
+  phase=prefill step=-1 layer=11 dev=npu device=GPU0 op=FFN_W1 shard=1 sched=0.002119s merged=0.000447s delta=-0.001672s ratio=0.211
+  phase=prefill step=-1 layer=20 dev=npu device=GPU0 op=FFN_W1 shard=0 sched=0.002119s merged=0.000447s delta=-0.001672s ratio=0.211
+  phase=prefill step=-1 layer=19 dev=npu device=GPU0 op=FFN_W1 shard=1 sched=0.002119s merged=0.000447s delta=-0.001672s ratio=0.211
+  phase=prefill step=-1 layer=21 dev=npu device=GPU0 op=FFN_W1 shard=1 sched=0.002119s merged=0.000447s delta=-0.001672s ratio=0.211
+  phase=prefill step=-1 layer=20 dev=npu device=GPU0 op=FFN_W1 shard=1 sched=0.002119s merged=0.000447s delta=-0.001672s ratio=0.211
+  phase=prefill step=-1 layer=22 dev=npu device=GPU0 op=FFN_W1 shard=1 sched=0.002119s merged=0.000447s delta=-0.001672s ratio=0.211
+  phase=prefill step=-1 layer=13 dev=npu device=GPU0 op=FFN_W1 shard=0 sched=0.002119s merged=0.000447s delta=-0.001672s ratio=0.211
+  phase=prefill step=-1 layer=2 dev=npu device=GPU0 op=FFN_W1 shard=1 sched=0.002119s merged=0.000447s delta=-0.001672s ratio=0.211
+  phase=prefill step=-1 layer=17 dev=npu device=GPU0 op=FFN_W1 shard=1 sched=0.002119s merged=0.000447s delta=-0.001672s ratio=0.211
+[SCHEDULE] heft_prefill-1024xdecode_256_ops_trace.csv prefill=0.532545 (wl_prefill=0.400513, wl_decode=0.000000) decode=3.741487 total=4.274031 missing_segments=0

@@ -26,7 +26,7 @@
   ],
   "tp_qkv": 2,
   "tp_ffn": 2,
-  "npu_backend": "lut",
+  "npu_backend": "fast",
   "dump_graph": false,
-  "dump_graph_dir": "./output/evaluate_single_test/hardware_1gpu_2aim/graph_dumps"
+  "dump_graph_dir": "./output/evaluate_single_test/hardware_1npu_2aim/graph_dumps"
 }

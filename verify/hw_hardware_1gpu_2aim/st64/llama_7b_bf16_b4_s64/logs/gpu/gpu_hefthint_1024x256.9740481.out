@@ -1,0 +1,439 @@
+[slurm] jobid=9740481 nodelist=l12gpu02
+[slurm] CUDA_VISIBLE_DEVICES=0
+Sat Feb 28 09:09:06 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 560.35.03              Driver Version: 560.35.03      CUDA Version: 12.6     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA A100-PCIE-40GB          On  |   00000000:31:00.0 Off |                    0 |
+| N/A   31C    P0             35W /  250W |       1MiB /  40960MiB |      0%      Default |
+|                                         |                        |             Disabled |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI        PID   Type   Process name                              GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+torch: 2.8.0+cu126
+cuda available: True
+device: NVIDIA A100-PCIE-40GB
+[slurm] PY_SCRIPT=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/schedule_deploy_verify.py
+[slurm] TASKS_JSON=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b4_s64/hefthint_1024x256.gpu_tasks.json
+[slurm] OUT_JSON=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b4_s64/hefthint_1024x256.gpu_results.json
+[slurm] WARMUP=3 ITERS=10 DEVICE=cuda GPU_DTYPE=bf16 BATCH=1
+[slurm] OK_FILE=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b4_s64/hefthint_1024x256.gpu.ok
+[slurm] Running: python /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/schedule_deploy_verify.py run-gpu --tasks /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b4_s64/hefthint_1024x256.gpu_tasks.json --out /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b4_s64/hefthint_1024x256.gpu_results.json --warmup 3 --iters 10 --debug --debug-txt /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b4_s64/hefthint_1024x256.gpu_debug.log --device cuda --gpu-dtype bf16 --batch 1
+[run-gpu] tasks=8 warmup=3 iters=10 device=cuda dtype=bf16 batch=1 segment_scope=layer
+[run-gpu] extra weight_load_s=0.400513s (will be added in merge)
+[run-gpu] GPU[0] NVIDIA A100-PCIE-40GB; SM=108, CC=8.0
+[run-gpu] nvidia-smi -L: GPU 0: NVIDIA A100-PCIE-40GB (UUID: GPU-d9e583db-d970-f6cd-7563-aefa55d156db)
+[run-gpu] nvidia-smi query: NVIDIA A100-PCIE-40GB, GPU-d9e583db-d970-f6cd-7563-aefa55d156db, 560.35.03, 40960
+[run-gpu][debug] torch_default_dtype=torch.float32
+[run-gpu][debug] torch.backends.cuda.matmul.allow_tf32=False
+[run-gpu][debug] cudnn.enabled=True benchmark=False deterministic=False allow_tf32=True
+[run-gpu][debug] nvidia-smi snapshot: 0, 0, 0, 4, 40960, 31, 34.55, 250.00
+========================================================================================
+[gpu-debug] segment_key=npu|decode|0|bc114cc82b65d4012085b8618c0cb99e
+[gpu-debug] sig: device_type=npu phase=decode step=0 (count_hint=15)
+[gpu-debug] ops_repr: Q:0,Q:1,K:0,K:1,Softmax:0,Softmax:1,V:0,V:1,O:0,O:1,FFN_W3:0,FFN_W3:1,FFN_W1:0,FFN_W1:1,FFN_W2:0,FFN_W2:1
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 batch=1 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=Q        shard=0   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1025)
+  - op#01  op=Q        shard=1   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1025)
+  - op#02  op=K        shard=0   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1025)
+  - op#03  op=K        shard=1   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1025)
+  - op#04  op=Softmax  shard=0   scores=[1x16x1x1025]  ->  y=[1x16x1x1025]  (T=1, K=1025)
+  - op#05  op=Softmax  shard=1   scores=[1x16x1x1025]  ->  y=[1x16x1x1025]  (T=1, K=1025)
+  - op#06  op=V        shard=0   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1025)
+  - op#07  op=V        shard=1   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1025)
+  - op#08  op=O        shard=0   x=[1x1x2048] + w=[4096x2048]  ->  y=[1x1x4096]  (T=1, K=1025)
+  - op#09  op=O        shard=1   x=[1x1x2048] + w=[4096x2048]  ->  y=[1x1x4096]  (T=1, K=1025)
+  - op#10  op=FFN_W3   shard=0   x=[1x1x4096] + w=[5504x4096]  ->  y=[1x1x5504]  (T=1, K=1025)
+  - op#11  op=FFN_W3   shard=1   x=[1x1x4096] + w=[5504x4096]  ->  y=[1x1x5504]  (T=1, K=1025)
+  - op#12  op=FFN_W1   shard=0   x=[1x1x4096] + w=[5504x4096]  ->  y=[1x1x5504]  (T=1, K=1025)
+  - op#13  op=FFN_W1   shard=1   x=[1x1x4096] + w=[5504x4096]  ->  y=[1x1x5504]  (T=1, K=1025)
+  - op#14  op=FFN_W2   shard=0   x=[1x1x5504] + w=[4096x5504]  ->  y=[1x1x4096]  (T=1, K=1025)
+  - op#15  op=FFN_W2   shard=1   x=[1x1x5504] + w=[4096x5504]  ->  y=[1x1x4096]  (T=1, K=1025)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  Q         0  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.043ms    16.777 M      0.39   16.01 MiB    392.25
+    1  Q         1  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.031ms    16.777 M      0.54   16.01 MiB    537.57
+    2  K         0  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.030ms    16.777 M      0.56   16.01 MiB    559.59
+    3  K         1  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.029ms    16.777 M      0.57   16.01 MiB    573.29
+    4  Softmax   0  scores[1x16x1x1025]->y[1x16x1x1025]                 0.019ms    82.000 K      0.00   64.06 KiB      3.43
+    5  Softmax   1  scores[1x16x1x1025]->y[1x16x1x1025]                 0.016ms    82.000 K      0.00   64.06 KiB      3.98
+    6  V         0  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.031ms    16.777 M      0.54   16.01 MiB    542.91
+    7  V         1  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.030ms    16.777 M      0.56   16.01 MiB    561.51
+    8  O         0  x[1x1x2048]+w[4096x2048]->y[1x1x4096]               0.025ms    16.777 M      0.67   16.01 MiB    671.97
+    9  O         1  x[1x1x2048]+w[4096x2048]->y[1x1x4096]               0.027ms    16.777 M      0.63   16.01 MiB    633.05
+   10  FFN_W3    0  x[1x1x4096]+w[5504x4096]->y[1x1x5504]               0.046ms    45.089 M      0.97   43.02 MiB    970.28
+   11  FFN_W3    1  x[1x1x4096]+w[5504x4096]->y[1x1x5504]               0.045ms    45.089 M      0.99   43.02 MiB    992.13
+   12  FFN_W1    0  x[1x1x4096]+w[5504x4096]->y[1x1x5504]               0.046ms    45.089 M      0.98   43.02 MiB    978.91
+   13  FFN_W1    1  x[1x1x4096]+w[5504x4096]->y[1x1x5504]               0.045ms    45.089 M      1.01   43.02 MiB   1012.66
+   14  FFN_W2    0  x[1x1x5504]+w[4096x5504]->y[1x1x4096]               0.048ms    45.089 M      0.94   43.02 MiB    945.30
+   15  FFN_W2    1  x[1x1x5504]+w[4096x5504]->y[1x1x4096]               0.046ms    45.089 M      0.97   43.02 MiB    970.28
+[gpu-debug] segment avg latency (cuda_events): 0.490 ms
+[gpu-debug] sum(per-op)               : 0.558 ms (ratio=1.139)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=0 B reserved=0 B
+[gpu-debug] cuda mem after warmup : alloc=400.18 MiB reserved=414.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=400.21 MiB max_reserved=414.00 MiB
+========================================================================================
+[gpu-debug] segment_key=npu|decode|0|eed8fca3b634d6ff1ac27b6e24ff327e
+[gpu-debug] sig: device_type=npu phase=decode step=0 (count_hint=17)
+[gpu-debug] ops_repr: Q:0,Q:1,K:0,K:1,Softmax:0,V:0,Softmax:1,V:1,O:0,O:1,FFN_W3:0,FFN_W3:1,FFN_W1:0,FFN_W1:1,FFN_W2:0,FFN_W2:1
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 batch=1 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=Q        shard=0   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1025)
+  - op#01  op=Q        shard=1   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1025)
+  - op#02  op=K        shard=0   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1025)
+  - op#03  op=K        shard=1   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1025)
+  - op#04  op=Softmax  shard=0   scores=[1x16x1x1025]  ->  y=[1x16x1x1025]  (T=1, K=1025)
+  - op#05  op=V        shard=0   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1025)
+  - op#06  op=Softmax  shard=1   scores=[1x16x1x1025]  ->  y=[1x16x1x1025]  (T=1, K=1025)
+  - op#07  op=V        shard=1   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1025)
+  - op#08  op=O        shard=0   x=[1x1x2048] + w=[4096x2048]  ->  y=[1x1x4096]  (T=1, K=1025)
+  - op#09  op=O        shard=1   x=[1x1x2048] + w=[4096x2048]  ->  y=[1x1x4096]  (T=1, K=1025)
+  - op#10  op=FFN_W3   shard=0   x=[1x1x4096] + w=[5504x4096]  ->  y=[1x1x5504]  (T=1, K=1025)
+  - op#11  op=FFN_W3   shard=1   x=[1x1x4096] + w=[5504x4096]  ->  y=[1x1x5504]  (T=1, K=1025)
+  - op#12  op=FFN_W1   shard=0   x=[1x1x4096] + w=[5504x4096]  ->  y=[1x1x5504]  (T=1, K=1025)
+  - op#13  op=FFN_W1   shard=1   x=[1x1x4096] + w=[5504x4096]  ->  y=[1x1x5504]  (T=1, K=1025)
+  - op#14  op=FFN_W2   shard=0   x=[1x1x5504] + w=[4096x5504]  ->  y=[1x1x4096]  (T=1, K=1025)
+  - op#15  op=FFN_W2   shard=1   x=[1x1x5504] + w=[4096x5504]  ->  y=[1x1x4096]  (T=1, K=1025)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  Q         0  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.042ms    16.777 M      0.39   16.01 MiB    395.08
+    1  Q         1  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.031ms    16.777 M      0.55   16.01 MiB    546.53
+    2  K         0  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.030ms    16.777 M      0.55   16.01 MiB    553.92
+    3  K         1  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.030ms    16.777 M      0.57   16.01 MiB    567.34
+    4  Softmax   0  scores[1x16x1x1025]->y[1x16x1x1025]                 0.019ms    82.000 K      0.00   64.06 KiB      3.44
+    5  V         0  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.030ms    16.777 M      0.56   16.01 MiB    561.51
+    6  Softmax   1  scores[1x16x1x1025]->y[1x16x1x1025]                 0.017ms    82.000 K      0.00   64.06 KiB      3.86
+    7  V         1  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.030ms    16.777 M      0.55   16.01 MiB    552.05
+    8  O         0  x[1x1x2048]+w[4096x2048]->y[1x1x4096]               0.025ms    16.777 M      0.67   16.01 MiB    669.22
+    9  O         1  x[1x1x2048]+w[4096x2048]->y[1x1x4096]               0.026ms    16.777 M      0.64   16.01 MiB    637.98
+   10  FFN_W3    0  x[1x1x4096]+w[5504x4096]->y[1x1x5504]               0.046ms    45.089 M      0.99   43.02 MiB    985.48
+   11  FFN_W3    1  x[1x1x4096]+w[5504x4096]->y[1x1x5504]               0.046ms    45.089 M      0.99   43.02 MiB    987.68
+   12  FFN_W1    0  x[1x1x4096]+w[5504x4096]->y[1x1x5504]               0.046ms    45.089 M      0.98   43.02 MiB    976.74
+   13  FFN_W1    1  x[1x1x4096]+w[5504x4096]->y[1x1x5504]               0.044ms    45.089 M      1.02   43.02 MiB   1017.34
+   14  FFN_W2    0  x[1x1x5504]+w[4096x5504]->y[1x1x4096]               0.048ms    45.089 M      0.94   43.02 MiB    939.25
+   15  FFN_W2    1  x[1x1x5504]+w[4096x5504]->y[1x1x4096]               0.046ms    45.089 M      0.97   43.02 MiB    970.28
+[gpu-debug] segment avg latency (cuda_events): 0.486 ms
+[gpu-debug] sum(per-op)               : 0.557 ms (ratio=1.146)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=400.18 MiB reserved=414.00 MiB
+[gpu-debug] cuda mem after warmup : alloc=400.18 MiB reserved=414.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=400.21 MiB max_reserved=414.00 MiB
+========================================================================================
+[gpu-debug] segment_key=npu|decode|1|bc114cc82b65d4012085b8618c0cb99e
+[gpu-debug] sig: device_type=npu phase=decode step=1 (count_hint=17)
+[gpu-debug] ops_repr: Q:0,Q:1,K:0,K:1,Softmax:0,Softmax:1,V:0,V:1,O:0,O:1,FFN_W3:0,FFN_W3:1,FFN_W1:0,FFN_W1:1,FFN_W2:0,FFN_W2:1
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 batch=1 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=Q        shard=0   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1026)
+  - op#01  op=Q        shard=1   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1026)
+  - op#02  op=K        shard=0   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1026)
+  - op#03  op=K        shard=1   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1026)
+  - op#04  op=Softmax  shard=0   scores=[1x16x1x1026]  ->  y=[1x16x1x1026]  (T=1, K=1026)
+  - op#05  op=Softmax  shard=1   scores=[1x16x1x1026]  ->  y=[1x16x1x1026]  (T=1, K=1026)
+  - op#06  op=V        shard=0   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1026)
+  - op#07  op=V        shard=1   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1026)
+  - op#08  op=O        shard=0   x=[1x1x2048] + w=[4096x2048]  ->  y=[1x1x4096]  (T=1, K=1026)
+  - op#09  op=O        shard=1   x=[1x1x2048] + w=[4096x2048]  ->  y=[1x1x4096]  (T=1, K=1026)
+  - op#10  op=FFN_W3   shard=0   x=[1x1x4096] + w=[5504x4096]  ->  y=[1x1x5504]  (T=1, K=1026)
+  - op#11  op=FFN_W3   shard=1   x=[1x1x4096] + w=[5504x4096]  ->  y=[1x1x5504]  (T=1, K=1026)
+  - op#12  op=FFN_W1   shard=0   x=[1x1x4096] + w=[5504x4096]  ->  y=[1x1x5504]  (T=1, K=1026)
+  - op#13  op=FFN_W1   shard=1   x=[1x1x4096] + w=[5504x4096]  ->  y=[1x1x5504]  (T=1, K=1026)
+  - op#14  op=FFN_W2   shard=0   x=[1x1x5504] + w=[4096x5504]  ->  y=[1x1x4096]  (T=1, K=1026)
+  - op#15  op=FFN_W2   shard=1   x=[1x1x5504] + w=[4096x5504]  ->  y=[1x1x4096]  (T=1, K=1026)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  Q         0  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.042ms    16.777 M      0.40   16.01 MiB    397.00
+    1  Q         1  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.030ms    16.777 M      0.56   16.01 MiB    555.80
+    2  K         0  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.030ms    16.777 M      0.56   16.01 MiB    561.51
+    3  K         1  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.029ms    16.777 M      0.57   16.01 MiB    573.29
+    4  Softmax   0  scores[1x16x1x1026]->y[1x16x1x1026]                 0.019ms    82.080 K      0.00   64.12 KiB      3.49
+    5  Softmax   1  scores[1x16x1x1026]->y[1x16x1x1026]                 0.017ms    82.080 K      0.00   64.12 KiB      3.91
+    6  V         0  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.030ms    16.777 M      0.55   16.01 MiB    553.92
+    7  V         1  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.030ms    16.777 M      0.55   16.01 MiB    553.92
+    8  O         0  x[1x1x2048]+w[4096x2048]->y[1x1x4096]               0.025ms    16.777 M      0.67   16.01 MiB    671.97
+    9  O         1  x[1x1x2048]+w[4096x2048]->y[1x1x4096]               0.027ms    16.777 M      0.63   16.01 MiB    628.20
+   10  FFN_W3    0  x[1x1x4096]+w[5504x4096]->y[1x1x5504]               0.046ms    45.089 M      0.99   43.02 MiB    985.48
+   11  FFN_W3    1  x[1x1x4096]+w[5504x4096]->y[1x1x5504]               0.045ms    45.089 M      1.00   43.02 MiB    998.88
+   12  FFN_W1    0  x[1x1x4096]+w[5504x4096]->y[1x1x5504]               0.046ms    45.089 M      0.99   43.02 MiB    989.90
+   13  FFN_W1    1  x[1x1x4096]+w[5504x4096]->y[1x1x5504]               0.045ms    45.089 M      1.00   43.02 MiB   1001.15
+   14  FFN_W2    0  x[1x1x5504]+w[4096x5504]->y[1x1x4096]               0.047ms    45.089 M      0.96   43.02 MiB    957.62
+   15  FFN_W2    1  x[1x1x5504]+w[4096x5504]->y[1x1x4096]               0.047ms    45.089 M      0.97   43.02 MiB    968.15
+[gpu-debug] segment avg latency (cuda_events): 0.485 ms
+[gpu-debug] sum(per-op)               : 0.555 ms (ratio=1.145)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=400.18 MiB reserved=414.00 MiB
+[gpu-debug] cuda mem after warmup : alloc=400.21 MiB reserved=414.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=400.24 MiB max_reserved=414.00 MiB
+========================================================================================
+[gpu-debug] segment_key=npu|decode|1|eed8fca3b634d6ff1ac27b6e24ff327e
+[gpu-debug] sig: device_type=npu phase=decode step=1 (count_hint=15)
+[gpu-debug] ops_repr: Q:0,Q:1,K:0,K:1,Softmax:0,V:0,Softmax:1,V:1,O:0,O:1,FFN_W3:0,FFN_W3:1,FFN_W1:0,FFN_W1:1,FFN_W2:0,FFN_W2:1
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 batch=1 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=Q        shard=0   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1026)
+  - op#01  op=Q        shard=1   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1026)
+  - op#02  op=K        shard=0   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1026)
+  - op#03  op=K        shard=1   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1026)
+  - op#04  op=Softmax  shard=0   scores=[1x16x1x1026]  ->  y=[1x16x1x1026]  (T=1, K=1026)
+  - op#05  op=V        shard=0   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1026)
+  - op#06  op=Softmax  shard=1   scores=[1x16x1x1026]  ->  y=[1x16x1x1026]  (T=1, K=1026)
+  - op#07  op=V        shard=1   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1026)
+  - op#08  op=O        shard=0   x=[1x1x2048] + w=[4096x2048]  ->  y=[1x1x4096]  (T=1, K=1026)
+  - op#09  op=O        shard=1   x=[1x1x2048] + w=[4096x2048]  ->  y=[1x1x4096]  (T=1, K=1026)
+  - op#10  op=FFN_W3   shard=0   x=[1x1x4096] + w=[5504x4096]  ->  y=[1x1x5504]  (T=1, K=1026)
+  - op#11  op=FFN_W3   shard=1   x=[1x1x4096] + w=[5504x4096]  ->  y=[1x1x5504]  (T=1, K=1026)
+  - op#12  op=FFN_W1   shard=0   x=[1x1x4096] + w=[5504x4096]  ->  y=[1x1x5504]  (T=1, K=1026)
+  - op#13  op=FFN_W1   shard=1   x=[1x1x4096] + w=[5504x4096]  ->  y=[1x1x5504]  (T=1, K=1026)
+  - op#14  op=FFN_W2   shard=0   x=[1x1x5504] + w=[4096x5504]  ->  y=[1x1x4096]  (T=1, K=1026)
+  - op#15  op=FFN_W2   shard=1   x=[1x1x5504] + w=[4096x5504]  ->  y=[1x1x4096]  (T=1, K=1026)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  Q         0  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.042ms    16.777 M      0.40   16.01 MiB    396.04
+    1  Q         1  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.031ms    16.777 M      0.55   16.01 MiB    550.20
+    2  K         0  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.031ms    16.777 M      0.55   16.01 MiB    550.20
+    3  K         1  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.029ms    16.777 M      0.57   16.01 MiB    569.31
+    4  Softmax   0  scores[1x16x1x1026]->y[1x16x1x1026]                 0.019ms    82.080 K      0.00   64.12 KiB      3.41
+    5  V         0  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.030ms    16.777 M      0.55   16.01 MiB    553.92
+    6  Softmax   1  scores[1x16x1x1026]->y[1x16x1x1026]                 0.017ms    82.080 K      0.00   64.12 KiB      3.86
+    7  V         1  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.030ms    16.777 M      0.55   16.01 MiB    553.92
+    8  O         0  x[1x1x2048]+w[4096x2048]->y[1x1x4096]               0.025ms    16.777 M      0.67   16.01 MiB    671.97
+    9  O         1  x[1x1x2048]+w[4096x2048]->y[1x1x4096]               0.027ms    16.777 M      0.63   16.01 MiB    625.80
+   10  FFN_W3    0  x[1x1x4096]+w[5504x4096]->y[1x1x5504]               0.046ms    45.089 M      0.99   43.02 MiB    989.90
+   11  FFN_W3    1  x[1x1x4096]+w[5504x4096]->y[1x1x5504]               0.045ms    45.089 M      1.00   43.02 MiB   1003.43
+   12  FFN_W1    0  x[1x1x4096]+w[5504x4096]->y[1x1x5504]               0.045ms    45.089 M      0.99   43.02 MiB    992.13
+   13  FFN_W1    1  x[1x1x4096]+w[5504x4096]->y[1x1x5504]               0.045ms    45.089 M      1.00   43.02 MiB   1001.15
+   14  FFN_W2    0  x[1x1x5504]+w[4096x5504]->y[1x1x4096]               0.047ms    45.089 M      0.96   43.02 MiB    961.81
+   15  FFN_W2    1  x[1x1x5504]+w[4096x5504]->y[1x1x4096]               0.047ms    45.089 M      0.96   43.02 MiB    963.91
+[gpu-debug] segment avg latency (cuda_events): 0.485 ms
+[gpu-debug] sum(per-op)               : 0.556 ms (ratio=1.146)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=400.21 MiB reserved=414.00 MiB
+[gpu-debug] cuda mem after warmup : alloc=400.21 MiB reserved=414.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=400.24 MiB max_reserved=414.00 MiB
+========================================================================================
+[gpu-debug] segment_key=npu|decode|2|eed8fca3b634d6ff1ac27b6e24ff327e
+[gpu-debug] sig: device_type=npu phase=decode step=2 (count_hint=32)
+[gpu-debug] ops_repr: Q:0,Q:1,K:0,K:1,Softmax:0,V:0,Softmax:1,V:1,O:0,O:1,FFN_W3:0,FFN_W3:1,FFN_W1:0,FFN_W1:1,FFN_W2:0,FFN_W2:1
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 batch=1 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=Q        shard=0   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1088)
+  - op#01  op=Q        shard=1   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1088)
+  - op#02  op=K        shard=0   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1088)
+  - op#03  op=K        shard=1   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1088)
+  - op#04  op=Softmax  shard=0   scores=[1x16x1x1088]  ->  y=[1x16x1x1088]  (T=1, K=1088)
+  - op#05  op=V        shard=0   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1088)
+  - op#06  op=Softmax  shard=1   scores=[1x16x1x1088]  ->  y=[1x16x1x1088]  (T=1, K=1088)
+  - op#07  op=V        shard=1   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1088)
+  - op#08  op=O        shard=0   x=[1x1x2048] + w=[4096x2048]  ->  y=[1x1x4096]  (T=1, K=1088)
+  - op#09  op=O        shard=1   x=[1x1x2048] + w=[4096x2048]  ->  y=[1x1x4096]  (T=1, K=1088)
+  - op#10  op=FFN_W3   shard=0   x=[1x1x4096] + w=[5504x4096]  ->  y=[1x1x5504]  (T=1, K=1088)
+  - op#11  op=FFN_W3   shard=1   x=[1x1x4096] + w=[5504x4096]  ->  y=[1x1x5504]  (T=1, K=1088)
+  - op#12  op=FFN_W1   shard=0   x=[1x1x4096] + w=[5504x4096]  ->  y=[1x1x5504]  (T=1, K=1088)
+  - op#13  op=FFN_W1   shard=1   x=[1x1x4096] + w=[5504x4096]  ->  y=[1x1x5504]  (T=1, K=1088)
+  - op#14  op=FFN_W2   shard=0   x=[1x1x5504] + w=[4096x5504]  ->  y=[1x1x4096]  (T=1, K=1088)
+  - op#15  op=FFN_W2   shard=1   x=[1x1x5504] + w=[4096x5504]  ->  y=[1x1x4096]  (T=1, K=1088)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  Q         0  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.043ms    16.777 M      0.39   16.01 MiB    393.19
+    1  Q         1  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.030ms    16.777 M      0.56   16.01 MiB    559.59
+    2  K         0  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.030ms    16.777 M      0.56   16.01 MiB    559.59
+    3  K         1  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.029ms    16.777 M      0.57   16.01 MiB    575.30
+    4  Softmax   0  scores[1x16x1x1088]->y[1x16x1x1088]                 0.020ms    87.040 K      0.00   68.00 KiB      3.49
+    5  V         0  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.029ms    16.777 M      0.57   16.01 MiB    573.29
+    6  Softmax   1  scores[1x16x1x1088]->y[1x16x1x1088]                 0.017ms    87.040 K      0.00   68.00 KiB      4.00
+    7  V         1  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.030ms    16.777 M      0.56   16.01 MiB    555.80
+    8  O         0  x[1x1x2048]+w[4096x2048]->y[1x1x4096]               0.025ms    16.777 M      0.66   16.01 MiB    663.81
+    9  O         1  x[1x1x2048]+w[4096x2048]->y[1x1x4096]               0.026ms    16.777 M      0.64   16.01 MiB    640.47
+   10  FFN_W3    0  x[1x1x4096]+w[5504x4096]->y[1x1x5504]               0.046ms    45.089 M      0.99   43.02 MiB    987.68
+   11  FFN_W3    1  x[1x1x4096]+w[5504x4096]->y[1x1x5504]               0.045ms    45.089 M      1.00   43.02 MiB    996.62
+   12  FFN_W1    0  x[1x1x4096]+w[5504x4096]->y[1x1x5504]               0.047ms    45.089 M      0.95   43.02 MiB    951.42
+   13  FFN_W1    1  x[1x1x4096]+w[5504x4096]->y[1x1x5504]               0.045ms    45.089 M      1.01   43.02 MiB   1012.66
+   14  FFN_W2    0  x[1x1x5504]+w[4096x5504]->y[1x1x4096]               0.047ms    45.089 M      0.96   43.02 MiB    959.71
+   15  FFN_W2    1  x[1x1x5504]+w[4096x5504]->y[1x1x4096]               0.047ms    45.089 M      0.96   43.02 MiB    963.91
+[gpu-debug] segment avg latency (cuda_events): 0.488 ms
+[gpu-debug] sum(per-op)               : 0.557 ms (ratio=1.142)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=400.21 MiB reserved=414.00 MiB
+[gpu-debug] cuda mem after warmup : alloc=400.24 MiB reserved=414.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=400.28 MiB max_reserved=414.00 MiB
+========================================================================================
+[gpu-debug] segment_key=npu|decode|3|eed8fca3b634d6ff1ac27b6e24ff327e
+[gpu-debug] sig: device_type=npu phase=decode step=3 (count_hint=32)
+[gpu-debug] ops_repr: Q:0,Q:1,K:0,K:1,Softmax:0,V:0,Softmax:1,V:1,O:0,O:1,FFN_W3:0,FFN_W3:1,FFN_W1:0,FFN_W1:1,FFN_W2:0,FFN_W2:1
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 batch=1 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=Q        shard=0   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1152)
+  - op#01  op=Q        shard=1   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1152)
+  - op#02  op=K        shard=0   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1152)
+  - op#03  op=K        shard=1   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1152)
+  - op#04  op=Softmax  shard=0   scores=[1x16x1x1152]  ->  y=[1x16x1x1152]  (T=1, K=1152)
+  - op#05  op=V        shard=0   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1152)
+  - op#06  op=Softmax  shard=1   scores=[1x16x1x1152]  ->  y=[1x16x1x1152]  (T=1, K=1152)
+  - op#07  op=V        shard=1   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1152)
+  - op#08  op=O        shard=0   x=[1x1x2048] + w=[4096x2048]  ->  y=[1x1x4096]  (T=1, K=1152)
+  - op#09  op=O        shard=1   x=[1x1x2048] + w=[4096x2048]  ->  y=[1x1x4096]  (T=1, K=1152)
+  - op#10  op=FFN_W3   shard=0   x=[1x1x4096] + w=[5504x4096]  ->  y=[1x1x5504]  (T=1, K=1152)
+  - op#11  op=FFN_W3   shard=1   x=[1x1x4096] + w=[5504x4096]  ->  y=[1x1x5504]  (T=1, K=1152)
+  - op#12  op=FFN_W1   shard=0   x=[1x1x4096] + w=[5504x4096]  ->  y=[1x1x5504]  (T=1, K=1152)
+  - op#13  op=FFN_W1   shard=1   x=[1x1x4096] + w=[5504x4096]  ->  y=[1x1x5504]  (T=1, K=1152)
+  - op#14  op=FFN_W2   shard=0   x=[1x1x5504] + w=[4096x5504]  ->  y=[1x1x4096]  (T=1, K=1152)
+  - op#15  op=FFN_W2   shard=1   x=[1x1x5504] + w=[4096x5504]  ->  y=[1x1x4096]  (T=1, K=1152)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  Q         0  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.042ms    16.777 M      0.40   16.01 MiB    399.90
+    1  Q         1  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.030ms    16.777 M      0.56   16.01 MiB    555.80
+    2  K         0  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.030ms    16.777 M      0.55   16.01 MiB    553.92
+    3  K         1  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.030ms    16.777 M      0.56   16.01 MiB    565.38
+    4  Softmax   0  scores[1x16x1x1152]->y[1x16x1x1152]                 0.020ms    92.160 K      0.00   72.00 KiB      3.69
+    5  V         0  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.030ms    16.777 M      0.57   16.01 MiB    567.34
+    6  Softmax   1  scores[1x16x1x1152]->y[1x16x1x1152]                 0.018ms    92.160 K      0.01   72.00 KiB      4.16
+    7  V         1  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.030ms    16.777 M      0.56   16.01 MiB    559.59
+    8  O         0  x[1x1x2048]+w[4096x2048]->y[1x1x4096]               0.025ms    16.777 M      0.66   16.01 MiB    663.81
+    9  O         1  x[1x1x2048]+w[4096x2048]->y[1x1x4096]               0.026ms    16.777 M      0.64   16.01 MiB    635.50
+   10  FFN_W3    0  x[1x1x4096]+w[5504x4096]->y[1x1x5504]               0.046ms    45.089 M      0.99   43.02 MiB    987.68
+   11  FFN_W3    1  x[1x1x4096]+w[5504x4096]->y[1x1x5504]               0.046ms    45.089 M      0.98   43.02 MiB    978.91
+   12  FFN_W1    0  x[1x1x4096]+w[5504x4096]->y[1x1x5504]               0.046ms    45.089 M      0.98   43.02 MiB    978.91
+   13  FFN_W1    1  x[1x1x4096]+w[5504x4096]->y[1x1x5504]               0.045ms    45.089 M      1.01   43.02 MiB   1012.66
+   14  FFN_W2    0  x[1x1x5504]+w[4096x5504]->y[1x1x4096]               0.047ms    45.089 M      0.96   43.02 MiB    961.81
+   15  FFN_W2    1  x[1x1x5504]+w[4096x5504]->y[1x1x4096]               0.047ms    45.089 M      0.95   43.02 MiB    951.42
+[gpu-debug] segment avg latency (cuda_events): 0.487 ms
+[gpu-debug] sum(per-op)               : 0.558 ms (ratio=1.146)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=400.24 MiB reserved=414.00 MiB
+[gpu-debug] cuda mem after warmup : alloc=400.28 MiB reserved=414.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=400.31 MiB max_reserved=414.00 MiB
+========================================================================================
+[gpu-debug] segment_key=npu|decode|4|eed8fca3b634d6ff1ac27b6e24ff327e
+[gpu-debug] sig: device_type=npu phase=decode step=4 (count_hint=32)
+[gpu-debug] ops_repr: Q:0,Q:1,K:0,K:1,Softmax:0,V:0,Softmax:1,V:1,O:0,O:1,FFN_W3:0,FFN_W3:1,FFN_W1:0,FFN_W1:1,FFN_W2:0,FFN_W2:1
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 batch=1 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=Q        shard=0   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1216)
+  - op#01  op=Q        shard=1   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1216)
+  - op#02  op=K        shard=0   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1216)
+  - op#03  op=K        shard=1   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1216)
+  - op#04  op=Softmax  shard=0   scores=[1x16x1x1216]  ->  y=[1x16x1x1216]  (T=1, K=1216)
+  - op#05  op=V        shard=0   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1216)
+  - op#06  op=Softmax  shard=1   scores=[1x16x1x1216]  ->  y=[1x16x1x1216]  (T=1, K=1216)
+  - op#07  op=V        shard=1   x=[1x1x4096] + w=[2048x4096]  ->  y=[1x1x2048]  (T=1, K=1216)
+  - op#08  op=O        shard=0   x=[1x1x2048] + w=[4096x2048]  ->  y=[1x1x4096]  (T=1, K=1216)
+  - op#09  op=O        shard=1   x=[1x1x2048] + w=[4096x2048]  ->  y=[1x1x4096]  (T=1, K=1216)
+  - op#10  op=FFN_W3   shard=0   x=[1x1x4096] + w=[5504x4096]  ->  y=[1x1x5504]  (T=1, K=1216)
+  - op#11  op=FFN_W3   shard=1   x=[1x1x4096] + w=[5504x4096]  ->  y=[1x1x5504]  (T=1, K=1216)
+  - op#12  op=FFN_W1   shard=0   x=[1x1x4096] + w=[5504x4096]  ->  y=[1x1x5504]  (T=1, K=1216)
+  - op#13  op=FFN_W1   shard=1   x=[1x1x4096] + w=[5504x4096]  ->  y=[1x1x5504]  (T=1, K=1216)
+  - op#14  op=FFN_W2   shard=0   x=[1x1x5504] + w=[4096x5504]  ->  y=[1x1x4096]  (T=1, K=1216)
+  - op#15  op=FFN_W2   shard=1   x=[1x1x5504] + w=[4096x5504]  ->  y=[1x1x4096]  (T=1, K=1216)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  Q         0  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.041ms    16.777 M      0.40   16.01 MiB    404.84
+    1  Q         1  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.030ms    16.777 M      0.55   16.01 MiB    553.92
+    2  K         0  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.030ms    16.777 M      0.56   16.01 MiB    559.59
+    3  K         1  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.029ms    16.777 M      0.57   16.01 MiB    571.29
+    4  Softmax   0  scores[1x16x1x1216]->y[1x16x1x1216]                 0.020ms    97.280 K      0.00   76.00 KiB      3.84
+    5  V         0  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.029ms    16.777 M      0.57   16.01 MiB    571.29
+    6  Softmax   1  scores[1x16x1x1216]->y[1x16x1x1216]                 0.018ms    97.280 K      0.01   76.00 KiB      4.37
+    7  V         1  x[1x1x4096]+w[2048x4096]->y[1x1x2048]               0.030ms    16.777 M      0.56   16.01 MiB    565.38
+    8  O         0  x[1x1x2048]+w[4096x2048]->y[1x1x4096]               0.025ms    16.777 M      0.67   16.01 MiB    671.97
+    9  O         1  x[1x1x2048]+w[4096x2048]->y[1x1x4096]               0.026ms    16.777 M      0.64   16.01 MiB    642.98
+   10  FFN_W3    0  x[1x1x4096]+w[5504x4096]->y[1x1x5504]               0.046ms    45.089 M      0.99   43.02 MiB    989.90
+   11  FFN_W3    1  x[1x1x4096]+w[5504x4096]->y[1x1x5504]               0.045ms    45.089 M      1.00   43.02 MiB   1001.15
+   12  FFN_W1    0  x[1x1x4096]+w[5504x4096]->y[1x1x5504]               0.046ms    45.089 M      0.98   43.02 MiB    978.91
+   13  FFN_W1    1  x[1x1x4096]+w[5504x4096]->y[1x1x5504]               0.044ms    45.089 M      1.02   43.02 MiB   1024.44
+   14  FFN_W2    0  x[1x1x5504]+w[4096x5504]->y[1x1x4096]               0.047ms    45.089 M      0.95   43.02 MiB    953.48
+   15  FFN_W2    1  x[1x1x5504]+w[4096x5504]->y[1x1x4096]               0.046ms    45.089 M      0.98   43.02 MiB    976.74
+[gpu-debug] segment avg latency (cuda_events): 0.489 ms
+[gpu-debug] sum(per-op)               : 0.554 ms (ratio=1.132)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=400.28 MiB reserved=414.00 MiB
+[gpu-debug] cuda mem after warmup : alloc=400.32 MiB reserved=414.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=400.35 MiB max_reserved=414.00 MiB
+========================================================================================
+[gpu-debug] segment_key=npu|prefill|-1|32cc3ecab0873bb05654e273d69c9222
+[gpu-debug] sig: device_type=npu phase=prefill step=-1 (count_hint=32)
+[gpu-debug] ops_repr: LN:-1,Q:0,Q:1,K:0,K:1,V:0,V:1,QK:0,QK:1,Softmax:0,SV:0,O:0,Softmax:1,SV:1,O:1,Add:-1,LN:-1,FFN_W3:0,FFN_W3:1,FFN_W1:0,FFN_W1:1,SwiGLU:0,FFN_W2:0,SwiGLU:1,FFN_W2:1,Add:-1
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 batch=1 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=LN       shard=-1  x=[1x1024x4096] + w=[4096]  ->  y=[1x1024x4096]  (T=1024, K=1024)
+  - op#01  op=Q        shard=0   x=[1x1024x4096] + w=[2048x4096]  ->  y=[1x1024x2048]  (T=1024, K=1024)
+  - op#02  op=Q        shard=1   x=[1x1024x4096] + w=[2048x4096]  ->  y=[1x1024x2048]  (T=1024, K=1024)
+  - op#03  op=K        shard=0   x=[1x1024x4096] + w=[2048x4096]  ->  y=[1x1024x2048]  (T=1024, K=1024)
+  - op#04  op=K        shard=1   x=[1x1024x4096] + w=[2048x4096]  ->  y=[1x1024x2048]  (T=1024, K=1024)
+  - op#05  op=V        shard=0   x=[1x1024x4096] + w=[2048x4096]  ->  y=[1x1024x2048]  (T=1024, K=1024)
+  - op#06  op=V        shard=1   x=[1x1024x4096] + w=[2048x4096]  ->  y=[1x1024x2048]  (T=1024, K=1024)
+  - op#07  op=QK       shard=0   q=[1x16x1024x128] + k=[1x16x128x1024]  ->  y=[1x16x1024x1024]  (T=1024, K=1024)
+  - op#08  op=QK       shard=1   q=[1x16x1024x128] + k=[1x16x128x1024]  ->  y=[1x16x1024x1024]  (T=1024, K=1024)
+  - op#09  op=Softmax  shard=0   scores=[1x16x1024x1024]  ->  y=[1x16x1024x1024]  (T=1024, K=1024)
+  - op#10  op=SV       shard=0   p=[1x16x1024x1024] + v=[1x16x1024x128]  ->  y=[1x16x1024x128]  (T=1024, K=1024)
+  - op#11  op=O        shard=0   x=[1x1024x2048] + w=[4096x2048]  ->  y=[1x1024x4096]  (T=1024, K=1024)
+  - op#12  op=Softmax  shard=1   scores=[1x16x1024x1024]  ->  y=[1x16x1024x1024]  (T=1024, K=1024)
+  - op#13  op=SV       shard=1   p=[1x16x1024x1024] + v=[1x16x1024x128]  ->  y=[1x16x1024x128]  (T=1024, K=1024)
+  - op#14  op=O        shard=1   x=[1x1024x2048] + w=[4096x2048]  ->  y=[1x1024x4096]  (T=1024, K=1024)
+  - op#15  op=Add      shard=-1  a=[1x1024x4096] + b=[1x1024x4096]  ->  y=[1x1024x4096]  (T=1024, K=1024)
+  - op#16  op=LN       shard=-1  x=[1x1024x4096] + w=[4096]  ->  y=[1x1024x4096]  (T=1024, K=1024)
+  - op#17  op=FFN_W3   shard=0   x=[1x1024x4096] + w=[5504x4096]  ->  y=[1x1024x5504]  (T=1024, K=1024)
+  - op#18  op=FFN_W3   shard=1   x=[1x1024x4096] + w=[5504x4096]  ->  y=[1x1024x5504]  (T=1024, K=1024)
+  - op#19  op=FFN_W1   shard=0   x=[1x1024x4096] + w=[5504x4096]  ->  y=[1x1024x5504]  (T=1024, K=1024)
+  - op#20  op=FFN_W1   shard=1   x=[1x1024x4096] + w=[5504x4096]  ->  y=[1x1024x5504]  (T=1024, K=1024)
+  - op#21  op=SwiGLU   shard=0   a=[1x1024x5504] + b=[1x1024x5504]  ->  y=[1x1024x5504]  (T=1024, K=1024)
+  - op#22  op=FFN_W2   shard=0   x=[1x1024x5504] + w=[4096x5504]  ->  y=[1x1024x4096]  (T=1024, K=1024)
+  - op#23  op=SwiGLU   shard=1   a=[1x1024x5504] + b=[1x1024x5504]  ->  y=[1x1024x5504]  (T=1024, K=1024)
+  - op#24  op=FFN_W2   shard=1   x=[1x1024x5504] + w=[4096x5504]  ->  y=[1x1024x4096]  (T=1024, K=1024)
+  - op#25  op=Add      shard=-1  a=[1x1024x4096] + b=[1x1024x4096]  ->  y=[1x1024x4096]  (T=1024, K=1024)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  LN       -1  x[1x1024x4096]+w[4096]->y[1x1024x4096]              0.105ms    20.972 M      0.20   16.01 MiB    160.08
+    1  Q         0  x[1x1024x4096]+w[2048x4096]->y[1x1024x2048]         0.139ms    17.180 G    123.45   28.00 MiB    210.98
+    2  Q         1  x[1x1024x4096]+w[2048x4096]->y[1x1024x2048]         0.141ms    17.180 G    122.19   28.00 MiB    208.83
+    3  K         0  x[1x1024x4096]+w[2048x4096]->y[1x1024x2048]         0.139ms    17.180 G    123.18   28.00 MiB    210.51
+    4  K         1  x[1x1024x4096]+w[2048x4096]->y[1x1024x2048]         0.140ms    17.180 G    122.73   28.00 MiB    209.74
+    5  V         0  x[1x1024x4096]+w[2048x4096]->y[1x1024x2048]         0.139ms    17.180 G    123.27   28.00 MiB    210.67
+    6  V         1  x[1x1024x4096]+w[2048x4096]->y[1x1024x2048]         0.140ms    17.180 G    122.37   28.00 MiB    209.13
+    7  QK        0  q[1x16x1024x128]+k[1x16x128x1024]->y[1x16x1...      0.129ms     4.295 G     33.24   40.00 MiB    324.56
+    8  QK        1  q[1x16x1024x128]+k[1x16x128x1024]->y[1x16x1...      0.131ms     4.295 G     32.82   40.00 MiB    320.50
+    9  Softmax   0  scores[1x16x1024x1024]->y[1x16x1024x1024]           0.085ms    83.886 M      0.99   64.00 MiB    789.59
+   10  SV        0  p[1x16x1024x1024]+v[1x16x1024x128]->y[1x16x...      0.065ms     4.295 G     65.64   40.00 MiB    641.00
+   11  O         0  x[1x1024x2048]+w[4096x2048]->y[1x1024x4096]         0.169ms    17.180 G    101.43   28.00 MiB    173.35
+   12  Softmax   1  scores[1x16x1024x1024]->y[1x16x1024x1024]           0.081ms    83.886 M      1.04   64.00 MiB    829.57
+   13  SV        1  p[1x16x1024x1024]+v[1x16x1024x128]->y[1x16x...      0.066ms     4.295 G     65.54   40.00 MiB    640.00
+   14  O         1  x[1x1024x2048]+w[4096x2048]->y[1x1024x4096]         0.169ms    17.180 G    101.37   28.00 MiB    173.24
+   15  Add      -1  a[1x1024x4096]+b[1x1024x4096]->y[1x1024x4096]       0.017ms     4.194 M      0.25   24.00 MiB   1498.54
+   16  LN       -1  x[1x1024x4096]+w[4096]->y[1x1024x4096]              0.096ms    20.972 M      0.22   16.01 MiB    175.69
+   17  FFN_W3    0  x[1x1024x4096]+w[5504x4096]->y[1x1024x5504]         0.315ms    46.171 G    146.68   61.75 MiB    205.70
+   18  FFN_W3    1  x[1x1024x4096]+w[5504x4096]->y[1x1024x5504]         0.314ms    46.171 G    146.82   61.75 MiB    205.90
+   19  FFN_W1    0  x[1x1024x4096]+w[5504x4096]->y[1x1024x5504]         0.315ms    46.171 G    146.39   61.75 MiB    205.30
+   20  FFN_W1    1  x[1x1024x4096]+w[5504x4096]->y[1x1024x5504]         0.315ms    46.171 G    146.68   61.75 MiB    205.70
+   21  SwiGLU    0  a[1x1024x5504]+b[1x1024x5504]->y[1x1024x5504]       0.041ms    33.817 M      0.83   32.25 MiB    829.75
+   22  FFN_W2    0  x[1x1024x5504]+w[4096x5504]->y[1x1024x4096]         0.415ms    46.171 G    111.39   61.75 MiB    156.21
+   23  SwiGLU    1  a[1x1024x5504]+b[1x1024x5504]->y[1x1024x5504]       0.040ms    33.817 M      0.85   32.25 MiB    851.13
+   24  FFN_W2    1  x[1x1024x5504]+w[4096x5504]->y[1x1024x4096]         0.414ms    46.171 G    111.52   61.75 MiB    156.40
+   25  Add      -1  a[1x1024x4096]+b[1x1024x4096]->y[1x1024x4096]       0.018ms     4.194 M      0.23   24.00 MiB   1396.36
+[gpu-debug] segment avg latency (cuda_events): 4.041 ms
+[gpu-debug] sum(per-op)               : 4.138 ms (ratio=1.024)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=400.32 MiB reserved=414.00 MiB
+[gpu-debug] cuda mem after warmup : alloc=463.07 MiB reserved=574.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=527.07 MiB max_reserved=574.00 MiB
+  progress 8/8
+[run-gpu] wrote /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b4_s64/hefthint_1024x256.gpu_results.json
+[slurm] wrote OK_FILE=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b4_s64/hefthint_1024x256.gpu.ok

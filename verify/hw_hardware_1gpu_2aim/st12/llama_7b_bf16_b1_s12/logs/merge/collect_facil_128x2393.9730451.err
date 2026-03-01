@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/schedule_deploy_verify.py", line 4432, in <module>
+    main()
+    ~~~~^^
+  File "/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/schedule_deploy_verify.py", line 4386, in main
+    collect_merge_csv(args.list, out_csv=args.out_csv, skip_missing=args.skip_missing)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/schedule_deploy_verify.py", line 4050, in collect_merge_csv
+    raise ValueError(f"No merge CSVs found to collect from: {lp}")
+ValueError: No merge CSVs found to collect from: /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/facil_128x2393.merge_list.tsv

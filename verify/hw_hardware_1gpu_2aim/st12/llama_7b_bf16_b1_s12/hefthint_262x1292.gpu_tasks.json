@@ -1,0 +1,3942 @@
+{
+  "version": 3,
+  "task_type": "segment",
+  "backend": "gpu",
+  "segment_scope": "layer",
+  "schedules": [
+    "/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/output/experiment_1gpu_2aim/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/algo_hefthint/hefthint_prefill-262xdecode_1292_ops_trace.csv"
+  ],
+  "weight_load_s": 0.0,
+  "weight_load_meta": {
+    "gpu_s": 0.0,
+    "pim_s": 0.4005126953124926,
+    "unknown_s": 0.0,
+    "total_s": 0.4005126953124926
+  },
+  "weight_load_by_schedule": {
+    "/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/output/experiment_1gpu_2aim/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/algo_hefthint/hefthint_prefill-262xdecode_1292_ops_trace.csv": {
+      "gpu_s": 0.0,
+      "pim_s": 0.4005126953124926,
+      "unknown_s": 0.0,
+      "total_s": 0.4005126953124926
+    }
+  },
+  "config": {
+    "dim": 4096,
+    "ffn_dim": 11008,
+    "n_heads": 32,
+    "shards": 2,
+    "prefill_len": 262,
+    "decode_context_lens": [
+      263,
+      264,
+      274,
+      286,
+      298,
+      310,
+      322,
+      334,
+      346,
+      358,
+      370,
+      382,
+      394,
+      406,
+      418,
+      430,
+      442,
+      454,
+      466,
+      478,
+      490,
+      502,
+      514,
+      526,
+      538,
+      550,
+      562,
+      574,
+      586,
+      598,
+      610,
+      622,
+      634,
+      646,
+      658,
+      670,
+      682,
+      694,
+      706,
+      718,
+      730,
+      742,
+      754,
+      766,
+      778,
+      790,
+      802,
+      814,
+      826,
+      838,
+      850,
+      862,
+      874,
+      886,
+      898,
+      910,
+      922,
+      934,
+      946,
+      958,
+      970,
+      982,
+      994,
+      1006,
+      1018,
+      1030,
+      1042,
+      1054,
+      1066,
+      1078,
+      1090,
+      1102,
+      1114,
+      1126,
+      1138,
+      1150,
+      1162,
+      1174,
+      1186,
+      1198,
+      1210,
+      1222,
+      1234,
+      1246,
+      1258,
+      1270,
+      1282,
+      1294,
+      1306,
+      1318,
+      1330,
+      1342,
+      1354,
+      1366,
+      1378,
+      1390,
+      1402,
+      1414,
+      1426,
+      1438,
+      1450,
+      1462,
+      1474,
+      1486,
+      1498,
+      1510,
+      1522,
+      1534,
+      1546
+    ],
+    "decode_stride": 12,
+    "device": "cuda",
+    "gpu_dtype": "fp16",
+    "kv_load_bw_gbs": 16384.0,
+    "kv_dtype_bytes": 2.0,
+    "kv_load_overhead_us": 0.0,
+    "n_kv_heads": null,
+    "batch": 1,
+    "pim_dram_column": 256,
+    "pim_dram_row": 64,
+    "pim_burst_length": 16,
+    "pim_num_banks": 8,
+    "pim_num_channels": 4,
+    "pim_threads": 1,
+    "pim_reuse_size": 32,
+    "pim_num_devices": 1,
+    "pim_ramulator_bin": null,
+    "pim_ramulator_config": null,
+    "pim_freq_ghz": 1.0,
+    "pim_ramulator_timeout_s": 3000,
+    "pim_keep_traces": false,
+    "pim_trace_dir": null,
+    "pim_hw_json_path": null,
+    "debug": false,
+    "segment_scope": "layer",
+    "shard_policy": "fine"
+  },
+  "tasks": [
+    {
+      "key": "npu|decode|0|307a197e3ce88b480cf4c5382b3cb30c",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 0
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:1",
+      "count_hint": 12
+    },
+    {
+      "key": "npu|decode|0|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 0
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 6
+    },
+    {
+      "key": "npu|decode|100|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 100
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|100|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 100
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|101|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 101
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|101|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 101
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|102|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 102
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|102|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 102
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|103|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 103
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|103|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 103
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|104|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 104
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|104|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 104
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|105|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 105
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|105|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 105
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|106|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 106
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|106|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 106
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|107|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 107
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|107|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 107
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|108|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 108
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|108|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 108
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|10|307a197e3ce88b480cf4c5382b3cb30c",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 10
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:1",
+      "count_hint": 12
+    },
+    {
+      "key": "npu|decode|10|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 10
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 6
+    },
+    {
+      "key": "npu|decode|11|307a197e3ce88b480cf4c5382b3cb30c",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 11
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:1",
+      "count_hint": 12
+    },
+    {
+      "key": "npu|decode|11|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 11
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 6
+    },
+    {
+      "key": "npu|decode|12|307a197e3ce88b480cf4c5382b3cb30c",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 12
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:1",
+      "count_hint": 12
+    },
+    {
+      "key": "npu|decode|12|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 12
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 6
+    },
+    {
+      "key": "npu|decode|13|307a197e3ce88b480cf4c5382b3cb30c",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 13
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:1",
+      "count_hint": 12
+    },
+    {
+      "key": "npu|decode|13|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 13
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 6
+    },
+    {
+      "key": "npu|decode|14|307a197e3ce88b480cf4c5382b3cb30c",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 14
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:1",
+      "count_hint": 12
+    },
+    {
+      "key": "npu|decode|14|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 14
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 6
+    },
+    {
+      "key": "npu|decode|15|307a197e3ce88b480cf4c5382b3cb30c",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 15
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:1",
+      "count_hint": 12
+    },
+    {
+      "key": "npu|decode|15|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 15
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 6
+    },
+    {
+      "key": "npu|decode|16|307a197e3ce88b480cf4c5382b3cb30c",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 16
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:1",
+      "count_hint": 12
+    },
+    {
+      "key": "npu|decode|16|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 16
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 6
+    },
+    {
+      "key": "npu|decode|17|307a197e3ce88b480cf4c5382b3cb30c",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 17
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:1",
+      "count_hint": 12
+    },
+    {
+      "key": "npu|decode|17|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 17
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 6
+    },
+    {
+      "key": "npu|decode|18|307a197e3ce88b480cf4c5382b3cb30c",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 18
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:1",
+      "count_hint": 12
+    },
+    {
+      "key": "npu|decode|18|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 18
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 6
+    },
+    {
+      "key": "npu|decode|19|307a197e3ce88b480cf4c5382b3cb30c",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 19
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:1",
+      "count_hint": 12
+    },
+    {
+      "key": "npu|decode|19|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 19
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 6
+    },
+    {
+      "key": "npu|decode|1|307a197e3ce88b480cf4c5382b3cb30c",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 1
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:1",
+      "count_hint": 12
+    },
+    {
+      "key": "npu|decode|1|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 1
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 6
+    },
+    {
+      "key": "npu|decode|20|307a197e3ce88b480cf4c5382b3cb30c",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 20
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:1",
+      "count_hint": 12
+    },
+    {
+      "key": "npu|decode|20|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 20
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 6
+    },
+    {
+      "key": "npu|decode|21|307a197e3ce88b480cf4c5382b3cb30c",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 21
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:1",
+      "count_hint": 12
+    },
+    {
+      "key": "npu|decode|21|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 21
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 6
+    },
+    {
+      "key": "npu|decode|22|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 22
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|23|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 23
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|24|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 24
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|25|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 25
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|26|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 26
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|27|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 27
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|28|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 28
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|29|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 29
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|2|307a197e3ce88b480cf4c5382b3cb30c",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 2
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:1",
+      "count_hint": 12
+    },
+    {
+      "key": "npu|decode|2|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 2
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 6
+    },
+    {
+      "key": "npu|decode|30|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 30
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|31|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 31
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|32|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 32
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|33|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 33
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|34|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 34
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|35|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 35
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|36|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 36
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|37|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 37
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|38|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 38
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|39|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 39
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|3|307a197e3ce88b480cf4c5382b3cb30c",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 3
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:1",
+      "count_hint": 12
+    },
+    {
+      "key": "npu|decode|3|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 3
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 6
+    },
+    {
+      "key": "npu|decode|40|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 40
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|41|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 41
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|41|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 41
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|42|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 42
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|42|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 42
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|43|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 43
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|43|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 43
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|44|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 44
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|44|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 44
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|45|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 45
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|45|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 45
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|46|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 46
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|46|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 46
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|47|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 47
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|47|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 47
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|48|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 48
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|48|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 48
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|49|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 49
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|49|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 49
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|4|307a197e3ce88b480cf4c5382b3cb30c",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 4
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:1",
+      "count_hint": 12
+    },
+    {
+      "key": "npu|decode|4|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 4
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 6
+    },
+    {
+      "key": "npu|decode|50|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 50
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|50|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 50
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|51|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 51
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|51|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 51
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|52|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 52
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|52|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 52
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|53|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 53
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|53|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 53
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|54|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 54
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|54|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 54
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|55|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 55
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|55|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 55
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|56|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 56
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|56|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 56
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|57|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 57
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|57|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 57
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|58|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 58
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|58|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 58
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|59|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 59
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|59|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 59
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|5|307a197e3ce88b480cf4c5382b3cb30c",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 5
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:1",
+      "count_hint": 12
+    },
+    {
+      "key": "npu|decode|5|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 5
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 6
+    },
+    {
+      "key": "npu|decode|60|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 60
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|60|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 60
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|61|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 61
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|61|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 61
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|62|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 62
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|62|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 62
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|63|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 63
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|63|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 63
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|64|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 64
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|64|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 64
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|65|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 65
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|65|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 65
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|66|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 66
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|66|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 66
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|67|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 67
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|67|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 67
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|68|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 68
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|68|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 68
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|69|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 69
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|69|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 69
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|6|307a197e3ce88b480cf4c5382b3cb30c",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 6
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:1",
+      "count_hint": 12
+    },
+    {
+      "key": "npu|decode|6|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 6
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 6
+    },
+    {
+      "key": "npu|decode|70|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 70
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|70|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 70
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|71|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 71
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|71|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 71
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|72|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 72
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|72|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 72
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|73|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 73
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|73|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 73
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|74|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 74
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|74|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 74
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|75|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 75
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|75|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 75
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|76|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 76
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|76|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 76
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|77|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 77
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|77|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 77
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|78|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 78
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|78|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 78
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|79|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 79
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|79|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 79
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|7|307a197e3ce88b480cf4c5382b3cb30c",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 7
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:1",
+      "count_hint": 12
+    },
+    {
+      "key": "npu|decode|7|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 7
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 6
+    },
+    {
+      "key": "npu|decode|80|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 80
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|80|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 80
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|81|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 81
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|81|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 81
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|82|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 82
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|82|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 82
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|83|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 83
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|83|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 83
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|84|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 84
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|84|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 84
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|85|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 85
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|85|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 85
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|86|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 86
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|86|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 86
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|87|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 87
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|87|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 87
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|88|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 88
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|88|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 88
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|89|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 89
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|89|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 89
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|8|307a197e3ce88b480cf4c5382b3cb30c",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 8
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:1",
+      "count_hint": 12
+    },
+    {
+      "key": "npu|decode|8|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 8
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 6
+    },
+    {
+      "key": "npu|decode|90|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 90
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|90|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 90
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|91|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 91
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|91|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 91
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|92|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 92
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|92|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 92
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|93|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 93
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|93|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 93
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|94|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 94
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|94|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 94
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|95|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 95
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|95|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 95
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|96|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 96
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|96|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 96
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|97|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 97
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|97|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 97
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|98|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 98
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|98|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 98
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|99|6a1cd1e28afcd72ccebeb6f16b835c1e",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 99
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:0,Softmax:1",
+      "count_hint": 14
+    },
+    {
+      "key": "npu|decode|99|940b59c6109adbcb500157ee98e42011",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 99
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:1,Softmax:0",
+      "count_hint": 18
+    },
+    {
+      "key": "npu|decode|9|307a197e3ce88b480cf4c5382b3cb30c",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 9
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Softmax:1",
+      "count_hint": 12
+    },
+    {
+      "key": "npu|decode|9|6e4eed79a7a597c6844e1e8a97d0ac5d",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 9
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 6
+    },
+    {
+      "key": "npu|prefill|-1|484c97cbafe846cd6cda66e063d38e2a",
+      "sig": {
+        "device_type": "npu",
+        "phase": "prefill",
+        "step": -1
+      },
+      "ops": [
+        {
+          "op": "LN",
+          "shard": -1
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "LN",
+          "shard": -1
+        }
+      ],
+      "ops_repr": "LN:-1,QK:0,QK:1,Softmax:0,Softmax:1,SV:0,SV:1,LN:-1",
+      "count_hint": 32
+    }
+  ]
+}

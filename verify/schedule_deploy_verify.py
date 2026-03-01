@@ -77,6 +77,8 @@ import subprocess
 import tempfile
 import shutil
 import uuid
+import importlib
+import importlib.util
 import yaml
 from pathlib import Path
 from collections import Counter
@@ -726,7 +728,7 @@ def extract_weight_load_seconds_by_phase(
         gpu_by = sub[sub["class"] == "gpu"].set_index("dst")["duration"].to_dict()
         unk_by = sub[sub["class"] == "unknown"].set_index("dst")["duration"].to_dict()
 
-        pim_part = max(pim_by.values()) if pim_by else 0.0
+        pim_part = sum(pim_by.values()) if pim_by else 0.0
         gpu_part = max(gpu_by.values()) if gpu_by else 0.0
         unk_part = sum(unk_by.values()) if unk_by else 0.0
 
@@ -735,7 +737,7 @@ def extract_weight_load_seconds_by_phase(
         pim_s = float(pim_part)
         unknown_s = float(unk_part)
 
-        # IMPORTANT: do NOT overlap GPU vs PIM weight loads (add them).
+        # IMPORTANT: weight_load is treated as non-overlapped time.
         total_s = float(gpu_s + pim_s)
 
         out[str(ph)] = {
@@ -1456,68 +1458,69 @@ class GPUBackend:
         H = sh.heads_per_shard
         Hd = sh.head_dim
         K = sh.key_len
+        B = int(getattr(self.cfg, "batch", 1) or 1)
 
         op = sig.op
         s = sig.shard
 
         # Use no_grad to avoid autograd overhead
         if op == "LN":
-            x = self._rand((T, D))
+            x = self._rand((B, T, D))
             w = self._weight("rms_w", (D,))
             _ = self.rmsnorm(x, w)
             return
 
         elif op in ("Q","K","V"):
-            x = self._rand((T, D))
+            x = self._rand((B, T, D))
             w = self._weight(f"{op}_w_{s}", (Sd, D))
             _ = F.linear(x, w)
             return
 
         elif op == "O":
-            x = self._rand((T, Sd))
+            x = self._rand((B, T, Sd))
             w = self._weight(f"O_w_{s}", (D, Sd))
             _ = F.linear(x, w)
             return
 
         elif op in ("FFN_W1","FFN_W3"):
-            x = self._rand((T, D))
+            x = self._rand((B, T, D))
             w = self._weight(f"{op}_w_{s}", (Fsd, D))
             _ = F.linear(x, w)
             return
 
         elif op == "SwiGLU":
-            a = self._rand((T, Fsd))
-            b = self._rand((T, Fsd))
+            a = self._rand((B, T, Fsd))
+            b = self._rand((B, T, Fsd))
             _ = F.silu(a) * b
             return
 
         elif op == "FFN_W2":
-            x = self._rand((T, Fsd))
+            x = self._rand((B, T, Fsd))
             w = self._weight(f"FFN_W2_w_{s}", (D, Fsd))
             _ = F.linear(x, w)
             return
 
         elif op == "Add":
-            a = self._rand((T, D))
-            b = self._rand((T, D))
+            a = self._rand((B, T, D))
+            b = self._rand((B, T, D))
             _ = a + b
             return
 
         elif op == "QK":
-            q = self._rand((H, T, Hd))
-            k = self._rand((H, Hd, K))
+            q = self._rand((B, H, T, Hd))
+            k = self._rand((B, H, Hd, K))
             scale = 1.0 / (Hd ** 0.5)
             _ = torch.matmul(q, k) * scale
             return
 
         elif op == "Softmax":
-            scores = self._rand((H, T, K))
+            scores = self._rand((B, H, T, K))
             _ = torch.softmax(scores, dim=-1)
             return
 
         elif op == "SV":
-            p = self._rand((H, T, K))
-            v = self._rand((H, K, Hd))
+            p = self._rand((B, H, T, K))
+            v = self._rand((B, H, K, Hd))
             _ = torch.matmul(p, v)
             return
 
@@ -1578,8 +1581,10 @@ class GPUBackend:
         log(f"[gpu-debug] sig: device_type={seg.device_type} phase={seg.phase} step={seg.step} (count_hint={cnt})")
         if ops_repr:
             log(f"[gpu-debug] ops_repr: {ops_repr}")
-        log(f"[gpu-debug] cfg: device={self.device} dtype={self.dtype} dim={self.cfg.dim} ffn_dim={self.cfg.ffn_dim} "
-            f"n_heads={self.cfg.n_heads} shards={self.cfg.shards}")
+        log(
+            f"[gpu-debug] cfg: device={self.device} dtype={self.dtype} batch={getattr(self.cfg,'batch',1)} "
+            f"dim={self.cfg.dim} ffn_dim={self.cfg.ffn_dim} n_heads={self.cfg.n_heads} shards={self.cfg.shards}"
+        )
 
         # Helper formatters
         def _fmt_shape(shape: Tuple[int, ...]) -> str:
@@ -1621,27 +1626,28 @@ class GPUBackend:
             H = int(sh.heads_per_shard)
             Hd = int(sh.head_dim)
             K = int(sh.key_len)
+            B = int(getattr(self.cfg, "batch", 1) or 1)
 
             if op == "LN":
-                return [("x", (T, D)), ("w", (D,))], ("y", (T, D))
+                return [("x", (B, T, D)), ("w", (D,))], ("y", (B, T, D))
             if op in ("Q", "K", "V"):
-                return [("x", (T, D)), ("w", (Sd, D))], ("y", (T, Sd))
+                return [("x", (B, T, D)), ("w", (Sd, D))], ("y", (B, T, Sd))
             if op == "O":
-                return [("x", (T, Sd)), ("w", (D, Sd))], ("y", (T, D))
+                return [("x", (B, T, Sd)), ("w", (D, Sd))], ("y", (B, T, D))
             if op in ("FFN_W1", "FFN_W3"):
-                return [("x", (T, D)), ("w", (Fsd, D))], ("y", (T, Fsd))
+                return [("x", (B, T, D)), ("w", (Fsd, D))], ("y", (B, T, Fsd))
             if op == "SwiGLU":
-                return [("a", (T, Fsd)), ("b", (T, Fsd))], ("y", (T, Fsd))
+                return [("a", (B, T, Fsd)), ("b", (B, T, Fsd))], ("y", (B, T, Fsd))
             if op == "FFN_W2":
-                return [("x", (T, Fsd)), ("w", (D, Fsd))], ("y", (T, D))
+                return [("x", (B, T, Fsd)), ("w", (D, Fsd))], ("y", (B, T, D))
             if op == "Add":
-                return [("a", (T, D)), ("b", (T, D))], ("y", (T, D))
+                return [("a", (B, T, D)), ("b", (B, T, D))], ("y", (B, T, D))
             if op == "QK":
-                return [("q", (H, T, Hd)), ("k", (H, Hd, K))], ("y", (H, T, K))
+                return [("q", (B, H, T, Hd)), ("k", (B, H, Hd, K))], ("y", (B, H, T, K))
             if op == "Softmax":
-                return [("scores", (H, T, K))], ("y", (H, T, K))
+                return [("scores", (B, H, T, K))], ("y", (B, H, T, K))
             if op == "SV":
-                return [("p", (H, T, K)), ("v", (H, K, Hd))], ("y", (H, T, Hd))
+                return [("p", (B, H, T, K)), ("v", (B, H, K, Hd))], ("y", (B, H, T, Hd))
             return [("?", tuple())], ("?", tuple())
 
         def _op_flops(op: str, sh: OpShape) -> float:
@@ -1653,30 +1659,31 @@ class GPUBackend:
             H = float(sh.heads_per_shard)
             Hd = float(sh.head_dim)
             K = float(sh.key_len)
+            B = float(int(getattr(self.cfg, "batch", 1) or 1))
 
             if op == "LN":
                 # mean(x^2), rsqrt, mul: ~5 ops per element (rough)
-                return 5.0 * T * D
+                return 5.0 * B * T * D
             if op in ("Q", "K", "V"):
-                return 2.0 * T * Sd * D
+                return 2.0 * B * T * Sd * D
             if op == "O":
-                return 2.0 * T * D * Sd
+                return 2.0 * B * T * D * Sd
             if op in ("FFN_W1", "FFN_W3"):
-                return 2.0 * T * Fsd * D
+                return 2.0 * B * T * Fsd * D
             if op == "SwiGLU":
                 # silu + mul: very rough
-                return 6.0 * T * Fsd
+                return 6.0 * B * T * Fsd
             if op == "FFN_W2":
-                return 2.0 * T * D * Fsd
+                return 2.0 * B * T * D * Fsd
             if op == "Add":
-                return 1.0 * T * D
+                return 1.0 * B * T * D
             if op == "QK":
-                return 2.0 * H * T * K * Hd
+                return 2.0 * B * H * T * K * Hd
             if op == "Softmax":
                 # exp + sum + div ~ 5 ops per element (rough)
-                return 5.0 * H * T * K
+                return 5.0 * B * H * T * K
             if op == "SV":
-                return 2.0 * H * T * K * Hd
+                return 2.0 * B * H * T * K * Hd
             return 0.0
 
         def _op_bytes(op: str, sh: OpShape) -> float:
@@ -2257,6 +2264,7 @@ class PIMBackendViaCostModel:
                         int(o_dim),
                         self.pim_config,
                         self.ramulator_config,
+                        batch=int(getattr(self.cfg, 'batch', 1) or 1),
                     )
                 except Exception:
                     cache_hit = None
@@ -2278,6 +2286,7 @@ class PIMBackendViaCostModel:
                     n_kv_heads=int(n_kv_heads),
                     ffn_dim=int(ffn_dim),
                     seqlen=int(seqlen),
+                    batch=int(getattr(self.cfg, 'batch', 1) or 1),
                     phase=str(seg.phase),
                     model_dict=model_dict,
                     use_cache=bool(self.use_cache),
@@ -2689,6 +2698,7 @@ def run_gpu(
     iters: int = 10,
     device: Optional[str] = None,
     gpu_dtype: Optional[str] = None,
+    batch: Optional[int] = None,
     *,
     debug: bool = False,
     debug_txt: Optional[str] = None,
@@ -2700,6 +2710,11 @@ def run_gpu(
         cfg.device = device
     if gpu_dtype:
         cfg.gpu_dtype = gpu_dtype
+    if batch is not None:
+        try:
+            cfg.batch = int(batch)
+        except Exception as e:
+            raise ValueError(f"--batch must be an integer, got {batch!r}") from e
     seg_scope = data.get("segment_scope", cfg.segment_scope)
 
     try:
@@ -2719,7 +2734,10 @@ def run_gpu(
     gpu_info = collect_gpu_info(cfg.device)
 
     results: Dict[str, float] = {}
-    log(f"[run-gpu] tasks={len(tasks)} warmup={warmup} iters={iters} device={cfg.device} dtype={cfg.gpu_dtype} segment_scope={seg_scope}")
+    log(
+        f"[run-gpu] tasks={len(tasks)} warmup={warmup} iters={iters} "
+        f"device={cfg.device} dtype={cfg.gpu_dtype} batch={getattr(cfg,'batch',1)} segment_scope={seg_scope}"
+    )
     if weight_load_s:
         log(f"[run-gpu] extra weight_load_s={weight_load_s:.6f}s (will be added in merge)")
     print_gpu_info(gpu_info, print_fn=log)
@@ -2803,6 +2821,721 @@ def run_gpu(
         out["debug_segments"] = debug_segments
     _save_json(outp, out)
     log(f"[run-gpu] wrote {outp}")
+    return outp
+
+
+
+# ==========================================================
+# NPU LUT backend (Ascend) + run-npu
+# ==========================================================
+_NPU_LUT_BACKEND = None
+
+def _get_npu_lut_backend():
+    """Lazy import for cost_model_npu_ascend_backend (keep default GPU flow unaffected)."""
+    global _NPU_LUT_BACKEND
+    if _NPU_LUT_BACKEND is not None:
+        return _NPU_LUT_BACKEND
+    try:
+        import cost_model_npu_ascend_backend as m  # type: ignore
+        _NPU_LUT_BACKEND = m
+        return _NPU_LUT_BACKEND
+    except Exception as e1:
+        # Fallback: load from file colocated with this script
+        try:
+            p = Path(__file__).resolve().parent / "cost_model_npu_ascend_backend.py"
+        except Exception:
+            p = Path("cost_model_npu_ascend_backend.py").resolve()
+        if p.exists() and p.is_file():
+            try:
+                spec = importlib.util.spec_from_file_location("cost_model_npu_ascend_backend", str(p))
+                if spec is None or spec.loader is None:
+                    raise RuntimeError(f"spec_from_file_location failed for {p}")
+                mod = importlib.util.module_from_spec(spec)
+                sys.modules["cost_model_npu_ascend_backend"] = mod
+                spec.loader.exec_module(mod)  # type: ignore[attr-defined]
+                _NPU_LUT_BACKEND = mod
+                return _NPU_LUT_BACKEND
+            except Exception as e2:
+                raise RuntimeError(
+                    "Failed to import cost_model_npu_ascend_backend. "
+                    "Make sure cost_model_npu_ascend_backend.py is in the same folder as this script, "
+                    "and that your PYTHONPATH contains the repo root (for its dependencies like config.py)."
+                ) from e2
+        raise RuntimeError(
+            "Failed to import cost_model_npu_ascend_backend. "
+            "Make sure it is importable (same folder or PYTHONPATH)."
+        ) from e1
+
+
+def _set_npu_lut_env(
+    *,
+    mmad_lut: Optional[str] = None,
+    softmax_lut: Optional[str] = None,
+    gelu_lut: Optional[str] = None,
+    norm_lut: Optional[str] = None,
+) -> None:
+    """Set LUT override env vars so the backend can locate LUT files."""
+    if mmad_lut:
+        os.environ["TRIFORM_MMAD_LUT"] = str(mmad_lut)
+    if softmax_lut:
+        os.environ["TRIFORM_SOFTMAX_LUT"] = str(softmax_lut)
+    if gelu_lut:
+        os.environ["TRIFORM_GELU_LUT"] = str(gelu_lut)
+    if norm_lut:
+        os.environ["TRIFORM_NORM_LUT"] = str(norm_lut)
+
+
+
+def infer_compute_backend_from_schedules(schedule_paths: List[str]) -> str:
+    has_gpu = False
+    has_npu = False
+    for sp in schedule_paths:
+        try:
+            df = pd.read_csv(sp, usecols=["device"])
+            devs = df.get("device")
+        except Exception:
+            # fallback: full load + column selection
+            try:
+                df2 = load_schedule_csv(str(sp))
+                devs = df2.get("device")
+            except Exception:
+                devs = None
+
+        if devs is None:
+            continue
+
+        try:
+            s = devs.astype(str).str.lower()
+        except Exception:
+            s = pd.Series([str(x).lower() for x in list(devs)])
+
+        try:
+            if bool(s.str.contains("gpu", regex=False).any()):
+                has_gpu = True
+            if bool(s.str.contains("npu", regex=False).any()):
+                has_npu = True
+        except Exception:
+            # last-resort fallback
+            joined = " ".join(list(map(str, list(devs)))).lower()
+            if "gpu" in joined:
+                has_gpu = True
+            if "npu" in joined:
+                has_npu = True
+
+    if has_gpu and has_npu:
+        return "mixed"
+    if has_gpu:
+        return "gpu"
+    if has_npu:
+        return "npu"
+    return "unknown"
+
+
+_NPU_DTYPE_BYTES = {
+    "fp16": 2,
+    "bf16": 2,
+    "fp32": 4,
+    "int8": 1,
+}
+
+
+@dataclass
+class _NpuOpParams:
+    dim: int
+    ffn_dim: int
+    q_heads: int
+    kv_heads: int
+    head_dim: int
+    q_len: int
+    kv_len: int
+    seq_len: int
+    q_dim: int
+    kv_dim: int
+    o_dim: int
+    batch: int
+
+
+class NPUBackendViaLUT:
+    """NPU segment latency backend using the Ascend 310B LUT backend."""
+
+    def __init__(
+        self,
+        cfg: WorkloadConfig,
+        *,
+        debug_logger: _DebugLogger,
+        npu_dtype: str = "fp16",
+        npu_mem_bw_gbs: float = 0.0,
+        op_overhead_us: float = 0.0,
+        use_mem_bound: bool = True,
+    ):
+        self.cfg = cfg
+        self._dbg = debug_logger
+        self.debug = bool(getattr(cfg, "debug", False)) or bool(getattr(debug_logger, "enabled", False))
+
+        self.npu_dtype = str(npu_dtype).lower().strip()
+        if self.npu_dtype not in _NPU_DTYPE_BYTES:
+            raise ValueError(f"Unsupported --npu-dtype: {npu_dtype!r}. Supported: {sorted(_NPU_DTYPE_BYTES.keys())}")
+        self.dtype_bytes = int(_NPU_DTYPE_BYTES[self.npu_dtype])
+
+        self.npu_mem_bw_gbs = float(npu_mem_bw_gbs)
+        self.op_overhead_us = float(op_overhead_us)
+        self.use_mem_bound = bool(use_mem_bound)
+
+        # Small cache: (op_key, dims_tuple) -> us
+        self._lut_cache: Dict[Tuple[str, Tuple[int, ...]], float] = {}
+
+        if self.debug:
+            self._print_debug_header()
+
+    def _print_debug_header(self) -> None:
+        backend_file = None
+        try:
+            backend_file = getattr(_get_npu_lut_backend(), "__file__", None)
+        except Exception:
+            backend_file = None
+
+        self._dbg.log("=" * 80)
+        self._dbg.log("[run-npu][debug] Using Ascend LUT backend via cost_model_npu_ascend_backend")
+        if backend_file:
+            self._dbg.log(f"[run-npu][debug] backend_file={backend_file}")
+        self._dbg.log(
+            f"[run-npu][debug] npu_dtype={self.npu_dtype} dtype_bytes={self.dtype_bytes} "
+            f"npu_mem_bw_gbs={self.npu_mem_bw_gbs} use_mem_bound={self.use_mem_bound} op_overhead_us={self.op_overhead_us}"
+        )
+        self._dbg.log(
+            f"[run-npu][debug] model: dim={int(self.cfg.dim)} ffn_dim={int(self.cfg.ffn_dim)} n_heads={int(self.cfg.n_heads)} "
+            f"n_kv_heads={(int(self.cfg.n_kv_heads) if getattr(self.cfg,'n_kv_heads',None) is not None else 'auto->n_heads')} "
+            f"shards={int(self.cfg.shards)} shard_policy={str(getattr(self.cfg,'shard_policy','')).lower()} batch={int(getattr(self.cfg,'batch',1) or 1)}"
+        )
+        self._dbg.log("=" * 80)
+
+    def _infer_params(self, *, shard: int, sh: OpShape) -> _NpuOpParams:
+        # Base shapes from cfg
+        dim = int(getattr(self.cfg, "dim"))
+        ffn_dim_total = int(getattr(self.cfg, "ffn_dim"))
+        n_heads_total = int(getattr(self.cfg, "n_heads"))
+        n_kv_total = int(getattr(self.cfg, "n_kv_heads", None) or n_heads_total)
+        shards = int(max(1, getattr(self.cfg, "shards", 1) or 1))
+        shard_policy = str(getattr(self.cfg, "shard_policy", "coarse_majority") or "").strip().lower()
+        fine = shard_policy in ("fine",)
+
+        # Token / sequence lengths from infer_op_shape
+        q_len = int(max(1, getattr(sh, "query_len")))
+        kv_len = int(max(1, getattr(sh, "key_len")))
+        seq_len = int(kv_len)
+
+        head_dim = int(max(1, getattr(sh, "head_dim")))
+        batch = int(max(1, getattr(self.cfg, "batch", 1) or 1))
+
+        if fine and int(shard) >= 0 and shards > 1:
+            q_heads = int(max(1, getattr(sh, "heads_per_shard")))
+            # kv heads per shard (best-effort)
+            kv_heads = int(max(1, n_kv_total // shards))
+            ffn_dim = int(max(1, getattr(sh, "ffn_shard_dim")))
+        else:
+            q_heads = int(max(1, n_heads_total))
+            kv_heads = int(max(1, n_kv_total))
+            ffn_dim = int(max(1, ffn_dim_total))
+
+        q_dim = int(max(1, q_heads * head_dim))
+        kv_dim = int(max(1, kv_heads * head_dim))
+        o_dim = int(max(1, q_dim))
+
+        return _NpuOpParams(
+            dim=dim,
+            ffn_dim=ffn_dim,
+            q_heads=q_heads,
+            kv_heads=kv_heads,
+            head_dim=head_dim,
+            q_len=q_len,
+            kv_len=kv_len,
+            seq_len=seq_len,
+            q_dim=q_dim,
+            kv_dim=kv_dim,
+            o_dim=o_dim,
+            batch=batch,
+        )
+
+    def _mem_s(self, op_key: str, p: _NpuOpParams) -> float:
+        """Optional activation-memory lower bound (GB/s). We ignore weights here."""
+        bw = float(self.npu_mem_bw_gbs)
+        if bw <= 0.0:
+            return 0.0
+        if not self.use_mem_bound:
+            return 0.0
+
+        B = int(max(1, p.batch))
+        T = int(max(1, p.q_len))
+        K = int(max(1, p.kv_len))
+        D = int(max(1, p.dim))
+        H = int(max(1, p.q_heads))
+        Hd = int(max(1, p.head_dim))
+        Qd = int(max(1, p.q_dim))
+        Kd = int(max(1, p.kv_dim))
+        Fd = int(max(1, p.ffn_dim))
+
+        read_elems = 0
+        write_elems = 0
+        op_key = str(op_key).lower().strip()
+
+        if op_key in ("ln", "rmsnorm", "layernorm", "norm"):
+            read_elems = B * T * D
+            write_elems = B * T * D
+        elif op_key in ("q_proj",):
+            read_elems = B * T * D
+            write_elems = B * T * Qd
+        elif op_key in ("k_proj", "v_proj"):
+            read_elems = B * T * D
+            write_elems = B * T * Kd
+        elif op_key in ("wo_proj",):
+            read_elems = B * T * Qd
+            write_elems = B * T * D
+        elif op_key in ("ffn_gate", "ffn_up"):
+            read_elems = B * T * D
+            write_elems = B * T * Fd
+        elif op_key in ("ffn_down",):
+            read_elems = B * T * Fd
+            write_elems = B * T * D
+        elif op_key in ("gelu", "swiglu", "silu", "act"):
+            read_elems = B * T * Fd
+            write_elems = B * T * Fd
+        elif op_key in ("add", "identity"):
+            read_elems = B * T * D * (2 if op_key == "add" else 1)
+            write_elems = B * T * D
+        elif op_key in ("score",):
+            # q: [B,H,T,Hd] -> B*T*Qd ; output scores: [B,H,T,K]
+            read_elems = B * T * Qd
+            write_elems = B * H * T * K
+        elif op_key in ("softmax",):
+            read_elems = B * H * T * K
+            write_elems = B * H * T * K
+        elif op_key in ("output", "sv"):
+            # p: [B,H,T,K] -> output: [B,H,T,Hd]
+            read_elems = B * H * T * K
+            write_elems = B * T * Qd
+        else:
+            return 0.0
+
+        total_bytes = float(read_elems + write_elems) * float(self.dtype_bytes)
+        bw_Bps = float(bw) * 1e9
+        return float(total_bytes) / float(bw_Bps)
+
+    def _lut_us_mmad(self, M: int, N: int, K: int) -> float:
+        key = ("mmad", (int(M), int(N), int(K)))
+        if key in self._lut_cache:
+            return float(self._lut_cache[key])
+        backend = _get_npu_lut_backend()
+        us = backend._predict_mmad_latency_us_from_lut(int(M), int(N), int(K))
+        if us is None:
+            raise RuntimeError("MMAD LUT not available. Provide it via --mmad-lut or set env TRIFORM_MMAD_LUT.")
+        self._lut_cache[key] = float(us)
+        return float(us)
+
+    def _lut_us_softmax(self, M: int, K: int, *, phase: str, causal: bool) -> float:
+        key = ("softmax", (int(M), int(K)))
+        if key in self._lut_cache:
+            return float(self._lut_cache[key])
+        backend = _get_npu_lut_backend()
+        us = backend._predict_softmax_latency_us_from_lut(int(M), int(K), phase=str(phase), causal=bool(causal))
+        if us is None:
+            raise RuntimeError("Softmax LUT not available. Provide it via --softmax-lut or set env TRIFORM_SOFTMAX_LUT.")
+        self._lut_cache[key] = float(us)
+        return float(us)
+
+    def _lut_us_gelu(self, data_len: int) -> float:
+        key = ("gelu", (int(data_len),))
+        if key in self._lut_cache:
+            return float(self._lut_cache[key])
+        backend = _get_npu_lut_backend()
+        us = backend._predict_gelu_latency_us_from_lut(int(data_len))
+        if us is None:
+            raise RuntimeError("GELU LUT not available. Provide it via --gelu-lut or set env TRIFORM_GELU_LUT.")
+        self._lut_cache[key] = float(us)
+        return float(us)
+
+    def _lut_us_norm(self, rows: int, width: int) -> float:
+        key = ("norm", (int(rows), int(width)))
+        if key in self._lut_cache:
+            return float(self._lut_cache[key])
+        backend = _get_npu_lut_backend()
+        us = backend._predict_layernorm_latency_us_from_lut(int(rows), int(width))
+        if us is None:
+            raise RuntimeError("Norm LUT not available. Provide it via --norm-lut or set env TRIFORM_NORM_LUT/TRIFORM_LAYERNORM_LUT.")
+        self._lut_cache[key] = float(us)
+        return float(us)
+
+    def estimate_op_s(
+        self,
+        *,
+        op: str,
+        shard: int,
+        phase: str,
+        step: int,
+        sh: OpShape,
+    ) -> Tuple[float, Dict[str, Any]]:
+        """Estimate one operator latency; returns (sec, debug_dict)."""
+        op_raw = str(op)
+        op = op_raw.strip()
+
+        # Skip communication / synchronization ops (handled elsewhere)
+        if op.strip().lower() in _COMM_OPS:
+            return 0.0, {"op": op_raw, "skip": True, "reason": "comm"}
+
+        # Normalize op key to a small canonical set
+        if op == "LN":
+            op_key = "norm"
+        elif op in ("Q",):
+            op_key = "q_proj"
+        elif op in ("K",):
+            op_key = "k_proj"
+        elif op in ("V",):
+            op_key = "v_proj"
+        elif op in ("O",):
+            op_key = "wo_proj"
+        elif op in ("FFN_W1",):
+            op_key = "ffn_gate"
+        elif op in ("FFN_W3",):
+            op_key = "ffn_up"
+        elif op in ("FFN_W2",):
+            op_key = "ffn_down"
+        elif op in ("SwiGLU", "GELU", "SiLU", "SILU", "Swish", "ACT"):
+            op_key = "gelu"
+        elif op in ("Add",):
+            op_key = "add"
+        elif op in ("QK",):
+            op_key = "score"
+        elif op in ("Softmax", "SOFTMAX"):
+            op_key = "softmax"
+        elif op in ("SV",):
+            op_key = "output"
+        else:
+            op_key = "unknown"
+
+        p = self._infer_params(shard=int(shard), sh=sh)
+
+        lut_us: Optional[float] = None
+        lut_dims: Optional[Tuple[int, ...]] = None
+
+        # Elementwise / unknown -> mem bound only
+        if op_key in ("add", "unknown"):
+            mem_s = float(self._mem_s(op_key, p))
+            sec = float(mem_s) + float(self.op_overhead_us) * 1e-6
+            return sec, {
+                "op": op_raw,
+                "op_key": op_key,
+                "lut_us": None,
+                "lut_dims": None,
+                "mem_s": float(mem_s),
+                "overhead_us": float(self.op_overhead_us),
+                "lat_s": float(sec),
+            }
+
+        # Norm
+        if op_key == "norm":
+            rows = max(1, int(p.batch) * max(1, int(p.q_len)))
+            width = max(1, int(p.dim))
+            lut_dims = (rows, width)
+            lut_us = float(self._lut_us_norm(rows, width))
+
+        # Softmax
+        elif op_key == "softmax":
+            # scores shape: [B, H, T, K] -> treat as (B*H*T) rows x K columns
+            M_rows = max(1, int(p.batch) * max(1, int(p.q_heads)) * max(1, int(p.q_len)))
+            K_cols = max(1, int(p.kv_len))
+            lut_dims = (M_rows, K_cols)
+            lut_us = float(self._lut_us_softmax(M_rows, K_cols, phase=str(phase), causal=True))
+
+        # Activation (GELU proxy)
+        elif op_key == "gelu":
+            width = int(p.ffn_dim if int(p.ffn_dim) > 0 else int(p.dim))
+            data_len = max(1, int(p.batch)) * max(1, int(p.q_len)) * max(1, int(width))
+            lut_dims = (data_len,)
+            lut_us = float(self._lut_us_gelu(data_len))
+
+        # MMAD / GEMM / BMM
+        else:
+            # Attention core BMM folded into GEMM
+            if op_key in ("score", "output"):
+                bmm_batch = max(1, int(p.batch) * max(1, int(p.q_heads)))
+                M_mm = max(1, int(bmm_batch) * max(1, int(p.q_len)))
+                Tk = max(1, int(p.kv_len))
+                Dh = max(1, int(p.head_dim))
+
+                if op_key == "score":
+                    N_mm = int(Tk)
+                    K_mm = int(Dh)
+                else:
+                    N_mm = int(Dh)
+                    K_mm = int(Tk)
+
+            # Projections / FFN GEMM
+            else:
+                M_mm = max(1, int(p.batch) * max(1, int(p.q_len)))
+
+                if op_key == "q_proj":
+                    K_mm = max(1, int(p.dim))
+                    N_mm = max(1, int(p.q_dim))
+                elif op_key in ("k_proj", "v_proj"):
+                    K_mm = max(1, int(p.dim))
+                    N_mm = max(1, int(p.kv_dim))
+                elif op_key == "wo_proj":
+                    K_mm = max(1, int(p.o_dim))
+                    N_mm = max(1, int(p.dim))
+                elif op_key in ("ffn_up", "ffn_gate"):
+                    K_mm = max(1, int(p.dim))
+                    N_mm = max(1, int(p.ffn_dim))
+                elif op_key == "ffn_down":
+                    K_mm = max(1, int(p.ffn_dim))
+                    N_mm = max(1, int(p.dim))
+                else:
+                    K_mm = 1
+                    N_mm = 1
+
+            lut_dims = (int(M_mm), int(N_mm), int(K_mm))
+            lut_us = float(self._lut_us_mmad(int(M_mm), int(N_mm), int(K_mm)))
+
+        # Convert to seconds + optional mem-bound + overhead
+        mem_s = float(self._mem_s(op_key, p))
+        sec = float(lut_us) * 1e-6
+        if self.use_mem_bound and self.npu_mem_bw_gbs > 0.0:
+            sec = float(max(sec, mem_s))
+        sec += float(self.op_overhead_us) * 1e-6
+
+        return sec, {
+            "op": op_raw,
+            "op_key": op_key,
+            "lut_us": float(lut_us) if lut_us is not None else None,
+            "lut_dims": tuple(int(x) for x in (lut_dims or tuple())),
+            "mem_s": float(mem_s),
+            "overhead_us": float(self.op_overhead_us),
+            "lat_s": float(sec),
+            "params": {
+                "dim": int(p.dim),
+                "ffn_dim": int(p.ffn_dim),
+                "q_heads": int(p.q_heads),
+                "kv_heads": int(p.kv_heads),
+                "head_dim": int(p.head_dim),
+                "q_len": int(p.q_len),
+                "kv_len": int(p.kv_len),
+                "q_dim": int(p.q_dim),
+                "kv_dim": int(p.kv_dim),
+                "o_dim": int(p.o_dim),
+                "batch": int(p.batch),
+            },
+        }
+
+    def benchmark_segment(
+        self,
+        seg: SegmentSig,
+        *,
+        seg_key: Optional[str] = None,
+        task_meta: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[float, Optional[Dict[str, Any]]]:
+        key_s = seg_key or seg.to_key()
+        meta = task_meta or {}
+
+        total_s = 0.0
+        per_op: List[Dict[str, Any]] = []
+
+        if self.debug:
+            self._dbg.log("=" * 88)
+            self._dbg.log(f"[npu-debug] segment_key={key_s}")
+            self._dbg.log(f"[npu-debug] sig: device_type={seg.device_type} phase={seg.phase} step={seg.step} (count_hint={meta.get('count_hint',0)})")
+            ops_repr = meta.get("ops_repr", None)
+            if ops_repr:
+                self._dbg.log(f"[npu-debug] ops_repr: {ops_repr}")
+            self._dbg.log("[npu-debug] op plan (logical shapes inferred from schedule cfg):")
+
+        # Pre-build plan using shared infer_op_shape
+        plan: List[Tuple[OpSig, OpShape]] = []
+        for op, shard in seg.ops:
+            sig = OpSig(device_type=seg.device_type, phase=seg.phase, step=seg.step, op=op, shard=shard)
+            sh = infer_op_shape(sig, self.cfg)
+            plan.append((sig, sh))
+
+            if self.debug and str(op).strip().lower() not in _COMM_OPS:
+                # Match schedule_deploy_verify.py debug shape print style (batch is applied in LUT dims).
+                D = int(sh.dim)
+                Sd = int(sh.shard_dim)
+                Fsd = int(sh.ffn_shard_dim)
+                T = int(sh.query_len)
+                H = int(sh.heads_per_shard)
+                Hd = int(sh.head_dim)
+                K = int(sh.key_len)
+
+                def _fmt_shape(tup: Tuple[int, ...]) -> str:
+                    return "x".join(str(int(x)) for x in tup)
+
+                if op == "LN":
+                    ins = [("x", (T, D)), ("w", (D,))]
+                    out = ("y", (T, D))
+                elif op in ("Q", "K", "V"):
+                    ins = [("x", (T, D)), ("w", (Sd, D))]
+                    out = ("y", (T, Sd))
+                elif op == "O":
+                    ins = [("x", (T, Sd)), ("w", (D, Sd))]
+                    out = ("y", (T, D))
+                elif op in ("FFN_W1", "FFN_W3"):
+                    ins = [("x", (T, D)), ("w", (Fsd, D))]
+                    out = ("y", (T, Fsd))
+                elif op == "SwiGLU":
+                    ins = [("a", (T, Fsd)), ("b", (T, Fsd))]
+                    out = ("y", (T, Fsd))
+                elif op == "FFN_W2":
+                    ins = [("x", (T, Fsd)), ("w", (D, Fsd))]
+                    out = ("y", (T, D))
+                elif op == "Add":
+                    ins = [("a", (T, D)), ("b", (T, D))]
+                    out = ("y", (T, D))
+                elif op == "QK":
+                    ins = [("q", (H, T, Hd)), ("k", (H, Hd, K))]
+                    out = ("y", (H, T, K))
+                elif op == "Softmax":
+                    ins = [("scores", (H, T, K))]
+                    out = ("y", (H, T, K))
+                elif op == "SV":
+                    ins = [("p", (H, T, K)), ("v", (H, K, Hd))]
+                    out = ("y", (H, T, Hd))
+                else:
+                    ins = [("?", tuple())]
+                    out = ("?", tuple())
+
+                ins_s = " + ".join([f"{n}=[{_fmt_shape(shape)}]" for n, shape in ins if shape])
+                out_s = f"{out[0]}=[{_fmt_shape(out[1])}]" if out[1] else out[0]
+                self._dbg.log(f"  - op op={str(op):<8} shard={int(shard):<2d}  {ins_s}  ->  {out_s}  (T={int(T)}, K={int(K)})")
+
+        # Run estimation
+        for j, (sig, sh) in enumerate(plan):
+            sec, dbg = self.estimate_op_s(op=sig.op, shard=int(sig.shard), phase=str(sig.phase), step=int(sig.step), sh=sh)
+            total_s += float(sec)
+            if self.debug and dbg is not None:
+                dbg["idx"] = int(j)
+                dbg["phase"] = str(sig.phase)
+                dbg["step"] = int(sig.step)
+                dbg["shard"] = int(sig.shard)
+                per_op.append(dbg)
+
+                if not dbg.get("skip", False):
+                    self._dbg.log(
+                        f"[npu-debug] op#{j:02d} op={dbg.get('op'):<8} key={dbg.get('op_key'):<10} "
+                        f"lut_dims={dbg.get('lut_dims')} lut={dbg.get('lut_us')}us "
+                        f"mem={dbg.get('mem_s',0)*1e3:.3f}ms lat={dbg.get('lat_s',0)*1e3:.3f}ms"
+                    )
+
+        if self.debug:
+            self._dbg.log(f"[npu-debug] segment total latency: {total_s*1e3:.3f} ms")
+
+        seg_dbg = None
+        if self.debug:
+            seg_dbg = {
+                "segment_key": key_s,
+                "device_type": str(seg.device_type),
+                "phase": str(seg.phase),
+                "step": int(seg.step),
+                "count_hint": int(meta.get("count_hint", 0) or 0),
+                "ops_repr": str(meta.get("ops_repr", "")),
+                "total_s": float(total_s),
+                "per_op": per_op,
+            }
+        return float(total_s), seg_dbg
+
+
+def run_npu(
+    tasks_json: str,
+    out_json: str,
+    *,
+    npu_dtype: Optional[str] = None,
+    npu_mem_bw_gbs: float = 0.0,
+    op_overhead_us: float = 0.0,
+    use_mem_bound: bool = True,
+    batch: Optional[int] = None,
+    debug: bool = False,
+    debug_txt: Optional[str] = None,
+) -> Path:
+    """Compute LUT-based NPU latency for each exported segment."""
+    data = _load_json(tasks_json)
+    cfg_dict = data.get("config", {}) or {}
+    cfg = WorkloadConfig.from_dict(cfg_dict)
+    seg_scope = data.get("segment_scope", cfg.segment_scope)
+    tasks = data.get("tasks", [])
+
+    try:
+        weight_load_s = float(data.get("weight_load_s", 0.0) or 0.0)
+    except Exception:
+        weight_load_s = 0.0
+
+    weight_load_by_schedule = data.get("weight_load_by_schedule", {}) or {}
+
+    if batch is not None:
+        cfg.batch = int(batch)
+
+    if debug:
+        setattr(cfg, "debug", True)
+
+    # Determine dtype used for bytes (default: follow cfg.gpu_dtype)
+    if npu_dtype is None:
+        npu_dtype = str(getattr(cfg, "gpu_dtype", "fp16"))
+
+    outp = Path(out_json).expanduser().resolve()
+    outp.parent.mkdir(parents=True, exist_ok=True)
+
+    dbg_logger = _DebugLogger(enabled=bool(debug), out_path=debug_txt)
+
+    backend = NPUBackendViaLUT(
+        cfg,
+        debug_logger=dbg_logger,
+        npu_dtype=str(npu_dtype),
+        npu_mem_bw_gbs=float(npu_mem_bw_gbs),
+        op_overhead_us=float(op_overhead_us),
+        use_mem_bound=bool(use_mem_bound),
+    )
+
+    results: Dict[str, float] = {}
+    debug_segments: Optional[Dict[str, Any]] = {} if bool(debug) else None
+
+    for t in tasks:
+        key = str(t.get("key"))
+        sig_d = t.get("sig", {}) or {}
+        ops_l = t.get("ops", []) or []
+        seg = SegmentSig(
+            device_type=str(sig_d.get("device_type", "npu")),
+            phase=str(sig_d.get("phase", "decode")),
+            step=int(sig_d.get("step", 0)),
+            ops=tuple((str(x.get("op")), int(x.get("shard", -1))) for x in ops_l),
+        )
+        seg_s, seg_dbg = backend.benchmark_segment(seg, seg_key=key, task_meta=t)
+        results[key] = float(seg_s)
+        if debug_segments is not None and seg_dbg is not None:
+            debug_segments[key] = seg_dbg
+
+    out = {
+        "version": 3,
+        "task_type": "segment",
+        "backend": "npu_ascend_310b_lut",
+        "segment_scope": seg_scope,
+        "config": cfg.to_dict(),
+        "weight_load_s": float(weight_load_s),
+        "weight_load_by_schedule": weight_load_by_schedule,
+        "env": {
+            "TRIFORM_MMAD_LUT": os.environ.get("TRIFORM_MMAD_LUT"),
+            "TRIFORM_SOFTMAX_LUT": os.environ.get("TRIFORM_SOFTMAX_LUT"),
+            "TRIFORM_GELU_LUT": os.environ.get("TRIFORM_GELU_LUT"),
+            "TRIFORM_NORM_LUT": os.environ.get("TRIFORM_NORM_LUT"),
+        },
+        "npu_dtype": str(npu_dtype),
+        "npu_mem_bw_gbs": float(npu_mem_bw_gbs),
+        "op_overhead_us": float(op_overhead_us),
+        "use_mem_bound": bool(use_mem_bound),
+        "results": results,
+    }
+
+    if debug_segments is not None:
+        out["debug_segments"] = debug_segments
+
+    _save_json(outp, out)
+    dbg_logger.close()
+
+    log(f"[run-npu] wrote {outp}")
     return outp
 
 
@@ -3222,7 +3955,7 @@ def merge(
          During merge we account for them directly from the schedule, combined using the schedule overlap
          dimension (device-wise max within a layer).
       2) From comms trace(s) (optional):
-           - weight_load: treated as a one-time cost and added into prefill_time_s directly (no NON_OVERLAP).
+           - weight_load: added directly into its corresponding phase time (prefill/decode); treated as non-overlapped time.
            - kv_load: accumulated per (phase,step,layer) and added with coarse-grained overlap:
                  layer_time = base_layer_time + NON_OVERLAP * kv_load_time
          where base_layer_time is the overlapped makespan across compute + schedule comm ops inside that layer.
@@ -3365,7 +4098,7 @@ def merge(
             p = float(pim_data.get("weight_load_s", 0.0) or 0.0)
         except Exception:
             p = 0.0
-        return float(max(g, p))
+        return float(g + p)
 
     def _lookup_latency(dev_type: str, phase: str, step_sample: int, ops: Tuple[Tuple[str, int], ...],) -> Optional[float]:
         dev = dev_type.strip().lower()
@@ -3435,6 +4168,7 @@ def merge(
         )
 
         comms_for_sched = _pick_comms_for_schedule(i)
+        wl_total = _lookup_weight_load_from_results(str(p))
         weight_load_prefill_s = 0.0
         weight_load_decode_s = 0.0
 
@@ -4195,7 +4929,7 @@ def build_cfg_from_args(args: argparse.Namespace) -> WorkloadConfig:
 
 def main(argv: Optional[List[str]] = None) -> None:
     argv = list(argv) if argv is not None else sys.argv[1:]
-    subcmds = {"export","run-gpu","run-pim","merge","collect-merge","all"}
+    subcmds = {"export","run-gpu","run-npu","run-pim","merge","collect-merge","all"}
 
     # Backward compatibility: if user calls without subcommand, treat as "all"
     if not argv or argv[0].startswith("-") or argv[0] not in subcmds:
@@ -4224,11 +4958,35 @@ def main(argv: Optional[List[str]] = None) -> None:
     p_gpu.add_argument("--iters", type=int, default=10)
     p_gpu.add_argument("--device", type=str, default=None, help="override device in tasks config (cuda|cpu)")
     p_gpu.add_argument("--gpu-dtype", type=str, default=None, dest="gpu_dtype", help="override dtype (fp16|bf16|fp32)")
+    p_gpu.add_argument("--batch", type=int, default=None,
+                       help="override batch size in tasks config (affects GPU op tensor shapes; default uses tasks_json config.batch)")
 
     p_gpu.add_argument("--debug", action="store_true",
                        help="Verbose GPU debug: print per-segment per-op shapes/timings/memory stats (very noisy)")
     p_gpu.add_argument("--debug-txt", type=str, default=None,
                        help="(optional) also write the --debug log to this file")
+
+    # run-npu
+    p_npu = sub.add_parser("run-npu", help="run NPU LUT lookup (Ascend) from gpu_tasks.json -> npu_results.json")
+    p_npu.add_argument("--tasks", type=str, required=True, help="gpu_tasks.json (compute segments)")
+    p_npu.add_argument("--out", type=str, required=True, help="npu_results.json")
+
+    # LUT overrides (forwarded via env vars for the cost_model backend)
+    p_npu.add_argument("--mmad-lut", type=str, default=None, help="Override MMAD LUT path (sets env TRIFORM_MMAD_LUT)")
+    p_npu.add_argument("--softmax-lut", type=str, default=None, help="Override Softmax LUT path (sets env TRIFORM_SOFTMAX_LUT)")
+    p_npu.add_argument("--gelu-lut", type=str, default=None, help="Override GELU LUT path (sets env TRIFORM_GELU_LUT)")
+    p_npu.add_argument("--norm-lut", type=str, default=None, help="Override Norm/LN LUT path (sets env TRIFORM_NORM_LUT)")
+
+    # Optional modeling knobs
+    p_npu.add_argument("--npu-dtype", type=str, default=None, help="dtype for optional memory bound (fp16|bf16|fp32|int8)")
+    p_npu.add_argument("--npu-mem-bw-gbs", type=float, default=0.0, help="If >0, apply activation mem lower bound (GB/s)")
+    p_npu.add_argument("--npu-op-overhead-us", type=float, default=0.0, help="Constant overhead per op (us)")
+    p_npu.add_argument("--npu-no-mem-bound", action="store_true", help="Disable mem bound even if --npu-mem-bw-gbs > 0")
+    p_npu.add_argument("--batch", type=int, default=None, help="override batch size in tasks config (affects LUT dims)")
+
+    p_npu.add_argument("--debug", action="store_true", help="Verbose per-op debug for NPU lookup")
+    p_npu.add_argument("--debug-txt", type=str, default=None, help="Also write debug log to this file")
+
 
     # run-pim
     # Only requires two files to drive ramulator:
@@ -4311,6 +5069,23 @@ def main(argv: Optional[List[str]] = None) -> None:
     p_all.add_argument("--prefix", type=str, default="run", help="prefix for tasks/results files")
     p_all.add_argument("--warmup", type=int, default=3)
     p_all.add_argument("--iters", type=int, default=10)
+    # Compute backend: GPU torch benchmark vs NPU LUT (auto by dev.name in schedule CSV)
+    p_all.add_argument("--compute-backend", type=str, default="auto", choices=["auto","gpu","npu"],
+                       help="Which compute backend to run for the non-PIM segments. 'auto' decides by inspecting the schedule CSV 'device' column for 'gpu'/'npu'.")
+
+    # NPU LUT overrides (only used when compute-backend is npu/auto->npu)
+    p_all.add_argument("--mmad-lut", type=str, default=None, help="Override MMAD LUT path (sets env TRIFORM_MMAD_LUT)")
+    p_all.add_argument("--softmax-lut", type=str, default=None, help="Override Softmax LUT path (sets env TRIFORM_SOFTMAX_LUT)")
+    p_all.add_argument("--gelu-lut", type=str, default=None, help="Override GELU LUT path (sets env TRIFORM_GELU_LUT)")
+    p_all.add_argument("--norm-lut", type=str, default=None, help="Override Norm/LN LUT path (sets env TRIFORM_NORM_LUT)")
+
+    p_all.add_argument("--npu-dtype", type=str, default=None, help="dtype for optional memory bound (fp16|bf16|fp32|int8)")
+    p_all.add_argument("--npu-mem-bw-gbs", type=float, default=0.0, help="If >0, apply activation mem lower bound (GB/s)")
+    p_all.add_argument("--npu-op-overhead-us", type=float, default=0.0, help="Constant overhead per op (us)")
+    p_all.add_argument("--npu-no-mem-bound", action="store_true", help="Disable mem bound even if --npu-mem-bw-gbs > 0")
+    p_all.add_argument("--npu-debug", action="store_true", help="Verbose per-op debug for NPU lookup (separate from merge --debug)")
+    p_all.add_argument("--npu-debug-txt", type=str, default=None, help="Also write NPU debug log to this file")
+
     p_all.add_argument("--cent-sim-root", type=str, default=None)
     p_all.add_argument("--comm-model", type=str, default="schedule", choices=["schedule","cxl","none"])
     p_all.add_argument("--pcie-lanes", type=int, default=16)
@@ -4341,7 +5116,37 @@ def main(argv: Optional[List[str]] = None) -> None:
         return
 
     if args.cmd == "run-gpu":
-        run_gpu(args.tasks, args.out, warmup=args.warmup, iters=args.iters, device=args.device, gpu_dtype=args.gpu_dtype, debug=bool(getattr(args, "debug", False)), debug_txt=getattr(args, "debug_txt", None))
+        run_gpu(
+            args.tasks,
+            args.out,
+            warmup=args.warmup,
+            iters=args.iters,
+            device=args.device,
+            gpu_dtype=args.gpu_dtype,
+            batch=getattr(args, "batch", None),
+            debug=bool(getattr(args, "debug", False)),
+            debug_txt=getattr(args, "debug_txt", None),
+        )
+        return
+
+    if args.cmd == "run-npu":
+        _set_npu_lut_env(
+            mmad_lut=getattr(args, "mmad_lut", None),
+            softmax_lut=getattr(args, "softmax_lut", None),
+            gelu_lut=getattr(args, "gelu_lut", None),
+            norm_lut=getattr(args, "norm_lut", None),
+        )
+        run_npu(
+            args.tasks,
+            args.out,
+            npu_dtype=getattr(args, "npu_dtype", None),
+            npu_mem_bw_gbs=float(getattr(args, "npu_mem_bw_gbs", 0.0) or 0.0),
+            op_overhead_us=float(getattr(args, "npu_op_overhead_us", 0.0) or 0.0),
+            use_mem_bound=not bool(getattr(args, "npu_no_mem_bound", False)),
+            batch=getattr(args, "batch", None),
+            debug=bool(getattr(args, "debug", False)),
+            debug_txt=getattr(args, "debug_txt", None),
+        )
         return
 
     if args.cmd == "run-pim":
@@ -4397,23 +5202,74 @@ def main(argv: Optional[List[str]] = None) -> None:
         # 1) export
         gpu_tasks, pim_tasks = export_tasks(schedule_paths, cfg, out_dir, prefix, comms_paths=comms_paths)
 
-        # 2) run both
-        gpu_res_path = None
+        # 2) run compute (GPU or NPU LUT) + run PIM
+        compute_res_path = None
         pim_res_path = None
-        gpu_data = _load_json(str(gpu_tasks))
-        if len(gpu_data.get("tasks", [])) > 0:
-            gpu_res_path = run_gpu(str(gpu_tasks), str(Path(out_dir)/f"{prefix}.gpu_results.json"),
-                                   warmup=args.warmup, iters=args.iters, device=cfg.device, gpu_dtype=cfg.gpu_dtype)
 
+        # Decide compute backend. Do NOT use device_type from the trace (it may always be 'npu').
+        compute_backend = str(getattr(args, "compute_backend", "auto") or "auto").strip().lower()
+        if compute_backend == "auto":
+            inferred = infer_compute_backend_from_schedules(schedule_paths)
+            if inferred == "gpu":
+                compute_backend = "gpu"
+            elif inferred == "npu":
+                compute_backend = "npu"
+            elif inferred == "mixed":
+                raise SystemExit(
+                    "Detected both 'gpu' and 'npu' in schedule dev.name ('device' column). "
+                    "Please set --compute-backend to 'gpu' or 'npu' explicitly."
+                )
+            else:
+                # Backward-compatible fallback: default to GPU benchmark if we can't infer.
+                compute_backend = "gpu"
+
+        # Compute segments live in gpu_tasks.json (device_type='npu' in our verifier naming).
+        compute_data = _load_json(str(gpu_tasks))
+        if len(compute_data.get("tasks", [])) > 0:
+            if compute_backend == "gpu":
+                compute_res_path = run_gpu(
+                    str(gpu_tasks),
+                    str(Path(out_dir) / f"{prefix}.gpu_results.json"),
+                    warmup=args.warmup,
+                    iters=args.iters,
+                    device=cfg.device,
+                    gpu_dtype=cfg.gpu_dtype,
+                )
+            elif compute_backend == "npu":
+                # Forward LUT overrides via env vars
+                _set_npu_lut_env(
+                    mmad_lut=getattr(args, "mmad_lut", None),
+                    softmax_lut=getattr(args, "softmax_lut", None),
+                    gelu_lut=getattr(args, "gelu_lut", None),
+                    norm_lut=getattr(args, "norm_lut", None),
+                )
+                compute_res_path = run_npu(
+                    str(gpu_tasks),
+                    str(Path(out_dir) / f"{prefix}.npu_results.json"),
+                    npu_dtype=getattr(args, "npu_dtype", None),
+                    npu_mem_bw_gbs=float(getattr(args, "npu_mem_bw_gbs", 0.0) or 0.0),
+                    op_overhead_us=float(getattr(args, "npu_op_overhead_us", 0.0) or 0.0),
+                    use_mem_bound=not bool(getattr(args, "npu_no_mem_bound", False)),
+                    batch=getattr(args, "batch", None),
+                    debug=bool(getattr(args, "npu_debug", False)),
+                    debug_txt=getattr(args, "npu_debug_txt", None),
+                )
+            else:
+                raise SystemExit(f"Unknown --compute-backend: {compute_backend!r} (expected gpu|npu|auto)")
+
+        # PIM side
         pim_data = _load_json(str(pim_tasks))
         if len(pim_data.get("tasks", [])) > 0:
-            pim_res_path = run_pim(str(pim_tasks), str(Path(out_dir)/f"{prefix}.pim_results.json"),
-                                   cent_sim_root=args.cent_sim_root,
-                                   ramulator_bin=getattr(args, "pim_ramulator_bin", None))
+            pim_res_path = run_pim(
+                str(pim_tasks),
+                str(Path(out_dir) / f"{prefix}.pim_results.json"),
+                cent_sim_root=args.cent_sim_root,
+                ramulator_bin=getattr(args, "pim_ramulator_bin", None),
+            )
 
         # 3) merge
         merge(schedule_paths,
-              str(gpu_res_path) if gpu_res_path else None,
+              str(compute_res_path) if compute_res_path else None,
               str(pim_res_path) if pim_res_path else None,
               comms_paths=comms_paths, non_overlap=args.non_overlap,
               comm_model=args.comm_model, pcie_lanes=args.pcie_lanes,

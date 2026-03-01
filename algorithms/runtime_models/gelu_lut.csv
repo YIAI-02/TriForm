@@ -1,0 +1,10 @@
+shape,M,N,K,total_time_us,runlog_max_us,missing_lines,csv_path,runlog_duration_max_us,n_rows,n_veccore_rows
+1024,1024,,,0.43,0.43,,profile/gelu/1024/run.log,1.05,1,1
+4096,4096,,,0.61,0.61,,profile/gelu/4096/run.log,1.05,4,4
+16384,16384,,,0.61,0.61,,profile/gelu/16384/run.log,1.05,16,16
+65536,65536,,,0.66,0.66,,profile/gelu/65536/run.log,1.25,47,47
+262144,262144,,,1.24,1.24,,profile/gelu/262144/run.log,1.88,48,48
+1048576,1048576,,,3.09,3.09,,profile/gelu/1048576/run.log,4.49,48,48
+4194304,4194304,,,3.84,3.84,,profile/gelu/4194304/run.log,14.4,48,48
+8388608,8388608,,,4.02,4.02,,profile/gelu/8388608/run.log,27.46,48,48
+9175040,9175040,,,4.19,4.19,,profile/gelu/9175040/run.log,29.94,48,48

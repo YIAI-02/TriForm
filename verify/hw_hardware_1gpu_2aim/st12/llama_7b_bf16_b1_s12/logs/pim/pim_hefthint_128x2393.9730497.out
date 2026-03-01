@@ -1,0 +1,18 @@
+[slurm] jobid=9730497 nodelist=l01c02n1
+[slurm] host=l01c02n1
+[slurm] pwd=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12
+[slurm] SLURM_CPUS_PER_TASK=16
+[slurm] starting at Fri Feb 27 10:08:31 CST 2026
+[slurm] PY_SCRIPT=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/schedule_deploy_verify.py
+[slurm] TASKS_JSON=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/hefthint_128x2393.pim_tasks.json
+[slurm] OUT_JSON=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/hefthint_128x2393.pim_results.json
+[slurm] CENT_SIM_ROOT=<unset>
+[slurm] PIM_RAMULATOR_CONFIG=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/example.yaml
+[slurm] PIM_HW_JSON=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/PIM_AiM.json
+[slurm] PIM_RAMULATOR_BIN=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/ramulator2
+[slurm] PIM_NUM_DEVICES=4
+[slurm] PIM_DEBUG=1
+[slurm] PIM_DEBUG_TXT=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/hefthint_128x2393.pim_debug.log
+[slurm] PIM_NO_CACHE=1
+[slurm] OK_FILE=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/hefthint_128x2393.pim.ok
+[slurm] Running: python /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/schedule_deploy_verify.py run-pim --tasks /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/hefthint_128x2393.pim_tasks.json --out /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/hefthint_128x2393.pim_results.json --pim-ramulator-config /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/example.yaml --pim-hw-json /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/PIM_AiM.json --pim-ramulator-bin /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/ramulator2 --pim-num-devices 4 --debug --debug-txt /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/hefthint_128x2393.pim_debug.log --no-cache

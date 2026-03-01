@@ -36,7 +36,7 @@ export LD_LIBRARY_PATH="/lustre/home/2501111916/workspace/TriForm/submodules/CEN
 THIS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$THIS_DIR/.." && pwd)"
 
-PY_SCRIPT="${PY_SCRIPT:-$REPO_ROOT/verify/schedule_deploy_verify.py}"
+PY_SCRIPT="${PY_SCRIPT:-$REPO_ROOT/verify/schedule_deploy_verify_gpu.py}"
 
 OUT_DIR="${OUT_DIR:-}"
 PREFIX="${PREFIX:-}"
@@ -46,6 +46,7 @@ OUT_JSON="${OUT_JSON:-}"
 PIM_DEBUG="${PIM_DEBUG:-0}"
 PIM_DEBUG_TXT="${PIM_DEBUG_TXT:-}"
 PIM_NO_CACHE="${PIM_NO_CACHE:-0}"
+BATCH="${BATCH:-}"
 
 if [[ -z "$TASKS_JSON" && -n "$OUT_DIR" && -n "$PREFIX" ]]; then
   TASKS_JSON="${OUT_DIR%/}/${PREFIX}.pim_tasks.json"
@@ -83,6 +84,7 @@ echo "[slurm] PIM_NUM_DEVICES=${PIM_NUM_DEVICES}"
 echo "[slurm] PIM_DEBUG=${PIM_DEBUG}"
 echo "[slurm] PIM_DEBUG_TXT=${PIM_DEBUG_TXT:-<none>}"
 echo "[slurm] PIM_NO_CACHE=${PIM_NO_CACHE}"
+echo "[slurm] BATCH=${BATCH:-<from tasks>}"
 echo "[slurm] OK_FILE=${OK_FILE:-<none>}"
 if [[ ! -f "$TASKS_JSON" ]]; then
   echo "[slurm] ERROR: TASKS_JSON not found: $TASKS_JSON" >&2

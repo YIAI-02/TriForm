@@ -1,0 +1,63 @@
+[DEBUG] facil_prefill-1024xdecode_64_ops_trace.csv: segment diff (top 20 by |delta_scaled_s|)
+  phase=decode step=1 tok=1 layer=31 dev=pim device=PIM1 n_ops=9 sched=0.108820s meas=0.003383s delta=-0.105437s ratio=0.031 mode=sample_step
+    per-op(top5): ffn_gate=0.01ms, ffn_down=0.01ms, score=0.01ms, q_proj=0.00ms, k_proj=0.00ms
+  phase=decode step=1 tok=1 layer=31 dev=pim device=PIM0 n_ops=9 sched=0.108820s meas=0.003383s delta=-0.105437s ratio=0.031 mode=sample_step
+    per-op(top5): ffn_gate=0.01ms, ffn_down=0.01ms, score=0.01ms, q_proj=0.00ms, k_proj=0.00ms
+  phase=decode step=1 tok=1 layer=30 dev=pim device=PIM1 n_ops=9 sched=0.108820s meas=0.003383s delta=-0.105437s ratio=0.031 mode=sample_step
+    per-op(top5): ffn_gate=0.01ms, ffn_down=0.01ms, score=0.01ms, q_proj=0.00ms, k_proj=0.00ms
+  phase=decode step=1 tok=1 layer=29 dev=pim device=PIM0 n_ops=9 sched=0.108820s meas=0.003383s delta=-0.105437s ratio=0.031 mode=sample_step
+    per-op(top5): ffn_gate=0.01ms, ffn_down=0.01ms, score=0.01ms, q_proj=0.00ms, k_proj=0.00ms
+  phase=decode step=1 tok=1 layer=29 dev=pim device=PIM1 n_ops=9 sched=0.108820s meas=0.003383s delta=-0.105437s ratio=0.031 mode=sample_step
+    per-op(top5): ffn_gate=0.01ms, ffn_down=0.01ms, score=0.01ms, q_proj=0.00ms, k_proj=0.00ms
+  phase=decode step=1 tok=1 layer=30 dev=pim device=PIM0 n_ops=9 sched=0.108820s meas=0.003383s delta=-0.105437s ratio=0.031 mode=sample_step
+    per-op(top5): ffn_gate=0.01ms, ffn_down=0.01ms, score=0.01ms, q_proj=0.00ms, k_proj=0.00ms
+  phase=decode step=1 tok=1 layer=27 dev=pim device=PIM0 n_ops=9 sched=0.108820s meas=0.003383s delta=-0.105437s ratio=0.031 mode=sample_step
+    per-op(top5): ffn_gate=0.01ms, ffn_down=0.01ms, score=0.01ms, q_proj=0.00ms, k_proj=0.00ms
+  phase=decode step=1 tok=1 layer=26 dev=pim device=PIM1 n_ops=9 sched=0.108820s meas=0.003383s delta=-0.105437s ratio=0.031 mode=sample_step
+    per-op(top5): ffn_gate=0.01ms, ffn_down=0.01ms, score=0.01ms, q_proj=0.00ms, k_proj=0.00ms
+  phase=decode step=1 tok=1 layer=28 dev=pim device=PIM0 n_ops=9 sched=0.108820s meas=0.003383s delta=-0.105437s ratio=0.031 mode=sample_step
+    per-op(top5): ffn_gate=0.01ms, ffn_down=0.01ms, score=0.01ms, q_proj=0.00ms, k_proj=0.00ms
+  phase=decode step=1 tok=1 layer=27 dev=pim device=PIM1 n_ops=9 sched=0.108820s meas=0.003383s delta=-0.105437s ratio=0.031 mode=sample_step
+    per-op(top5): ffn_gate=0.01ms, ffn_down=0.01ms, score=0.01ms, q_proj=0.00ms, k_proj=0.00ms
+  phase=decode step=1 tok=1 layer=28 dev=pim device=PIM1 n_ops=9 sched=0.108820s meas=0.003383s delta=-0.105437s ratio=0.031 mode=sample_step
+    per-op(top5): ffn_gate=0.01ms, ffn_down=0.01ms, score=0.01ms, q_proj=0.00ms, k_proj=0.00ms
+  phase=decode step=1 tok=1 layer=0 dev=pim device=PIM0 n_ops=9 sched=0.108820s meas=0.003383s delta=-0.105437s ratio=0.031 mode=sample_step
+    per-op(top5): ffn_gate=0.01ms, ffn_down=0.01ms, score=0.01ms, q_proj=0.00ms, k_proj=0.00ms
+  phase=decode step=1 tok=1 layer=2 dev=pim device=PIM0 n_ops=9 sched=0.108820s meas=0.003383s delta=-0.105437s ratio=0.031 mode=sample_step
+    per-op(top5): ffn_gate=0.01ms, ffn_down=0.01ms, score=0.01ms, q_proj=0.00ms, k_proj=0.00ms
+  phase=decode step=1 tok=1 layer=0 dev=pim device=PIM1 n_ops=9 sched=0.108820s meas=0.003383s delta=-0.105437s ratio=0.031 mode=sample_step
+    per-op(top5): ffn_gate=0.01ms, ffn_down=0.01ms, score=0.01ms, q_proj=0.00ms, k_proj=0.00ms
+  phase=decode step=1 tok=1 layer=1 dev=pim device=PIM1 n_ops=9 sched=0.108820s meas=0.003383s delta=-0.105437s ratio=0.031 mode=sample_step
+    per-op(top5): ffn_gate=0.01ms, ffn_down=0.01ms, score=0.01ms, q_proj=0.00ms, k_proj=0.00ms
+  phase=decode step=1 tok=1 layer=1 dev=pim device=PIM0 n_ops=9 sched=0.108820s meas=0.003383s delta=-0.105437s ratio=0.031 mode=sample_step
+    per-op(top5): ffn_gate=0.01ms, ffn_down=0.01ms, score=0.01ms, q_proj=0.00ms, k_proj=0.00ms
+  phase=decode step=1 tok=1 layer=10 dev=pim device=PIM0 n_ops=9 sched=0.108820s meas=0.003383s delta=-0.105437s ratio=0.031 mode=sample_step
+    per-op(top5): ffn_gate=0.01ms, ffn_down=0.01ms, score=0.01ms, q_proj=0.00ms, k_proj=0.00ms
+  phase=decode step=1 tok=1 layer=9 dev=pim device=PIM0 n_ops=9 sched=0.108820s meas=0.003383s delta=-0.105437s ratio=0.031 mode=sample_step
+    per-op(top5): ffn_gate=0.01ms, ffn_down=0.01ms, score=0.01ms, q_proj=0.00ms, k_proj=0.00ms
+  phase=decode step=1 tok=1 layer=9 dev=pim device=PIM1 n_ops=9 sched=0.108820s meas=0.003383s delta=-0.105437s ratio=0.031 mode=sample_step
+    per-op(top5): ffn_gate=0.01ms, ffn_down=0.01ms, score=0.01ms, q_proj=0.00ms, k_proj=0.00ms
+  phase=decode step=1 tok=1 layer=8 dev=pim device=PIM0 n_ops=9 sched=0.108820s meas=0.003383s delta=-0.105437s ratio=0.031 mode=sample_step
+    per-op(top5): ffn_gate=0.01ms, ffn_down=0.01ms, score=0.01ms, q_proj=0.00ms, k_proj=0.00ms
+[DEBUG] facil_prefill-1024xdecode_64_ops_trace.csv: row diff (top 20 by |delta_scaled_s|, fine mode only; missing_segments_row_scope=0)
+  phase=decode step=1 layer=31 dev=pim device=PIM1 op=FFN_W1 shard=1 sched=0.023765s merged=0.000739s delta=-0.023026s ratio=0.031
+  phase=decode step=1 layer=29 dev=pim device=PIM0 op=FFN_W1 shard=0 sched=0.023765s merged=0.000739s delta=-0.023026s ratio=0.031
+  phase=decode step=1 layer=11 dev=pim device=PIM1 op=FFN_W1 shard=1 sched=0.023765s merged=0.000739s delta=-0.023026s ratio=0.031
+  phase=decode step=1 layer=0 dev=pim device=PIM1 op=FFN_W1 shard=1 sched=0.023765s merged=0.000739s delta=-0.023026s ratio=0.031
+  phase=decode step=1 layer=11 dev=pim device=PIM0 op=FFN_W1 shard=0 sched=0.023765s merged=0.000739s delta=-0.023026s ratio=0.031
+  phase=decode step=1 layer=12 dev=pim device=PIM0 op=FFN_W1 shard=0 sched=0.023765s merged=0.000739s delta=-0.023026s ratio=0.031
+  phase=decode step=1 layer=28 dev=pim device=PIM0 op=FFN_W1 shard=0 sched=0.023765s merged=0.000739s delta=-0.023026s ratio=0.031
+  phase=decode step=1 layer=1 dev=pim device=PIM1 op=FFN_W1 shard=1 sched=0.023765s merged=0.000739s delta=-0.023026s ratio=0.031
+  phase=decode step=1 layer=1 dev=pim device=PIM0 op=FFN_W1 shard=0 sched=0.023765s merged=0.000739s delta=-0.023026s ratio=0.031
+  phase=decode step=1 layer=27 dev=pim device=PIM0 op=FFN_W1 shard=0 sched=0.023765s merged=0.000739s delta=-0.023026s ratio=0.031
+  phase=decode step=1 layer=2 dev=pim device=PIM1 op=FFN_W1 shard=1 sched=0.023765s merged=0.000739s delta=-0.023026s ratio=0.031
+  phase=decode step=1 layer=27 dev=pim device=PIM1 op=FFN_W1 shard=1 sched=0.023765s merged=0.000739s delta=-0.023026s ratio=0.031
+  phase=decode step=1 layer=26 dev=pim device=PIM1 op=FFN_W1 shard=1 sched=0.023765s merged=0.000739s delta=-0.023026s ratio=0.031
+  phase=decode step=1 layer=2 dev=pim device=PIM0 op=FFN_W1 shard=0 sched=0.023765s merged=0.000739s delta=-0.023026s ratio=0.031
+  phase=decode step=1 layer=3 dev=pim device=PIM0 op=FFN_W1 shard=0 sched=0.023765s merged=0.000739s delta=-0.023026s ratio=0.031
+  phase=decode step=1 layer=28 dev=pim device=PIM1 op=FFN_W1 shard=1 sched=0.023765s merged=0.000739s delta=-0.023026s ratio=0.031
+  phase=decode step=1 layer=10 dev=pim device=PIM1 op=FFN_W1 shard=1 sched=0.023765s merged=0.000739s delta=-0.023026s ratio=0.031
+  phase=decode step=1 layer=14 dev=pim device=PIM0 op=FFN_W1 shard=0 sched=0.023765s merged=0.000739s delta=-0.023026s ratio=0.031
+  phase=decode step=1 layer=17 dev=pim device=PIM1 op=FFN_W1 shard=1 sched=0.023765s merged=0.000739s delta=-0.023026s ratio=0.031
+  phase=decode step=1 layer=20 dev=pim device=PIM1 op=FFN_W1 shard=1 sched=0.023765s merged=0.000739s delta=-0.023026s ratio=0.031
+[SCHEDULE] facil_prefill-1024xdecode_64_ops_trace.csv prefill=0.555538 (wl_prefill=0.400513, wl_decode=0.311279) decode=0.721440 total=1.276978 missing_segments=0

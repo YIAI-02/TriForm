@@ -1,0 +1,3459 @@
+{
+  "version": 3,
+  "task_type": "segment",
+  "backend": "pim",
+  "segment_scope": "layer",
+  "schedules": [
+    "/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/output/experiment_1gpu_2aim/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/algo_facil/facil_prefill-262xdecode_403_ops_trace.csv"
+  ],
+  "comms_traces": [
+    "/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/output/experiment_1gpu_2aim/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/algo_facil/facil_prefill-262xdecode_403_comms_trace.csv"
+  ],
+  "weight_load_s": 0.3112792968749952,
+  "weight_load_meta": {
+    "gpu_s": 0.4005126953124927,
+    "pim_s": 0.3112792968749952,
+    "unknown_s": 0.0,
+    "total_s": 0.7117919921874879
+  },
+  "weight_load_by_schedule": {
+    "/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/output/experiment_1gpu_2aim/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/algo_facil/facil_prefill-262xdecode_403_ops_trace.csv": {
+      "gpu_s": 0.4005126953124927,
+      "pim_s": 0.3112792968749952,
+      "unknown_s": 0.0,
+      "total_s": 0.7117919921874879
+    }
+  },
+  "config": {
+    "dim": 4096,
+    "ffn_dim": 11008,
+    "n_heads": 32,
+    "shards": 2,
+    "prefill_len": 262,
+    "decode_context_lens": [
+      263,
+      264,
+      274,
+      286,
+      298,
+      310,
+      322,
+      334,
+      346,
+      358,
+      370,
+      382,
+      394,
+      406,
+      418,
+      430,
+      442,
+      454,
+      466,
+      478,
+      490,
+      502,
+      514,
+      526,
+      538,
+      550,
+      562,
+      574,
+      586,
+      598,
+      610,
+      622,
+      634,
+      646,
+      658
+    ],
+    "decode_stride": 12,
+    "device": "cuda",
+    "gpu_dtype": "fp16",
+    "kv_load_bw_gbs": 16384.0,
+    "kv_dtype_bytes": 2.0,
+    "kv_load_overhead_us": 0.0,
+    "n_kv_heads": null,
+    "batch": 1,
+    "pim_dram_column": 256,
+    "pim_dram_row": 64,
+    "pim_burst_length": 16,
+    "pim_num_banks": 8,
+    "pim_num_channels": 4,
+    "pim_threads": 1,
+    "pim_reuse_size": 32,
+    "pim_num_devices": 1,
+    "pim_ramulator_bin": null,
+    "pim_ramulator_config": null,
+    "pim_freq_ghz": 1.0,
+    "pim_ramulator_timeout_s": 3000,
+    "pim_keep_traces": false,
+    "pim_trace_dir": null,
+    "pim_hw_json_path": null,
+    "debug": false,
+    "segment_scope": "layer",
+    "shard_policy": "fine"
+  },
+  "tasks": [
+    {
+      "key": "pim|decode|0|73f0b93ba2927d0614be9f9ec9b9774c",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 0
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 1
+        },
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "O",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|0|d9f2c5d5d25b036a5f39277c4750a787",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 0
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 0
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "V",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|10|73f0b93ba2927d0614be9f9ec9b9774c",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 10
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 1
+        },
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "O",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|10|d9f2c5d5d25b036a5f39277c4750a787",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 10
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 0
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "V",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|11|73f0b93ba2927d0614be9f9ec9b9774c",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 11
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 1
+        },
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "O",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|11|d9f2c5d5d25b036a5f39277c4750a787",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 11
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 0
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "V",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|12|73f0b93ba2927d0614be9f9ec9b9774c",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 12
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 1
+        },
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "O",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|12|d9f2c5d5d25b036a5f39277c4750a787",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 12
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 0
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "V",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|13|73f0b93ba2927d0614be9f9ec9b9774c",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 13
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 1
+        },
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "O",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|13|d9f2c5d5d25b036a5f39277c4750a787",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 13
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 0
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "V",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|14|73f0b93ba2927d0614be9f9ec9b9774c",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 14
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 1
+        },
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "O",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|14|d9f2c5d5d25b036a5f39277c4750a787",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 14
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 0
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "V",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|15|73f0b93ba2927d0614be9f9ec9b9774c",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 15
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 1
+        },
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "O",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|15|d9f2c5d5d25b036a5f39277c4750a787",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 15
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 0
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "V",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|16|73f0b93ba2927d0614be9f9ec9b9774c",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 16
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 1
+        },
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "O",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|16|d9f2c5d5d25b036a5f39277c4750a787",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 16
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 0
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "V",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|17|73f0b93ba2927d0614be9f9ec9b9774c",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 17
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 1
+        },
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "O",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|17|d9f2c5d5d25b036a5f39277c4750a787",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 17
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 0
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "V",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|18|73f0b93ba2927d0614be9f9ec9b9774c",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 18
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 1
+        },
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "O",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|18|d9f2c5d5d25b036a5f39277c4750a787",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 18
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 0
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "V",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|19|73f0b93ba2927d0614be9f9ec9b9774c",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 19
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 1
+        },
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "O",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|19|d9f2c5d5d25b036a5f39277c4750a787",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 19
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 0
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "V",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|1|73f0b93ba2927d0614be9f9ec9b9774c",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 1
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 1
+        },
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "O",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|1|d9f2c5d5d25b036a5f39277c4750a787",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 1
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 0
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "V",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|20|73f0b93ba2927d0614be9f9ec9b9774c",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 20
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 1
+        },
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "O",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|20|d9f2c5d5d25b036a5f39277c4750a787",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 20
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 0
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "V",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|21|73f0b93ba2927d0614be9f9ec9b9774c",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 21
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 1
+        },
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "O",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|21|d9f2c5d5d25b036a5f39277c4750a787",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 21
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 0
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "V",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|22|73f0b93ba2927d0614be9f9ec9b9774c",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 22
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 1
+        },
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "O",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|22|d9f2c5d5d25b036a5f39277c4750a787",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 22
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 0
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "V",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|23|73f0b93ba2927d0614be9f9ec9b9774c",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 23
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 1
+        },
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "O",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|23|d9f2c5d5d25b036a5f39277c4750a787",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 23
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 0
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "V",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|24|73f0b93ba2927d0614be9f9ec9b9774c",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 24
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 1
+        },
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "O",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|24|d9f2c5d5d25b036a5f39277c4750a787",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 24
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 0
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "V",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|25|73f0b93ba2927d0614be9f9ec9b9774c",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 25
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 1
+        },
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "O",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|25|d9f2c5d5d25b036a5f39277c4750a787",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 25
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 0
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "V",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|26|73f0b93ba2927d0614be9f9ec9b9774c",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 26
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 1
+        },
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "O",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|26|d9f2c5d5d25b036a5f39277c4750a787",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 26
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 0
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "V",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|27|73f0b93ba2927d0614be9f9ec9b9774c",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 27
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 1
+        },
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "O",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|27|d9f2c5d5d25b036a5f39277c4750a787",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 27
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 0
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "V",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|28|73f0b93ba2927d0614be9f9ec9b9774c",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 28
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 1
+        },
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "O",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|28|d9f2c5d5d25b036a5f39277c4750a787",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 28
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 0
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "V",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|29|73f0b93ba2927d0614be9f9ec9b9774c",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 29
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 1
+        },
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "O",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|29|d9f2c5d5d25b036a5f39277c4750a787",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 29
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 0
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "V",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|2|73f0b93ba2927d0614be9f9ec9b9774c",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 2
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 1
+        },
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "O",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|2|d9f2c5d5d25b036a5f39277c4750a787",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 2
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 0
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "V",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|30|73f0b93ba2927d0614be9f9ec9b9774c",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 30
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 1
+        },
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "O",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|30|d9f2c5d5d25b036a5f39277c4750a787",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 30
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 0
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "V",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|31|73f0b93ba2927d0614be9f9ec9b9774c",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 31
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 1
+        },
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "O",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|31|d9f2c5d5d25b036a5f39277c4750a787",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 31
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 0
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "V",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|32|73f0b93ba2927d0614be9f9ec9b9774c",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 32
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 1
+        },
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "O",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|32|d9f2c5d5d25b036a5f39277c4750a787",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 32
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 0
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "V",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|33|73f0b93ba2927d0614be9f9ec9b9774c",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 33
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 1
+        },
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "O",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|33|d9f2c5d5d25b036a5f39277c4750a787",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 33
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 0
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "V",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|34|73f0b93ba2927d0614be9f9ec9b9774c",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 34
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 1
+        },
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "O",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|34|d9f2c5d5d25b036a5f39277c4750a787",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 34
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 0
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "V",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|3|73f0b93ba2927d0614be9f9ec9b9774c",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 3
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 1
+        },
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "O",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|3|d9f2c5d5d25b036a5f39277c4750a787",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 3
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 0
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "V",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|4|73f0b93ba2927d0614be9f9ec9b9774c",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 4
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 1
+        },
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "O",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|4|d9f2c5d5d25b036a5f39277c4750a787",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 4
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 0
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "V",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|5|73f0b93ba2927d0614be9f9ec9b9774c",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 5
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 1
+        },
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "O",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|5|d9f2c5d5d25b036a5f39277c4750a787",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 5
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 0
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "V",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|6|73f0b93ba2927d0614be9f9ec9b9774c",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 6
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 1
+        },
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "O",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|6|d9f2c5d5d25b036a5f39277c4750a787",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 6
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 0
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "V",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|7|73f0b93ba2927d0614be9f9ec9b9774c",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 7
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 1
+        },
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "O",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|7|d9f2c5d5d25b036a5f39277c4750a787",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 7
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 0
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "V",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|8|73f0b93ba2927d0614be9f9ec9b9774c",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 8
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 1
+        },
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "O",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|8|d9f2c5d5d25b036a5f39277c4750a787",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 8
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 0
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "V",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|9|73f0b93ba2927d0614be9f9ec9b9774c",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 9
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 1
+        },
+        {
+          "op": "K",
+          "shard": 1
+        },
+        {
+          "op": "V",
+          "shard": 1
+        },
+        {
+          "op": "QK",
+          "shard": 1
+        },
+        {
+          "op": "Softmax",
+          "shard": 1
+        },
+        {
+          "op": "SV",
+          "shard": 1
+        },
+        {
+          "op": "O",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 1
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 1
+        }
+      ],
+      "ops_repr": "Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1",
+      "count_hint": 32
+    },
+    {
+      "key": "pim|decode|9|d9f2c5d5d25b036a5f39277c4750a787",
+      "sig": {
+        "device_type": "pim",
+        "phase": "decode",
+        "step": 9
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 0
+        },
+        {
+          "op": "K",
+          "shard": 0
+        },
+        {
+          "op": "V",
+          "shard": 0
+        },
+        {
+          "op": "QK",
+          "shard": 0
+        },
+        {
+          "op": "Softmax",
+          "shard": 0
+        },
+        {
+          "op": "SV",
+          "shard": 0
+        },
+        {
+          "op": "O",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W1",
+          "shard": 0
+        },
+        {
+          "op": "FFN_W2",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0",
+      "count_hint": 32
+    }
+  ]
+}

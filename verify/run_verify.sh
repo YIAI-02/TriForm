@@ -7,8 +7,9 @@ You can optionally override log locations:
 GPU_LOG_DIR=/path/logs_gpu \
 PIM_LOG_DIR=/path/logs_pim \
 MERGE_LOG_DIR=/path/logs_merge \
+
 export PYTHONPATH="$PWD:$PWD/algorithm:$PWD/algorithms:${PYTHONPATH:-}"
-LOG_ROOT=/path/to/my_logs \
+
   ./verify/run_verify.sh ./verify/jobs_sweep.tsv \
     ./verify/run_gpu_wm2_param.slurm \
     ./verify/run_pim_param.slurm \
@@ -27,6 +28,8 @@ JOB_LIST=${1:-jobs.tsv}
 GPU_SLURM=${2:-"$SCRIPT_DIR/run_gpu_wm2_param.slurm"}
 PIM_SLURM=${3:-"$SCRIPT_DIR/run_pim_param.slurm"}
 MERGE_SLURM=${4:-"$SCRIPT_DIR/run_merge_param.slurm"}
+NPU_SLURM=${NPU_SLURM:-"$SCRIPT_DIR/run_npu_lut_param.slurm"}
+COMPUTE_BACKEND=${COMPUTE_BACKEND:-auto}
 
 # -------- user-tunable defaults --------
 PY_SCRIPT=${PY_SCRIPT:-"$REPO_ROOT/verify/schedule_deploy_verify.py"}
@@ -36,6 +39,7 @@ SHARD_POLICY=${SHARD_POLICY:-fine}  # fine | coarse_majority
 
 LOG_ROOT=${LOG_ROOT:-""}
 GPU_LOG_DIR=${GPU_LOG_DIR:-""}
+NPU_LOG_DIR=${NPU_LOG_DIR:-""}
 PIM_LOG_DIR=${PIM_LOG_DIR:-""}
 MERGE_LOG_DIR=${MERGE_LOG_DIR:-""}
 JOB_CHDIR=${JOB_CHDIR:-""}
@@ -57,12 +61,23 @@ KV_DTYPE_BYTES=${KV_DTYPE_BYTES:-2}         # fp16/bf16=2, int8=1
 KV_LOAD_OVERHEAD_US=${KV_LOAD_OVERHEAD_US:-0}
 N_KV_HEADS=${N_KV_HEADS:-""}                # GQA/MQA 用；空表示用 n_heads
 BATCH=${BATCH:-1}
+BATCHES=${BATCHES:-"$BATCH"}
 
 # run-gpu benchmark args
 WARMUP=${WARMUP:-3}
 ITERS=${ITERS:-10}
 DEVICE=${DEVICE:-cuda}
-GPU_DTYPE=${GPU_DTYPE:-fp16}
+GPU_DTYPE=${GPU_DTYPE:-bf16}
+
+MMAD_LUT=${MMAD_LUT:-""}
+SOFTMAX_LUT=${SOFTMAX_LUT:-""}
+GELU_LUT=${GELU_LUT:-""}
+NORM_LUT=${NORM_LUT:-""}
+NPU_DTYPE=${NPU_DTYPE:-""}              # fp16|bf16|fp32|int8 (optional, for mem bound)
+NPU_MEM_BW_GBS=${NPU_MEM_BW_GBS:-"0"}   # >0 to enable mem bound
+NPU_OP_OVERHEAD_US=${NPU_OP_OVERHEAD_US:-"0"}
+NPU_NO_MEM_BOUND=${NPU_NO_MEM_BOUND:-"0"}
+NPU_DEBUG=${NPU_DEBUG:-0}
 
 # run-pim args (global)
 CENT_SIM_ROOT=${CENT_SIM_ROOT:-""}
@@ -90,6 +105,7 @@ MAX_IN_FLIGHT=${MAX_IN_FLIGHT:-0}
 
 # Optional extra sbatch arguments
 GPU_SBATCH_ARGS=${GPU_SBATCH_ARGS:-""}
+NPU_SBATCH_ARGS=${NPU_SBATCH_ARGS:-""}
 PIM_SBATCH_ARGS=${PIM_SBATCH_ARGS:-""}
 MERGE_SBATCH_ARGS=${MERGE_SBATCH_ARGS:-""}
 
@@ -152,6 +168,51 @@ infer_prefill_and_stride() {
   fi
 }
 
+infer_compute_backend() {
+  # usage: infer_compute_backend <schedule_csv>
+  # returns: gpu | npu | mixed | unknown
+  python - <<'PY' "$1"
+import sys, csv
+p = sys.argv[1]
+has_gpu = False
+has_npu = False
+
+try:
+    with open(p, newline="") as f:
+        reader = csv.DictReader(f)
+        fns = reader.fieldnames or []
+        if "device" not in fns:
+            print("unknown")
+            raise SystemExit(0)
+
+        # Scan a limited number of rows for speed
+        for i, row in enumerate(reader):
+            if i >= 2000:
+                break
+            dev = str(row.get("device", "")).lower()
+            if "gpu" in dev:
+                has_gpu = True
+            if "npu" in dev:
+                has_npu = True
+            if has_gpu and has_npu:
+                break
+except SystemExit:
+    raise
+except Exception:
+    # Fallback: keep unknown
+    pass
+
+if has_gpu and has_npu:
+    print("mixed")
+elif has_gpu:
+    print("gpu")
+elif has_npu:
+    print("npu")
+else:
+    print("unknown")
+PY
+}
+
 maybe_throttle() {
   if [[ "$MAX_IN_FLIGHT" -le 0 ]]; then
     return 0
@@ -202,6 +263,10 @@ PY_ABS=$(abspath_under "$PY_SCRIPT" "$REPO_ROOT")
 GPU_SLURM_ABS=$(abspath "$GPU_SLURM")
 PIM_SLURM_ABS=$(abspath "$PIM_SLURM")
 MERGE_SLURM_ABS=$(abspath "$MERGE_SLURM")
+NPU_SLURM_ABS=""
+if [[ -n "${NPU_SLURM:-}" && -f "$NPU_SLURM" ]]; then
+  NPU_SLURM_ABS=$(abspath "$NPU_SLURM")
+fi
 
 # Resolve PIM config paths relative to repo root if they are relative
 PIM_RAMULATOR_CONFIG_ABS=$(abspath_under "$PIM_RAMULATOR_CONFIG" "$REPO_ROOT")
@@ -241,6 +306,7 @@ fi
 echo "[submit] REPO_ROOT=$REPO_ROOT" >&2
 echo "[submit] PY_SCRIPT=$PY_ABS" >&2
 echo "[submit] GPU_SLURM=$GPU_SLURM_ABS" >&2
+echo "[submit] NPU_SLURM=${NPU_SLURM_ABS:-<none>}" >&2
 echo "[submit] PIM_SLURM=$PIM_SLURM_ABS" >&2
 echo "[submit] MERGE_SLURM=$MERGE_SLURM_ABS" >&2
 echo "[submit] OUT_ROOT=$(abspath_under "$OUT_ROOT" "$REPO_ROOT")" >&2
@@ -252,9 +318,7 @@ echo "[submit] PIM_RAMULATOR_BIN=$PIM_RAMULATOR_BIN_ABS" >&2
 echo "[submit] reading job list: $JOB_LIST" >&2
 
 # TSV parsing (tab-separated).
-# Columns:
-#   schedule_csv  comms_csv  prefix  out_dir  prefill_len  decode_stride  cfg
-while IFS=$'\t,' read -r schedule_csv comms_csv prefix out_dir prefill_len decode_stride cfg || [[ -n "${schedule_csv:-}" ]]; do
+while IFS=$'\t,' read -r schedule_csv comms_csv prefix out_dir prefill_len decode_stride cfg batch || [[ -n "${schedule_csv:-}" ]]; do
   # skip empty / comment lines
   if [[ -z "${schedule_csv:-}" ]]; then
     continue
@@ -270,6 +334,7 @@ while IFS=$'\t,' read -r schedule_csv comms_csv prefix out_dir prefill_len decod
   prefill_len=${prefill_len//$'\r'/}
   decode_stride=${decode_stride//$'\r'/}
   cfg=${cfg//$'\r'/}
+  batch=${batch//$'\r'/}
 
   schedule_csv=$(abspath "$schedule_csv")
 
@@ -300,17 +365,20 @@ while IFS=$'\t,' read -r schedule_csv comms_csv prefix out_dir prefill_len decod
   fi
 
   gpu_log_dir="${GPU_LOG_DIR:-}"
+  npu_log_dir="${NPU_LOG_DIR:-}"
   pim_log_dir="${PIM_LOG_DIR:-}"
   merge_log_dir="${MERGE_LOG_DIR:-}"
 
   if [[ -z "$gpu_log_dir" ]]; then gpu_log_dir="$base_log_root/gpu"; fi
+  if [[ -z "$npu_log_dir" ]]; then npu_log_dir="$base_log_root/npu"; fi
   if [[ -z "$pim_log_dir" ]]; then pim_log_dir="$base_log_root/pim"; fi
   if [[ -z "$merge_log_dir" ]]; then merge_log_dir="$base_log_root/merge"; fi
 
   gpu_log_dir=$(abspath_under "$gpu_log_dir" "$REPO_ROOT")
+  npu_log_dir=$(abspath_under "$npu_log_dir" "$REPO_ROOT")
   pim_log_dir=$(abspath_under "$pim_log_dir" "$REPO_ROOT")
   merge_log_dir=$(abspath_under "$merge_log_dir" "$REPO_ROOT")
-  mkdir -p "$gpu_log_dir" "$pim_log_dir" "$merge_log_dir"
+  mkdir -p "$gpu_log_dir" "$npu_log_dir" "$pim_log_dir" "$merge_log_dir"
 
   if [[ -n "${JOB_CHDIR:-}" ]]; then
     job_chdir=$(abspath_under "$JOB_CHDIR" "$REPO_ROOT")
@@ -337,6 +405,7 @@ while IFS=$'\t,' read -r schedule_csv comms_csv prefix out_dir prefill_len decod
   # determine candidate prefill/decode lists
   pre_list=()
   dec_list=()
+  batch_list=()
 
   # 1) If TSV provides explicit values, take them.
   if [[ -n "${prefill_len:-}" ]]; then
@@ -344,6 +413,9 @@ while IFS=$'\t,' read -r schedule_csv comms_csv prefix out_dir prefill_len decod
   fi
   if [[ -n "${decode_stride:-}" ]]; then
     dec_list=("$decode_stride")
+  fi
+  if [[ -n "${batch:-}" ]]; then
+    batch_list=("$batch")
   fi
 
   # 2) If TSV did not provide, and the user explicitly sets multi-value lists, expand them.
@@ -353,6 +425,9 @@ while IFS=$'\t,' read -r schedule_csv comms_csv prefix out_dir prefill_len decod
   fi
   if [[ ${#dec_list[@]} -eq 0 && -n "$DECODE_STRIDES" ]]; then
     while IFS= read -r x; do dec_list+=("$x"); done < <(split_list "$DECODE_STRIDES")
+  fi
+  if [[ ${#batch_list[@]} -eq 0 && -n "$BATCHES" ]]; then
+    while IFS= read -r x; do batch_list+=("$x"); done < <(split_list "$BATCHES")
   fi
 
   # 3) If still missing, try infer from filename (prefill-XXXXxdecode_YYY / 8192x128 etc.)
@@ -372,8 +447,13 @@ while IFS=$'\t,' read -r schedule_csv comms_csv prefix out_dir prefill_len decod
   if [[ ${#dec_list[@]} -eq 0 ]]; then
     dec_list=("$DEFAULT_DECODE_STRIDE")
   fi
+  if [[ ${#batch_list[@]} -eq 0 ]]; then
+    batch_list=("$BATCH")
+  fi
+
+  # We add suffixes only when at least one dimension expands.
   multi_suffix=0
-  if [[ ${#pre_list[@]} -gt 1 || ${#dec_list[@]} -gt 1 ]]; then
+  if [[ ${#pre_list[@]} -gt 1 || ${#dec_list[@]} -gt 1 || ${#batch_list[@]} -gt 1 ]]; then
     multi_suffix=1
   fi
 
@@ -382,21 +462,31 @@ while IFS=$'\t,' read -r schedule_csv comms_csv prefix out_dir prefill_len decod
   echo "  comms=${comms_csv:-<none>}" >&2
   echo "  out_dir=$out_dir" >&2
   echo "  cfg=$cfg" >&2
-  echo "  prefill_list=(${pre_list[*]}) decode_stride_list=(${dec_list[*]})" >&2
+  echo "  prefill_list=(${pre_list[*]}) decode_stride_list=(${dec_list[*]}) batch_list=(${batch_list[*]})" >&2
   merge_list_tsv="$out_dir/${prefix}.merge_list.tsv"
-  echo -e "prefix_combo\tprefill_len\tdecode_stride\tschedule_csv\tmerge_csv\tdebug_txt" > "$merge_list_tsv"
+  echo -e "prefix_combo\tprefill_len\tdecode_stride\tbatch\tschedule_csv\tmerge_csv\tdebug_txt" > "$merge_list_tsv"
   case_merge_jids=()
 
   for pre in "${pre_list[@]}"; do
     for dec in "${dec_list[@]}"; do
+      for b in "${batch_list[@]}"; do
 
       if [[ "$multi_suffix" -eq 1 ]]; then
-        prefix_combo="${prefix}_p${pre}_d${dec}"
+        suffix_parts=()
+        if [[ ${#pre_list[@]} -gt 1 ]]; then suffix_parts+=("p${pre}"); fi
+        if [[ ${#dec_list[@]} -gt 1 ]]; then suffix_parts+=("d${dec}"); fi
+        if [[ ${#batch_list[@]} -gt 1 ]]; then suffix_parts+=("b${b}"); fi
+        if [[ ${#suffix_parts[@]} -gt 0 ]]; then
+          suffix_joined=$(IFS=_; echo "${suffix_parts[*]}")
+          prefix_combo="${prefix}_${suffix_joined}"
+        else
+          prefix_combo="$prefix"
+        fi
       else
         prefix_combo="$prefix"
       fi
 
-      echo "\n  [combo] prefix=$prefix_combo prefill_len=$pre decode_stride=$dec" >&2
+      echo "\n  [combo] prefix=$prefix_combo prefill_len=$pre decode_stride=$dec batch=$b" >&2
 
       # 1) export tasks
       export_cmd=(python "$PY_ABS" export \
@@ -420,7 +510,7 @@ while IFS=$'\t,' read -r schedule_csv comms_csv prefix out_dir prefill_len decod
       if [[ -n "${N_KV_HEADS}" ]]; then
         export_cmd+=(--n-kv-heads "$N_KV_HEADS")
       fi
-      export_cmd+=(--batch "$BATCH")
+      export_cmd+=(--batch "$b")
 
       echo "  [combo] export: ${export_cmd[*]}" >&2
       "${export_cmd[@]}"
@@ -429,6 +519,7 @@ while IFS=$'\t,' read -r schedule_csv comms_csv prefix out_dir prefill_len decod
       pim_tasks="$out_dir/$prefix_combo.pim_tasks.json"
 
       gpu_res="$out_dir/$prefix_combo.gpu_results.json"
+      npu_res="$out_dir/$prefix_combo.npu_results.json"
       pim_res="$out_dir/$prefix_combo.pim_results.json"
 
       merge_csv="$out_dir/$prefix_combo.merge.csv"
@@ -437,12 +528,14 @@ while IFS=$'\t,' read -r schedule_csv comms_csv prefix out_dir prefill_len decod
       debug_txt="${merge_csv%.csv}.debug.txt"
 
       gpu_ok="$out_dir/$prefix_combo.gpu.ok"
+      npu_ok="$out_dir/$prefix_combo.npu.ok"
       pim_ok="$out_dir/$prefix_combo.pim.ok"
 
       gpu_debug_txt="$out_dir/$prefix_combo.gpu_debug.log"
+      npu_debug_txt="$out_dir/$prefix_combo.npu_debug.log"
       pim_debug_txt="$out_dir/$prefix_combo.pim_debug.log"
       
-      rm -f "$gpu_ok" "$pim_ok" "$gpu_res" "$pim_res" "$merge_csv" "$debug_txt" "$steps_csv" "$gpu_debug_txt" "$pim_debug_txt"
+      rm -f "$gpu_ok" "$npu_ok" "$pim_ok" "$gpu_res" "$npu_res" "$pim_res" "$merge_csv" "$debug_txt" "$steps_csv" "$gpu_debug_txt" "$npu_debug_txt" "$pim_debug_txt"
 
       if [[ ! -f "$gpu_tasks" ]]; then
         echo "  [combo] ERROR: missing $gpu_tasks" >&2
@@ -455,28 +548,63 @@ while IFS=$'\t,' read -r schedule_csv comms_csv prefix out_dir prefill_len decod
 
       maybe_throttle
 
-      # 2) submit run-gpu (GPU job)
-      jid_gpu=$(sbatch --parsable $GPU_SBATCH_ARGS \
-        -J "gpu_${prefix_combo}" \
-        --chdir="$job_chdir" \
-        -o "$gpu_log_dir/%x.%j.out" -e "$gpu_log_dir/%x.%j.err" \
-        --export=ALL,LOG_DIR="$gpu_log_dir",OUT_DIR="$out_dir",PREFIX="$prefix_combo",PY_SCRIPT="$PY_ABS",TASKS_JSON="$gpu_tasks",OUT_JSON="$gpu_res",WARMUP="$WARMUP",ITERS="$ITERS",DEVICE="$DEVICE",GPU_DTYPE="$GPU_DTYPE",OK_FILE="$gpu_ok",GPU_DEBUG_TXT="$gpu_debug_txt"\
-        "$GPU_SLURM_ABS")
+      # 2) submit compute stage (GPU benchmark on HPC OR NPU LUT lookup on CPU)
+      backend="${COMPUTE_BACKEND,,}"
+      if [[ -z "$backend" || "$backend" == "auto" ]]; then
+        backend="$(infer_compute_backend "$schedule_csv")"
+        if [[ "$backend" == "unknown" ]]; then
+          backend="gpu"
+        fi
+      fi
 
-      echo "  [combo] submitted run-gpu: jobid=$jid_gpu" >&2
+      if [[ "$backend" == "mixed" ]]; then
+        echo "  [combo] ERROR: schedule contains both 'gpu' and 'npu' in device names; please set COMPUTE_BACKEND=gpu or COMPUTE_BACKEND=npu explicitly." >&2
+        exit 11
+      fi
 
-      # 3) submit run-pim (CPU job)
+      compute_res="$gpu_res"
+      compute_ok="$gpu_ok"
+      compute_log_dir="$gpu_log_dir"
+      compute_debug_txt="$gpu_debug_txt"
+      compute_job="gpu_${prefix_combo}"
+      compute_sbatch_args="$GPU_SBATCH_ARGS"
+      compute_slurm="$GPU_SLURM_ABS"
+
+      if [[ "$backend" == "npu" ]]; then
+        if [[ -z "${NPU_SLURM_ABS:-}" ]]; then
+          echo "  [combo] ERROR: backend=npu but NPU_SLURM_ABS is empty. Set NPU_SLURM or place run_npu_lut_param.slurm under $SCRIPT_DIR." >&2
+          exit 12
+        fi
+        compute_res="$npu_res"
+        compute_ok="$npu_ok"
+        compute_log_dir="$npu_log_dir"
+        compute_debug_txt="$npu_debug_txt"
+        compute_job="npu_${prefix_combo}"
+        compute_sbatch_args="$NPU_SBATCH_ARGS"
+        compute_slurm="$NPU_SLURM_ABS"
+      fi
+
+      if [[ "$backend" == "gpu" ]]; then
+        jid_compute=$(sbatch --parsable $compute_sbatch_args           -J "$compute_job"           --chdir="$job_chdir"           -o "$compute_log_dir/%x.%j.out" -e "$compute_log_dir/%x.%j.err"           --export=ALL,LOG_DIR="$compute_log_dir",OUT_DIR="$out_dir",PREFIX="$prefix_combo",PY_SCRIPT="$PY_ABS",TASKS_JSON="$gpu_tasks",OUT_JSON="$compute_res",WARMUP="$WARMUP",ITERS="$ITERS",DEVICE="$DEVICE",GPU_DTYPE="$GPU_DTYPE",BATCH="$b",OK_FILE="$compute_ok",GPU_DEBUG_TXT="$compute_debug_txt"          "$compute_slurm")
+        echo "  [combo] submitted run-gpu: jobid=$jid_compute" >&2
+      else
+        # NPU (LUT) stage: CPU job that calls `python <PY_SCRIPT> run-npu`
+        jid_compute=$(sbatch --parsable $compute_sbatch_args           -J "$compute_job"           --chdir="$job_chdir"           -o "$compute_log_dir/%x.%j.out" -e "$compute_log_dir/%x.%j.err"           --export=ALL,LOG_DIR="$compute_log_dir",OUT_DIR="$out_dir",PREFIX="$prefix_combo",PY_SCRIPT="$PY_ABS",TASKS_JSON="$gpu_tasks",OUT_JSON="$compute_res",BATCH="$b",OK_FILE="$compute_ok",MMAD_LUT="$MMAD_LUT",SOFTMAX_LUT="$SOFTMAX_LUT",GELU_LUT="$GELU_LUT",NORM_LUT="$NORM_LUT",NPU_DTYPE="$NPU_DTYPE",NPU_MEM_BW_GBS="$NPU_MEM_BW_GBS",NPU_OP_OVERHEAD_US="$NPU_OP_OVERHEAD_US",NPU_NO_MEM_BOUND="$NPU_NO_MEM_BOUND",NPU_DEBUG="$NPU_DEBUG",NPU_DEBUG_TXT="$compute_debug_txt"           "$compute_slurm")
+        echo "  [combo] submitted run-npu: jobid=$jid_compute" >&2
+      fi
+
+    # 3) submit run-pim (CPU job)
       jid_pim=$(sbatch --parsable $PIM_SBATCH_ARGS \
         -J "pim_${prefix_combo}" \
         --chdir="$job_chdir" \
         -o "$pim_log_dir/%x.%j.out" -e "$pim_log_dir/%x.%j.err" \
-        --export=ALL,LOG_DIR="$pim_log_dir",OUT_DIR="$out_dir",PREFIX="$prefix_combo",PY_SCRIPT="$PY_ABS",TASKS_JSON="$pim_tasks",OUT_JSON="$pim_res",CENT_SIM_ROOT="$CENT_SIM_ROOT_ABS",PIM_RAMULATOR_CONFIG="$PIM_RAMULATOR_CONFIG_ABS",PIM_HW_JSON="$PIM_HW_JSON_ABS",PIM_RAMULATOR_BIN="$PIM_RAMULATOR_BIN_ABS",PIM_NUM_DEVICES="$PIM_NUM_DEVICES",OK_FILE="$pim_ok",PIM_DEBUG="$PIM_DEBUG",PIM_DEBUG_TXT="$pim_debug_txt",PIM_NO_CACHE="$PIM_NO_CACHE" \
+        --export=ALL,LOG_DIR="$pim_log_dir",OUT_DIR="$out_dir",PREFIX="$prefix_combo",PY_SCRIPT="$PY_ABS",TASKS_JSON="$pim_tasks",OUT_JSON="$pim_res",CENT_SIM_ROOT="$CENT_SIM_ROOT_ABS",PIM_RAMULATOR_CONFIG="$PIM_RAMULATOR_CONFIG_ABS",PIM_HW_JSON="$PIM_HW_JSON_ABS",PIM_RAMULATOR_BIN="$PIM_RAMULATOR_BIN_ABS",PIM_NUM_DEVICES="$PIM_NUM_DEVICES",BATCH="$b",OK_FILE="$pim_ok",PIM_DEBUG="$PIM_DEBUG",PIM_DEBUG_TXT="$pim_debug_txt",PIM_NO_CACHE="$PIM_NO_CACHE" \
         "$PIM_SLURM_ABS")
 
       echo "  [combo] submitted run-pim: jobid=$jid_pim" >&2
 
       # 4) submit merge job (always runs after both finish; exits error if any failed)
-      dep="afterany:${jid_gpu}:${jid_pim}"
+      dep="afterany:${jid_compute}:${jid_pim}"
 
       if [[ "$WRITE_STEPS_CSV" == "1" || "$WRITE_STEPS_CSV" == "true" ]]; then
         out_steps="$steps_csv"
@@ -489,18 +617,19 @@ while IFS=$'\t,' read -r schedule_csv comms_csv prefix out_dir prefill_len decod
         --dependency="$dep" \
         --chdir="$job_chdir" \
         -o "$merge_log_dir/%x.%j.out" -e "$merge_log_dir/%x.%j.err" \
-        --export=ALL,LOG_DIR="$merge_log_dir",GPU_LOG_DIR="$gpu_log_dir",PIM_LOG_DIR="$pim_log_dir",OUT_DIR="$out_dir",PREFIX="$prefix_combo",PY_SCRIPT="$PY_ABS",SCHEDULE_CSV="$schedule_csv",GPU_RESULTS_JSON="$gpu_res",PIM_RESULTS_JSON="$pim_res",GPU_OK_FILE="$gpu_ok",PIM_OK_FILE="$pim_ok",COMM_MODEL="$COMM_MODEL",PCIE_LANES="$PCIE_LANES",COMMS_CSV="$comms_csv",NON_OVERLAP="$NON_OVERLAP",DECODE_STRIDE="$dec",OUT_CSV="$merge_csv",OUT_STEPS_CSV="$out_steps",ALLOW_MISSING="$ALLOW_MISSING",DEBUG_MERGE="$MERGE_DEBUG",DEBUG_TXT="$debug_txt" \
+        --export=ALL,LOG_DIR="$merge_log_dir",GPU_LOG_DIR="$compute_log_dir",PIM_LOG_DIR="$pim_log_dir",OUT_DIR="$out_dir",PREFIX="$prefix_combo",PY_SCRIPT="$PY_ABS",SCHEDULE_CSV="$schedule_csv",GPU_RESULTS_JSON="$compute_res",PIM_RESULTS_JSON="$pim_res",GPU_OK_FILE="$compute_ok",PIM_OK_FILE="$pim_ok",COMM_MODEL="$COMM_MODEL",PCIE_LANES="$PCIE_LANES",COMMS_CSV="$comms_csv",NON_OVERLAP="$NON_OVERLAP",DECODE_STRIDE="$dec",BATCH="$b",OUT_CSV="$merge_csv",OUT_STEPS_CSV="$out_steps",ALLOW_MISSING="$ALLOW_MISSING",DEBUG_MERGE="$MERGE_DEBUG",DEBUG_TXT="$debug_txt" \
         "$MERGE_SLURM_ABS")
 
       echo "  [combo] submitted merge: jobid=$jid_merge  (will write: $merge_csv)" >&2
 
       # record ids
-      echo -e "${prefix_combo}\t${jid_gpu}\t${jid_pim}\t${jid_merge}\t${merge_csv}" >> "$out_dir/jobids.tsv"
+      echo -e "${prefix_combo}\t${jid_compute}\t${jid_pim}\t${jid_merge}\t${merge_csv}" >> "$out_dir/jobids.tsv"
 
       # record for final collection
-      echo -e "${prefix_combo}\t${pre}\t${dec}\t${schedule_csv}\t${merge_csv}\t${debug_txt}" >> "$merge_list_tsv"
+      echo -e "${prefix_combo}\t${pre}\t${dec}\t${b}\t${schedule_csv}\t${merge_csv}\t${debug_txt}" >> "$merge_list_tsv"
       case_merge_jids+=("$jid_merge")
 
+      done
     done
   done
 

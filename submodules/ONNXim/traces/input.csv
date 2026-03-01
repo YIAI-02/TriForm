@@ -1,3 +1,0 @@
-time, prompt_length, target_length, cached_length
-0, 100, 16, 0
-100, 100, 15, 0

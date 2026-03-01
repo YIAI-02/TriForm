@@ -1,0 +1,322 @@
+[run-gpu] tasks=8 warmup=3 iters=10 device=cuda dtype=bf16 segment_scope=layer
+[run-gpu] extra weight_load_s=0.267700s (will be added in merge)
+[run-gpu] GPU[0] NVIDIA A100-PCIE-40GB; SM=108, CC=8.0
+[run-gpu] nvidia-smi -L: GPU 0: NVIDIA A100-PCIE-40GB (UUID: GPU-10fd0274-d52f-ca61-05e2-aaf982e4391e)
+[run-gpu] nvidia-smi query: NVIDIA A100-PCIE-40GB, GPU-10fd0274-d52f-ca61-05e2-aaf982e4391e, 560.35.03, 40960
+[run-gpu][debug] torch_default_dtype=torch.float32
+[run-gpu][debug] torch.backends.cuda.matmul.allow_tf32=False
+[run-gpu][debug] cudnn.enabled=True benchmark=False deterministic=False allow_tf32=True
+[run-gpu][debug] nvidia-smi snapshot: 0, 0, 0, 4, 40960, 34, 33.31, 250.00
+========================================================================================
+[gpu-debug] segment_key=npu|decode|0|2ef4409498d14c672a4fbbfe6786cce6
+[gpu-debug] sig: device_type=npu phase=decode step=0 (count_hint=32)
+[gpu-debug] ops_repr: LN:-1,Add:-1,LN:-1,FFN_W1:0,FFN_W3:0,FFN_W1:1,FFN_W3:1,SwiGLU:0,SwiGLU:1,FFN_W2:0,FFN_W2:1,Add:-1
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=LN       shard=-1  x=[1x4096] + w=[4096]  ->  y=[1x4096]  (T=1, K=263)
+  - op#01  op=Add      shard=-1  a=[1x4096] + b=[1x4096]  ->  y=[1x4096]  (T=1, K=263)
+  - op#02  op=LN       shard=-1  x=[1x4096] + w=[4096]  ->  y=[1x4096]  (T=1, K=263)
+  - op#03  op=FFN_W1   shard=0   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=263)
+  - op#04  op=FFN_W3   shard=0   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=263)
+  - op#05  op=FFN_W1   shard=1   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=263)
+  - op#06  op=FFN_W3   shard=1   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=263)
+  - op#07  op=SwiGLU   shard=0   a=[1x5504] + b=[1x5504]  ->  y=[1x5504]  (T=1, K=263)
+  - op#08  op=SwiGLU   shard=1   a=[1x5504] + b=[1x5504]  ->  y=[1x5504]  (T=1, K=263)
+  - op#09  op=FFN_W2   shard=0   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=263)
+  - op#10  op=FFN_W2   shard=1   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=263)
+  - op#11  op=Add      shard=-1  a=[1x4096] + b=[1x4096]  ->  y=[1x4096]  (T=1, K=263)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  LN       -1  x[1x4096]+w[4096]->y[1x4096]                        0.069ms    20.480 K      0.00   24.00 KiB      0.36
+    1  Add      -1  a[1x4096]+b[1x4096]->y[1x4096]                      0.017ms     4.096 K      0.00   24.00 KiB      1.48
+    2  LN       -1  x[1x4096]+w[4096]->y[1x4096]                        0.057ms    20.480 K      0.00   24.00 KiB      0.43
+    3  FFN_W1    0  x[1x4096]+w[5504x4096]->y[1x5504]                   0.062ms    45.089 M      0.72   43.02 MiB    724.52
+    4  FFN_W3    0  x[1x4096]+w[5504x4096]->y[1x5504]                   0.045ms    45.089 M      1.01   43.02 MiB   1008.03
+    5  FFN_W1    1  x[1x4096]+w[5504x4096]->y[1x5504]                   0.045ms    45.089 M      1.01   43.02 MiB   1005.72
+    6  FFN_W3    1  x[1x4096]+w[5504x4096]->y[1x5504]                   0.044ms    45.089 M      1.01   43.02 MiB   1014.99
+    7  SwiGLU    0  a[1x5504]+b[1x5504]->y[1x5504]                      0.013ms    33.024 K      0.00   32.25 KiB      2.46
+    8  SwiGLU    1  a[1x5504]+b[1x5504]->y[1x5504]                      0.012ms    33.024 K      0.00   32.25 KiB      2.69
+    9  FFN_W2    0  x[1x5504]+w[4096x5504]->y[1x4096]                   0.047ms    45.089 M      0.96   43.02 MiB    955.55
+   10  FFN_W2    1  x[1x5504]+w[4096x5504]->y[1x4096]                   0.047ms    45.089 M      0.97   43.02 MiB    966.03
+   11  Add      -1  a[1x4096]+b[1x4096]->y[1x4096]                      0.009ms     4.096 K      0.00   24.00 KiB      2.79
+[gpu-debug] segment avg latency (cuda_events): 0.353 ms
+[gpu-debug] sum(per-op)               : 0.467 ms (ratio=1.323)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=0 B reserved=0 B
+[gpu-debug] cuda mem after warmup : alloc=272.15 MiB reserved=286.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=272.17 MiB max_reserved=286.00 MiB
+========================================================================================
+[gpu-debug] segment_key=npu|decode|1|2ef4409498d14c672a4fbbfe6786cce6
+[gpu-debug] sig: device_type=npu phase=decode step=1 (count_hint=32)
+[gpu-debug] ops_repr: LN:-1,Add:-1,LN:-1,FFN_W1:0,FFN_W3:0,FFN_W1:1,FFN_W3:1,SwiGLU:0,SwiGLU:1,FFN_W2:0,FFN_W2:1,Add:-1
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=LN       shard=-1  x=[1x4096] + w=[4096]  ->  y=[1x4096]  (T=1, K=264)
+  - op#01  op=Add      shard=-1  a=[1x4096] + b=[1x4096]  ->  y=[1x4096]  (T=1, K=264)
+  - op#02  op=LN       shard=-1  x=[1x4096] + w=[4096]  ->  y=[1x4096]  (T=1, K=264)
+  - op#03  op=FFN_W1   shard=0   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=264)
+  - op#04  op=FFN_W3   shard=0   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=264)
+  - op#05  op=FFN_W1   shard=1   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=264)
+  - op#06  op=FFN_W3   shard=1   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=264)
+  - op#07  op=SwiGLU   shard=0   a=[1x5504] + b=[1x5504]  ->  y=[1x5504]  (T=1, K=264)
+  - op#08  op=SwiGLU   shard=1   a=[1x5504] + b=[1x5504]  ->  y=[1x5504]  (T=1, K=264)
+  - op#09  op=FFN_W2   shard=0   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=264)
+  - op#10  op=FFN_W2   shard=1   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=264)
+  - op#11  op=Add      shard=-1  a=[1x4096] + b=[1x4096]  ->  y=[1x4096]  (T=1, K=264)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  LN       -1  x[1x4096]+w[4096]->y[1x4096]                        0.067ms    20.480 K      0.00   24.00 KiB      0.37
+    1  Add      -1  a[1x4096]+b[1x4096]->y[1x4096]                      0.017ms     4.096 K      0.00   24.00 KiB      1.45
+    2  LN       -1  x[1x4096]+w[4096]->y[1x4096]                        0.057ms    20.480 K      0.00   24.00 KiB      0.43
+    3  FFN_W1    0  x[1x4096]+w[5504x4096]->y[1x5504]                   0.062ms    45.089 M      0.72   43.02 MiB    724.52
+    4  FFN_W3    0  x[1x4096]+w[5504x4096]->y[1x5504]                   0.045ms    45.089 M      1.01   43.02 MiB   1005.72
+    5  FFN_W1    1  x[1x4096]+w[5504x4096]->y[1x5504]                   0.045ms    45.089 M      1.00   43.02 MiB    998.88
+    6  FFN_W3    1  x[1x4096]+w[5504x4096]->y[1x5504]                   0.044ms    45.089 M      1.02   43.02 MiB   1022.06
+    7  SwiGLU    0  a[1x5504]+b[1x5504]->y[1x5504]                      0.013ms    33.024 K      0.00   32.25 KiB      2.48
+    8  SwiGLU    1  a[1x5504]+b[1x5504]->y[1x5504]                      0.013ms    33.024 K      0.00   32.25 KiB      2.58
+    9  FFN_W2    0  x[1x5504]+w[4096x5504]->y[1x4096]                   0.047ms    45.089 M      0.96   43.02 MiB    955.55
+   10  FFN_W2    1  x[1x5504]+w[4096x5504]->y[1x4096]                   0.046ms    45.089 M      0.97   43.02 MiB    970.28
+   11  Add      -1  a[1x4096]+b[1x4096]->y[1x4096]                      0.009ms     4.096 K      0.00   24.00 KiB      2.82
+[gpu-debug] segment avg latency (cuda_events): 0.351 ms
+[gpu-debug] sum(per-op)               : 0.466 ms (ratio=1.327)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=272.15 MiB reserved=286.00 MiB
+[gpu-debug] cuda mem after warmup : alloc=272.15 MiB reserved=286.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=272.17 MiB max_reserved=286.00 MiB
+========================================================================================
+[gpu-debug] segment_key=npu|decode|2|2ef4409498d14c672a4fbbfe6786cce6
+[gpu-debug] sig: device_type=npu phase=decode step=2 (count_hint=32)
+[gpu-debug] ops_repr: LN:-1,Add:-1,LN:-1,FFN_W1:0,FFN_W3:0,FFN_W1:1,FFN_W3:1,SwiGLU:0,SwiGLU:1,FFN_W2:0,FFN_W2:1,Add:-1
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=LN       shard=-1  x=[1x4096] + w=[4096]  ->  y=[1x4096]  (T=1, K=274)
+  - op#01  op=Add      shard=-1  a=[1x4096] + b=[1x4096]  ->  y=[1x4096]  (T=1, K=274)
+  - op#02  op=LN       shard=-1  x=[1x4096] + w=[4096]  ->  y=[1x4096]  (T=1, K=274)
+  - op#03  op=FFN_W1   shard=0   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=274)
+  - op#04  op=FFN_W3   shard=0   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=274)
+  - op#05  op=FFN_W1   shard=1   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=274)
+  - op#06  op=FFN_W3   shard=1   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=274)
+  - op#07  op=SwiGLU   shard=0   a=[1x5504] + b=[1x5504]  ->  y=[1x5504]  (T=1, K=274)
+  - op#08  op=SwiGLU   shard=1   a=[1x5504] + b=[1x5504]  ->  y=[1x5504]  (T=1, K=274)
+  - op#09  op=FFN_W2   shard=0   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=274)
+  - op#10  op=FFN_W2   shard=1   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=274)
+  - op#11  op=Add      shard=-1  a=[1x4096] + b=[1x4096]  ->  y=[1x4096]  (T=1, K=274)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  LN       -1  x[1x4096]+w[4096]->y[1x4096]                        0.067ms    20.480 K      0.00   24.00 KiB      0.37
+    1  Add      -1  a[1x4096]+b[1x4096]->y[1x4096]                      0.016ms     4.096 K      0.00   24.00 KiB      1.50
+    2  LN       -1  x[1x4096]+w[4096]->y[1x4096]                        0.057ms    20.480 K      0.00   24.00 KiB      0.43
+    3  FFN_W1    0  x[1x4096]+w[5504x4096]->y[1x5504]                   0.061ms    45.089 M      0.74   43.02 MiB    737.87
+    4  FFN_W3    0  x[1x4096]+w[5504x4096]->y[1x5504]                   0.045ms    45.089 M      1.00   43.02 MiB   1003.43
+    5  FFN_W1    1  x[1x4096]+w[5504x4096]->y[1x5504]                   0.045ms    45.089 M      1.01   43.02 MiB   1008.03
+    6  FFN_W3    1  x[1x4096]+w[5504x4096]->y[1x5504]                   0.044ms    45.089 M      1.01   43.02 MiB   1014.99
+    7  SwiGLU    0  a[1x5504]+b[1x5504]->y[1x5504]                      0.014ms    33.024 K      0.00   32.25 KiB      2.44
+    8  SwiGLU    1  a[1x5504]+b[1x5504]->y[1x5504]                      0.013ms    33.024 K      0.00   32.25 KiB      2.62
+    9  FFN_W2    0  x[1x5504]+w[4096x5504]->y[1x4096]                   0.047ms    45.089 M      0.95   43.02 MiB    953.48
+   10  FFN_W2    1  x[1x5504]+w[4096x5504]->y[1x4096]                   0.047ms    45.089 M      0.97   43.02 MiB    966.03
+   11  Add      -1  a[1x4096]+b[1x4096]->y[1x4096]                      0.009ms     4.096 K      0.00   24.00 KiB      2.79
+[gpu-debug] segment avg latency (cuda_events): 0.349 ms
+[gpu-debug] sum(per-op)               : 0.465 ms (ratio=1.331)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=272.15 MiB reserved=286.00 MiB
+[gpu-debug] cuda mem after warmup : alloc=272.15 MiB reserved=286.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=272.17 MiB max_reserved=286.00 MiB
+========================================================================================
+[gpu-debug] segment_key=npu|decode|3|2ef4409498d14c672a4fbbfe6786cce6
+[gpu-debug] sig: device_type=npu phase=decode step=3 (count_hint=32)
+[gpu-debug] ops_repr: LN:-1,Add:-1,LN:-1,FFN_W1:0,FFN_W3:0,FFN_W1:1,FFN_W3:1,SwiGLU:0,SwiGLU:1,FFN_W2:0,FFN_W2:1,Add:-1
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=LN       shard=-1  x=[1x4096] + w=[4096]  ->  y=[1x4096]  (T=1, K=286)
+  - op#01  op=Add      shard=-1  a=[1x4096] + b=[1x4096]  ->  y=[1x4096]  (T=1, K=286)
+  - op#02  op=LN       shard=-1  x=[1x4096] + w=[4096]  ->  y=[1x4096]  (T=1, K=286)
+  - op#03  op=FFN_W1   shard=0   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=286)
+  - op#04  op=FFN_W3   shard=0   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=286)
+  - op#05  op=FFN_W1   shard=1   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=286)
+  - op#06  op=FFN_W3   shard=1   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=286)
+  - op#07  op=SwiGLU   shard=0   a=[1x5504] + b=[1x5504]  ->  y=[1x5504]  (T=1, K=286)
+  - op#08  op=SwiGLU   shard=1   a=[1x5504] + b=[1x5504]  ->  y=[1x5504]  (T=1, K=286)
+  - op#09  op=FFN_W2   shard=0   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=286)
+  - op#10  op=FFN_W2   shard=1   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=286)
+  - op#11  op=Add      shard=-1  a=[1x4096] + b=[1x4096]  ->  y=[1x4096]  (T=1, K=286)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  LN       -1  x[1x4096]+w[4096]->y[1x4096]                        0.066ms    20.480 K      0.00   24.00 KiB      0.37
+    1  Add      -1  a[1x4096]+b[1x4096]->y[1x4096]                      0.016ms     4.096 K      0.00   24.00 KiB      1.52
+    2  LN       -1  x[1x4096]+w[4096]->y[1x4096]                        0.057ms    20.480 K      0.00   24.00 KiB      0.43
+    3  FFN_W1    0  x[1x4096]+w[5504x4096]->y[1x5504]                   0.061ms    45.089 M      0.74   43.02 MiB    735.40
+    4  FFN_W3    0  x[1x4096]+w[5504x4096]->y[1x5504]                   0.045ms    45.089 M      1.00   43.02 MiB   1001.15
+    5  FFN_W1    1  x[1x4096]+w[5504x4096]->y[1x5504]                   0.045ms    45.089 M      1.01   43.02 MiB   1005.72
+    6  FFN_W3    1  x[1x4096]+w[5504x4096]->y[1x5504]                   0.044ms    45.089 M      1.02   43.02 MiB   1019.69
+    7  SwiGLU    0  a[1x5504]+b[1x5504]->y[1x5504]                      0.013ms    33.024 K      0.00   32.25 KiB      2.50
+    8  SwiGLU    1  a[1x5504]+b[1x5504]->y[1x5504]                      0.013ms    33.024 K      0.00   32.25 KiB      2.62
+    9  FFN_W2    0  x[1x5504]+w[4096x5504]->y[1x4096]                   0.047ms    45.089 M      0.96   43.02 MiB    955.55
+   10  FFN_W2    1  x[1x5504]+w[4096x5504]->y[1x4096]                   0.047ms    45.089 M      0.96   43.02 MiB    963.91
+   11  Add      -1  a[1x4096]+b[1x4096]->y[1x4096]                      0.009ms     4.096 K      0.00   24.00 KiB      2.70
+[gpu-debug] segment avg latency (cuda_events): 0.350 ms
+[gpu-debug] sum(per-op)               : 0.464 ms (ratio=1.327)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=272.15 MiB reserved=286.00 MiB
+[gpu-debug] cuda mem after warmup : alloc=272.15 MiB reserved=286.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=272.17 MiB max_reserved=286.00 MiB
+========================================================================================
+[gpu-debug] segment_key=npu|decode|4|2ef4409498d14c672a4fbbfe6786cce6
+[gpu-debug] sig: device_type=npu phase=decode step=4 (count_hint=32)
+[gpu-debug] ops_repr: LN:-1,Add:-1,LN:-1,FFN_W1:0,FFN_W3:0,FFN_W1:1,FFN_W3:1,SwiGLU:0,SwiGLU:1,FFN_W2:0,FFN_W2:1,Add:-1
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=LN       shard=-1  x=[1x4096] + w=[4096]  ->  y=[1x4096]  (T=1, K=298)
+  - op#01  op=Add      shard=-1  a=[1x4096] + b=[1x4096]  ->  y=[1x4096]  (T=1, K=298)
+  - op#02  op=LN       shard=-1  x=[1x4096] + w=[4096]  ->  y=[1x4096]  (T=1, K=298)
+  - op#03  op=FFN_W1   shard=0   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=298)
+  - op#04  op=FFN_W3   shard=0   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=298)
+  - op#05  op=FFN_W1   shard=1   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=298)
+  - op#06  op=FFN_W3   shard=1   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=298)
+  - op#07  op=SwiGLU   shard=0   a=[1x5504] + b=[1x5504]  ->  y=[1x5504]  (T=1, K=298)
+  - op#08  op=SwiGLU   shard=1   a=[1x5504] + b=[1x5504]  ->  y=[1x5504]  (T=1, K=298)
+  - op#09  op=FFN_W2   shard=0   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=298)
+  - op#10  op=FFN_W2   shard=1   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=298)
+  - op#11  op=Add      shard=-1  a=[1x4096] + b=[1x4096]  ->  y=[1x4096]  (T=1, K=298)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  LN       -1  x[1x4096]+w[4096]->y[1x4096]                        0.067ms    20.480 K      0.00   24.00 KiB      0.37
+    1  Add      -1  a[1x4096]+b[1x4096]->y[1x4096]                      0.016ms     4.096 K      0.00   24.00 KiB      1.51
+    2  LN       -1  x[1x4096]+w[4096]->y[1x4096]                        0.058ms    20.480 K      0.00   24.00 KiB      0.42
+    3  FFN_W1    0  x[1x4096]+w[5504x4096]->y[1x5504]                   0.062ms    45.089 M      0.73   43.02 MiB    731.74
+    4  FFN_W3    0  x[1x4096]+w[5504x4096]->y[1x5504]                   0.045ms    45.089 M      1.01   43.02 MiB   1008.03
+    5  FFN_W1    1  x[1x4096]+w[5504x4096]->y[1x5504]                   0.045ms    45.089 M      1.01   43.02 MiB   1005.72
+    6  FFN_W3    1  x[1x4096]+w[5504x4096]->y[1x5504]                   0.044ms    45.089 M      1.02   43.02 MiB   1024.44
+    7  SwiGLU    0  a[1x5504]+b[1x5504]->y[1x5504]                      0.014ms    33.024 K      0.00   32.25 KiB      2.44
+    8  SwiGLU    1  a[1x5504]+b[1x5504]->y[1x5504]                      0.013ms    33.024 K      0.00   32.25 KiB      2.60
+    9  FFN_W2    0  x[1x5504]+w[4096x5504]->y[1x4096]                   0.047ms    45.089 M      0.95   43.02 MiB    951.42
+   10  FFN_W2    1  x[1x5504]+w[4096x5504]->y[1x4096]                   0.047ms    45.089 M      0.97   43.02 MiB    966.03
+   11  Add      -1  a[1x4096]+b[1x4096]->y[1x4096]                      0.009ms     4.096 K      0.00   24.00 KiB      2.79
+[gpu-debug] segment avg latency (cuda_events): 0.349 ms
+[gpu-debug] sum(per-op)               : 0.466 ms (ratio=1.335)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=272.15 MiB reserved=286.00 MiB
+[gpu-debug] cuda mem after warmup : alloc=272.15 MiB reserved=286.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=272.17 MiB max_reserved=286.00 MiB
+========================================================================================
+[gpu-debug] segment_key=npu|decode|5|2ef4409498d14c672a4fbbfe6786cce6
+[gpu-debug] sig: device_type=npu phase=decode step=5 (count_hint=32)
+[gpu-debug] ops_repr: LN:-1,Add:-1,LN:-1,FFN_W1:0,FFN_W3:0,FFN_W1:1,FFN_W3:1,SwiGLU:0,SwiGLU:1,FFN_W2:0,FFN_W2:1,Add:-1
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=LN       shard=-1  x=[1x4096] + w=[4096]  ->  y=[1x4096]  (T=1, K=310)
+  - op#01  op=Add      shard=-1  a=[1x4096] + b=[1x4096]  ->  y=[1x4096]  (T=1, K=310)
+  - op#02  op=LN       shard=-1  x=[1x4096] + w=[4096]  ->  y=[1x4096]  (T=1, K=310)
+  - op#03  op=FFN_W1   shard=0   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=310)
+  - op#04  op=FFN_W3   shard=0   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=310)
+  - op#05  op=FFN_W1   shard=1   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=310)
+  - op#06  op=FFN_W3   shard=1   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=310)
+  - op#07  op=SwiGLU   shard=0   a=[1x5504] + b=[1x5504]  ->  y=[1x5504]  (T=1, K=310)
+  - op#08  op=SwiGLU   shard=1   a=[1x5504] + b=[1x5504]  ->  y=[1x5504]  (T=1, K=310)
+  - op#09  op=FFN_W2   shard=0   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=310)
+  - op#10  op=FFN_W2   shard=1   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=310)
+  - op#11  op=Add      shard=-1  a=[1x4096] + b=[1x4096]  ->  y=[1x4096]  (T=1, K=310)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  LN       -1  x[1x4096]+w[4096]->y[1x4096]                        0.067ms    20.480 K      0.00   24.00 KiB      0.37
+    1  Add      -1  a[1x4096]+b[1x4096]->y[1x4096]                      0.016ms     4.096 K      0.00   24.00 KiB      1.50
+    2  LN       -1  x[1x4096]+w[4096]->y[1x4096]                        0.058ms    20.480 K      0.00   24.00 KiB      0.43
+    3  FFN_W1    0  x[1x4096]+w[5504x4096]->y[1x5504]                   0.061ms    45.089 M      0.74   43.02 MiB    735.40
+    4  FFN_W3    0  x[1x4096]+w[5504x4096]->y[1x5504]                   0.045ms    45.089 M      1.01   43.02 MiB   1008.03
+    5  FFN_W1    1  x[1x4096]+w[5504x4096]->y[1x5504]                   0.045ms    45.089 M      1.01   43.02 MiB   1005.72
+    6  FFN_W3    1  x[1x4096]+w[5504x4096]->y[1x5504]                   0.044ms    45.089 M      1.02   43.02 MiB   1024.44
+    7  SwiGLU    0  a[1x5504]+b[1x5504]->y[1x5504]                      0.014ms    33.024 K      0.00   32.25 KiB      2.44
+    8  SwiGLU    1  a[1x5504]+b[1x5504]->y[1x5504]                      0.013ms    33.024 K      0.00   32.25 KiB      2.62
+    9  FFN_W2    0  x[1x5504]+w[4096x5504]->y[1x4096]                   0.047ms    45.089 M      0.95   43.02 MiB    953.48
+   10  FFN_W2    1  x[1x5504]+w[4096x5504]->y[1x4096]                   0.047ms    45.089 M      0.97   43.02 MiB    968.15
+   11  Add      -1  a[1x4096]+b[1x4096]->y[1x4096]                      0.009ms     4.096 K      0.00   24.00 KiB      2.76
+[gpu-debug] segment avg latency (cuda_events): 0.349 ms
+[gpu-debug] sum(per-op)               : 0.465 ms (ratio=1.331)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=272.15 MiB reserved=286.00 MiB
+[gpu-debug] cuda mem after warmup : alloc=272.15 MiB reserved=286.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=272.17 MiB max_reserved=286.00 MiB
+========================================================================================
+[gpu-debug] segment_key=npu|decode|6|2ef4409498d14c672a4fbbfe6786cce6
+[gpu-debug] sig: device_type=npu phase=decode step=6 (count_hint=32)
+[gpu-debug] ops_repr: LN:-1,Add:-1,LN:-1,FFN_W1:0,FFN_W3:0,FFN_W1:1,FFN_W3:1,SwiGLU:0,SwiGLU:1,FFN_W2:0,FFN_W2:1,Add:-1
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=LN       shard=-1  x=[1x4096] + w=[4096]  ->  y=[1x4096]  (T=1, K=322)
+  - op#01  op=Add      shard=-1  a=[1x4096] + b=[1x4096]  ->  y=[1x4096]  (T=1, K=322)
+  - op#02  op=LN       shard=-1  x=[1x4096] + w=[4096]  ->  y=[1x4096]  (T=1, K=322)
+  - op#03  op=FFN_W1   shard=0   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=322)
+  - op#04  op=FFN_W3   shard=0   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=322)
+  - op#05  op=FFN_W1   shard=1   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=322)
+  - op#06  op=FFN_W3   shard=1   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=322)
+  - op#07  op=SwiGLU   shard=0   a=[1x5504] + b=[1x5504]  ->  y=[1x5504]  (T=1, K=322)
+  - op#08  op=SwiGLU   shard=1   a=[1x5504] + b=[1x5504]  ->  y=[1x5504]  (T=1, K=322)
+  - op#09  op=FFN_W2   shard=0   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=322)
+  - op#10  op=FFN_W2   shard=1   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=322)
+  - op#11  op=Add      shard=-1  a=[1x4096] + b=[1x4096]  ->  y=[1x4096]  (T=1, K=322)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  LN       -1  x[1x4096]+w[4096]->y[1x4096]                        0.067ms    20.480 K      0.00   24.00 KiB      0.37
+    1  Add      -1  a[1x4096]+b[1x4096]->y[1x4096]                      0.016ms     4.096 K      0.00   24.00 KiB      1.57
+    2  LN       -1  x[1x4096]+w[4096]->y[1x4096]                        0.057ms    20.480 K      0.00   24.00 KiB      0.43
+    3  FFN_W1    0  x[1x4096]+w[5504x4096]->y[1x5504]                   0.061ms    45.089 M      0.73   43.02 MiB    734.18
+    4  FFN_W3    0  x[1x4096]+w[5504x4096]->y[1x5504]                   0.045ms    45.089 M      1.01   43.02 MiB   1008.03
+    5  FFN_W1    1  x[1x4096]+w[5504x4096]->y[1x5504]                   0.045ms    45.089 M      1.01   43.02 MiB   1005.72
+    6  FFN_W3    1  x[1x4096]+w[5504x4096]->y[1x5504]                   0.044ms    45.089 M      1.02   43.02 MiB   1022.06
+    7  SwiGLU    0  a[1x5504]+b[1x5504]->y[1x5504]                      0.013ms    33.024 K      0.00   32.25 KiB      2.46
+    8  SwiGLU    1  a[1x5504]+b[1x5504]->y[1x5504]                      0.012ms    33.024 K      0.00   32.25 KiB      2.64
+    9  FFN_W2    0  x[1x5504]+w[4096x5504]->y[1x4096]                   0.047ms    45.089 M      0.96   43.02 MiB    957.62
+   10  FFN_W2    1  x[1x5504]+w[4096x5504]->y[1x4096]                   0.047ms    45.089 M      0.96   43.02 MiB    963.91
+   11  Add      -1  a[1x4096]+b[1x4096]->y[1x4096]                      0.009ms     4.096 K      0.00   24.00 KiB      2.73
+[gpu-debug] segment avg latency (cuda_events): 0.348 ms
+[gpu-debug] sum(per-op)               : 0.464 ms (ratio=1.332)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=272.15 MiB reserved=286.00 MiB
+[gpu-debug] cuda mem after warmup : alloc=272.15 MiB reserved=286.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=272.17 MiB max_reserved=286.00 MiB
+========================================================================================
+[gpu-debug] segment_key=npu|prefill|-1|2ef4409498d14c672a4fbbfe6786cce6
+[gpu-debug] sig: device_type=npu phase=prefill step=-1 (count_hint=32)
+[gpu-debug] ops_repr: LN:-1,Add:-1,LN:-1,FFN_W1:0,FFN_W3:0,FFN_W1:1,FFN_W3:1,SwiGLU:0,SwiGLU:1,FFN_W2:0,FFN_W2:1,Add:-1
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=LN       shard=-1  x=[262x4096] + w=[4096]  ->  y=[262x4096]  (T=262, K=262)
+  - op#01  op=Add      shard=-1  a=[262x4096] + b=[262x4096]  ->  y=[262x4096]  (T=262, K=262)
+  - op#02  op=LN       shard=-1  x=[262x4096] + w=[4096]  ->  y=[262x4096]  (T=262, K=262)
+  - op#03  op=FFN_W1   shard=0   x=[262x4096] + w=[5504x4096]  ->  y=[262x5504]  (T=262, K=262)
+  - op#04  op=FFN_W3   shard=0   x=[262x4096] + w=[5504x4096]  ->  y=[262x5504]  (T=262, K=262)
+  - op#05  op=FFN_W1   shard=1   x=[262x4096] + w=[5504x4096]  ->  y=[262x5504]  (T=262, K=262)
+  - op#06  op=FFN_W3   shard=1   x=[262x4096] + w=[5504x4096]  ->  y=[262x5504]  (T=262, K=262)
+  - op#07  op=SwiGLU   shard=0   a=[262x5504] + b=[262x5504]  ->  y=[262x5504]  (T=262, K=262)
+  - op#08  op=SwiGLU   shard=1   a=[262x5504] + b=[262x5504]  ->  y=[262x5504]  (T=262, K=262)
+  - op#09  op=FFN_W2   shard=0   x=[262x5504] + w=[4096x5504]  ->  y=[262x4096]  (T=262, K=262)
+  - op#10  op=FFN_W2   shard=1   x=[262x5504] + w=[4096x5504]  ->  y=[262x4096]  (T=262, K=262)
+  - op#11  op=Add      shard=-1  a=[262x4096] + b=[262x4096]  ->  y=[262x4096]  (T=262, K=262)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  LN       -1  x[262x4096]+w[4096]->y[262x4096]                    0.078ms     5.366 M      0.07    4.10 MiB     55.41
+    1  Add      -1  a[262x4096]+b[262x4096]->y[262x4096]                0.012ms     1.073 M      0.09    6.14 MiB    551.58
+    2  LN       -1  x[262x4096]+w[4096]->y[262x4096]                    0.070ms     5.366 M      0.08    4.10 MiB     61.40
+    3  FFN_W1    0  x[262x4096]+w[5504x4096]->y[262x5504]               0.151ms    11.813 G     78.32   47.80 MiB    332.28
+    4  FFN_W3    0  x[262x4096]+w[5504x4096]->y[262x5504]               0.140ms    11.813 G     84.15   47.80 MiB    357.00
+    5  FFN_W1    1  x[262x4096]+w[5504x4096]->y[262x5504]               0.141ms    11.813 G     83.78   47.80 MiB    355.44
+    6  FFN_W3    1  x[262x4096]+w[5504x4096]->y[262x5504]               0.141ms    11.813 G     83.84   47.80 MiB    355.70
+    7  SwiGLU    0  a[262x5504]+b[262x5504]->y[262x5504]                0.021ms     8.652 M      0.41    8.25 MiB    408.19
+    8  SwiGLU    1  a[262x5504]+b[262x5504]->y[262x5504]                0.020ms     8.652 M      0.44    8.25 MiB    442.38
+    9  FFN_W2    0  x[262x5504]+w[4096x5504]->y[262x4096]               0.116ms    11.813 G    101.82   47.80 MiB    431.99
+   10  FFN_W2    1  x[262x5504]+w[4096x5504]->y[262x4096]               0.115ms    11.813 G    102.73   47.80 MiB    435.84
+   11  Add      -1  a[262x4096]+b[262x4096]->y[262x4096]                0.011ms     1.073 M      0.10    6.14 MiB    576.88
+[gpu-debug] segment avg latency (cuda_events): 0.944 ms
+[gpu-debug] sum(per-op)               : 1.015 ms (ratio=1.076)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=272.15 MiB reserved=286.00 MiB
+[gpu-debug] cuda mem after warmup : alloc=276.95 MiB reserved=286.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=282.45 MiB max_reserved=286.00 MiB
+  progress 8/8

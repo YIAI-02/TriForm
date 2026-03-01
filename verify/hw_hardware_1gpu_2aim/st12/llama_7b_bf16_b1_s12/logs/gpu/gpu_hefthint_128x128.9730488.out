@@ -1,0 +1,465 @@
+[slurm] jobid=9730488 nodelist=l12gpu04
+[slurm] CUDA_VISIBLE_DEVICES=0
+Fri Feb 27 10:07:46 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 560.35.03              Driver Version: 560.35.03      CUDA Version: 12.6     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA A100-PCIE-40GB          On  |   00000000:98:00.0 Off |                    0 |
+| N/A   32C    P0             36W /  250W |       1MiB /  40960MiB |      0%      Default |
+|                                         |                        |             Disabled |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI        PID   Type   Process name                              GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+torch: 2.8.0+cu126
+cuda available: True
+device: NVIDIA A100-PCIE-40GB
+[slurm] PY_SCRIPT=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/schedule_deploy_verify.py
+[slurm] TASKS_JSON=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/hefthint_128x128.gpu_tasks.json
+[slurm] OUT_JSON=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/hefthint_128x128.gpu_results.json
+[slurm] WARMUP=3 ITERS=10 DEVICE=cuda GPU_DTYPE=bf16
+[slurm] OK_FILE=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/hefthint_128x128.gpu.ok
+[slurm] Running: python /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/schedule_deploy_verify.py run-gpu --tasks /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/hefthint_128x128.gpu_tasks.json --out /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/hefthint_128x128.gpu_results.json --debug --debug-txt /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/hefthint_128x128.gpu_debug.log --warmup 3 --iters 10 --device cuda --gpu-dtype bf16
+[run-gpu] tasks=24 warmup=3 iters=10 device=cuda dtype=bf16 segment_scope=layer
+[run-gpu] GPU[0] NVIDIA A100-PCIE-40GB; SM=108, CC=8.0
+[run-gpu] nvidia-smi -L: GPU 0: NVIDIA A100-PCIE-40GB (UUID: GPU-6d440a5b-63f1-384a-e57b-cc3200e8df52)
+[run-gpu] nvidia-smi query: NVIDIA A100-PCIE-40GB, GPU-6d440a5b-63f1-384a-e57b-cc3200e8df52, 560.35.03, 40960
+[run-gpu][debug] torch_default_dtype=torch.float32
+[run-gpu][debug] torch.backends.cuda.matmul.allow_tf32=False
+[run-gpu][debug] cudnn.enabled=True benchmark=False deterministic=False allow_tf32=True
+[run-gpu][debug] nvidia-smi snapshot: 0, 0, 0, 4, 40960, 32, 36.32, 250.00
+========================================================================================
+[gpu-debug] segment_key=npu|decode|0|6e4eed79a7a597c6844e1e8a97d0ac5d
+[gpu-debug] sig: device_type=npu phase=decode step=0 (count_hint=5)
+[gpu-debug] ops_repr: Softmax:0
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=Softmax  shard=0   scores=[16x1x129]  ->  y=[16x1x129]  (T=1, K=129)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  Softmax   0  scores[16x1x129]->y[16x1x129]                       0.017ms    10.320 K      0.00    8.06 KiB      0.48
+[gpu-debug] segment avg latency (cuda_events): 0.017 ms
+[gpu-debug] sum(per-op)               : 0.017 ms (ratio=0.994)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=0 B reserved=0 B
+[gpu-debug] cuda mem after warmup : alloc=4.50 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=9.00 KiB max_reserved=2.00 MiB
+========================================================================================
+[gpu-debug] segment_key=npu|decode|10|307a197e3ce88b480cf4c5382b3cb30c
+[gpu-debug] sig: device_type=npu phase=decode step=10 (count_hint=6)
+[gpu-debug] ops_repr: Softmax:1
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=Softmax  shard=1   scores=[16x1x236]  ->  y=[16x1x236]  (T=1, K=236)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  Softmax   1  scores[16x1x236]->y[16x1x236]                       0.018ms    18.880 K      0.00   14.75 KiB      0.82
+[gpu-debug] segment avg latency (cuda_events): 0.011 ms
+[gpu-debug] sum(per-op)               : 0.018 ms (ratio=1.627)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=4.50 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem after warmup : alloc=12.00 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=19.50 KiB max_reserved=2.00 MiB
+========================================================================================
+[gpu-debug] segment_key=npu|decode|10|6e4eed79a7a597c6844e1e8a97d0ac5d
+[gpu-debug] sig: device_type=npu phase=decode step=10 (count_hint=5)
+[gpu-debug] ops_repr: Softmax:0
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=Softmax  shard=0   scores=[16x1x236]  ->  y=[16x1x236]  (T=1, K=236)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  Softmax   0  scores[16x1x236]->y[16x1x236]                       0.016ms    18.880 K      0.00   14.75 KiB      0.94
+[gpu-debug] segment avg latency (cuda_events): 0.011 ms
+[gpu-debug] sum(per-op)               : 0.016 ms (ratio=1.440)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=12.00 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem after warmup : alloc=12.00 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=19.50 KiB max_reserved=2.00 MiB
+========================================================================================
+[gpu-debug] segment_key=npu|decode|11|307a197e3ce88b480cf4c5382b3cb30c
+[gpu-debug] sig: device_type=npu phase=decode step=11 (count_hint=6)
+[gpu-debug] ops_repr: Softmax:1
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=Softmax  shard=1   scores=[16x1x248]  ->  y=[16x1x248]  (T=1, K=248)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  Softmax   1  scores[16x1x248]->y[16x1x248]                       0.016ms    19.840 K      0.00   15.50 KiB      0.98
+[gpu-debug] segment avg latency (cuda_events): 0.011 ms
+[gpu-debug] sum(per-op)               : 0.016 ms (ratio=1.477)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=12.00 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem after warmup : alloc=20.00 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=28.00 KiB max_reserved=2.00 MiB
+========================================================================================
+[gpu-debug] segment_key=npu|decode|11|6e4eed79a7a597c6844e1e8a97d0ac5d
+[gpu-debug] sig: device_type=npu phase=decode step=11 (count_hint=5)
+[gpu-debug] ops_repr: Softmax:0
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=Softmax  shard=0   scores=[16x1x248]  ->  y=[16x1x248]  (T=1, K=248)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  Softmax   0  scores[16x1x248]->y[16x1x248]                       0.016ms    19.840 K      0.00   15.50 KiB      1.00
+[gpu-debug] segment avg latency (cuda_events): 0.011 ms
+[gpu-debug] sum(per-op)               : 0.016 ms (ratio=1.462)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=20.00 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem after warmup : alloc=20.00 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=28.00 KiB max_reserved=2.00 MiB
+========================================================================================
+[gpu-debug] segment_key=npu|decode|1|307a197e3ce88b480cf4c5382b3cb30c
+[gpu-debug] sig: device_type=npu phase=decode step=1 (count_hint=6)
+[gpu-debug] ops_repr: Softmax:1
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=Softmax  shard=1   scores=[16x1x130]  ->  y=[16x1x130]  (T=1, K=130)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  Softmax   1  scores[16x1x130]->y[16x1x130]                       0.017ms    10.400 K      0.00    8.12 KiB      0.50
+[gpu-debug] segment avg latency (cuda_events): 0.011 ms
+[gpu-debug] sum(per-op)               : 0.017 ms (ratio=1.509)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=20.00 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem after warmup : alloc=24.50 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=29.00 KiB max_reserved=2.00 MiB
+========================================================================================
+[gpu-debug] segment_key=npu|decode|1|6e4eed79a7a597c6844e1e8a97d0ac5d
+[gpu-debug] sig: device_type=npu phase=decode step=1 (count_hint=5)
+[gpu-debug] ops_repr: Softmax:0
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=Softmax  shard=0   scores=[16x1x130]  ->  y=[16x1x130]  (T=1, K=130)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  Softmax   0  scores[16x1x130]->y[16x1x130]                       0.016ms    10.400 K      0.00    8.12 KiB      0.52
+[gpu-debug] segment avg latency (cuda_events): 0.011 ms
+[gpu-debug] sum(per-op)               : 0.016 ms (ratio=1.467)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=24.50 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem after warmup : alloc=24.50 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=29.00 KiB max_reserved=2.00 MiB
+========================================================================================
+[gpu-debug] segment_key=npu|decode|2|307a197e3ce88b480cf4c5382b3cb30c
+[gpu-debug] sig: device_type=npu phase=decode step=2 (count_hint=6)
+[gpu-debug] ops_repr: Softmax:1
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=Softmax  shard=1   scores=[16x1x140]  ->  y=[16x1x140]  (T=1, K=140)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  Softmax   1  scores[16x1x140]->y[16x1x140]                       0.016ms    11.200 K      0.00    8.75 KiB      0.56
+[gpu-debug] segment avg latency (cuda_events): 0.011 ms
+[gpu-debug] sum(per-op)               : 0.016 ms (ratio=1.490)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=24.50 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem after warmup : alloc=29.00 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=33.50 KiB max_reserved=2.00 MiB
+========================================================================================
+[gpu-debug] segment_key=npu|decode|2|6e4eed79a7a597c6844e1e8a97d0ac5d
+[gpu-debug] sig: device_type=npu phase=decode step=2 (count_hint=5)
+[gpu-debug] ops_repr: Softmax:0
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=Softmax  shard=0   scores=[16x1x140]  ->  y=[16x1x140]  (T=1, K=140)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  Softmax   0  scores[16x1x140]->y[16x1x140]                       0.016ms    11.200 K      0.00    8.75 KiB      0.55
+[gpu-debug] segment avg latency (cuda_events): 0.011 ms
+[gpu-debug] sum(per-op)               : 0.016 ms (ratio=1.505)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=29.00 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem after warmup : alloc=29.00 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=33.50 KiB max_reserved=2.00 MiB
+========================================================================================
+[gpu-debug] segment_key=npu|decode|3|307a197e3ce88b480cf4c5382b3cb30c
+[gpu-debug] sig: device_type=npu phase=decode step=3 (count_hint=6)
+[gpu-debug] ops_repr: Softmax:1
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=Softmax  shard=1   scores=[16x1x152]  ->  y=[16x1x152]  (T=1, K=152)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  Softmax   1  scores[16x1x152]->y[16x1x152]                       0.016ms    12.160 K      0.00    9.50 KiB      0.62
+[gpu-debug] segment avg latency (cuda_events): 0.011 ms
+[gpu-debug] sum(per-op)               : 0.016 ms (ratio=1.439)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=29.00 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem after warmup : alloc=34.00 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=39.00 KiB max_reserved=2.00 MiB
+========================================================================================
+[gpu-debug] segment_key=npu|decode|3|6e4eed79a7a597c6844e1e8a97d0ac5d
+[gpu-debug] sig: device_type=npu phase=decode step=3 (count_hint=5)
+[gpu-debug] ops_repr: Softmax:0
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=Softmax  shard=0   scores=[16x1x152]  ->  y=[16x1x152]  (T=1, K=152)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  Softmax   0  scores[16x1x152]->y[16x1x152]                       0.016ms    12.160 K      0.00    9.50 KiB      0.60
+[gpu-debug] segment avg latency (cuda_events): 0.011 ms
+[gpu-debug] sum(per-op)               : 0.016 ms (ratio=1.486)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=34.00 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem after warmup : alloc=34.00 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=39.00 KiB max_reserved=2.00 MiB
+========================================================================================
+[gpu-debug] segment_key=npu|decode|4|307a197e3ce88b480cf4c5382b3cb30c
+[gpu-debug] sig: device_type=npu phase=decode step=4 (count_hint=6)
+[gpu-debug] ops_repr: Softmax:1
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=Softmax  shard=1   scores=[16x1x164]  ->  y=[16x1x164]  (T=1, K=164)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  Softmax   1  scores[16x1x164]->y[16x1x164]                       0.016ms    13.120 K      0.00   10.25 KiB      0.65
+[gpu-debug] segment avg latency (cuda_events): 0.011 ms
+[gpu-debug] sum(per-op)               : 0.016 ms (ratio=1.491)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=34.00 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem after warmup : alloc=39.50 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=45.00 KiB max_reserved=2.00 MiB
+========================================================================================
+[gpu-debug] segment_key=npu|decode|4|6e4eed79a7a597c6844e1e8a97d0ac5d
+[gpu-debug] sig: device_type=npu phase=decode step=4 (count_hint=5)
+[gpu-debug] ops_repr: Softmax:0
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=Softmax  shard=0   scores=[16x1x164]  ->  y=[16x1x164]  (T=1, K=164)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  Softmax   0  scores[16x1x164]->y[16x1x164]                       0.016ms    13.120 K      0.00   10.25 KiB      0.67
+[gpu-debug] segment avg latency (cuda_events): 0.011 ms
+[gpu-debug] sum(per-op)               : 0.016 ms (ratio=1.467)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=39.50 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem after warmup : alloc=39.50 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=45.00 KiB max_reserved=2.00 MiB
+========================================================================================
+[gpu-debug] segment_key=npu|decode|5|307a197e3ce88b480cf4c5382b3cb30c
+[gpu-debug] sig: device_type=npu phase=decode step=5 (count_hint=6)
+[gpu-debug] ops_repr: Softmax:1
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=Softmax  shard=1   scores=[16x1x176]  ->  y=[16x1x176]  (T=1, K=176)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  Softmax   1  scores[16x1x176]->y[16x1x176]                       0.016ms    14.080 K      0.00   11.00 KiB      0.69
+[gpu-debug] segment avg latency (cuda_events): 0.011 ms
+[gpu-debug] sum(per-op)               : 0.016 ms (ratio=1.514)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=39.50 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem after warmup : alloc=45.00 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=50.50 KiB max_reserved=2.00 MiB
+========================================================================================
+[gpu-debug] segment_key=npu|decode|5|6e4eed79a7a597c6844e1e8a97d0ac5d
+[gpu-debug] sig: device_type=npu phase=decode step=5 (count_hint=5)
+[gpu-debug] ops_repr: Softmax:0
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=Softmax  shard=0   scores=[16x1x176]  ->  y=[16x1x176]  (T=1, K=176)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  Softmax   0  scores[16x1x176]->y[16x1x176]                       0.016ms    14.080 K      0.00   11.00 KiB      0.69
+[gpu-debug] segment avg latency (cuda_events): 0.011 ms
+[gpu-debug] sum(per-op)               : 0.016 ms (ratio=1.529)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=45.00 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem after warmup : alloc=45.00 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=50.50 KiB max_reserved=2.00 MiB
+========================================================================================
+[gpu-debug] segment_key=npu|decode|6|307a197e3ce88b480cf4c5382b3cb30c
+[gpu-debug] sig: device_type=npu phase=decode step=6 (count_hint=6)
+[gpu-debug] ops_repr: Softmax:1
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=Softmax  shard=1   scores=[16x1x188]  ->  y=[16x1x188]  (T=1, K=188)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  Softmax   1  scores[16x1x188]->y[16x1x188]                       0.016ms    15.040 K      0.00   11.75 KiB      0.76
+[gpu-debug] segment avg latency (cuda_events): 0.011 ms
+[gpu-debug] sum(per-op)               : 0.016 ms (ratio=1.449)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=45.00 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem after warmup : alloc=51.00 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=57.00 KiB max_reserved=2.00 MiB
+========================================================================================
+[gpu-debug] segment_key=npu|decode|6|6e4eed79a7a597c6844e1e8a97d0ac5d
+[gpu-debug] sig: device_type=npu phase=decode step=6 (count_hint=5)
+[gpu-debug] ops_repr: Softmax:0
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=Softmax  shard=0   scores=[16x1x188]  ->  y=[16x1x188]  (T=1, K=188)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  Softmax   0  scores[16x1x188]->y[16x1x188]                       0.016ms    15.040 K      0.00   11.75 KiB      0.74
+[gpu-debug] segment avg latency (cuda_events): 0.012 ms
+[gpu-debug] sum(per-op)               : 0.016 ms (ratio=1.374)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=51.00 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem after warmup : alloc=51.00 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=57.00 KiB max_reserved=2.00 MiB
+========================================================================================
+[gpu-debug] segment_key=npu|decode|7|307a197e3ce88b480cf4c5382b3cb30c
+[gpu-debug] sig: device_type=npu phase=decode step=7 (count_hint=6)
+[gpu-debug] ops_repr: Softmax:1
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=Softmax  shard=1   scores=[16x1x200]  ->  y=[16x1x200]  (T=1, K=200)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  Softmax   1  scores[16x1x200]->y[16x1x200]                       0.016ms    16.000 K      0.00   12.50 KiB      0.80
+[gpu-debug] segment avg latency (cuda_events): 0.011 ms
+[gpu-debug] sum(per-op)               : 0.016 ms (ratio=1.510)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=51.00 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem after warmup : alloc=57.50 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=64.00 KiB max_reserved=2.00 MiB
+========================================================================================
+[gpu-debug] segment_key=npu|decode|7|6e4eed79a7a597c6844e1e8a97d0ac5d
+[gpu-debug] sig: device_type=npu phase=decode step=7 (count_hint=5)
+[gpu-debug] ops_repr: Softmax:0
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=Softmax  shard=0   scores=[16x1x200]  ->  y=[16x1x200]  (T=1, K=200)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  Softmax   0  scores[16x1x200]->y[16x1x200]                       0.017ms    16.000 K      0.00   12.50 KiB      0.77
+[gpu-debug] segment avg latency (cuda_events): 0.011 ms
+[gpu-debug] sum(per-op)               : 0.017 ms (ratio=1.573)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=57.50 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem after warmup : alloc=57.50 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=64.00 KiB max_reserved=2.00 MiB
+========================================================================================
+[gpu-debug] segment_key=npu|decode|8|307a197e3ce88b480cf4c5382b3cb30c
+[gpu-debug] sig: device_type=npu phase=decode step=8 (count_hint=6)
+[gpu-debug] ops_repr: Softmax:1
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=Softmax  shard=1   scores=[16x1x212]  ->  y=[16x1x212]  (T=1, K=212)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  Softmax   1  scores[16x1x212]->y[16x1x212]                       0.016ms    16.960 K      0.00   13.25 KiB      0.85
+[gpu-debug] segment avg latency (cuda_events): 0.011 ms
+[gpu-debug] sum(per-op)               : 0.016 ms (ratio=1.458)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=57.50 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem after warmup : alloc=64.50 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=71.50 KiB max_reserved=2.00 MiB
+  progress 20/24
+========================================================================================
+[gpu-debug] segment_key=npu|decode|8|6e4eed79a7a597c6844e1e8a97d0ac5d
+[gpu-debug] sig: device_type=npu phase=decode step=8 (count_hint=5)
+[gpu-debug] ops_repr: Softmax:0
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=Softmax  shard=0   scores=[16x1x212]  ->  y=[16x1x212]  (T=1, K=212)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  Softmax   0  scores[16x1x212]->y[16x1x212]                       0.017ms    16.960 K      0.00   13.25 KiB      0.82
+[gpu-debug] segment avg latency (cuda_events): 0.011 ms
+[gpu-debug] sum(per-op)               : 0.017 ms (ratio=1.543)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=64.50 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem after warmup : alloc=64.50 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=71.50 KiB max_reserved=2.00 MiB
+========================================================================================
+[gpu-debug] segment_key=npu|decode|9|307a197e3ce88b480cf4c5382b3cb30c
+[gpu-debug] sig: device_type=npu phase=decode step=9 (count_hint=6)
+[gpu-debug] ops_repr: Softmax:1
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=Softmax  shard=1   scores=[16x1x224]  ->  y=[16x1x224]  (T=1, K=224)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  Softmax   1  scores[16x1x224]->y[16x1x224]                       0.016ms    17.920 K      0.00   14.00 KiB      0.89
+[gpu-debug] segment avg latency (cuda_events): 0.012 ms
+[gpu-debug] sum(per-op)               : 0.016 ms (ratio=1.308)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=64.50 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem after warmup : alloc=71.50 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=78.50 KiB max_reserved=2.00 MiB
+========================================================================================
+[gpu-debug] segment_key=npu|decode|9|6e4eed79a7a597c6844e1e8a97d0ac5d
+[gpu-debug] sig: device_type=npu phase=decode step=9 (count_hint=5)
+[gpu-debug] ops_repr: Softmax:0
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=Softmax  shard=0   scores=[16x1x224]  ->  y=[16x1x224]  (T=1, K=224)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  Softmax   0  scores[16x1x224]->y[16x1x224]                       0.016ms    17.920 K      0.00   14.00 KiB      0.90
+[gpu-debug] segment avg latency (cuda_events): 0.010 ms
+[gpu-debug] sum(per-op)               : 0.016 ms (ratio=1.529)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=71.50 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem after warmup : alloc=71.50 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=78.50 KiB max_reserved=2.00 MiB
+========================================================================================
+[gpu-debug] segment_key=npu|prefill|-1|484c97cbafe846cd6cda66e063d38e2a
+[gpu-debug] sig: device_type=npu phase=prefill step=-1 (count_hint=32)
+[gpu-debug] ops_repr: LN:-1,QK:0,QK:1,Softmax:0,Softmax:1,SV:0,SV:1,LN:-1
+[gpu-debug] cfg: device=cuda dtype=torch.bfloat16 dim=4096 ffn_dim=11008 n_heads=32 shards=2
+[gpu-debug] op plan (with inferred tensor shapes):
+  - op#00  op=LN       shard=-1  x=[128x4096] + w=[4096]  ->  y=[128x4096]  (T=128, K=128)
+  - op#01  op=QK       shard=0   q=[16x128x128] + k=[16x128x128]  ->  y=[16x128x128]  (T=128, K=128)
+  - op#02  op=QK       shard=1   q=[16x128x128] + k=[16x128x128]  ->  y=[16x128x128]  (T=128, K=128)
+  - op#03  op=Softmax  shard=0   scores=[16x128x128]  ->  y=[16x128x128]  (T=128, K=128)
+  - op#04  op=Softmax  shard=1   scores=[16x128x128]  ->  y=[16x128x128]  (T=128, K=128)
+  - op#05  op=SV       shard=0   p=[16x128x128] + v=[16x128x128]  ->  y=[16x128x128]  (T=128, K=128)
+  - op#06  op=SV       shard=1   p=[16x128x128] + v=[16x128x128]  ->  y=[16x128x128]  (T=128, K=128)
+  - op#07  op=LN       shard=-1  x=[128x4096] + w=[4096]  ->  y=[128x4096]  (T=128, K=128)
+[gpu-debug] per-op timing breakdown (avg over iters):
+  idx  op       sh  io                                                    time   est_flops    TFLOPs       bytes      GB/s
+  ------------------------------------------------------------------------------------------------------------------------
+    0  LN       -1  x[128x4096]+w[4096]->y[128x4096]                    0.075ms     2.621 M      0.03    2.01 MiB     27.90
+    1  QK        0  q[16x128x128]+k[16x128x128]->y[16x128x128]          0.044ms    67.109 M      1.52    1.50 MiB     35.72
+    2  QK        1  q[16x128x128]+k[16x128x128]->y[16x128x128]          0.043ms    67.109 M      1.57    1.50 MiB     36.75
+    3  Softmax   0  scores[16x128x128]->y[16x128x128]                   0.019ms     1.311 M      0.07    1.00 MiB     55.35
+    4  Softmax   1  scores[16x128x128]->y[16x128x128]                   0.015ms     1.311 M      0.09    1.00 MiB     68.27
+    5  SV        0  p[16x128x128]+v[16x128x128]->y[16x128x128]          0.032ms    67.109 M      2.12    1.50 MiB     49.71
+    6  SV        1  p[16x128x128]+v[16x128x128]->y[16x128x128]          0.030ms    67.109 M      2.26    1.50 MiB     52.97
+    7  LN       -1  x[128x4096]+w[4096]->y[128x4096]                    0.077ms     2.621 M      0.03    2.01 MiB     27.45
+[gpu-debug] segment avg latency (cuda_events): 0.222 ms
+[gpu-debug] sum(per-op)               : 0.335 ms (ratio=1.507)
+[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.
+[gpu-debug] cuda mem before warmup: alloc=71.50 KiB reserved=2.00 MiB
+[gpu-debug] cuda mem after warmup : alloc=9.70 MiB reserved=24.00 MiB
+[gpu-debug] cuda mem peak (this segment): max_alloc=11.70 MiB max_reserved=24.00 MiB
+  progress 24/24
+[run-gpu] wrote /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/hefthint_128x128.gpu_results.json
+[slurm] wrote OK_FILE=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st12/llama_7b_bf16_b1_s12/hefthint_128x128.gpu.ok

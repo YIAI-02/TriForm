@@ -3,8 +3,10 @@
 
 '''
 python3 ./verify/gen_job_tsv.py \
-  --input ./algorithms/output/experiment_1gpu_4aim/hw_hardware_1gpu_4aim \
-  --output ./verify/jobs_sweep.tsv
+  --input ./algorithms/output/hw_hardware_1npu_2aim \
+  --output ./verify/jobs_sweep.tsv \
+  --prefill-len 128 \
+  --decode-len 64
 
   
 '''
@@ -22,6 +24,40 @@ STRIDE_RE = re.compile(r"(?:^|_)s(?P<stride>\d+)$")
 DTYPE_RE = re.compile(r"^(?P<model>.+?)_(?:int|fp|bf)\d+", re.IGNORECASE)
 BATCH_RE = re.compile(r"^(?P<model>.+?)_b\d+", re.IGNORECASE)
 SIZE_TOKEN_RE = re.compile(r"^\d+(?:\.\d+)?[bkBK]$")
+
+
+def parse_int_set(s: str | None) -> set[int] | None:
+    """Parse a CLI filter string into a set of ints.
+
+    Supported formats:
+      - "128"               -> {128}
+      - "128,256"           -> {128, 256}
+      - "128 256"           -> {128, 256}
+      - "128-512"           -> {128..512} (inclusive)
+
+    Empty/None returns None (meaning: no filtering).
+    """
+    if s is None:
+        return None
+    s = str(s).strip()
+    if not s:
+        return None
+
+    out: set[int] = set()
+    for part in re.split(r"[,\s]+", s):
+        if not part:
+            continue
+        if "-" in part:
+            a, b = part.split("-", 1)
+            a, b = a.strip(), b.strip()
+            if a and b:
+                start, end = int(a), int(b)
+                step = 1 if start <= end else -1
+                for v in range(start, end + step, step):
+                    out.add(v)
+                continue
+        out.add(int(part))
+    return out or None
 
 def to_repo_rel_posix(p: Path, repo_root: Path) -> str:
     rp = os.path.relpath(str(p), start=str(repo_root))
@@ -117,6 +153,25 @@ def main():
             "defualt./verify/<input_dir_name> "
         ),
     )
+
+    ap.add_argument(
+        "--prefill-len",
+        default=None,
+        help=(
+            "Filter jobs by prefill length. "
+            "Examples: '128' or '128,256' or '128-512'. "
+            "If omitted, keep all."
+        ),
+    )
+    ap.add_argument(
+        "--decode-len",
+        default=None,
+        help=(
+            "Filter jobs by decode length parsed from filename. "
+            "Examples: '64' or '32,64' or '32-128'. "
+            "If omitted, keep all."
+        ),
+    )
     args = ap.parse_args()
 
     eval_root = Path(args.input).resolve()
@@ -132,10 +187,14 @@ def main():
         else (repo_root / "verify" / eval_root.name).resolve()
     )
 
+    prefill_filter = parse_int_set(args.prefill_len)
+    decode_filter = parse_int_set(args.decode_len)
+
     rows = []
     missing_pairs = 0
     unmatched = 0
     missing_stride = 0
+    filtered_out = 0
 
     for ops_path in eval_root.rglob("*_ops_trace.csv"):
         m = TRACE_RE.match(ops_path.name)
@@ -146,6 +205,14 @@ def main():
         algo = m.group("algo").rstrip("_")
         prefill_len = int(m.group("prefill"))
         decode_len = int(m.group("decode_len"))
+
+        # Optional user filters
+        if prefill_filter is not None and prefill_len not in prefill_filter:
+            filtered_out += 1
+            continue
+        if decode_filter is not None and decode_len not in decode_filter:
+            filtered_out += 1
+            continue
 
         comms_name = re.sub(r"_ops_trace\.csv$", "_comms_trace.csv", ops_path.name)
         comms_path = ops_path.with_name(comms_name)
@@ -205,6 +272,11 @@ def main():
             f.write("\t".join(r[h] for h in header) + "\n")
 
     print(f"[OK] write: {out_path}  (rows={len(rows)})", file=sys.stderr)
+    if filtered_out:
+        print(
+            f"[INFO] filtered out {filtered_out} jobs by prefill/decode length (prefill={args.prefill_len!r}, decode={args.decode_len!r})",
+            file=sys.stderr,
+        )
     if missing_pairs:
         print(f"[INFO] skip {missing_pairs} ops_trace (missing comms_trace match)", file=sys.stderr)
     if unmatched:

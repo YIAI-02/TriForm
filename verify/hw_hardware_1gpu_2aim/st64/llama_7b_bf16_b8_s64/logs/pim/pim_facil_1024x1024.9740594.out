@@ -1,0 +1,1059 @@
+[slurm] jobid=9740594 nodelist=l01c01n1
+[slurm] host=l01c01n1
+[slurm] pwd=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b8_s64
+[slurm] SLURM_CPUS_PER_TASK=16
+[slurm] starting at Sat Feb 28 09:11:04 CST 2026
+[slurm] PY_SCRIPT=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/schedule_deploy_verify.py
+[slurm] TASKS_JSON=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b8_s64/facil_1024x1024.pim_tasks.json
+[slurm] OUT_JSON=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b8_s64/facil_1024x1024.pim_results.json
+[slurm] CENT_SIM_ROOT=<unset>
+[slurm] PIM_RAMULATOR_CONFIG=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/example.yaml
+[slurm] PIM_HW_JSON=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/PIM_AiM.json
+[slurm] PIM_RAMULATOR_BIN=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/ramulator2
+[slurm] PIM_NUM_DEVICES=4
+[slurm] PIM_DEBUG=1
+[slurm] PIM_DEBUG_TXT=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b8_s64/facil_1024x1024.pim_debug.log
+[slurm] PIM_NO_CACHE=1
+[slurm] BATCH=1
+[slurm] OK_FILE=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b8_s64/facil_1024x1024.pim.ok
+[slurm] Running: python /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/schedule_deploy_verify.py run-pim --tasks /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b8_s64/facil_1024x1024.pim_tasks.json --out /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b8_s64/facil_1024x1024.pim_results.json --pim-ramulator-config /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/example.yaml --pim-hw-json /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/PIM_AiM.json --pim-ramulator-bin /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/ramulator2 --pim-num-devices 4 --debug --debug-txt /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b8_s64/facil_1024x1024.pim_debug.log --no-cache
+[run-pim] shard_policy='fine': ignoring pim_num_devices=4 for trace generation; fine-mode tracing always uses a single PIM device (FC_devices=1) and follows per-shard placement from the schedule.
+================================================================================
+[run-pim][debug] Using cost_model_pim_backend._get_pim_latency_via_trace
+[run-pim][debug] shard_policy='fine' shards=2
+[run-pim][debug] model: dim=4096 ffn_dim=11008 n_heads=32 n_kv_heads=auto->n_heads
+[run-pim][debug] lengths: prefill_len=1024 decode_stride=64 decode_context_lens_len=17
+[run-pim][debug] pim_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/PIM_AiM.json (from pim_hw_json_path)
+[run-pim][debug] ramulator_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/example.yaml
+[run-pim][debug] ramulator_bin=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/ramulator2 (exported as env RAMULATOR2_BIN)
+[run-pim][debug] ramulator_timeout_s=3000
+[run-pim][debug] cache_enabled=False
+[run-pim][debug] schedule cfg.pim_freq_ghz=1.0
+[run-pim][debug] cost_model config.PIM_FREQ_GHZ=1.0
+================================================================================
+[run-pim] tasks=34 segment_scope=layer
+[run-pim] extra weight_load_s=0.311279s (will be added in merge)
+========================================================================================
+[pim-debug] segment_key=pim|decode|0|73f0b93ba2927d0614be9f9ec9b9774c
+[pim-debug] sig: device_type=pim phase=decode step=0 (count_hint=32)
+[pim-debug] ops_repr: Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1
+[pim-debug] cfg: shard_policy='fine' shards=2 dim=4096 ffn_dim=11008 n_heads=32 n_kv_heads=auto->n_heads
+[pim-debug] pim_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/PIM_AiM.json
+[pim-debug] ramulator_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/example.yaml
+[pim-debug] cost_model config.PIM_FREQ_GHZ=1.0
+[pim-debug] op plan (logical shapes inferred from schedule cfg):
+  - op#00  op=Q        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1025)
+  - op#01  op=K        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1025)
+  - op#02  op=V        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1025)
+  - op#03  op=QK       shard=1   q=[16x1x128] + k=[16x128x1025]  ->  y=[16x1x1025]  (T=1, K=1025)
+  - op#04  op=Softmax  shard=1   scores=[16x1x1025]  ->  y=[16x1x1025]  (T=1, K=1025)
+  - op#05  op=SV       shard=1   p=[16x1x1025] + v=[16x1025x128]  ->  y=[16x1x128]  (T=1, K=1025)
+  - op#06  op=O        shard=1   x=[1x2048] + w=[4096x2048]  ->  y=[1x4096]  (T=1, K=1025)
+  - op#07  op=FFN_W1   shard=1   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=1025)
+  - op#08  op=FFN_W2   shard=1   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=1025)
+[pim-debug] NOTE: CENT(AiM) trace backend internally uses x shape (1,1,dim) and handles prefill by repeating ops;
+           the table below shows the *effective parameters* passed into cost_model_pim_backend for each op.
+[pim-debug] op#00 op=Q        norm=q_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1025   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#01 op=K        norm=k_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1025   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#02 op=V        norm=v_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1025   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#03 op=QK       norm=score      sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1025   qlen=1   cache=N lat=    0.005ms cycles≈5424
+[pim-debug] op#04 op=Softmax  norm=softmax    sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1025   qlen=1   cache=N lat=    0.004ms cycles≈4057
+[pim-debug] op#05 op=SV       norm=output     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1025   qlen=1   cache=N lat=    0.004ms cycles≈3698
+[pim-debug] op#06 op=O        norm=wo_proj    sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1025   qlen=1   cache=N lat=    0.004ms cycles≈4062
+[pim-debug] op#07 op=FFN_W1   norm=ffn_gate   sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1025   qlen=1   cache=N lat=    0.012ms cycles≈11708
+[pim-debug] op#08 op=FFN_W2   norm=ffn_down   sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1025   qlen=1   cache=N lat=    0.011ms cycles≈11466
+[pim-debug] segment total latency: 0.054 ms
+========================================================================================
+[pim-debug] segment_key=pim|decode|0|d9f2c5d5d25b036a5f39277c4750a787
+[pim-debug] sig: device_type=pim phase=decode step=0 (count_hint=32)
+[pim-debug] ops_repr: Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0
+[pim-debug] cfg: shard_policy='fine' shards=2 dim=4096 ffn_dim=11008 n_heads=32 n_kv_heads=auto->n_heads
+[pim-debug] pim_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/PIM_AiM.json
+[pim-debug] ramulator_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/example.yaml
+[pim-debug] cost_model config.PIM_FREQ_GHZ=1.0
+[pim-debug] op plan (logical shapes inferred from schedule cfg):
+  - op#00  op=Q        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1025)
+  - op#01  op=K        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1025)
+  - op#02  op=V        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1025)
+  - op#03  op=QK       shard=0   q=[16x1x128] + k=[16x128x1025]  ->  y=[16x1x1025]  (T=1, K=1025)
+  - op#04  op=Softmax  shard=0   scores=[16x1x1025]  ->  y=[16x1x1025]  (T=1, K=1025)
+  - op#05  op=SV       shard=0   p=[16x1x1025] + v=[16x1025x128]  ->  y=[16x1x128]  (T=1, K=1025)
+  - op#06  op=O        shard=0   x=[1x2048] + w=[4096x2048]  ->  y=[1x4096]  (T=1, K=1025)
+  - op#07  op=FFN_W1   shard=0   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=1025)
+  - op#08  op=FFN_W2   shard=0   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=1025)
+[pim-debug] NOTE: CENT(AiM) trace backend internally uses x shape (1,1,dim) and handles prefill by repeating ops;
+           the table below shows the *effective parameters* passed into cost_model_pim_backend for each op.
+[pim-debug] op#00 op=Q        norm=q_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1025   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#01 op=K        norm=k_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1025   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#02 op=V        norm=v_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1025   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#03 op=QK       norm=score      sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1025   qlen=1   cache=N lat=    0.005ms cycles≈5424
+[pim-debug] op#04 op=Softmax  norm=softmax    sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1025   qlen=1   cache=N lat=    0.004ms cycles≈4057
+[pim-debug] op#05 op=SV       norm=output     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1025   qlen=1   cache=N lat=    0.004ms cycles≈3698
+[pim-debug] op#06 op=O        norm=wo_proj    sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1025   qlen=1   cache=N lat=    0.004ms cycles≈4062
+[pim-debug] op#07 op=FFN_W1   norm=ffn_gate   sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1025   qlen=1   cache=N lat=    0.012ms cycles≈11708
+[pim-debug] op#08 op=FFN_W2   norm=ffn_down   sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1025   qlen=1   cache=N lat=    0.011ms cycles≈11466
+[pim-debug] segment total latency: 0.054 ms
+========================================================================================
+[pim-debug] segment_key=pim|decode|10|73f0b93ba2927d0614be9f9ec9b9774c
+[pim-debug] sig: device_type=pim phase=decode step=10 (count_hint=32)
+[pim-debug] ops_repr: Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1
+[pim-debug] cfg: shard_policy='fine' shards=2 dim=4096 ffn_dim=11008 n_heads=32 n_kv_heads=auto->n_heads
+[pim-debug] pim_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/PIM_AiM.json
+[pim-debug] ramulator_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/example.yaml
+[pim-debug] cost_model config.PIM_FREQ_GHZ=1.0
+[pim-debug] op plan (logical shapes inferred from schedule cfg):
+  - op#00  op=Q        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1600)
+  - op#01  op=K        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1600)
+  - op#02  op=V        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1600)
+  - op#03  op=QK       shard=1   q=[16x1x128] + k=[16x128x1600]  ->  y=[16x1x1600]  (T=1, K=1600)
+  - op#04  op=Softmax  shard=1   scores=[16x1x1600]  ->  y=[16x1x1600]  (T=1, K=1600)
+  - op#05  op=SV       shard=1   p=[16x1x1600] + v=[16x1600x128]  ->  y=[16x1x128]  (T=1, K=1600)
+  - op#06  op=O        shard=1   x=[1x2048] + w=[4096x2048]  ->  y=[1x4096]  (T=1, K=1600)
+  - op#07  op=FFN_W1   shard=1   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=1600)
+  - op#08  op=FFN_W2   shard=1   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=1600)
+[pim-debug] NOTE: CENT(AiM) trace backend internally uses x shape (1,1,dim) and handles prefill by repeating ops;
+           the table below shows the *effective parameters* passed into cost_model_pim_backend for each op.
+[pim-debug] op#00 op=Q        norm=q_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1600   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#01 op=K        norm=k_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1600   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#02 op=V        norm=v_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1600   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#03 op=QK       norm=score      sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1600   qlen=1   cache=N lat=    0.007ms cycles≈7232
+[pim-debug] op#04 op=Softmax  norm=softmax    sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1600   qlen=1   cache=N lat=    0.006ms cycles≈5555
+[pim-debug] op#05 op=SV       norm=output     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1600   qlen=1   cache=N lat=    0.004ms cycles≈4328
+[pim-debug] op#06 op=O        norm=wo_proj    sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1600   qlen=1   cache=N lat=    0.004ms cycles≈4062
+[pim-debug] op#07 op=FFN_W1   norm=ffn_gate   sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1600   qlen=1   cache=N lat=    0.012ms cycles≈11708
+[pim-debug] op#08 op=FFN_W2   norm=ffn_down   sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1600   qlen=1   cache=N lat=    0.011ms cycles≈11466
+[pim-debug] segment total latency: 0.058 ms
+========================================================================================
+[pim-debug] segment_key=pim|decode|10|d9f2c5d5d25b036a5f39277c4750a787
+[pim-debug] sig: device_type=pim phase=decode step=10 (count_hint=32)
+[pim-debug] ops_repr: Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0
+[pim-debug] cfg: shard_policy='fine' shards=2 dim=4096 ffn_dim=11008 n_heads=32 n_kv_heads=auto->n_heads
+[pim-debug] pim_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/PIM_AiM.json
+[pim-debug] ramulator_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/example.yaml
+[pim-debug] cost_model config.PIM_FREQ_GHZ=1.0
+[pim-debug] op plan (logical shapes inferred from schedule cfg):
+  - op#00  op=Q        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1600)
+  - op#01  op=K        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1600)
+  - op#02  op=V        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1600)
+  - op#03  op=QK       shard=0   q=[16x1x128] + k=[16x128x1600]  ->  y=[16x1x1600]  (T=1, K=1600)
+  - op#04  op=Softmax  shard=0   scores=[16x1x1600]  ->  y=[16x1x1600]  (T=1, K=1600)
+  - op#05  op=SV       shard=0   p=[16x1x1600] + v=[16x1600x128]  ->  y=[16x1x128]  (T=1, K=1600)
+  - op#06  op=O        shard=0   x=[1x2048] + w=[4096x2048]  ->  y=[1x4096]  (T=1, K=1600)
+  - op#07  op=FFN_W1   shard=0   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=1600)
+  - op#08  op=FFN_W2   shard=0   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=1600)
+[pim-debug] NOTE: CENT(AiM) trace backend internally uses x shape (1,1,dim) and handles prefill by repeating ops;
+           the table below shows the *effective parameters* passed into cost_model_pim_backend for each op.
+[pim-debug] op#00 op=Q        norm=q_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1600   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#01 op=K        norm=k_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1600   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#02 op=V        norm=v_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1600   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#03 op=QK       norm=score      sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1600   qlen=1   cache=N lat=    0.007ms cycles≈7232
+[pim-debug] op#04 op=Softmax  norm=softmax    sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1600   qlen=1   cache=N lat=    0.006ms cycles≈5555
+[pim-debug] op#05 op=SV       norm=output     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1600   qlen=1   cache=N lat=    0.004ms cycles≈4328
+[pim-debug] op#06 op=O        norm=wo_proj    sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1600   qlen=1   cache=N lat=    0.004ms cycles≈4062
+[pim-debug] op#07 op=FFN_W1   norm=ffn_gate   sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1600   qlen=1   cache=N lat=    0.012ms cycles≈11708
+[pim-debug] op#08 op=FFN_W2   norm=ffn_down   sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1600   qlen=1   cache=N lat=    0.011ms cycles≈11466
+[pim-debug] segment total latency: 0.058 ms
+========================================================================================
+[pim-debug] segment_key=pim|decode|11|73f0b93ba2927d0614be9f9ec9b9774c
+[pim-debug] sig: device_type=pim phase=decode step=11 (count_hint=32)
+[pim-debug] ops_repr: Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1
+[pim-debug] cfg: shard_policy='fine' shards=2 dim=4096 ffn_dim=11008 n_heads=32 n_kv_heads=auto->n_heads
+[pim-debug] pim_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/PIM_AiM.json
+[pim-debug] ramulator_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/example.yaml
+[pim-debug] cost_model config.PIM_FREQ_GHZ=1.0
+[pim-debug] op plan (logical shapes inferred from schedule cfg):
+  - op#00  op=Q        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1664)
+  - op#01  op=K        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1664)
+  - op#02  op=V        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1664)
+  - op#03  op=QK       shard=1   q=[16x1x128] + k=[16x128x1664]  ->  y=[16x1x1664]  (T=1, K=1664)
+  - op#04  op=Softmax  shard=1   scores=[16x1x1664]  ->  y=[16x1x1664]  (T=1, K=1664)
+  - op#05  op=SV       shard=1   p=[16x1x1664] + v=[16x1664x128]  ->  y=[16x1x128]  (T=1, K=1664)
+  - op#06  op=O        shard=1   x=[1x2048] + w=[4096x2048]  ->  y=[1x4096]  (T=1, K=1664)
+  - op#07  op=FFN_W1   shard=1   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=1664)
+  - op#08  op=FFN_W2   shard=1   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=1664)
+[pim-debug] NOTE: CENT(AiM) trace backend internally uses x shape (1,1,dim) and handles prefill by repeating ops;
+           the table below shows the *effective parameters* passed into cost_model_pim_backend for each op.
+[pim-debug] op#00 op=Q        norm=q_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1664   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#01 op=K        norm=k_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1664   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#02 op=V        norm=v_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1664   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#03 op=QK       norm=score      sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1664   qlen=1   cache=N lat=    0.007ms cycles≈7232
+[pim-debug] op#04 op=Softmax  norm=softmax    sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1664   qlen=1   cache=N lat=    0.006ms cycles≈5763
+[pim-debug] op#05 op=SV       norm=output     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1664   qlen=1   cache=N lat=    0.004ms cycles≈4400
+[pim-debug] op#06 op=O        norm=wo_proj    sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1664   qlen=1   cache=N lat=    0.004ms cycles≈4062
+[pim-debug] op#07 op=FFN_W1   norm=ffn_gate   sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1664   qlen=1   cache=N lat=    0.012ms cycles≈11708
+[pim-debug] op#08 op=FFN_W2   norm=ffn_down   sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1664   qlen=1   cache=N lat=    0.011ms cycles≈11466
+[pim-debug] segment total latency: 0.058 ms
+========================================================================================
+[pim-debug] segment_key=pim|decode|11|d9f2c5d5d25b036a5f39277c4750a787
+[pim-debug] sig: device_type=pim phase=decode step=11 (count_hint=32)
+[pim-debug] ops_repr: Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0
+[pim-debug] cfg: shard_policy='fine' shards=2 dim=4096 ffn_dim=11008 n_heads=32 n_kv_heads=auto->n_heads
+[pim-debug] pim_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/PIM_AiM.json
+[pim-debug] ramulator_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/example.yaml
+[pim-debug] cost_model config.PIM_FREQ_GHZ=1.0
+[pim-debug] op plan (logical shapes inferred from schedule cfg):
+  - op#00  op=Q        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1664)
+  - op#01  op=K        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1664)
+  - op#02  op=V        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1664)
+  - op#03  op=QK       shard=0   q=[16x1x128] + k=[16x128x1664]  ->  y=[16x1x1664]  (T=1, K=1664)
+  - op#04  op=Softmax  shard=0   scores=[16x1x1664]  ->  y=[16x1x1664]  (T=1, K=1664)
+  - op#05  op=SV       shard=0   p=[16x1x1664] + v=[16x1664x128]  ->  y=[16x1x128]  (T=1, K=1664)
+  - op#06  op=O        shard=0   x=[1x2048] + w=[4096x2048]  ->  y=[1x4096]  (T=1, K=1664)
+  - op#07  op=FFN_W1   shard=0   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=1664)
+  - op#08  op=FFN_W2   shard=0   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=1664)
+[pim-debug] NOTE: CENT(AiM) trace backend internally uses x shape (1,1,dim) and handles prefill by repeating ops;
+           the table below shows the *effective parameters* passed into cost_model_pim_backend for each op.
+[pim-debug] op#00 op=Q        norm=q_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1664   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#01 op=K        norm=k_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1664   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#02 op=V        norm=v_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1664   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#03 op=QK       norm=score      sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1664   qlen=1   cache=N lat=    0.007ms cycles≈7232
+[pim-debug] op#04 op=Softmax  norm=softmax    sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1664   qlen=1   cache=N lat=    0.006ms cycles≈5763
+[pim-debug] op#05 op=SV       norm=output     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1664   qlen=1   cache=N lat=    0.004ms cycles≈4400
+[pim-debug] op#06 op=O        norm=wo_proj    sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1664   qlen=1   cache=N lat=    0.004ms cycles≈4062
+[pim-debug] op#07 op=FFN_W1   norm=ffn_gate   sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1664   qlen=1   cache=N lat=    0.012ms cycles≈11708
+[pim-debug] op#08 op=FFN_W2   norm=ffn_down   sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1664   qlen=1   cache=N lat=    0.011ms cycles≈11466
+[pim-debug] segment total latency: 0.058 ms
+========================================================================================
+[pim-debug] segment_key=pim|decode|12|73f0b93ba2927d0614be9f9ec9b9774c
+[pim-debug] sig: device_type=pim phase=decode step=12 (count_hint=32)
+[pim-debug] ops_repr: Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1
+[pim-debug] cfg: shard_policy='fine' shards=2 dim=4096 ffn_dim=11008 n_heads=32 n_kv_heads=auto->n_heads
+[pim-debug] pim_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/PIM_AiM.json
+[pim-debug] ramulator_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/example.yaml
+[pim-debug] cost_model config.PIM_FREQ_GHZ=1.0
+[pim-debug] op plan (logical shapes inferred from schedule cfg):
+  - op#00  op=Q        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1728)
+  - op#01  op=K        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1728)
+  - op#02  op=V        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1728)
+  - op#03  op=QK       shard=1   q=[16x1x128] + k=[16x128x1728]  ->  y=[16x1x1728]  (T=1, K=1728)
+  - op#04  op=Softmax  shard=1   scores=[16x1x1728]  ->  y=[16x1x1728]  (T=1, K=1728)
+  - op#05  op=SV       shard=1   p=[16x1x1728] + v=[16x1728x128]  ->  y=[16x1x128]  (T=1, K=1728)
+  - op#06  op=O        shard=1   x=[1x2048] + w=[4096x2048]  ->  y=[1x4096]  (T=1, K=1728)
+  - op#07  op=FFN_W1   shard=1   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=1728)
+  - op#08  op=FFN_W2   shard=1   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=1728)
+[pim-debug] NOTE: CENT(AiM) trace backend internally uses x shape (1,1,dim) and handles prefill by repeating ops;
+           the table below shows the *effective parameters* passed into cost_model_pim_backend for each op.
+[pim-debug] op#00 op=Q        norm=q_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1728   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#01 op=K        norm=k_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1728   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#02 op=V        norm=v_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1728   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#03 op=QK       norm=score      sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1728   qlen=1   cache=N lat=    0.007ms cycles≈7232
+[pim-debug] op#04 op=Softmax  norm=softmax    sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1728   qlen=1   cache=N lat=    0.006ms cycles≈5971
+[pim-debug] op#05 op=SV       norm=output     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1728   qlen=1   cache=N lat=    0.004ms cycles≈4472
+[pim-debug] op#06 op=O        norm=wo_proj    sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1728   qlen=1   cache=N lat=    0.004ms cycles≈4062
+[pim-debug] op#07 op=FFN_W1   norm=ffn_gate   sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1728   qlen=1   cache=N lat=    0.012ms cycles≈11708
+[pim-debug] op#08 op=FFN_W2   norm=ffn_down   sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1728   qlen=1   cache=N lat=    0.011ms cycles≈11466
+[pim-debug] segment total latency: 0.058 ms
+========================================================================================
+[pim-debug] segment_key=pim|decode|12|d9f2c5d5d25b036a5f39277c4750a787
+[pim-debug] sig: device_type=pim phase=decode step=12 (count_hint=32)
+[pim-debug] ops_repr: Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0
+[pim-debug] cfg: shard_policy='fine' shards=2 dim=4096 ffn_dim=11008 n_heads=32 n_kv_heads=auto->n_heads
+[pim-debug] pim_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/PIM_AiM.json
+[pim-debug] ramulator_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/example.yaml
+[pim-debug] cost_model config.PIM_FREQ_GHZ=1.0
+[pim-debug] op plan (logical shapes inferred from schedule cfg):
+  - op#00  op=Q        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1728)
+  - op#01  op=K        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1728)
+  - op#02  op=V        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1728)
+  - op#03  op=QK       shard=0   q=[16x1x128] + k=[16x128x1728]  ->  y=[16x1x1728]  (T=1, K=1728)
+  - op#04  op=Softmax  shard=0   scores=[16x1x1728]  ->  y=[16x1x1728]  (T=1, K=1728)
+  - op#05  op=SV       shard=0   p=[16x1x1728] + v=[16x1728x128]  ->  y=[16x1x128]  (T=1, K=1728)
+  - op#06  op=O        shard=0   x=[1x2048] + w=[4096x2048]  ->  y=[1x4096]  (T=1, K=1728)
+  - op#07  op=FFN_W1   shard=0   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=1728)
+  - op#08  op=FFN_W2   shard=0   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=1728)
+[pim-debug] NOTE: CENT(AiM) trace backend internally uses x shape (1,1,dim) and handles prefill by repeating ops;
+           the table below shows the *effective parameters* passed into cost_model_pim_backend for each op.
+[pim-debug] op#00 op=Q        norm=q_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1728   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#01 op=K        norm=k_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1728   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#02 op=V        norm=v_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1728   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#03 op=QK       norm=score      sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1728   qlen=1   cache=N lat=    0.007ms cycles≈7232
+[pim-debug] op#04 op=Softmax  norm=softmax    sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1728   qlen=1   cache=N lat=    0.006ms cycles≈5971
+[pim-debug] op#05 op=SV       norm=output     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1728   qlen=1   cache=N lat=    0.004ms cycles≈4472
+[pim-debug] op#06 op=O        norm=wo_proj    sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1728   qlen=1   cache=N lat=    0.004ms cycles≈4062
+[pim-debug] op#07 op=FFN_W1   norm=ffn_gate   sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1728   qlen=1   cache=N lat=    0.012ms cycles≈11708
+[pim-debug] op#08 op=FFN_W2   norm=ffn_down   sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1728   qlen=1   cache=N lat=    0.011ms cycles≈11466
+[pim-debug] segment total latency: 0.058 ms
+========================================================================================
+[pim-debug] segment_key=pim|decode|13|73f0b93ba2927d0614be9f9ec9b9774c
+[pim-debug] sig: device_type=pim phase=decode step=13 (count_hint=32)
+[pim-debug] ops_repr: Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1
+[pim-debug] cfg: shard_policy='fine' shards=2 dim=4096 ffn_dim=11008 n_heads=32 n_kv_heads=auto->n_heads
+[pim-debug] pim_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/PIM_AiM.json
+[pim-debug] ramulator_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/example.yaml
+[pim-debug] cost_model config.PIM_FREQ_GHZ=1.0
+[pim-debug] op plan (logical shapes inferred from schedule cfg):
+  - op#00  op=Q        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1792)
+  - op#01  op=K        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1792)
+  - op#02  op=V        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1792)
+  - op#03  op=QK       shard=1   q=[16x1x128] + k=[16x128x1792]  ->  y=[16x1x1792]  (T=1, K=1792)
+  - op#04  op=Softmax  shard=1   scores=[16x1x1792]  ->  y=[16x1x1792]  (T=1, K=1792)
+  - op#05  op=SV       shard=1   p=[16x1x1792] + v=[16x1792x128]  ->  y=[16x1x128]  (T=1, K=1792)
+  - op#06  op=O        shard=1   x=[1x2048] + w=[4096x2048]  ->  y=[1x4096]  (T=1, K=1792)
+  - op#07  op=FFN_W1   shard=1   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=1792)
+  - op#08  op=FFN_W2   shard=1   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=1792)
+[pim-debug] NOTE: CENT(AiM) trace backend internally uses x shape (1,1,dim) and handles prefill by repeating ops;
+           the table below shows the *effective parameters* passed into cost_model_pim_backend for each op.
+[pim-debug] op#00 op=Q        norm=q_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1792   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#01 op=K        norm=k_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1792   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#02 op=V        norm=v_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1792   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#03 op=QK       norm=score      sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1792   qlen=1   cache=N lat=    0.007ms cycles≈7232
+[pim-debug] op#04 op=Softmax  norm=softmax    sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1792   qlen=1   cache=N lat=    0.006ms cycles≈6179
+[pim-debug] op#05 op=SV       norm=output     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1792   qlen=1   cache=N lat=    0.005ms cycles≈4544
+[pim-debug] op#06 op=O        norm=wo_proj    sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1792   qlen=1   cache=N lat=    0.004ms cycles≈4062
+[pim-debug] op#07 op=FFN_W1   norm=ffn_gate   sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1792   qlen=1   cache=N lat=    0.012ms cycles≈11708
+[pim-debug] op#08 op=FFN_W2   norm=ffn_down   sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1792   qlen=1   cache=N lat=    0.011ms cycles≈11466
+[pim-debug] segment total latency: 0.058 ms
+========================================================================================
+[pim-debug] segment_key=pim|decode|13|d9f2c5d5d25b036a5f39277c4750a787
+[pim-debug] sig: device_type=pim phase=decode step=13 (count_hint=32)
+[pim-debug] ops_repr: Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0
+[pim-debug] cfg: shard_policy='fine' shards=2 dim=4096 ffn_dim=11008 n_heads=32 n_kv_heads=auto->n_heads
+[pim-debug] pim_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/PIM_AiM.json
+[pim-debug] ramulator_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/example.yaml
+[pim-debug] cost_model config.PIM_FREQ_GHZ=1.0
+[pim-debug] op plan (logical shapes inferred from schedule cfg):
+  - op#00  op=Q        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1792)
+  - op#01  op=K        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1792)
+  - op#02  op=V        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1792)
+  - op#03  op=QK       shard=0   q=[16x1x128] + k=[16x128x1792]  ->  y=[16x1x1792]  (T=1, K=1792)
+  - op#04  op=Softmax  shard=0   scores=[16x1x1792]  ->  y=[16x1x1792]  (T=1, K=1792)
+  - op#05  op=SV       shard=0   p=[16x1x1792] + v=[16x1792x128]  ->  y=[16x1x128]  (T=1, K=1792)
+  - op#06  op=O        shard=0   x=[1x2048] + w=[4096x2048]  ->  y=[1x4096]  (T=1, K=1792)
+  - op#07  op=FFN_W1   shard=0   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=1792)
+  - op#08  op=FFN_W2   shard=0   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=1792)
+[pim-debug] NOTE: CENT(AiM) trace backend internally uses x shape (1,1,dim) and handles prefill by repeating ops;
+           the table below shows the *effective parameters* passed into cost_model_pim_backend for each op.
+[pim-debug] op#00 op=Q        norm=q_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1792   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#01 op=K        norm=k_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1792   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#02 op=V        norm=v_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1792   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#03 op=QK       norm=score      sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1792   qlen=1   cache=N lat=    0.007ms cycles≈7232
+[pim-debug] op#04 op=Softmax  norm=softmax    sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1792   qlen=1   cache=N lat=    0.006ms cycles≈6179
+[pim-debug] op#05 op=SV       norm=output     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1792   qlen=1   cache=N lat=    0.005ms cycles≈4544
+[pim-debug] op#06 op=O        norm=wo_proj    sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1792   qlen=1   cache=N lat=    0.004ms cycles≈4062
+[pim-debug] op#07 op=FFN_W1   norm=ffn_gate   sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1792   qlen=1   cache=N lat=    0.012ms cycles≈11708
+[pim-debug] op#08 op=FFN_W2   norm=ffn_down   sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1792   qlen=1   cache=N lat=    0.011ms cycles≈11466
+[pim-debug] segment total latency: 0.058 ms
+========================================================================================
+[pim-debug] segment_key=pim|decode|14|73f0b93ba2927d0614be9f9ec9b9774c
+[pim-debug] sig: device_type=pim phase=decode step=14 (count_hint=32)
+[pim-debug] ops_repr: Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1
+[pim-debug] cfg: shard_policy='fine' shards=2 dim=4096 ffn_dim=11008 n_heads=32 n_kv_heads=auto->n_heads
+[pim-debug] pim_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/PIM_AiM.json
+[pim-debug] ramulator_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/example.yaml
+[pim-debug] cost_model config.PIM_FREQ_GHZ=1.0
+[pim-debug] op plan (logical shapes inferred from schedule cfg):
+  - op#00  op=Q        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1856)
+  - op#01  op=K        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1856)
+  - op#02  op=V        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1856)
+  - op#03  op=QK       shard=1   q=[16x1x128] + k=[16x128x1856]  ->  y=[16x1x1856]  (T=1, K=1856)
+  - op#04  op=Softmax  shard=1   scores=[16x1x1856]  ->  y=[16x1x1856]  (T=1, K=1856)
+  - op#05  op=SV       shard=1   p=[16x1x1856] + v=[16x1856x128]  ->  y=[16x1x128]  (T=1, K=1856)
+  - op#06  op=O        shard=1   x=[1x2048] + w=[4096x2048]  ->  y=[1x4096]  (T=1, K=1856)
+  - op#07  op=FFN_W1   shard=1   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=1856)
+  - op#08  op=FFN_W2   shard=1   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=1856)
+[pim-debug] NOTE: CENT(AiM) trace backend internally uses x shape (1,1,dim) and handles prefill by repeating ops;
+           the table below shows the *effective parameters* passed into cost_model_pim_backend for each op.
+[pim-debug] op#00 op=Q        norm=q_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1856   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#01 op=K        norm=k_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1856   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#02 op=V        norm=v_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1856   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#03 op=QK       norm=score      sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1856   qlen=1   cache=N lat=    0.007ms cycles≈7232
+[pim-debug] op#04 op=Softmax  norm=softmax    sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1856   qlen=1   cache=N lat=    0.006ms cycles≈6387
+[pim-debug] op#05 op=SV       norm=output     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1856   qlen=1   cache=N lat=    0.005ms cycles≈4616
+[pim-debug] op#06 op=O        norm=wo_proj    sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1856   qlen=1   cache=N lat=    0.004ms cycles≈4062
+[pim-debug] op#07 op=FFN_W1   norm=ffn_gate   sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1856   qlen=1   cache=N lat=    0.012ms cycles≈11708
+[pim-debug] op#08 op=FFN_W2   norm=ffn_down   sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1856   qlen=1   cache=N lat=    0.011ms cycles≈11466
+[pim-debug] segment total latency: 0.059 ms
+========================================================================================
+[pim-debug] segment_key=pim|decode|14|d9f2c5d5d25b036a5f39277c4750a787
+[pim-debug] sig: device_type=pim phase=decode step=14 (count_hint=32)
+[pim-debug] ops_repr: Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0
+[pim-debug] cfg: shard_policy='fine' shards=2 dim=4096 ffn_dim=11008 n_heads=32 n_kv_heads=auto->n_heads
+[pim-debug] pim_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/PIM_AiM.json
+[pim-debug] ramulator_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/example.yaml
+[pim-debug] cost_model config.PIM_FREQ_GHZ=1.0
+[pim-debug] op plan (logical shapes inferred from schedule cfg):
+  - op#00  op=Q        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1856)
+  - op#01  op=K        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1856)
+  - op#02  op=V        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1856)
+  - op#03  op=QK       shard=0   q=[16x1x128] + k=[16x128x1856]  ->  y=[16x1x1856]  (T=1, K=1856)
+  - op#04  op=Softmax  shard=0   scores=[16x1x1856]  ->  y=[16x1x1856]  (T=1, K=1856)
+  - op#05  op=SV       shard=0   p=[16x1x1856] + v=[16x1856x128]  ->  y=[16x1x128]  (T=1, K=1856)
+  - op#06  op=O        shard=0   x=[1x2048] + w=[4096x2048]  ->  y=[1x4096]  (T=1, K=1856)
+  - op#07  op=FFN_W1   shard=0   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=1856)
+  - op#08  op=FFN_W2   shard=0   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=1856)
+[pim-debug] NOTE: CENT(AiM) trace backend internally uses x shape (1,1,dim) and handles prefill by repeating ops;
+           the table below shows the *effective parameters* passed into cost_model_pim_backend for each op.
+[pim-debug] op#00 op=Q        norm=q_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1856   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#01 op=K        norm=k_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1856   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#02 op=V        norm=v_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1856   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#03 op=QK       norm=score      sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1856   qlen=1   cache=N lat=    0.007ms cycles≈7232
+[pim-debug] op#04 op=Softmax  norm=softmax    sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1856   qlen=1   cache=N lat=    0.006ms cycles≈6387
+[pim-debug] op#05 op=SV       norm=output     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1856   qlen=1   cache=N lat=    0.005ms cycles≈4616
+[pim-debug] op#06 op=O        norm=wo_proj    sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1856   qlen=1   cache=N lat=    0.004ms cycles≈4062
+[pim-debug] op#07 op=FFN_W1   norm=ffn_gate   sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1856   qlen=1   cache=N lat=    0.012ms cycles≈11708
+[pim-debug] op#08 op=FFN_W2   norm=ffn_down   sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1856   qlen=1   cache=N lat=    0.011ms cycles≈11466
+[pim-debug] segment total latency: 0.059 ms
+========================================================================================
+[pim-debug] segment_key=pim|decode|15|73f0b93ba2927d0614be9f9ec9b9774c
+[pim-debug] sig: device_type=pim phase=decode step=15 (count_hint=32)
+[pim-debug] ops_repr: Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1
+[pim-debug] cfg: shard_policy='fine' shards=2 dim=4096 ffn_dim=11008 n_heads=32 n_kv_heads=auto->n_heads
+[pim-debug] pim_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/PIM_AiM.json
+[pim-debug] ramulator_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/example.yaml
+[pim-debug] cost_model config.PIM_FREQ_GHZ=1.0
+[pim-debug] op plan (logical shapes inferred from schedule cfg):
+  - op#00  op=Q        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1920)
+  - op#01  op=K        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1920)
+  - op#02  op=V        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1920)
+  - op#03  op=QK       shard=1   q=[16x1x128] + k=[16x128x1920]  ->  y=[16x1x1920]  (T=1, K=1920)
+  - op#04  op=Softmax  shard=1   scores=[16x1x1920]  ->  y=[16x1x1920]  (T=1, K=1920)
+  - op#05  op=SV       shard=1   p=[16x1x1920] + v=[16x1920x128]  ->  y=[16x1x128]  (T=1, K=1920)
+  - op#06  op=O        shard=1   x=[1x2048] + w=[4096x2048]  ->  y=[1x4096]  (T=1, K=1920)
+  - op#07  op=FFN_W1   shard=1   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=1920)
+  - op#08  op=FFN_W2   shard=1   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=1920)
+[pim-debug] NOTE: CENT(AiM) trace backend internally uses x shape (1,1,dim) and handles prefill by repeating ops;
+           the table below shows the *effective parameters* passed into cost_model_pim_backend for each op.
+[pim-debug] op#00 op=Q        norm=q_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1920   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#01 op=K        norm=k_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1920   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#02 op=V        norm=v_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1920   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#03 op=QK       norm=score      sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1920   qlen=1   cache=N lat=    0.007ms cycles≈7232
+[pim-debug] op#04 op=Softmax  norm=softmax    sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1920   qlen=1   cache=N lat=    0.007ms cycles≈6595
+[pim-debug] op#05 op=SV       norm=output     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1920   qlen=1   cache=N lat=    0.005ms cycles≈4688
+[pim-debug] op#06 op=O        norm=wo_proj    sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1920   qlen=1   cache=N lat=    0.004ms cycles≈4062
+[pim-debug] op#07 op=FFN_W1   norm=ffn_gate   sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1920   qlen=1   cache=N lat=    0.012ms cycles≈11708
+[pim-debug] op#08 op=FFN_W2   norm=ffn_down   sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1920   qlen=1   cache=N lat=    0.011ms cycles≈11466
+[pim-debug] segment total latency: 0.059 ms
+========================================================================================
+[pim-debug] segment_key=pim|decode|15|d9f2c5d5d25b036a5f39277c4750a787
+[pim-debug] sig: device_type=pim phase=decode step=15 (count_hint=32)
+[pim-debug] ops_repr: Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0
+[pim-debug] cfg: shard_policy='fine' shards=2 dim=4096 ffn_dim=11008 n_heads=32 n_kv_heads=auto->n_heads
+[pim-debug] pim_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/PIM_AiM.json
+[pim-debug] ramulator_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/example.yaml
+[pim-debug] cost_model config.PIM_FREQ_GHZ=1.0
+[pim-debug] op plan (logical shapes inferred from schedule cfg):
+  - op#00  op=Q        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1920)
+  - op#01  op=K        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1920)
+  - op#02  op=V        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1920)
+  - op#03  op=QK       shard=0   q=[16x1x128] + k=[16x128x1920]  ->  y=[16x1x1920]  (T=1, K=1920)
+  - op#04  op=Softmax  shard=0   scores=[16x1x1920]  ->  y=[16x1x1920]  (T=1, K=1920)
+  - op#05  op=SV       shard=0   p=[16x1x1920] + v=[16x1920x128]  ->  y=[16x1x128]  (T=1, K=1920)
+  - op#06  op=O        shard=0   x=[1x2048] + w=[4096x2048]  ->  y=[1x4096]  (T=1, K=1920)
+  - op#07  op=FFN_W1   shard=0   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=1920)
+  - op#08  op=FFN_W2   shard=0   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=1920)
+[pim-debug] NOTE: CENT(AiM) trace backend internally uses x shape (1,1,dim) and handles prefill by repeating ops;
+           the table below shows the *effective parameters* passed into cost_model_pim_backend for each op.
+[pim-debug] op#00 op=Q        norm=q_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1920   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#01 op=K        norm=k_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1920   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#02 op=V        norm=v_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1920   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#03 op=QK       norm=score      sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1920   qlen=1   cache=N lat=    0.007ms cycles≈7232
+[pim-debug] op#04 op=Softmax  norm=softmax    sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1920   qlen=1   cache=N lat=    0.007ms cycles≈6595
+[pim-debug] op#05 op=SV       norm=output     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1920   qlen=1   cache=N lat=    0.005ms cycles≈4688
+[pim-debug] op#06 op=O        norm=wo_proj    sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1920   qlen=1   cache=N lat=    0.004ms cycles≈4062
+[pim-debug] op#07 op=FFN_W1   norm=ffn_gate   sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1920   qlen=1   cache=N lat=    0.012ms cycles≈11708
+[pim-debug] op#08 op=FFN_W2   norm=ffn_down   sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1920   qlen=1   cache=N lat=    0.011ms cycles≈11466
+[pim-debug] segment total latency: 0.059 ms
+========================================================================================
+[pim-debug] segment_key=pim|decode|16|73f0b93ba2927d0614be9f9ec9b9774c
+[pim-debug] sig: device_type=pim phase=decode step=16 (count_hint=32)
+[pim-debug] ops_repr: Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1
+[pim-debug] cfg: shard_policy='fine' shards=2 dim=4096 ffn_dim=11008 n_heads=32 n_kv_heads=auto->n_heads
+[pim-debug] pim_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/PIM_AiM.json
+[pim-debug] ramulator_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/example.yaml
+[pim-debug] cost_model config.PIM_FREQ_GHZ=1.0
+[pim-debug] op plan (logical shapes inferred from schedule cfg):
+  - op#00  op=Q        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1984)
+  - op#01  op=K        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1984)
+  - op#02  op=V        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1984)
+  - op#03  op=QK       shard=1   q=[16x1x128] + k=[16x128x1984]  ->  y=[16x1x1984]  (T=1, K=1984)
+  - op#04  op=Softmax  shard=1   scores=[16x1x1984]  ->  y=[16x1x1984]  (T=1, K=1984)
+  - op#05  op=SV       shard=1   p=[16x1x1984] + v=[16x1984x128]  ->  y=[16x1x128]  (T=1, K=1984)
+  - op#06  op=O        shard=1   x=[1x2048] + w=[4096x2048]  ->  y=[1x4096]  (T=1, K=1984)
+  - op#07  op=FFN_W1   shard=1   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=1984)
+  - op#08  op=FFN_W2   shard=1   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=1984)
+[pim-debug] NOTE: CENT(AiM) trace backend internally uses x shape (1,1,dim) and handles prefill by repeating ops;
+           the table below shows the *effective parameters* passed into cost_model_pim_backend for each op.
+[pim-debug] op#00 op=Q        norm=q_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1984   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#01 op=K        norm=k_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1984   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#02 op=V        norm=v_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1984   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#03 op=QK       norm=score      sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1984   qlen=1   cache=N lat=    0.007ms cycles≈7232
+[pim-debug] op#04 op=Softmax  norm=softmax    sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1984   qlen=1   cache=N lat=    0.007ms cycles≈6803
+[pim-debug] op#05 op=SV       norm=output     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1984   qlen=1   cache=N lat=    0.005ms cycles≈4760
+[pim-debug] op#06 op=O        norm=wo_proj    sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1984   qlen=1   cache=N lat=    0.004ms cycles≈4062
+[pim-debug] op#07 op=FFN_W1   norm=ffn_gate   sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1984   qlen=1   cache=N lat=    0.012ms cycles≈11708
+[pim-debug] op#08 op=FFN_W2   norm=ffn_down   sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1984   qlen=1   cache=N lat=    0.011ms cycles≈11466
+[pim-debug] segment total latency: 0.059 ms
+========================================================================================
+[pim-debug] segment_key=pim|decode|16|d9f2c5d5d25b036a5f39277c4750a787
+[pim-debug] sig: device_type=pim phase=decode step=16 (count_hint=32)
+[pim-debug] ops_repr: Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0
+[pim-debug] cfg: shard_policy='fine' shards=2 dim=4096 ffn_dim=11008 n_heads=32 n_kv_heads=auto->n_heads
+[pim-debug] pim_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/PIM_AiM.json
+[pim-debug] ramulator_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/example.yaml
+[pim-debug] cost_model config.PIM_FREQ_GHZ=1.0
+[pim-debug] op plan (logical shapes inferred from schedule cfg):
+  - op#00  op=Q        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1984)
+  - op#01  op=K        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1984)
+  - op#02  op=V        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1984)
+  - op#03  op=QK       shard=0   q=[16x1x128] + k=[16x128x1984]  ->  y=[16x1x1984]  (T=1, K=1984)
+  - op#04  op=Softmax  shard=0   scores=[16x1x1984]  ->  y=[16x1x1984]  (T=1, K=1984)
+  - op#05  op=SV       shard=0   p=[16x1x1984] + v=[16x1984x128]  ->  y=[16x1x128]  (T=1, K=1984)
+  - op#06  op=O        shard=0   x=[1x2048] + w=[4096x2048]  ->  y=[1x4096]  (T=1, K=1984)
+  - op#07  op=FFN_W1   shard=0   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=1984)
+  - op#08  op=FFN_W2   shard=0   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=1984)
+[pim-debug] NOTE: CENT(AiM) trace backend internally uses x shape (1,1,dim) and handles prefill by repeating ops;
+           the table below shows the *effective parameters* passed into cost_model_pim_backend for each op.
+[pim-debug] op#00 op=Q        norm=q_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1984   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#01 op=K        norm=k_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1984   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#02 op=V        norm=v_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1984   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#03 op=QK       norm=score      sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1984   qlen=1   cache=N lat=    0.007ms cycles≈7232
+[pim-debug] op#04 op=Softmax  norm=softmax    sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1984   qlen=1   cache=N lat=    0.007ms cycles≈6803
+[pim-debug] op#05 op=SV       norm=output     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1984   qlen=1   cache=N lat=    0.005ms cycles≈4760
+[pim-debug] op#06 op=O        norm=wo_proj    sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1984   qlen=1   cache=N lat=    0.004ms cycles≈4062
+[pim-debug] op#07 op=FFN_W1   norm=ffn_gate   sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1984   qlen=1   cache=N lat=    0.012ms cycles≈11708
+[pim-debug] op#08 op=FFN_W2   norm=ffn_down   sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1984   qlen=1   cache=N lat=    0.011ms cycles≈11466
+[pim-debug] segment total latency: 0.059 ms
+========================================================================================
+[pim-debug] segment_key=pim|decode|1|73f0b93ba2927d0614be9f9ec9b9774c
+[pim-debug] sig: device_type=pim phase=decode step=1 (count_hint=32)
+[pim-debug] ops_repr: Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1
+[pim-debug] cfg: shard_policy='fine' shards=2 dim=4096 ffn_dim=11008 n_heads=32 n_kv_heads=auto->n_heads
+[pim-debug] pim_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/PIM_AiM.json
+[pim-debug] ramulator_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/example.yaml
+[pim-debug] cost_model config.PIM_FREQ_GHZ=1.0
+[pim-debug] op plan (logical shapes inferred from schedule cfg):
+  - op#00  op=Q        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1026)
+  - op#01  op=K        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1026)
+  - op#02  op=V        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1026)
+  - op#03  op=QK       shard=1   q=[16x1x128] + k=[16x128x1026]  ->  y=[16x1x1026]  (T=1, K=1026)
+  - op#04  op=Softmax  shard=1   scores=[16x1x1026]  ->  y=[16x1x1026]  (T=1, K=1026)
+  - op#05  op=SV       shard=1   p=[16x1x1026] + v=[16x1026x128]  ->  y=[16x1x128]  (T=1, K=1026)
+  - op#06  op=O        shard=1   x=[1x2048] + w=[4096x2048]  ->  y=[1x4096]  (T=1, K=1026)
+  - op#07  op=FFN_W1   shard=1   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=1026)
+  - op#08  op=FFN_W2   shard=1   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=1026)
+[pim-debug] NOTE: CENT(AiM) trace backend internally uses x shape (1,1,dim) and handles prefill by repeating ops;
+           the table below shows the *effective parameters* passed into cost_model_pim_backend for each op.
+[pim-debug] op#00 op=Q        norm=q_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1026   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#01 op=K        norm=k_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1026   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#02 op=V        norm=v_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1026   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#03 op=QK       norm=score      sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1026   qlen=1   cache=N lat=    0.005ms cycles≈5424
+[pim-debug] op#04 op=Softmax  norm=softmax    sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1026   qlen=1   cache=N lat=    0.004ms cycles≈4057
+[pim-debug] op#05 op=SV       norm=output     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1026   qlen=1   cache=N lat=    0.004ms cycles≈3698
+[pim-debug] op#06 op=O        norm=wo_proj    sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1026   qlen=1   cache=N lat=    0.004ms cycles≈4062
+[pim-debug] op#07 op=FFN_W1   norm=ffn_gate   sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1026   qlen=1   cache=N lat=    0.012ms cycles≈11708
+[pim-debug] op#08 op=FFN_W2   norm=ffn_down   sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1026   qlen=1   cache=N lat=    0.011ms cycles≈11466
+[pim-debug] segment total latency: 0.054 ms
+========================================================================================
+[pim-debug] segment_key=pim|decode|1|d9f2c5d5d25b036a5f39277c4750a787
+[pim-debug] sig: device_type=pim phase=decode step=1 (count_hint=32)
+[pim-debug] ops_repr: Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0
+[pim-debug] cfg: shard_policy='fine' shards=2 dim=4096 ffn_dim=11008 n_heads=32 n_kv_heads=auto->n_heads
+[pim-debug] pim_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/PIM_AiM.json
+[pim-debug] ramulator_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/example.yaml
+[pim-debug] cost_model config.PIM_FREQ_GHZ=1.0
+[pim-debug] op plan (logical shapes inferred from schedule cfg):
+  - op#00  op=Q        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1026)
+  - op#01  op=K        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1026)
+  - op#02  op=V        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1026)
+  - op#03  op=QK       shard=0   q=[16x1x128] + k=[16x128x1026]  ->  y=[16x1x1026]  (T=1, K=1026)
+  - op#04  op=Softmax  shard=0   scores=[16x1x1026]  ->  y=[16x1x1026]  (T=1, K=1026)
+  - op#05  op=SV       shard=0   p=[16x1x1026] + v=[16x1026x128]  ->  y=[16x1x128]  (T=1, K=1026)
+  - op#06  op=O        shard=0   x=[1x2048] + w=[4096x2048]  ->  y=[1x4096]  (T=1, K=1026)
+  - op#07  op=FFN_W1   shard=0   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=1026)
+  - op#08  op=FFN_W2   shard=0   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=1026)
+[pim-debug] NOTE: CENT(AiM) trace backend internally uses x shape (1,1,dim) and handles prefill by repeating ops;
+           the table below shows the *effective parameters* passed into cost_model_pim_backend for each op.
+[pim-debug] op#00 op=Q        norm=q_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1026   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#01 op=K        norm=k_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1026   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#02 op=V        norm=v_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1026   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#03 op=QK       norm=score      sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1026   qlen=1   cache=N lat=    0.005ms cycles≈5424
+[pim-debug] op#04 op=Softmax  norm=softmax    sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1026   qlen=1   cache=N lat=    0.004ms cycles≈4057
+[pim-debug] op#05 op=SV       norm=output     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1026   qlen=1   cache=N lat=    0.004ms cycles≈3698
+[pim-debug] op#06 op=O        norm=wo_proj    sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1026   qlen=1   cache=N lat=    0.004ms cycles≈4062
+[pim-debug] op#07 op=FFN_W1   norm=ffn_gate   sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1026   qlen=1   cache=N lat=    0.012ms cycles≈11708
+[pim-debug] op#08 op=FFN_W2   norm=ffn_down   sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1026   qlen=1   cache=N lat=    0.011ms cycles≈11466
+[pim-debug] segment total latency: 0.054 ms
+========================================================================================
+[pim-debug] segment_key=pim|decode|2|73f0b93ba2927d0614be9f9ec9b9774c
+[pim-debug] sig: device_type=pim phase=decode step=2 (count_hint=32)
+[pim-debug] ops_repr: Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1
+[pim-debug] cfg: shard_policy='fine' shards=2 dim=4096 ffn_dim=11008 n_heads=32 n_kv_heads=auto->n_heads
+[pim-debug] pim_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/PIM_AiM.json
+[pim-debug] ramulator_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/example.yaml
+[pim-debug] cost_model config.PIM_FREQ_GHZ=1.0
+[pim-debug] op plan (logical shapes inferred from schedule cfg):
+  - op#00  op=Q        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1088)
+  - op#01  op=K        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1088)
+  - op#02  op=V        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1088)
+  - op#03  op=QK       shard=1   q=[16x1x128] + k=[16x128x1088]  ->  y=[16x1x1088]  (T=1, K=1088)
+  - op#04  op=Softmax  shard=1   scores=[16x1x1088]  ->  y=[16x1x1088]  (T=1, K=1088)
+  - op#05  op=SV       shard=1   p=[16x1x1088] + v=[16x1088x128]  ->  y=[16x1x128]  (T=1, K=1088)
+  - op#06  op=O        shard=1   x=[1x2048] + w=[4096x2048]  ->  y=[1x4096]  (T=1, K=1088)
+  - op#07  op=FFN_W1   shard=1   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=1088)
+  - op#08  op=FFN_W2   shard=1   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=1088)
+[pim-debug] NOTE: CENT(AiM) trace backend internally uses x shape (1,1,dim) and handles prefill by repeating ops;
+           the table below shows the *effective parameters* passed into cost_model_pim_backend for each op.
+[pim-debug] op#00 op=Q        norm=q_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1088   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#01 op=K        norm=k_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1088   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#02 op=V        norm=v_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1088   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#03 op=QK       norm=score      sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1088   qlen=1   cache=N lat=    0.005ms cycles≈5424
+[pim-debug] op#04 op=Softmax  norm=softmax    sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1088   qlen=1   cache=N lat=    0.004ms cycles≈4177
+[pim-debug] op#05 op=SV       norm=output     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1088   qlen=1   cache=N lat=    0.004ms cycles≈3752
+[pim-debug] op#06 op=O        norm=wo_proj    sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1088   qlen=1   cache=N lat=    0.004ms cycles≈4062
+[pim-debug] op#07 op=FFN_W1   norm=ffn_gate   sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1088   qlen=1   cache=N lat=    0.012ms cycles≈11708
+[pim-debug] op#08 op=FFN_W2   norm=ffn_down   sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1088   qlen=1   cache=N lat=    0.011ms cycles≈11466
+[pim-debug] segment total latency: 0.054 ms
+========================================================================================
+[pim-debug] segment_key=pim|decode|2|d9f2c5d5d25b036a5f39277c4750a787
+[pim-debug] sig: device_type=pim phase=decode step=2 (count_hint=32)
+[pim-debug] ops_repr: Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0
+[pim-debug] cfg: shard_policy='fine' shards=2 dim=4096 ffn_dim=11008 n_heads=32 n_kv_heads=auto->n_heads
+[pim-debug] pim_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/PIM_AiM.json
+[pim-debug] ramulator_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/example.yaml
+[pim-debug] cost_model config.PIM_FREQ_GHZ=1.0
+[pim-debug] op plan (logical shapes inferred from schedule cfg):
+  - op#00  op=Q        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1088)
+  - op#01  op=K        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1088)
+  - op#02  op=V        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1088)
+  - op#03  op=QK       shard=0   q=[16x1x128] + k=[16x128x1088]  ->  y=[16x1x1088]  (T=1, K=1088)
+  - op#04  op=Softmax  shard=0   scores=[16x1x1088]  ->  y=[16x1x1088]  (T=1, K=1088)
+  - op#05  op=SV       shard=0   p=[16x1x1088] + v=[16x1088x128]  ->  y=[16x1x128]  (T=1, K=1088)
+  - op#06  op=O        shard=0   x=[1x2048] + w=[4096x2048]  ->  y=[1x4096]  (T=1, K=1088)
+  - op#07  op=FFN_W1   shard=0   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=1088)
+  - op#08  op=FFN_W2   shard=0   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=1088)
+[pim-debug] NOTE: CENT(AiM) trace backend internally uses x shape (1,1,dim) and handles prefill by repeating ops;
+           the table below shows the *effective parameters* passed into cost_model_pim_backend for each op.
+[pim-debug] op#00 op=Q        norm=q_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1088   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#01 op=K        norm=k_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1088   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#02 op=V        norm=v_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1088   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#03 op=QK       norm=score      sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1088   qlen=1   cache=N lat=    0.005ms cycles≈5424
+[pim-debug] op#04 op=Softmax  norm=softmax    sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1088   qlen=1   cache=N lat=    0.004ms cycles≈4177
+[pim-debug] op#05 op=SV       norm=output     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1088   qlen=1   cache=N lat=    0.004ms cycles≈3752
+[pim-debug] op#06 op=O        norm=wo_proj    sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1088   qlen=1   cache=N lat=    0.004ms cycles≈4062
+[pim-debug] op#07 op=FFN_W1   norm=ffn_gate   sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1088   qlen=1   cache=N lat=    0.012ms cycles≈11708
+[pim-debug] op#08 op=FFN_W2   norm=ffn_down   sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1088   qlen=1   cache=N lat=    0.011ms cycles≈11466
+[pim-debug] segment total latency: 0.054 ms
+========================================================================================
+[pim-debug] segment_key=pim|decode|3|73f0b93ba2927d0614be9f9ec9b9774c
+[pim-debug] sig: device_type=pim phase=decode step=3 (count_hint=32)
+[pim-debug] ops_repr: Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1
+[pim-debug] cfg: shard_policy='fine' shards=2 dim=4096 ffn_dim=11008 n_heads=32 n_kv_heads=auto->n_heads
+[pim-debug] pim_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/PIM_AiM.json
+[pim-debug] ramulator_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/example.yaml
+[pim-debug] cost_model config.PIM_FREQ_GHZ=1.0
+[pim-debug] op plan (logical shapes inferred from schedule cfg):
+  - op#00  op=Q        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1152)
+  - op#01  op=K        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1152)
+  - op#02  op=V        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1152)
+  - op#03  op=QK       shard=1   q=[16x1x128] + k=[16x128x1152]  ->  y=[16x1x1152]  (T=1, K=1152)
+  - op#04  op=Softmax  shard=1   scores=[16x1x1152]  ->  y=[16x1x1152]  (T=1, K=1152)
+  - op#05  op=SV       shard=1   p=[16x1x1152] + v=[16x1152x128]  ->  y=[16x1x128]  (T=1, K=1152)
+  - op#06  op=O        shard=1   x=[1x2048] + w=[4096x2048]  ->  y=[1x4096]  (T=1, K=1152)
+  - op#07  op=FFN_W1   shard=1   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=1152)
+  - op#08  op=FFN_W2   shard=1   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=1152)
+[pim-debug] NOTE: CENT(AiM) trace backend internally uses x shape (1,1,dim) and handles prefill by repeating ops;
+           the table below shows the *effective parameters* passed into cost_model_pim_backend for each op.
+[pim-debug] op#00 op=Q        norm=q_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1152   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#01 op=K        norm=k_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1152   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#02 op=V        norm=v_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1152   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#03 op=QK       norm=score      sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1152   qlen=1   cache=N lat=    0.005ms cycles≈5424
+[pim-debug] op#04 op=Softmax  norm=softmax    sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1152   qlen=1   cache=N lat=    0.004ms cycles≈4242
+[pim-debug] op#05 op=SV       norm=output     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1152   qlen=1   cache=N lat=    0.004ms cycles≈3824
+[pim-debug] op#06 op=O        norm=wo_proj    sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1152   qlen=1   cache=N lat=    0.004ms cycles≈4062
+[pim-debug] op#07 op=FFN_W1   norm=ffn_gate   sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1152   qlen=1   cache=N lat=    0.012ms cycles≈11708
+[pim-debug] op#08 op=FFN_W2   norm=ffn_down   sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1152   qlen=1   cache=N lat=    0.011ms cycles≈11466
+[pim-debug] segment total latency: 0.054 ms
+========================================================================================
+[pim-debug] segment_key=pim|decode|3|d9f2c5d5d25b036a5f39277c4750a787
+[pim-debug] sig: device_type=pim phase=decode step=3 (count_hint=32)
+[pim-debug] ops_repr: Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0
+[pim-debug] cfg: shard_policy='fine' shards=2 dim=4096 ffn_dim=11008 n_heads=32 n_kv_heads=auto->n_heads
+[pim-debug] pim_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/PIM_AiM.json
+[pim-debug] ramulator_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/example.yaml
+[pim-debug] cost_model config.PIM_FREQ_GHZ=1.0
+[pim-debug] op plan (logical shapes inferred from schedule cfg):
+  - op#00  op=Q        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1152)
+  - op#01  op=K        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1152)
+  - op#02  op=V        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1152)
+  - op#03  op=QK       shard=0   q=[16x1x128] + k=[16x128x1152]  ->  y=[16x1x1152]  (T=1, K=1152)
+  - op#04  op=Softmax  shard=0   scores=[16x1x1152]  ->  y=[16x1x1152]  (T=1, K=1152)
+  - op#05  op=SV       shard=0   p=[16x1x1152] + v=[16x1152x128]  ->  y=[16x1x128]  (T=1, K=1152)
+  - op#06  op=O        shard=0   x=[1x2048] + w=[4096x2048]  ->  y=[1x4096]  (T=1, K=1152)
+  - op#07  op=FFN_W1   shard=0   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=1152)
+  - op#08  op=FFN_W2   shard=0   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=1152)
+[pim-debug] NOTE: CENT(AiM) trace backend internally uses x shape (1,1,dim) and handles prefill by repeating ops;
+           the table below shows the *effective parameters* passed into cost_model_pim_backend for each op.
+[pim-debug] op#00 op=Q        norm=q_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1152   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#01 op=K        norm=k_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1152   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#02 op=V        norm=v_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1152   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#03 op=QK       norm=score      sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1152   qlen=1   cache=N lat=    0.005ms cycles≈5424
+[pim-debug] op#04 op=Softmax  norm=softmax    sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1152   qlen=1   cache=N lat=    0.004ms cycles≈4242
+[pim-debug] op#05 op=SV       norm=output     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1152   qlen=1   cache=N lat=    0.004ms cycles≈3824
+[pim-debug] op#06 op=O        norm=wo_proj    sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1152   qlen=1   cache=N lat=    0.004ms cycles≈4062
+[pim-debug] op#07 op=FFN_W1   norm=ffn_gate   sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1152   qlen=1   cache=N lat=    0.012ms cycles≈11708
+[pim-debug] op#08 op=FFN_W2   norm=ffn_down   sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1152   qlen=1   cache=N lat=    0.011ms cycles≈11466
+[pim-debug] segment total latency: 0.054 ms
+========================================================================================
+[pim-debug] segment_key=pim|decode|4|73f0b93ba2927d0614be9f9ec9b9774c
+[pim-debug] sig: device_type=pim phase=decode step=4 (count_hint=32)
+[pim-debug] ops_repr: Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1
+[pim-debug] cfg: shard_policy='fine' shards=2 dim=4096 ffn_dim=11008 n_heads=32 n_kv_heads=auto->n_heads
+[pim-debug] pim_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/PIM_AiM.json
+[pim-debug] ramulator_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/example.yaml
+[pim-debug] cost_model config.PIM_FREQ_GHZ=1.0
+[pim-debug] op plan (logical shapes inferred from schedule cfg):
+  - op#00  op=Q        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1216)
+  - op#01  op=K        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1216)
+  - op#02  op=V        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1216)
+  - op#03  op=QK       shard=1   q=[16x1x128] + k=[16x128x1216]  ->  y=[16x1x1216]  (T=1, K=1216)
+  - op#04  op=Softmax  shard=1   scores=[16x1x1216]  ->  y=[16x1x1216]  (T=1, K=1216)
+  - op#05  op=SV       shard=1   p=[16x1x1216] + v=[16x1216x128]  ->  y=[16x1x128]  (T=1, K=1216)
+  - op#06  op=O        shard=1   x=[1x2048] + w=[4096x2048]  ->  y=[1x4096]  (T=1, K=1216)
+  - op#07  op=FFN_W1   shard=1   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=1216)
+  - op#08  op=FFN_W2   shard=1   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=1216)
+[pim-debug] NOTE: CENT(AiM) trace backend internally uses x shape (1,1,dim) and handles prefill by repeating ops;
+           the table below shows the *effective parameters* passed into cost_model_pim_backend for each op.
+[pim-debug] op#00 op=Q        norm=q_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1216   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#01 op=K        norm=k_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1216   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#02 op=V        norm=v_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1216   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#03 op=QK       norm=score      sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1216   qlen=1   cache=N lat=    0.005ms cycles≈5424
+[pim-debug] op#04 op=Softmax  norm=softmax    sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1216   qlen=1   cache=N lat=    0.004ms cycles≈4344
+[pim-debug] op#05 op=SV       norm=output     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1216   qlen=1   cache=N lat=    0.004ms cycles≈3896
+[pim-debug] op#06 op=O        norm=wo_proj    sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1216   qlen=1   cache=N lat=    0.004ms cycles≈4062
+[pim-debug] op#07 op=FFN_W1   norm=ffn_gate   sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1216   qlen=1   cache=N lat=    0.012ms cycles≈11708
+[pim-debug] op#08 op=FFN_W2   norm=ffn_down   sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1216   qlen=1   cache=N lat=    0.011ms cycles≈11466
+[pim-debug] segment total latency: 0.054 ms
+========================================================================================
+[pim-debug] segment_key=pim|decode|4|d9f2c5d5d25b036a5f39277c4750a787
+[pim-debug] sig: device_type=pim phase=decode step=4 (count_hint=32)
+[pim-debug] ops_repr: Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0
+[pim-debug] cfg: shard_policy='fine' shards=2 dim=4096 ffn_dim=11008 n_heads=32 n_kv_heads=auto->n_heads
+[pim-debug] pim_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/PIM_AiM.json
+[pim-debug] ramulator_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/example.yaml
+[pim-debug] cost_model config.PIM_FREQ_GHZ=1.0
+[pim-debug] op plan (logical shapes inferred from schedule cfg):
+  - op#00  op=Q        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1216)
+  - op#01  op=K        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1216)
+  - op#02  op=V        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1216)
+  - op#03  op=QK       shard=0   q=[16x1x128] + k=[16x128x1216]  ->  y=[16x1x1216]  (T=1, K=1216)
+  - op#04  op=Softmax  shard=0   scores=[16x1x1216]  ->  y=[16x1x1216]  (T=1, K=1216)
+  - op#05  op=SV       shard=0   p=[16x1x1216] + v=[16x1216x128]  ->  y=[16x1x128]  (T=1, K=1216)
+  - op#06  op=O        shard=0   x=[1x2048] + w=[4096x2048]  ->  y=[1x4096]  (T=1, K=1216)
+  - op#07  op=FFN_W1   shard=0   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=1216)
+  - op#08  op=FFN_W2   shard=0   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=1216)
+[pim-debug] NOTE: CENT(AiM) trace backend internally uses x shape (1,1,dim) and handles prefill by repeating ops;
+           the table below shows the *effective parameters* passed into cost_model_pim_backend for each op.
+[pim-debug] op#00 op=Q        norm=q_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1216   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#01 op=K        norm=k_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1216   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#02 op=V        norm=v_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1216   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#03 op=QK       norm=score      sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1216   qlen=1   cache=N lat=    0.005ms cycles≈5424
+[pim-debug] op#04 op=Softmax  norm=softmax    sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1216   qlen=1   cache=N lat=    0.004ms cycles≈4344
+[pim-debug] op#05 op=SV       norm=output     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1216   qlen=1   cache=N lat=    0.004ms cycles≈3896
+[pim-debug] op#06 op=O        norm=wo_proj    sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1216   qlen=1   cache=N lat=    0.004ms cycles≈4062
+[pim-debug] op#07 op=FFN_W1   norm=ffn_gate   sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1216   qlen=1   cache=N lat=    0.012ms cycles≈11708
+[pim-debug] op#08 op=FFN_W2   norm=ffn_down   sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1216   qlen=1   cache=N lat=    0.011ms cycles≈11466
+[pim-debug] segment total latency: 0.054 ms
+========================================================================================
+[pim-debug] segment_key=pim|decode|5|73f0b93ba2927d0614be9f9ec9b9774c
+[pim-debug] sig: device_type=pim phase=decode step=5 (count_hint=32)
+[pim-debug] ops_repr: Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1
+[pim-debug] cfg: shard_policy='fine' shards=2 dim=4096 ffn_dim=11008 n_heads=32 n_kv_heads=auto->n_heads
+[pim-debug] pim_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/PIM_AiM.json
+[pim-debug] ramulator_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/example.yaml
+[pim-debug] cost_model config.PIM_FREQ_GHZ=1.0
+[pim-debug] op plan (logical shapes inferred from schedule cfg):
+  - op#00  op=Q        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1280)
+  - op#01  op=K        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1280)
+  - op#02  op=V        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1280)
+  - op#03  op=QK       shard=1   q=[16x1x128] + k=[16x128x1280]  ->  y=[16x1x1280]  (T=1, K=1280)
+  - op#04  op=Softmax  shard=1   scores=[16x1x1280]  ->  y=[16x1x1280]  (T=1, K=1280)
+  - op#05  op=SV       shard=1   p=[16x1x1280] + v=[16x1280x128]  ->  y=[16x1x128]  (T=1, K=1280)
+  - op#06  op=O        shard=1   x=[1x2048] + w=[4096x2048]  ->  y=[1x4096]  (T=1, K=1280)
+  - op#07  op=FFN_W1   shard=1   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=1280)
+  - op#08  op=FFN_W2   shard=1   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=1280)
+[pim-debug] NOTE: CENT(AiM) trace backend internally uses x shape (1,1,dim) and handles prefill by repeating ops;
+           the table below shows the *effective parameters* passed into cost_model_pim_backend for each op.
+[pim-debug] op#00 op=Q        norm=q_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1280   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#01 op=K        norm=k_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1280   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#02 op=V        norm=v_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1280   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#03 op=QK       norm=score      sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1280   qlen=1   cache=N lat=    0.005ms cycles≈5424
+[pim-debug] op#04 op=Softmax  norm=softmax    sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1280   qlen=1   cache=N lat=    0.005ms cycles≈4515
+[pim-debug] op#05 op=SV       norm=output     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1280   qlen=1   cache=N lat=    0.004ms cycles≈3968
+[pim-debug] op#06 op=O        norm=wo_proj    sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1280   qlen=1   cache=N lat=    0.004ms cycles≈4062
+[pim-debug] op#07 op=FFN_W1   norm=ffn_gate   sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1280   qlen=1   cache=N lat=    0.012ms cycles≈11708
+[pim-debug] op#08 op=FFN_W2   norm=ffn_down   sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1280   qlen=1   cache=N lat=    0.011ms cycles≈11466
+[pim-debug] segment total latency: 0.054 ms
+========================================================================================
+[pim-debug] segment_key=pim|decode|5|d9f2c5d5d25b036a5f39277c4750a787
+[pim-debug] sig: device_type=pim phase=decode step=5 (count_hint=32)
+[pim-debug] ops_repr: Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0
+[pim-debug] cfg: shard_policy='fine' shards=2 dim=4096 ffn_dim=11008 n_heads=32 n_kv_heads=auto->n_heads
+[pim-debug] pim_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/PIM_AiM.json
+[pim-debug] ramulator_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/example.yaml
+[pim-debug] cost_model config.PIM_FREQ_GHZ=1.0
+[pim-debug] op plan (logical shapes inferred from schedule cfg):
+  - op#00  op=Q        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1280)
+  - op#01  op=K        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1280)
+  - op#02  op=V        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1280)
+  - op#03  op=QK       shard=0   q=[16x1x128] + k=[16x128x1280]  ->  y=[16x1x1280]  (T=1, K=1280)
+  - op#04  op=Softmax  shard=0   scores=[16x1x1280]  ->  y=[16x1x1280]  (T=1, K=1280)
+  - op#05  op=SV       shard=0   p=[16x1x1280] + v=[16x1280x128]  ->  y=[16x1x128]  (T=1, K=1280)
+  - op#06  op=O        shard=0   x=[1x2048] + w=[4096x2048]  ->  y=[1x4096]  (T=1, K=1280)
+  - op#07  op=FFN_W1   shard=0   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=1280)
+  - op#08  op=FFN_W2   shard=0   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=1280)
+[pim-debug] NOTE: CENT(AiM) trace backend internally uses x shape (1,1,dim) and handles prefill by repeating ops;
+           the table below shows the *effective parameters* passed into cost_model_pim_backend for each op.
+[pim-debug] op#00 op=Q        norm=q_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1280   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#01 op=K        norm=k_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1280   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#02 op=V        norm=v_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1280   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#03 op=QK       norm=score      sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1280   qlen=1   cache=N lat=    0.005ms cycles≈5424
+[pim-debug] op#04 op=Softmax  norm=softmax    sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1280   qlen=1   cache=N lat=    0.005ms cycles≈4515
+[pim-debug] op#05 op=SV       norm=output     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1280   qlen=1   cache=N lat=    0.004ms cycles≈3968
+[pim-debug] op#06 op=O        norm=wo_proj    sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1280   qlen=1   cache=N lat=    0.004ms cycles≈4062
+[pim-debug] op#07 op=FFN_W1   norm=ffn_gate   sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1280   qlen=1   cache=N lat=    0.012ms cycles≈11708
+[pim-debug] op#08 op=FFN_W2   norm=ffn_down   sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1280   qlen=1   cache=N lat=    0.011ms cycles≈11466
+[pim-debug] segment total latency: 0.054 ms
+========================================================================================
+[pim-debug] segment_key=pim|decode|6|73f0b93ba2927d0614be9f9ec9b9774c
+[pim-debug] sig: device_type=pim phase=decode step=6 (count_hint=32)
+[pim-debug] ops_repr: Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1
+[pim-debug] cfg: shard_policy='fine' shards=2 dim=4096 ffn_dim=11008 n_heads=32 n_kv_heads=auto->n_heads
+[pim-debug] pim_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/PIM_AiM.json
+[pim-debug] ramulator_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/example.yaml
+[pim-debug] cost_model config.PIM_FREQ_GHZ=1.0
+[pim-debug] op plan (logical shapes inferred from schedule cfg):
+  - op#00  op=Q        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1344)
+  - op#01  op=K        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1344)
+  - op#02  op=V        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1344)
+  - op#03  op=QK       shard=1   q=[16x1x128] + k=[16x128x1344]  ->  y=[16x1x1344]  (T=1, K=1344)
+  - op#04  op=Softmax  shard=1   scores=[16x1x1344]  ->  y=[16x1x1344]  (T=1, K=1344)
+  - op#05  op=SV       shard=1   p=[16x1x1344] + v=[16x1344x128]  ->  y=[16x1x128]  (T=1, K=1344)
+  - op#06  op=O        shard=1   x=[1x2048] + w=[4096x2048]  ->  y=[1x4096]  (T=1, K=1344)
+  - op#07  op=FFN_W1   shard=1   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=1344)
+  - op#08  op=FFN_W2   shard=1   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=1344)
+[pim-debug] NOTE: CENT(AiM) trace backend internally uses x shape (1,1,dim) and handles prefill by repeating ops;
+           the table below shows the *effective parameters* passed into cost_model_pim_backend for each op.
+[pim-debug] op#00 op=Q        norm=q_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1344   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#01 op=K        norm=k_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1344   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#02 op=V        norm=v_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1344   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#03 op=QK       norm=score      sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1344   qlen=1   cache=N lat=    0.005ms cycles≈5424
+[pim-debug] op#04 op=Softmax  norm=softmax    sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1344   qlen=1   cache=N lat=    0.005ms cycles≈4723
+[pim-debug] op#05 op=SV       norm=output     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1344   qlen=1   cache=N lat=    0.004ms cycles≈4040
+[pim-debug] op#06 op=O        norm=wo_proj    sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1344   qlen=1   cache=N lat=    0.004ms cycles≈4062
+[pim-debug] op#07 op=FFN_W1   norm=ffn_gate   sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1344   qlen=1   cache=N lat=    0.012ms cycles≈11708
+[pim-debug] op#08 op=FFN_W2   norm=ffn_down   sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1344   qlen=1   cache=N lat=    0.011ms cycles≈11466
+[pim-debug] segment total latency: 0.055 ms
+========================================================================================
+[pim-debug] segment_key=pim|decode|6|d9f2c5d5d25b036a5f39277c4750a787
+[pim-debug] sig: device_type=pim phase=decode step=6 (count_hint=32)
+[pim-debug] ops_repr: Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0
+[pim-debug] cfg: shard_policy='fine' shards=2 dim=4096 ffn_dim=11008 n_heads=32 n_kv_heads=auto->n_heads
+[pim-debug] pim_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/PIM_AiM.json
+[pim-debug] ramulator_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/example.yaml
+[pim-debug] cost_model config.PIM_FREQ_GHZ=1.0
+[pim-debug] op plan (logical shapes inferred from schedule cfg):
+  - op#00  op=Q        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1344)
+  - op#01  op=K        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1344)
+  - op#02  op=V        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1344)
+  - op#03  op=QK       shard=0   q=[16x1x128] + k=[16x128x1344]  ->  y=[16x1x1344]  (T=1, K=1344)
+  - op#04  op=Softmax  shard=0   scores=[16x1x1344]  ->  y=[16x1x1344]  (T=1, K=1344)
+  - op#05  op=SV       shard=0   p=[16x1x1344] + v=[16x1344x128]  ->  y=[16x1x128]  (T=1, K=1344)
+  - op#06  op=O        shard=0   x=[1x2048] + w=[4096x2048]  ->  y=[1x4096]  (T=1, K=1344)
+  - op#07  op=FFN_W1   shard=0   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=1344)
+  - op#08  op=FFN_W2   shard=0   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=1344)
+[pim-debug] NOTE: CENT(AiM) trace backend internally uses x shape (1,1,dim) and handles prefill by repeating ops;
+           the table below shows the *effective parameters* passed into cost_model_pim_backend for each op.
+[pim-debug] op#00 op=Q        norm=q_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1344   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#01 op=K        norm=k_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1344   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#02 op=V        norm=v_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1344   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#03 op=QK       norm=score      sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1344   qlen=1   cache=N lat=    0.005ms cycles≈5424
+[pim-debug] op#04 op=Softmax  norm=softmax    sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1344   qlen=1   cache=N lat=    0.005ms cycles≈4723
+[pim-debug] op#05 op=SV       norm=output     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1344   qlen=1   cache=N lat=    0.004ms cycles≈4040
+[pim-debug] op#06 op=O        norm=wo_proj    sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1344   qlen=1   cache=N lat=    0.004ms cycles≈4062
+[pim-debug] op#07 op=FFN_W1   norm=ffn_gate   sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1344   qlen=1   cache=N lat=    0.012ms cycles≈11708
+[pim-debug] op#08 op=FFN_W2   norm=ffn_down   sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1344   qlen=1   cache=N lat=    0.011ms cycles≈11466
+[pim-debug] segment total latency: 0.055 ms
+========================================================================================
+[pim-debug] segment_key=pim|decode|7|73f0b93ba2927d0614be9f9ec9b9774c
+[pim-debug] sig: device_type=pim phase=decode step=7 (count_hint=32)
+[pim-debug] ops_repr: Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1
+[pim-debug] cfg: shard_policy='fine' shards=2 dim=4096 ffn_dim=11008 n_heads=32 n_kv_heads=auto->n_heads
+[pim-debug] pim_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/PIM_AiM.json
+[pim-debug] ramulator_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/example.yaml
+[pim-debug] cost_model config.PIM_FREQ_GHZ=1.0
+[pim-debug] op plan (logical shapes inferred from schedule cfg):
+  - op#00  op=Q        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1408)
+  - op#01  op=K        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1408)
+  - op#02  op=V        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1408)
+  - op#03  op=QK       shard=1   q=[16x1x128] + k=[16x128x1408]  ->  y=[16x1x1408]  (T=1, K=1408)
+  - op#04  op=Softmax  shard=1   scores=[16x1x1408]  ->  y=[16x1x1408]  (T=1, K=1408)
+  - op#05  op=SV       shard=1   p=[16x1x1408] + v=[16x1408x128]  ->  y=[16x1x128]  (T=1, K=1408)
+  - op#06  op=O        shard=1   x=[1x2048] + w=[4096x2048]  ->  y=[1x4096]  (T=1, K=1408)
+  - op#07  op=FFN_W1   shard=1   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=1408)
+  - op#08  op=FFN_W2   shard=1   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=1408)
+[pim-debug] NOTE: CENT(AiM) trace backend internally uses x shape (1,1,dim) and handles prefill by repeating ops;
+           the table below shows the *effective parameters* passed into cost_model_pim_backend for each op.
+[pim-debug] op#00 op=Q        norm=q_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1408   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#01 op=K        norm=k_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1408   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#02 op=V        norm=v_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1408   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#03 op=QK       norm=score      sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1408   qlen=1   cache=N lat=    0.005ms cycles≈5424
+[pim-debug] op#04 op=Softmax  norm=softmax    sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1408   qlen=1   cache=N lat=    0.005ms cycles≈4931
+[pim-debug] op#05 op=SV       norm=output     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1408   qlen=1   cache=N lat=    0.004ms cycles≈4112
+[pim-debug] op#06 op=O        norm=wo_proj    sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1408   qlen=1   cache=N lat=    0.004ms cycles≈4062
+[pim-debug] op#07 op=FFN_W1   norm=ffn_gate   sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1408   qlen=1   cache=N lat=    0.012ms cycles≈11708
+[pim-debug] op#08 op=FFN_W2   norm=ffn_down   sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1408   qlen=1   cache=N lat=    0.011ms cycles≈11466
+[pim-debug] segment total latency: 0.055 ms
+========================================================================================
+[pim-debug] segment_key=pim|decode|7|d9f2c5d5d25b036a5f39277c4750a787
+[pim-debug] sig: device_type=pim phase=decode step=7 (count_hint=32)
+[pim-debug] ops_repr: Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0
+[pim-debug] cfg: shard_policy='fine' shards=2 dim=4096 ffn_dim=11008 n_heads=32 n_kv_heads=auto->n_heads
+[pim-debug] pim_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/PIM_AiM.json
+[pim-debug] ramulator_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/example.yaml
+[pim-debug] cost_model config.PIM_FREQ_GHZ=1.0
+[pim-debug] op plan (logical shapes inferred from schedule cfg):
+  - op#00  op=Q        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1408)
+  - op#01  op=K        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1408)
+  - op#02  op=V        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1408)
+  - op#03  op=QK       shard=0   q=[16x1x128] + k=[16x128x1408]  ->  y=[16x1x1408]  (T=1, K=1408)
+  - op#04  op=Softmax  shard=0   scores=[16x1x1408]  ->  y=[16x1x1408]  (T=1, K=1408)
+  - op#05  op=SV       shard=0   p=[16x1x1408] + v=[16x1408x128]  ->  y=[16x1x128]  (T=1, K=1408)
+  - op#06  op=O        shard=0   x=[1x2048] + w=[4096x2048]  ->  y=[1x4096]  (T=1, K=1408)
+  - op#07  op=FFN_W1   shard=0   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=1408)
+  - op#08  op=FFN_W2   shard=0   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=1408)
+[pim-debug] NOTE: CENT(AiM) trace backend internally uses x shape (1,1,dim) and handles prefill by repeating ops;
+           the table below shows the *effective parameters* passed into cost_model_pim_backend for each op.
+[pim-debug] op#00 op=Q        norm=q_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1408   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#01 op=K        norm=k_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1408   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#02 op=V        norm=v_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1408   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#03 op=QK       norm=score      sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1408   qlen=1   cache=N lat=    0.005ms cycles≈5424
+[pim-debug] op#04 op=Softmax  norm=softmax    sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1408   qlen=1   cache=N lat=    0.005ms cycles≈4931
+[pim-debug] op#05 op=SV       norm=output     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1408   qlen=1   cache=N lat=    0.004ms cycles≈4112
+[pim-debug] op#06 op=O        norm=wo_proj    sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1408   qlen=1   cache=N lat=    0.004ms cycles≈4062
+[pim-debug] op#07 op=FFN_W1   norm=ffn_gate   sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1408   qlen=1   cache=N lat=    0.012ms cycles≈11708
+[pim-debug] op#08 op=FFN_W2   norm=ffn_down   sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1408   qlen=1   cache=N lat=    0.011ms cycles≈11466
+[pim-debug] segment total latency: 0.055 ms
+========================================================================================
+[pim-debug] segment_key=pim|decode|8|73f0b93ba2927d0614be9f9ec9b9774c
+[pim-debug] sig: device_type=pim phase=decode step=8 (count_hint=32)
+[pim-debug] ops_repr: Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1
+[pim-debug] cfg: shard_policy='fine' shards=2 dim=4096 ffn_dim=11008 n_heads=32 n_kv_heads=auto->n_heads
+[pim-debug] pim_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/PIM_AiM.json
+[pim-debug] ramulator_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/example.yaml
+[pim-debug] cost_model config.PIM_FREQ_GHZ=1.0
+[pim-debug] op plan (logical shapes inferred from schedule cfg):
+  - op#00  op=Q        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1472)
+  - op#01  op=K        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1472)
+  - op#02  op=V        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1472)
+  - op#03  op=QK       shard=1   q=[16x1x128] + k=[16x128x1472]  ->  y=[16x1x1472]  (T=1, K=1472)
+  - op#04  op=Softmax  shard=1   scores=[16x1x1472]  ->  y=[16x1x1472]  (T=1, K=1472)
+  - op#05  op=SV       shard=1   p=[16x1x1472] + v=[16x1472x128]  ->  y=[16x1x128]  (T=1, K=1472)
+  - op#06  op=O        shard=1   x=[1x2048] + w=[4096x2048]  ->  y=[1x4096]  (T=1, K=1472)
+  - op#07  op=FFN_W1   shard=1   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=1472)
+  - op#08  op=FFN_W2   shard=1   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=1472)
+[pim-debug] NOTE: CENT(AiM) trace backend internally uses x shape (1,1,dim) and handles prefill by repeating ops;
+           the table below shows the *effective parameters* passed into cost_model_pim_backend for each op.
+[pim-debug] op#00 op=Q        norm=q_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1472   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#01 op=K        norm=k_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1472   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#02 op=V        norm=v_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1472   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#03 op=QK       norm=score      sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1472   qlen=1   cache=N lat=    0.005ms cycles≈5424
+[pim-debug] op#04 op=Softmax  norm=softmax    sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1472   qlen=1   cache=N lat=    0.005ms cycles≈5139
+[pim-debug] op#05 op=SV       norm=output     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1472   qlen=1   cache=N lat=    0.004ms cycles≈4184
+[pim-debug] op#06 op=O        norm=wo_proj    sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1472   qlen=1   cache=N lat=    0.004ms cycles≈4062
+[pim-debug] op#07 op=FFN_W1   norm=ffn_gate   sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1472   qlen=1   cache=N lat=    0.012ms cycles≈11708
+[pim-debug] op#08 op=FFN_W2   norm=ffn_down   sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1472   qlen=1   cache=N lat=    0.011ms cycles≈11466
+[pim-debug] segment total latency: 0.055 ms
+========================================================================================
+[pim-debug] segment_key=pim|decode|8|d9f2c5d5d25b036a5f39277c4750a787
+[pim-debug] sig: device_type=pim phase=decode step=8 (count_hint=32)
+[pim-debug] ops_repr: Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0
+[pim-debug] cfg: shard_policy='fine' shards=2 dim=4096 ffn_dim=11008 n_heads=32 n_kv_heads=auto->n_heads
+[pim-debug] pim_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/PIM_AiM.json
+[pim-debug] ramulator_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/example.yaml
+[pim-debug] cost_model config.PIM_FREQ_GHZ=1.0
+[pim-debug] op plan (logical shapes inferred from schedule cfg):
+  - op#00  op=Q        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1472)
+  - op#01  op=K        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1472)
+  - op#02  op=V        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1472)
+  - op#03  op=QK       shard=0   q=[16x1x128] + k=[16x128x1472]  ->  y=[16x1x1472]  (T=1, K=1472)
+  - op#04  op=Softmax  shard=0   scores=[16x1x1472]  ->  y=[16x1x1472]  (T=1, K=1472)
+  - op#05  op=SV       shard=0   p=[16x1x1472] + v=[16x1472x128]  ->  y=[16x1x128]  (T=1, K=1472)
+  - op#06  op=O        shard=0   x=[1x2048] + w=[4096x2048]  ->  y=[1x4096]  (T=1, K=1472)
+  - op#07  op=FFN_W1   shard=0   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=1472)
+  - op#08  op=FFN_W2   shard=0   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=1472)
+[pim-debug] NOTE: CENT(AiM) trace backend internally uses x shape (1,1,dim) and handles prefill by repeating ops;
+           the table below shows the *effective parameters* passed into cost_model_pim_backend for each op.
+[pim-debug] op#00 op=Q        norm=q_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1472   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#01 op=K        norm=k_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1472   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#02 op=V        norm=v_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1472   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#03 op=QK       norm=score      sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1472   qlen=1   cache=N lat=    0.005ms cycles≈5424
+[pim-debug] op#04 op=Softmax  norm=softmax    sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1472   qlen=1   cache=N lat=    0.005ms cycles≈5139
+[pim-debug] op#05 op=SV       norm=output     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1472   qlen=1   cache=N lat=    0.004ms cycles≈4184
+[pim-debug] op#06 op=O        norm=wo_proj    sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1472   qlen=1   cache=N lat=    0.004ms cycles≈4062
+[pim-debug] op#07 op=FFN_W1   norm=ffn_gate   sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1472   qlen=1   cache=N lat=    0.012ms cycles≈11708
+[pim-debug] op#08 op=FFN_W2   norm=ffn_down   sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1472   qlen=1   cache=N lat=    0.011ms cycles≈11466
+[pim-debug] segment total latency: 0.055 ms
+========================================================================================
+[pim-debug] segment_key=pim|decode|9|73f0b93ba2927d0614be9f9ec9b9774c
+[pim-debug] sig: device_type=pim phase=decode step=9 (count_hint=32)
+[pim-debug] ops_repr: Q:1,K:1,V:1,QK:1,Softmax:1,SV:1,O:1,FFN_W1:1,FFN_W2:1
+[pim-debug] cfg: shard_policy='fine' shards=2 dim=4096 ffn_dim=11008 n_heads=32 n_kv_heads=auto->n_heads
+[pim-debug] pim_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/PIM_AiM.json
+[pim-debug] ramulator_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/example.yaml
+[pim-debug] cost_model config.PIM_FREQ_GHZ=1.0
+[pim-debug] op plan (logical shapes inferred from schedule cfg):
+  - op#00  op=Q        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1536)
+  - op#01  op=K        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1536)
+  - op#02  op=V        shard=1   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1536)
+  - op#03  op=QK       shard=1   q=[16x1x128] + k=[16x128x1536]  ->  y=[16x1x1536]  (T=1, K=1536)
+  - op#04  op=Softmax  shard=1   scores=[16x1x1536]  ->  y=[16x1x1536]  (T=1, K=1536)
+  - op#05  op=SV       shard=1   p=[16x1x1536] + v=[16x1536x128]  ->  y=[16x1x128]  (T=1, K=1536)
+  - op#06  op=O        shard=1   x=[1x2048] + w=[4096x2048]  ->  y=[1x4096]  (T=1, K=1536)
+  - op#07  op=FFN_W1   shard=1   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=1536)
+  - op#08  op=FFN_W2   shard=1   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=1536)
+[pim-debug] NOTE: CENT(AiM) trace backend internally uses x shape (1,1,dim) and handles prefill by repeating ops;
+           the table below shows the *effective parameters* passed into cost_model_pim_backend for each op.
+[pim-debug] op#00 op=Q        norm=q_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1536   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#01 op=K        norm=k_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1536   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#02 op=V        norm=v_proj     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1536   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#03 op=QK       norm=score      sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1536   qlen=1   cache=N lat=    0.005ms cycles≈5424
+[pim-debug] op#04 op=Softmax  norm=softmax    sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1536   qlen=1   cache=N lat=    0.005ms cycles≈5347
+[pim-debug] op#05 op=SV       norm=output     sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1536   qlen=1   cache=N lat=    0.004ms cycles≈4256
+[pim-debug] op#06 op=O        norm=wo_proj    sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1536   qlen=1   cache=N lat=    0.004ms cycles≈4062
+[pim-debug] op#07 op=FFN_W1   norm=ffn_gate   sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1536   qlen=1   cache=N lat=    0.012ms cycles≈11708
+[pim-debug] op#08 op=FFN_W2   norm=ffn_down   sh=1  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1536   qlen=1   cache=N lat=    0.011ms cycles≈11466
+[pim-debug] segment total latency: 0.056 ms
+========================================================================================
+[pim-debug] segment_key=pim|decode|9|d9f2c5d5d25b036a5f39277c4750a787
+[pim-debug] sig: device_type=pim phase=decode step=9 (count_hint=32)
+[pim-debug] ops_repr: Q:0,K:0,V:0,QK:0,Softmax:0,SV:0,O:0,FFN_W1:0,FFN_W2:0
+[pim-debug] cfg: shard_policy='fine' shards=2 dim=4096 ffn_dim=11008 n_heads=32 n_kv_heads=auto->n_heads
+[pim-debug] pim_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/PIM_AiM.json
+[pim-debug] ramulator_config=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/aim_simulator/example.yaml
+[pim-debug] cost_model config.PIM_FREQ_GHZ=1.0
+[pim-debug] op plan (logical shapes inferred from schedule cfg):
+  - op#00  op=Q        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1536)
+  - op#01  op=K        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1536)
+  - op#02  op=V        shard=0   x=[1x4096] + w=[2048x4096]  ->  y=[1x2048]  (T=1, K=1536)
+  - op#03  op=QK       shard=0   q=[16x1x128] + k=[16x128x1536]  ->  y=[16x1x1536]  (T=1, K=1536)
+  - op#04  op=Softmax  shard=0   scores=[16x1x1536]  ->  y=[16x1x1536]  (T=1, K=1536)
+  - op#05  op=SV       shard=0   p=[16x1x1536] + v=[16x1536x128]  ->  y=[16x1x128]  (T=1, K=1536)
+  - op#06  op=O        shard=0   x=[1x2048] + w=[4096x2048]  ->  y=[1x4096]  (T=1, K=1536)
+  - op#07  op=FFN_W1   shard=0   x=[1x4096] + w=[5504x4096]  ->  y=[1x5504]  (T=1, K=1536)
+  - op#08  op=FFN_W2   shard=0   x=[1x5504] + w=[4096x5504]  ->  y=[1x4096]  (T=1, K=1536)
+[pim-debug] NOTE: CENT(AiM) trace backend internally uses x shape (1,1,dim) and handles prefill by repeating ops;
+           the table below shows the *effective parameters* passed into cost_model_pim_backend for each op.
+[pim-debug] op#00 op=Q        norm=q_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1536   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#01 op=K        norm=k_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1536   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#02 op=V        norm=v_proj     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1536   qlen=1   cache=N lat=    0.004ms cycles≈4428
+[pim-debug] op#03 op=QK       norm=score      sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1536   qlen=1   cache=N lat=    0.005ms cycles≈5424
+[pim-debug] op#04 op=Softmax  norm=softmax    sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1536   qlen=1   cache=N lat=    0.005ms cycles≈5347
+[pim-debug] op#05 op=SV       norm=output     sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1536   qlen=1   cache=N lat=    0.004ms cycles≈4256
+[pim-debug] op#06 op=O        norm=wo_proj    sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1536   qlen=1   cache=N lat=    0.004ms cycles≈4062
+[pim-debug] op#07 op=FFN_W1   norm=ffn_gate   sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1536   qlen=1   cache=N lat=    0.012ms cycles≈11708
+[pim-debug] op#08 op=FFN_W2   norm=ffn_down   sh=0  dim=4096  heads=16  hd=128 q_dim=2048  kv_heads=16  kv_dim=2048  o_dim=2048  ffn_dim=5504   seqlen=1536   qlen=1   cache=N lat=    0.011ms cycles≈11466
+[pim-debug] segment total latency: 0.056 ms
+  progress 34/34
+[run-pim] wrote /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b8_s64/facil_1024x1024.pim_results.json
+[slurm] wrote OK_FILE=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b8_s64/facil_1024x1024.pim.ok
+[slurm] done at Sat Feb 28 09:11:30 CST 2026

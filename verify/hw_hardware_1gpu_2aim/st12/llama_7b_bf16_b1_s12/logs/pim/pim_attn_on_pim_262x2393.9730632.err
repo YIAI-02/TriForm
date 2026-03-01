@@ -1,0 +1,2 @@
+/var/spool/slurmd/job9730632/slurm_script: line 132: 1965511 Killed                  "${cmd[@]}"
+[2026-02-27T10:40:08.452] error: Detected 1 oom_kill event in StepId=9730632.batch. Some of the step tasks have been OOM Killed.

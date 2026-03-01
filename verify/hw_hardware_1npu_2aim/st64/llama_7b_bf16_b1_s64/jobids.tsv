@@ -1,0 +1,16 @@
+attacc_128x64	9755548	9755549	9755550	/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1npu_2aim/st64/llama_7b_bf16_b1_s64/attacc_128x64.merge.csv
+@collect_attacc_128x64	-	-	9755551	/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1npu_2aim/st64/llama_7b_bf16_b1_s64/attacc_128x64.merge_all.csv
+attn_on_pim_128x64	9755552	9755553	9755554	/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1npu_2aim/st64/llama_7b_bf16_b1_s64/attn_on_pim_128x64.merge.csv
+@collect_attn_on_pim_128x64	-	-	9755555	/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1npu_2aim/st64/llama_7b_bf16_b1_s64/attn_on_pim_128x64.merge_all.csv
+facil_128x64	9755556	9755557	9755558	/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1npu_2aim/st64/llama_7b_bf16_b1_s64/facil_128x64.merge.csv
+@collect_facil_128x64	-	-	9755559	/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1npu_2aim/st64/llama_7b_bf16_b1_s64/facil_128x64.merge_all.csv
+heft_128x64	9755560	9755561	9755562	/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1npu_2aim/st64/llama_7b_bf16_b1_s64/heft_128x64.merge.csv
+@collect_heft_128x64	-	-	9755563	/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1npu_2aim/st64/llama_7b_bf16_b1_s64/heft_128x64.merge_all.csv
+hefthint_128x64	9755564	9755565	9755566	/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1npu_2aim/st64/llama_7b_bf16_b1_s64/hefthint_128x64.merge.csv
+@collect_hefthint_128x64	-	-	9755567	/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1npu_2aim/st64/llama_7b_bf16_b1_s64/hefthint_128x64.merge_all.csv
+ianus_128x64	9755568	9755569	9755570	/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1npu_2aim/st64/llama_7b_bf16_b1_s64/ianus_128x64.merge.csv
+@collect_ianus_128x64	-	-	9755571	/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1npu_2aim/st64/llama_7b_bf16_b1_s64/ianus_128x64.merge_all.csv
+pd_128x64	9755572	9755573	9755574	/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1npu_2aim/st64/llama_7b_bf16_b1_s64/pd_128x64.merge.csv
+@collect_pd_128x64	-	-	9755575	/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1npu_2aim/st64/llama_7b_bf16_b1_s64/pd_128x64.merge_all.csv
+weights_on_pim_128x64	9755576	9755577	9755578	/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1npu_2aim/st64/llama_7b_bf16_b1_s64/weights_on_pim_128x64.merge.csv
+@collect_weights_on_pim_128x64	-	-	9755579	/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1npu_2aim/st64/llama_7b_bf16_b1_s64/weights_on_pim_128x64.merge_all.csv

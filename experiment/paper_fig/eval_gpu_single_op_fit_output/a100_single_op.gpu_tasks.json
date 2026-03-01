@@ -1,0 +1,695 @@
+{
+  "version": 3,
+  "task_type": "segment",
+  "backend": "gpu",
+  "segment_scope": "single_op",
+  "schedules": [],
+  "weight_load_s": 0.0,
+  "weight_load_meta": {
+    "gpu_s": 0.0,
+    "pim_s": 0.0,
+    "unknown_s": 0.0,
+    "total_s": 0.0
+  },
+  "weight_load_by_schedule": {},
+  "config": {
+    "dim": 4096,
+    "ffn_dim": 11008,
+    "n_heads": 32,
+    "shards": 4,
+    "prefill_len": 1024,
+    "decode_context_lens": [
+      128,
+      256,
+      512,
+      1024
+    ],
+    "decode_stride": 64,
+    "device": "cuda",
+    "gpu_dtype": "fp16",
+    "batch": 1,
+    "segment_scope": "single_op"
+  },
+  "tasks": [
+    {
+      "key": "a100_single_op|decode|Add|sh0|B1|T1|K128|D4096|Sd1024|Fsd2752|H8|Hd128",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 0
+      },
+      "ops": [
+        {
+          "op": "Add",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Add:0",
+      "count_hint": 1,
+      "meta": {
+        "op": "Add",
+        "phase": "decode",
+        "step": 0,
+        "shard": 0,
+        "batch": 1,
+        "query_len": 1,
+        "key_len": 128,
+        "dim": 4096,
+        "shard_dim": 1024,
+        "ffn_shard_dim": 2752,
+        "heads_per_shard": 8,
+        "head_dim": 128
+      }
+    },
+    {
+      "key": "a100_single_op|decode|FFN_W1|sh0|B1|T1|K128|D4096|Sd1024|Fsd2752|H8|Hd128",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 0
+      },
+      "ops": [
+        {
+          "op": "FFN_W1",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "FFN_W1:0",
+      "count_hint": 1,
+      "meta": {
+        "op": "FFN_W1",
+        "phase": "decode",
+        "step": 0,
+        "shard": 0,
+        "batch": 1,
+        "query_len": 1,
+        "key_len": 128,
+        "dim": 4096,
+        "shard_dim": 1024,
+        "ffn_shard_dim": 2752,
+        "heads_per_shard": 8,
+        "head_dim": 128
+      }
+    },
+    {
+      "key": "a100_single_op|decode|FFN_W2|sh0|B1|T1|K128|D4096|Sd1024|Fsd2752|H8|Hd128",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 0
+      },
+      "ops": [
+        {
+          "op": "FFN_W2",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "FFN_W2:0",
+      "count_hint": 1,
+      "meta": {
+        "op": "FFN_W2",
+        "phase": "decode",
+        "step": 0,
+        "shard": 0,
+        "batch": 1,
+        "query_len": 1,
+        "key_len": 128,
+        "dim": 4096,
+        "shard_dim": 1024,
+        "ffn_shard_dim": 2752,
+        "heads_per_shard": 8,
+        "head_dim": 128
+      }
+    },
+    {
+      "key": "a100_single_op|decode|FFN_W3|sh0|B1|T1|K128|D4096|Sd1024|Fsd2752|H8|Hd128",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 0
+      },
+      "ops": [
+        {
+          "op": "FFN_W3",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "FFN_W3:0",
+      "count_hint": 1,
+      "meta": {
+        "op": "FFN_W3",
+        "phase": "decode",
+        "step": 0,
+        "shard": 0,
+        "batch": 1,
+        "query_len": 1,
+        "key_len": 128,
+        "dim": 4096,
+        "shard_dim": 1024,
+        "ffn_shard_dim": 2752,
+        "heads_per_shard": 8,
+        "head_dim": 128
+      }
+    },
+    {
+      "key": "a100_single_op|decode|K|sh0|B1|T1|K128|D4096|Sd1024|Fsd2752|H8|Hd128",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 0
+      },
+      "ops": [
+        {
+          "op": "K",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "K:0",
+      "count_hint": 1,
+      "meta": {
+        "op": "K",
+        "phase": "decode",
+        "step": 0,
+        "shard": 0,
+        "batch": 1,
+        "query_len": 1,
+        "key_len": 128,
+        "dim": 4096,
+        "shard_dim": 1024,
+        "ffn_shard_dim": 2752,
+        "heads_per_shard": 8,
+        "head_dim": 128
+      }
+    },
+    {
+      "key": "a100_single_op|decode|LN|sh0|B1|T1|K128|D4096|Sd1024|Fsd2752|H8|Hd128",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 0
+      },
+      "ops": [
+        {
+          "op": "LN",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "LN:0",
+      "count_hint": 1,
+      "meta": {
+        "op": "LN",
+        "phase": "decode",
+        "step": 0,
+        "shard": 0,
+        "batch": 1,
+        "query_len": 1,
+        "key_len": 128,
+        "dim": 4096,
+        "shard_dim": 1024,
+        "ffn_shard_dim": 2752,
+        "heads_per_shard": 8,
+        "head_dim": 128
+      }
+    },
+    {
+      "key": "a100_single_op|decode|O|sh0|B1|T1|K128|D4096|Sd1024|Fsd2752|H8|Hd128",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 0
+      },
+      "ops": [
+        {
+          "op": "O",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "O:0",
+      "count_hint": 1,
+      "meta": {
+        "op": "O",
+        "phase": "decode",
+        "step": 0,
+        "shard": 0,
+        "batch": 1,
+        "query_len": 1,
+        "key_len": 128,
+        "dim": 4096,
+        "shard_dim": 1024,
+        "ffn_shard_dim": 2752,
+        "heads_per_shard": 8,
+        "head_dim": 128
+      }
+    },
+    {
+      "key": "a100_single_op|decode|QK|sh0|B1|T1|K1024|D4096|Sd1024|Fsd2752|H8|Hd128",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 3
+      },
+      "ops": [
+        {
+          "op": "QK",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "QK:0",
+      "count_hint": 1,
+      "meta": {
+        "op": "QK",
+        "phase": "decode",
+        "step": 3,
+        "shard": 0,
+        "batch": 1,
+        "query_len": 1,
+        "key_len": 1024,
+        "dim": 4096,
+        "shard_dim": 1024,
+        "ffn_shard_dim": 2752,
+        "heads_per_shard": 8,
+        "head_dim": 128
+      }
+    },
+    {
+      "key": "a100_single_op|decode|QK|sh0|B1|T1|K128|D4096|Sd1024|Fsd2752|H8|Hd128",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 0
+      },
+      "ops": [
+        {
+          "op": "QK",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "QK:0",
+      "count_hint": 1,
+      "meta": {
+        "op": "QK",
+        "phase": "decode",
+        "step": 0,
+        "shard": 0,
+        "batch": 1,
+        "query_len": 1,
+        "key_len": 128,
+        "dim": 4096,
+        "shard_dim": 1024,
+        "ffn_shard_dim": 2752,
+        "heads_per_shard": 8,
+        "head_dim": 128
+      }
+    },
+    {
+      "key": "a100_single_op|decode|QK|sh0|B1|T1|K256|D4096|Sd1024|Fsd2752|H8|Hd128",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 1
+      },
+      "ops": [
+        {
+          "op": "QK",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "QK:0",
+      "count_hint": 1,
+      "meta": {
+        "op": "QK",
+        "phase": "decode",
+        "step": 1,
+        "shard": 0,
+        "batch": 1,
+        "query_len": 1,
+        "key_len": 256,
+        "dim": 4096,
+        "shard_dim": 1024,
+        "ffn_shard_dim": 2752,
+        "heads_per_shard": 8,
+        "head_dim": 128
+      }
+    },
+    {
+      "key": "a100_single_op|decode|QK|sh0|B1|T1|K512|D4096|Sd1024|Fsd2752|H8|Hd128",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 2
+      },
+      "ops": [
+        {
+          "op": "QK",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "QK:0",
+      "count_hint": 1,
+      "meta": {
+        "op": "QK",
+        "phase": "decode",
+        "step": 2,
+        "shard": 0,
+        "batch": 1,
+        "query_len": 1,
+        "key_len": 512,
+        "dim": 4096,
+        "shard_dim": 1024,
+        "ffn_shard_dim": 2752,
+        "heads_per_shard": 8,
+        "head_dim": 128
+      }
+    },
+    {
+      "key": "a100_single_op|decode|Q|sh0|B1|T1|K128|D4096|Sd1024|Fsd2752|H8|Hd128",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 0
+      },
+      "ops": [
+        {
+          "op": "Q",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Q:0",
+      "count_hint": 1,
+      "meta": {
+        "op": "Q",
+        "phase": "decode",
+        "step": 0,
+        "shard": 0,
+        "batch": 1,
+        "query_len": 1,
+        "key_len": 128,
+        "dim": 4096,
+        "shard_dim": 1024,
+        "ffn_shard_dim": 2752,
+        "heads_per_shard": 8,
+        "head_dim": 128
+      }
+    },
+    {
+      "key": "a100_single_op|decode|SV|sh0|B1|T1|K1024|D4096|Sd1024|Fsd2752|H8|Hd128",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 3
+      },
+      "ops": [
+        {
+          "op": "SV",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "SV:0",
+      "count_hint": 1,
+      "meta": {
+        "op": "SV",
+        "phase": "decode",
+        "step": 3,
+        "shard": 0,
+        "batch": 1,
+        "query_len": 1,
+        "key_len": 1024,
+        "dim": 4096,
+        "shard_dim": 1024,
+        "ffn_shard_dim": 2752,
+        "heads_per_shard": 8,
+        "head_dim": 128
+      }
+    },
+    {
+      "key": "a100_single_op|decode|SV|sh0|B1|T1|K128|D4096|Sd1024|Fsd2752|H8|Hd128",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 0
+      },
+      "ops": [
+        {
+          "op": "SV",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "SV:0",
+      "count_hint": 1,
+      "meta": {
+        "op": "SV",
+        "phase": "decode",
+        "step": 0,
+        "shard": 0,
+        "batch": 1,
+        "query_len": 1,
+        "key_len": 128,
+        "dim": 4096,
+        "shard_dim": 1024,
+        "ffn_shard_dim": 2752,
+        "heads_per_shard": 8,
+        "head_dim": 128
+      }
+    },
+    {
+      "key": "a100_single_op|decode|SV|sh0|B1|T1|K256|D4096|Sd1024|Fsd2752|H8|Hd128",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 1
+      },
+      "ops": [
+        {
+          "op": "SV",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "SV:0",
+      "count_hint": 1,
+      "meta": {
+        "op": "SV",
+        "phase": "decode",
+        "step": 1,
+        "shard": 0,
+        "batch": 1,
+        "query_len": 1,
+        "key_len": 256,
+        "dim": 4096,
+        "shard_dim": 1024,
+        "ffn_shard_dim": 2752,
+        "heads_per_shard": 8,
+        "head_dim": 128
+      }
+    },
+    {
+      "key": "a100_single_op|decode|SV|sh0|B1|T1|K512|D4096|Sd1024|Fsd2752|H8|Hd128",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 2
+      },
+      "ops": [
+        {
+          "op": "SV",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "SV:0",
+      "count_hint": 1,
+      "meta": {
+        "op": "SV",
+        "phase": "decode",
+        "step": 2,
+        "shard": 0,
+        "batch": 1,
+        "query_len": 1,
+        "key_len": 512,
+        "dim": 4096,
+        "shard_dim": 1024,
+        "ffn_shard_dim": 2752,
+        "heads_per_shard": 8,
+        "head_dim": 128
+      }
+    },
+    {
+      "key": "a100_single_op|decode|Softmax|sh0|B1|T1|K1024|D4096|Sd1024|Fsd2752|H8|Hd128",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 3
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 1,
+      "meta": {
+        "op": "Softmax",
+        "phase": "decode",
+        "step": 3,
+        "shard": 0,
+        "batch": 1,
+        "query_len": 1,
+        "key_len": 1024,
+        "dim": 4096,
+        "shard_dim": 1024,
+        "ffn_shard_dim": 2752,
+        "heads_per_shard": 8,
+        "head_dim": 128
+      }
+    },
+    {
+      "key": "a100_single_op|decode|Softmax|sh0|B1|T1|K128|D4096|Sd1024|Fsd2752|H8|Hd128",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 0
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 1,
+      "meta": {
+        "op": "Softmax",
+        "phase": "decode",
+        "step": 0,
+        "shard": 0,
+        "batch": 1,
+        "query_len": 1,
+        "key_len": 128,
+        "dim": 4096,
+        "shard_dim": 1024,
+        "ffn_shard_dim": 2752,
+        "heads_per_shard": 8,
+        "head_dim": 128
+      }
+    },
+    {
+      "key": "a100_single_op|decode|Softmax|sh0|B1|T1|K256|D4096|Sd1024|Fsd2752|H8|Hd128",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 1
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 1,
+      "meta": {
+        "op": "Softmax",
+        "phase": "decode",
+        "step": 1,
+        "shard": 0,
+        "batch": 1,
+        "query_len": 1,
+        "key_len": 256,
+        "dim": 4096,
+        "shard_dim": 1024,
+        "ffn_shard_dim": 2752,
+        "heads_per_shard": 8,
+        "head_dim": 128
+      }
+    },
+    {
+      "key": "a100_single_op|decode|Softmax|sh0|B1|T1|K512|D4096|Sd1024|Fsd2752|H8|Hd128",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 2
+      },
+      "ops": [
+        {
+          "op": "Softmax",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "Softmax:0",
+      "count_hint": 1,
+      "meta": {
+        "op": "Softmax",
+        "phase": "decode",
+        "step": 2,
+        "shard": 0,
+        "batch": 1,
+        "query_len": 1,
+        "key_len": 512,
+        "dim": 4096,
+        "shard_dim": 1024,
+        "ffn_shard_dim": 2752,
+        "heads_per_shard": 8,
+        "head_dim": 128
+      }
+    },
+    {
+      "key": "a100_single_op|decode|SwiGLU|sh0|B1|T1|K128|D4096|Sd1024|Fsd2752|H8|Hd128",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 0
+      },
+      "ops": [
+        {
+          "op": "SwiGLU",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "SwiGLU:0",
+      "count_hint": 1,
+      "meta": {
+        "op": "SwiGLU",
+        "phase": "decode",
+        "step": 0,
+        "shard": 0,
+        "batch": 1,
+        "query_len": 1,
+        "key_len": 128,
+        "dim": 4096,
+        "shard_dim": 1024,
+        "ffn_shard_dim": 2752,
+        "heads_per_shard": 8,
+        "head_dim": 128
+      }
+    },
+    {
+      "key": "a100_single_op|decode|V|sh0|B1|T1|K128|D4096|Sd1024|Fsd2752|H8|Hd128",
+      "sig": {
+        "device_type": "npu",
+        "phase": "decode",
+        "step": 0
+      },
+      "ops": [
+        {
+          "op": "V",
+          "shard": 0
+        }
+      ],
+      "ops_repr": "V:0",
+      "count_hint": 1,
+      "meta": {
+        "op": "V",
+        "phase": "decode",
+        "step": 0,
+        "shard": 0,
+        "batch": 1,
+        "query_len": 1,
+        "key_len": 128,
+        "dim": 4096,
+        "shard_dim": 1024,
+        "ffn_shard_dim": 2752,
+        "heads_per_shard": 8,
+        "head_dim": 128
+      }
+    }
+  ]
+}

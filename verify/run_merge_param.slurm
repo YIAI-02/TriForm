@@ -34,7 +34,7 @@ conda activate triform310
 THIS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$THIS_DIR/.." && pwd)"
 
-PY_SCRIPT="${PY_SCRIPT:-$REPO_ROOT/verify/schedule_deploy_verify.py}"
+PY_SCRIPT="${PY_SCRIPT:-$REPO_ROOT/verify/schedule_deploy_verify_gpu.py}"
 
 # ----------------------------------------------------------------------
 # Optional: collect mode (concatenate multiple merge.csv into one)
@@ -59,6 +59,7 @@ PCIE_LANES="${PCIE_LANES:-16}"
 DECODE_STRIDE="${DECODE_STRIDE:-1}"
 NON_OVERLAP="${NON_OVERLAP:-0.2}"
 COMMS_CSV="${COMMS_CSV:-}"
+BATCH="${BATCH:-}"
 OUT_CSV="${OUT_CSV:-}"
 OUT_STEPS_CSV="${OUT_STEPS_CSV:-}"
 
@@ -158,6 +159,10 @@ cmd=(python "$PY_SCRIPT" merge \
   --decode-stride "$DECODE_STRIDE" \
   --non-overlap "$NON_OVERLAP" \
   --out-csv "$OUT_CSV")
+
+if [[ -n "${BATCH}" ]]; then
+  cmd+=(--batch "$BATCH")
+fi
 
 if [[ -n "${GPU_RESULTS_JSON}" && "${GPU_RESULTS_JSON}" != "-" ]]; then
   cmd+=(--gpu-results "$GPU_RESULTS_JSON")

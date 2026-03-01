@@ -178,47 +178,101 @@ SCHED_WEIGHT_BIAS_ETA: float = 50
 # -------------------------------------------------------------------------------------------------
 CPU_FALLBACK_TFLOPS = 1e-3  # 1 GFLOP/s
 COMPUTE_UTILIZATION = {
-    'default': 0.7,
-    'npu': {
-        'enabled': True,
-        'curve': 'sigmoid',
-        'min_util': 0.4,
-        'max_util': 0.8,
-        'flops_low': 5e7,     # <= 0.5 GFLOPs -> near min_util
-        'flops_high': 5e12,   # >= 5TFLOPs -> near max_util
-        'knee_flops': 1.5e11,  #defualt sqrt(low*high) ≈ 1.58e10
-        'slope': 3.0,
-    },
+    # Device-name based overrides (match prefix in hardware.json "name")
+    #   - name="Ascend_910B_NPU0" -> key "Ascend_910B"
+    #   - name="A100_GPU0"        -> key "A100"
+    'by_device_name': {
+        # TODO: tune these for your CUDA stack / kernels.
+        'Ascend_910B': {
+            'enabled': True,
+            'curve': 'sigmoid',
+            'min_util': 0.3,
+            'max_util': 1.0,
+            'flops_low': 5e7,
+            'flops_high': 5e12,
+            'knee_flops': 1.0e10,
+            'slope': 5.0,
+        },
 
+        # NVIDIA A100
+        'A100': {
+            'enabled': True,
+            'curve': 'sigmoid',
+            'min_util': 0.4,
+            'max_util': 0.8,
+            'flops_low': 5e7,
+            'flops_high': 5e12,
+            'knee_flops': 1.5e11,
+            'slope': 3.0,
+        },
+    },
 }
+
+
+
 # -------------------------------------------------------------------------------------------------
 # NPU/GPU kernel launch (software/runtime) overhead model
 # -------------------------------------------------------------------------------------------------
 KERNEL_LAUNCH_OVERHEAD = {
-    # Global on/off
-    'enabled': True,
-    'apply_backends': ['fast'],
+    # Device-name based overrides (match prefix in hardware.json "name")
+    #   - name="Ascend_910B_NPU0" -> key "Ascend_910B"
+    #   - name="A100_GPU0"        -> key "A100"
+    'by_device_name': {
+        # Ascend 910B family (separate copy; currently same as the default)
+        'Ascend_910B': {
+            'enabled': True,
+            'apply_backends': ['fast'],
+            'phase_scale': {
+                'prefill': 0.5,
+                'decode': 1.0,
+            },
+            'scale_by_time_scale': False,
+            'default_us': 0.0,
+            'by_category_us': {
+                'norm': 3.0,
+                'softmax': 0.25,
+                'activation': 3.0,
+                'elem': 3.0,
+                'gemm': 4.0,
+            },
+            'by_op_us': {
+                'ln': 3.0,
+                'gelu': 3.0,
+                'softmax': 0.25,
+                'q_proj': 4.0,
+            },
+        },
 
-    'phase_scale': {
-        'prefill': 0.0,
-        'decode': 0.5,
-    },
-    'scale_by_time_scale': False,
-    'default_us': 0.0,
+        # NVIDIA A100
+        # TODO: tune these for CUDA / kernels.
+        'A100': {
+            'enabled': True,
+            'apply_backends': ['fast'],
+            'phase_scale': {
+                'prefill': 1.0,
+                'decode': 1.0,
+            },
 
-    'by_category_us': {
-        'norm': 70.5,
-        'softmax': 0.0,
-        'activation': 14.2,
-        'elem': 13.7,
-        'gemm': 24.0,
-    },
+            'scale_by_time_scale': False,
+            'default_us': 0.0,
+            'by_category_us': {
+                'norm': 53.0,        
+                'softmax': 13.0,
+                'activation': 19.5,
+                'elem': 29.0,
+                'gemm': 24.0,
+            },
 
-    'by_op_us': {
-        'score': 5.0,   # QK
-        'output': 5.0,  # SV
-        'ffn_up': 31.1,     # ffn_w3
-        'ffn_gate': 34.1,   # ffn_w1
-        'ffn_down': 32.5,   # ffn_w2
+            'by_op_us': {
+                'score': 39.0,
+                'output': 22.0, 
+                'ffn_up': 31.1,
+                'ffn_gate': 34.1,
+                'ffn_down': 32.5,
+                'add': 29.0,
+                'swiglu': 19.5,
+            },
+        },
     },
 }
+

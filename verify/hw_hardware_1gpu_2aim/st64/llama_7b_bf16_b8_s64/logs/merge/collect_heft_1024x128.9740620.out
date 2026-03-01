@@ -1,0 +1,11 @@
+[slurm] jobid=9740620 nodelist=l01c04n4
+[slurm] host=l01c04n4
+[slurm] pwd=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b8_s64
+[slurm] starting at Sat Feb 28 09:11:41 CST 2026
+[slurm] collect-merge mode
+[slurm] PY_SCRIPT=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/schedule_deploy_verify.py
+[slurm] MERGE_LIST_FILE=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b8_s64/heft_1024x128.merge_list.tsv
+[slurm] COLLECT_OUT_CSV=/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b8_s64/heft_1024x128.merge_all.csv
+[slurm] COLLECT_SKIP_MISSING=1
+[slurm] Running: python /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/schedule_deploy_verify.py collect-merge --list /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b8_s64/heft_1024x128.merge_list.tsv --out-csv /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b8_s64/heft_1024x128.merge_all.csv --skip-missing
+[slurm] done at Sat Feb 28 09:11:44 CST 2026
