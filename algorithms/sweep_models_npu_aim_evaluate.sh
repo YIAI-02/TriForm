@@ -13,8 +13,9 @@ MODEL_FAMILY_VARIANTS=(
   # "mixtral:8x7b"
   # "palm:62b"
   # "qwen:1.8b"
-  "llama:7b"
-  "llama:13b"
+  # "llama:7b"
+  # "llama:13b"
+  "llama:70b"
 )
 
 PREFILLS=(128 256 512 1024 2048 4096)
@@ -22,7 +23,7 @@ DECODES=(64 128 256 512 1024)
 
 # Hardware sweep (edit here, or use --hardware_glob)
 HARDWARE_CONFIGS=(
-  # ./examples/hardware_1npu_2aim.json
+  ./examples/hardware_1npu_2aim.json
   # ./examples/hardware_1npu_2aim_star.json
   ./examples/hardware_1npu_4aim.json
   # ./examples/hardware_1npu_4aim_star.json

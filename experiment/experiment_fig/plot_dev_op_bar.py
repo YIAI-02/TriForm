@@ -1,13 +1,29 @@
 # -*- coding: utf-8 -*-
-"""
+"""plot_dev_op_bar.py
+
+Single CSV
+--------------------------
 python plot_dev_op_bar.py \
-  --csv ../algorithms/output/evaluate_single_test/hardware_1gpu_4aim/qwen_7b_int8_b1_s128/algo_hefthint/hefthint_4096x1024_ops_trace.csv \
-  --out_dir ../figs/dev_op_bar/
+  --csv ../../algorithms/output/hw_hardware_1npu_2aim/st64/llama_7b_bf16_b16_s64/algo_hefthint/hefthint_prefill-2048xdecode_256_ops_trace.csv \
+  --out_dir ../../figs/dev_op_bar/hw_hardware_1npu_2aim/st64/llama_7b_bf16_b16_s64/algo_hefthint \
+  --device_label cpu="NPU" \
+  --device_label pim="PIM" \
+  --label_threshold 0.03 \
+  --group_step 0.52 --bar_width 0.22 --inner_gap 0.04
+
+Batch mode: scan a directory of many ops-trace CSVs
+---------------------------------------------------
+python plot_dev_op_bar.py \
+  --csv_dir ../../algorithms/output/hw_hardware_1gpu_2aim/st64/qwen_1.8b_bf16_b1_s64/algo_hefthint \
+  --pattern "*_ops_trace.csv" \
+  --out_dir ../../figs/dev_op_bar/hw_hardware_1gpu_2aim/st64/qwen_1.8b_bf16_b1_s64/algo_hefthint
+
+
   --device_label cpu="NPU" \
   --device_label pim="PIM"
 
-  --label_threshold 0.03
-  --group_step 0.52 --bar_width 0.22 --inner_gap 0.04
+Default behavior in batch mode is to create one sub-directory per CSV under --out_dir.
+Use --flat to put everything in one directory and prefix output names by CSV stem.
 """
 
 from __future__ import annotations
@@ -15,6 +31,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 from pathlib import Path
+import re
 from typing import Dict, List, Tuple
 
 import numpy as np
@@ -276,6 +293,7 @@ def plot_grouped_stacked_ratio(
     bar_width: float = 0.22,
     inner_gap: float = 0.04,
     label_threshold: float = 0.0,
+    title_suffix: str = "",
 ) -> None:
     phases = ["prefill", "decode"]
 
@@ -357,7 +375,10 @@ def plot_grouped_stacked_ratio(
     ax.set_ylabel("Proportion (stacked)")
 
     devices_title = " vs ".join([device_labels.get(d, d) for d in devices])
-    ax.set_title(f"{devices_title} ratio by operator (Prefill vs Decode) — {metric_title}")
+    title = f"{devices_title} ratio by operator (Prefill vs Decode) — {metric_title}"
+    if str(title_suffix).strip():
+        title += f" — {title_suffix}"
+    ax.set_title(title)
 
     ax.set_axisbelow(True)
     ax.grid(axis="y", linestyle="--", alpha=0.35, zorder=0)
@@ -390,7 +411,30 @@ def parse_args() -> argparse.Namespace:
             "Device types are auto-detected from the CSV; you can override device display names via --device_label."
         )
     )
-    p.add_argument("--csv", required=True, help="Input CSV path")
+    g = p.add_mutually_exclusive_group(required=True)
+    g.add_argument("--csv", help="Input CSV path")
+    g.add_argument("--csv_dir", help="Directory to scan for many CSVs")
+
+    p.add_argument("--pattern", default="*_ops_trace.csv", help="Glob pattern under --csv_dir (default: '*_ops_trace.csv')")
+    p.add_argument("--recursive", action="store_true", help="Recursively scan --csv_dir")
+    p.add_argument(
+        "--flat",
+        action="store_true",
+        help=(
+            "Write all outputs directly into --out_dir (file names will be prefixed by CSV stem). "
+            "Default: create one subdir per CSV."
+        ),
+    )
+    p.add_argument(
+        "--no_case_in_title",
+        action="store_true",
+        help="Do not append case info parsed from filename to plot title (default: append).",
+    )
+    p.add_argument(
+        "--fail_fast",
+        action="store_true",
+        help="Stop on the first CSV that fails (default: continue and report errors).",
+    )
     p.add_argument("--out_dir", required=True, help="Output directory")
 
     # Column name overrides
@@ -427,12 +471,68 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-def main() -> None:
-    args = parse_args()
+def _strip_known_suffixes(stem: str) -> str:
+    s = str(stem)
+    s = re.sub(r"(_ops_trace|_ops|_trace)$", "", s, flags=re.IGNORECASE)
+    return s
 
-    csv_path = Path(args.csv)
-    out_dir = Path(args.out_dir)
+
+def prefill_decode_from_stem(stem: str) -> Tuple[int, int]:
+    """Try to parse (prefill, decode) ints from a filename stem."""
+    s = stem.lower()
+    s = _strip_known_suffixes(s)
+    m = re.search(r"prefill[-_]?([0-9]+)\s*x\s*decode[-_]?([0-9]+)", s)
+    if not m:
+        m = re.search(r"prefill[-_]?([0-9]+)xdecode[-_]?([0-9]+)", s)
+    if m:
+        return int(m.group(1)), int(m.group(2))
+    # Fallback: push unknown to the end.
+    return 10**18, 10**18
+
+
+def case_title_from_csv(csv_path: Path) -> str:
+    """Human-friendly case title suffix derived from CSV filename."""
+    stem = _strip_known_suffixes(csv_path.stem)
+    low = stem.lower()
+
+    # Prefer extracting the part starting from 'prefill' if present.
+    m = re.search(r"prefill.*", low)
+    tag = stem[m.start() :] if m else stem
+
+    pd_nums = prefill_decode_from_stem(tag)
+    if pd_nums[0] < 10**18:
+        return f"prefill={pd_nums[0]}, decode={pd_nums[1]}"
+    return tag
+
+
+def discover_csvs(csv_dir: Path, pattern: str, recursive: bool) -> List[Path]:
+    if not csv_dir.exists():
+        raise FileNotFoundError(f"--csv_dir not found: {csv_dir}")
+    if not csv_dir.is_dir():
+        raise NotADirectoryError(f"--csv_dir is not a directory: {csv_dir}")
+
+    if recursive:
+        paths = list(csv_dir.rglob(pattern))
+    else:
+        paths = list(csv_dir.glob(pattern))
+    paths = [p for p in paths if p.is_file()]
+
+    # Sort by (prefill, decode, name) when possible.
+    paths.sort(key=lambda p: (*prefill_decode_from_stem(p.stem), p.name))
+    return paths
+
+
+def process_one_csv(
+    csv_path: Path,
+    out_dir: Path,
+    args: argparse.Namespace,
+    *,
+    name_prefix: str = "",
+    title_suffix: str = "",
+) -> None:
+    """Run the original single-CSV pipeline for one file."""
     out_dir.mkdir(parents=True, exist_ok=True)
+
 
     df = pd.read_csv(csv_path)
 
@@ -511,7 +611,9 @@ def main() -> None:
         duration_col=args.duration_col,
     )
     summary_c = weights_c.join(ratios_c.add_suffix("_ratio"))
-    summary_c.to_csv(out_dir / f"prefill_decode_summary_count_{dev_slug}.csv", index=True)
+    prefix = f"{name_prefix}__" if name_prefix else ""
+
+    summary_c.to_csv(out_dir / f"{prefix}prefill_decode_summary_count_{dev_slug}.csv", index=True)
 
     plot_grouped_stacked_ratio(
         ratios=ratios_c,
@@ -519,12 +621,13 @@ def main() -> None:
         devices=devices,
         device_labels=device_labels,
         color_map=color_map,
-        out_png=out_dir / f"prefill_decode_ratio_by_count_{dev_slug}.png",
+        out_png=out_dir / f"{prefix}prefill_decode_ratio_by_count_{dev_slug}.png",
         metric_title="Count",
         group_step=args.group_step,
         bar_width=args.bar_width,
         inner_gap=args.inner_gap,
         label_threshold=args.label_threshold,
+        title_suffix=title_suffix,
     )
 
     # ---- Metric 2: TIME ----
@@ -540,7 +643,7 @@ def main() -> None:
         duration_col=args.duration_col,
     )
     summary_t = weights_t.join(ratios_t.add_suffix("_ratio"))
-    summary_t.to_csv(out_dir / f"prefill_decode_summary_time_{dev_slug}.csv", index=True)
+    summary_t.to_csv(out_dir / f"{prefix}prefill_decode_summary_time_{dev_slug}.csv", index=True)
 
     plot_grouped_stacked_ratio(
         ratios=ratios_t,
@@ -548,23 +651,77 @@ def main() -> None:
         devices=devices,
         device_labels=device_labels,
         color_map=color_map,
-        out_png=out_dir / f"prefill_decode_ratio_by_time_{dev_slug}.png",
+        out_png=out_dir / f"{prefix}prefill_decode_ratio_by_time_{dev_slug}.png",
         metric_title=f"Time (sum {args.duration_col})",
         group_step=args.group_step,
         bar_width=args.bar_width,
         inner_gap=args.inner_gap,
         label_threshold=args.label_threshold,
+        title_suffix=title_suffix,
     )
 
-    print("Done.")
+    print("Done:", csv_path)
     print("Detected devices:", detected_devices)
     print("Plotted devices:", devices)
     print("Saved figures:")
-    print(" -", (out_dir / f"prefill_decode_ratio_by_count_{dev_slug}.png").resolve())
-    print(" -", (out_dir / f"prefill_decode_ratio_by_time_{dev_slug}.png").resolve())
+    print(" -", (out_dir / f"{prefix}prefill_decode_ratio_by_count_{dev_slug}.png").resolve())
+    print(" -", (out_dir / f"{prefix}prefill_decode_ratio_by_time_{dev_slug}.png").resolve())
     print("Saved summaries:")
-    print(" -", (out_dir / f"prefill_decode_summary_count_{dev_slug}.csv").resolve())
-    print(" -", (out_dir / f"prefill_decode_summary_time_{dev_slug}.csv").resolve())
+    print(" -", (out_dir / f"{prefix}prefill_decode_summary_count_{dev_slug}.csv").resolve())
+    print(" -", (out_dir / f"{prefix}prefill_decode_summary_time_{dev_slug}.csv").resolve())
+
+
+def main() -> None:
+    args = parse_args()
+
+    out_root = Path(args.out_dir)
+    out_root.mkdir(parents=True, exist_ok=True)
+
+    # Discover CSV list
+    if args.csv:
+        csv_list = [Path(args.csv)]
+    else:
+        csv_list = discover_csvs(Path(args.csv_dir), args.pattern, args.recursive)
+        if not csv_list:
+            raise FileNotFoundError(
+                f"No CSV matched under {args.csv_dir} with pattern '{args.pattern}' (recursive={args.recursive})"
+            )
+
+    total = len(csv_list)
+    ok = 0
+    failed: List[Tuple[Path, str]] = []
+
+    for i, csv_path in enumerate(csv_list, 1):
+        try:
+            if args.flat:
+                case_out_dir = out_root
+                name_prefix = csv_path.stem
+            else:
+                case_out_dir = out_root / csv_path.stem
+                name_prefix = ""
+
+            title_suffix = "" if args.no_case_in_title else case_title_from_csv(csv_path)
+            print(f"[{i}/{total}] {csv_path}")
+            process_one_csv(
+                csv_path=csv_path,
+                out_dir=case_out_dir,
+                args=args,
+                name_prefix=name_prefix,
+                title_suffix=title_suffix,
+            )
+            ok += 1
+        except Exception as e:
+            msg = f"{type(e).__name__}: {e}"
+            failed.append((csv_path, msg))
+            print(f"[ERROR] {csv_path}: {msg}")
+            if args.fail_fast:
+                raise
+
+    print("\n==== Summary ====")
+    print(f"Total: {total}, OK: {ok}, Failed: {len(failed)}")
+    if failed:
+        for p, m in failed:
+            print(" -", p, "=>", m)
 
 
 if __name__ == "__main__":

@@ -4,11 +4,11 @@
 Plot experiment results from *merge_all.csv files.
 find . -type f -print > files.txt
 python3 plot_exp1_verify.py \
-  --file-list ../../verify/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b8_s64/files.txt \
-  --output ../../figs/verify/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b8_s64/exp1_256_x.pdf 
+  --file-list ../../verify/hw_hardware_1npu_2aim/st64/llama_7b_bf16_b16_s64/files.txt \
+  --dims "2048x64, 2048x128, 2048x256, 2048x512" \
+  --output ../../figs/verify/hw_hardware_1npu_2aim/st64/llama_7b_bf16_b16_s64/exp1_2048_x.pdf 
   
   --search-dir /path/to/verify/evaluate_single_test/hardware_1gpu_4aim \
-  --dims "128x64, 128x256, 128x512, 128x1024" \
     
     
 """
