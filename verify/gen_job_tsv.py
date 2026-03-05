@@ -3,12 +3,11 @@
 
 '''
 python3 ./verify/gen_job_tsv.py \
-  --input ./algorithms/output/hw_hardware_1npu_2aim \
-  --output ./verify/jobs_sweep.tsv \
-  --prefill-len 128 \
-  --decode-len 64
+  --input ./algorithms/output/hw_hardware_1gpu_2aim\
+  --prefill-len 256\
+  --decode-len 64,128,256,512\
+  --output ./verify/jobs_sweep.tsv
 
-  
 '''
 import argparse
 import os
@@ -23,6 +22,7 @@ TRACE_RE = re.compile(
 STRIDE_RE = re.compile(r"(?:^|_)s(?P<stride>\d+)$")
 DTYPE_RE = re.compile(r"^(?P<model>.+?)_(?:int|fp|bf)\d+", re.IGNORECASE)
 BATCH_RE = re.compile(r"^(?P<model>.+?)_b\d+", re.IGNORECASE)
+BATCH_TOKEN_RE = re.compile(r"(?:^|_)(?:b|bs|batch)(?P<batch>\d+)(?:_|$)", re.IGNORECASE)
 SIZE_TOKEN_RE = re.compile(r"^\d+(?:\.\d+)?[bkBK]$")
 
 
@@ -116,6 +116,17 @@ def infer_model_name_from_dir(model_dir_name: str) -> str | None:
         return parts[0]
     return None
 
+
+def infer_batch_from_dir(model_dir_name: str) -> int | None:
+    name = str(model_dir_name)
+    m = BATCH_TOKEN_RE.search(name)
+    if not m:
+        return None
+    try:
+        v = int(m.group("batch"))
+    except Exception:
+        return None
+    return v if v > 0 else None
 
 def find_model_cfg_path(repo_root: Path, model_name: str) -> Path | None:
     """Find ./configs/<model>*.json for the given model name."""
@@ -238,6 +249,8 @@ def main():
         out_dir_abs = verify_base / out_dir_rel
 
         model_dir_name = out_dir_rel.parts[-1] if out_dir_rel.parts else ""
+        batch_v = infer_batch_from_dir(model_dir_name) if model_dir_name else None
+        batch_str = str(batch_v) if batch_v is not None else ""
         model_name = infer_model_name_from_dir(model_dir_name) or ""
         cfg_path = find_model_cfg_path(repo_root, model_name) if model_name else None
         if cfg_path is None:
@@ -258,6 +271,7 @@ def main():
                 "prefill_len": str(prefill_len),
                 "decode_stride": str(decode_stride),
                 "cfg": cfg_rel,
+                "batch": batch_str,
             }
         )
     rows.sort(key=lambda r: (r["out_dir"], r["prefix"], r["schedule_csv"]))
@@ -265,7 +279,7 @@ def main():
     out_path = Path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    header = ["schedule_csv", "comms_csv", "prefix", "out_dir", "prefill_len", "decode_stride", "cfg"]
+    header = ["schedule_csv", "comms_csv", "prefix", "out_dir", "prefill_len", "decode_stride", "cfg", "batch"]
     with out_path.open("w", encoding="utf-8", newline="\n") as f:
         f.write("# " + "\t".join(header) + "\n")
         for r in rows:

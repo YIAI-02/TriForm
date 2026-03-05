@@ -1,9 +1,0 @@
-Traceback (most recent call last):
-  File "/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/experiment/paper_fig/eval_gpu_single_op_fit.py", line 1289, in <module>
-    main()
-    ~~~~^^
-  File "/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/experiment/paper_fig/eval_gpu_single_op_fit.py", line 980, in main
-    shape_json_path = _resolve_llama_shape_json(args.llama_shape_json)
-  File "/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/experiment/paper_fig/eval_gpu_single_op_fit.py", line 594, in _resolve_llama_shape_json
-    raise FileNotFoundError(f"--llama-shape-json not found: {p}")
-FileNotFoundError: --llama-shape-json not found: /lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/configs

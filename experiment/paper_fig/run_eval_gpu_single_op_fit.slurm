@@ -46,7 +46,7 @@ export PYTHONPATH="${TRIFORM_ROOT}/algorithms:${TRIFORM_ROOT}:${PYTHONPATH:-}"
 # Paths
 # ------------------------------------------------------------
 EVAL_SCRIPT="${EVAL_SCRIPT:-${TRIFORM_ROOT}/experiment/paper_fig/eval_gpu_single_op_fit.py}"
-OUT_DIR="${OUT_DIR:-${TRIFORM_ROOT}/experiment/paper_fig/eval_gpu_single_op_fit_output}"
+OUT_DIR="${OUT_DIR:-${TRIFORM_ROOT}/experiment/paper_fig/output/eval_gpu}"
 PREFIX="${PREFIX:-a100_single_op}"
 
 mkdir -p "${OUT_DIR}"
