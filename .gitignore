@@ -18,3 +18,6 @@ submodules/CENT
 submodules/LLMCompass
 verify/evaluate_single_test
 verify/hw_hardware_1gpu_4aim
+verify/hardware_1gpu_2aim
+verify/hardware_1npu_2aim
+verify/hw_hardware_1gpu_2aim

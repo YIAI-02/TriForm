@@ -4,11 +4,11 @@
 Plot experiment results from *merge_all.csv files.
 find . -type f -print > files.txt
 python3 plot_exp1_verify.py \
-  --file-list ../../verify/hw_hardware_1npu_2aim/st64/llama_7b_bf16_b1_s64/files.txt \
-  --output ../../figs/hw_hardware_1npu_2aim/st64/llama_7b_bf16_b1_s64/exp1.pdf 
+  --file-list ../../verify/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b8_s64/files.txt \
+  --output ../../figs/verify/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b8_s64/exp1_256_x.pdf 
   
   --search-dir /path/to/verify/evaluate_single_test/hardware_1gpu_4aim \
-  --dims "128x67, 128x128, 262x67, 262x262" \
+  --dims "128x64, 128x256, 128x512, 128x1024" \
     
     
 """
@@ -549,6 +549,21 @@ def plot_results(dim_results: Dict[Tuple[int, int], Dict[str, Metrics]],
         )
 
         ax2.set_ylim(0, sp_max)
+
+        for j, sp in enumerate(speedup_trace):
+            if not np.isfinite(sp):
+                continue
+            ax2.annotate(
+                format_speedup(float(sp)),
+                xy=(x[j], float(sp)),
+                textcoords="offset points",
+                xytext=(0, -9),
+                ha="center",
+                va="top",
+                fontsize=7,
+                color=trace_sp_color,
+                zorder=11,
+            )
 
         # Label measured speedup at each point (black)
         for j, sp in enumerate(speedup_meas):

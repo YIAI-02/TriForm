@@ -713,36 +713,75 @@ def _compute_feature_vector(M: int, N: int, K: int, block_size: int, feature_nam
 
 
 
-def _map_op_to_mmad_dims(op: str, dim: int, n_heads: int, n_kv_heads: int, ffn_dim: int, seqlen: int) -> Optional[Tuple[int, int, int, int]]:
-    """Legacy helper: map op-key to (M,N,K,reps) for old MMAD regression path.
+def _map_op_to_mmad_dims(
+    op: str,
+    dim: int,
+    n_heads: int,
+    n_kv_heads: int,
+    ffn_dim: int,
+    seqlen: int,
+    batch: int = 1,
+    q_len: Optional[int] = None,
+    kv_len: Optional[int] = None,
+    phase: Optional[str] = None,
+) -> Optional[Tuple[int, int, int, int]]:
 
-    Kept for backward compatibility; new NPU backends should prefer the
-    llmcompass-style explicit GEMM/BMM shapes.
-    """
     if not op:
-        logger.debug(str(f'[MAP-MMAD] ✗ op is None/empty, returning None'))
+        logger.debug(str(f"[MAP] op is None/empty, returning None"))
         return None
-    op = op.lower()
-    head_dim = dim // max(1, n_heads)
-    result = None
-    if op == 'q_proj':
-        result = (1, dim, dim, max(1, seqlen))
-    elif op in ('k_proj', 'v_proj'):
-        kv_dim = max(1, n_kv_heads * head_dim)
-        result = (1, kv_dim, dim, max(1, seqlen))
-    elif op == 'wo_proj':
-        result = (1, dim, dim, max(1, seqlen))
-    elif op in ('ffn_up', 'ffn_gate'):
-        result = (1, ffn_dim if ffn_dim > 0 else 4 * dim, dim, max(1, seqlen))
-    elif op == 'ffn_down':
-        result = (1, dim, ffn_dim if ffn_dim > 0 else 4 * dim, max(1, seqlen))
-    elif op == 'score' and seqlen and head_dim:
-        result = (1, seqlen, head_dim, max(1, n_heads * seqlen))
-    elif op == 'output' and seqlen and head_dim:
-        result = (1, head_dim, seqlen, max(1, n_heads * seqlen))
+
+    op = str(op).strip().lower()
+
+    try:
+        dim_i = int(dim)
+        n_heads_i = int(max(1, n_heads))
+        n_kv_i = int(max(1, n_kv_heads))
+        ffn_i = int(ffn_dim)
+        seq_i = int(max(1, seqlen))
+        batch_i = int(max(1, batch))
+    except Exception:
+        logger.debug(str(f"[MAP] invalid dims for op='{op}'"))
+        return None
+
+    ph = str(phase or "").strip().lower()
+
+    # Infer q_len / kv_len with backward-compatible defaults.
+    if q_len is None:
+        q_i = 1 if ph == "decode" else seq_i
     else:
-        logger.debug(str(f"[MAP-MMAD] ✗ No match for op='{op}'"))
-    return result
+        q_i = int(max(1, q_len))
+
+    if kv_len is None:
+        kv_i = seq_i
+    else:
+        kv_i = int(max(1, kv_len))
+
+    head_dim = int(max(1, dim_i // n_heads_i))
+    kv_dim = int(max(1, n_kv_i * head_dim))
+    ffn_out = int(max(1, ffn_i if ffn_i > 0 else 4 * dim_i))
+
+    # Fold repeats into M to match the LUT benchmark behavior.
+    M_q = int(batch_i * q_i)  # GEMM: [M_q, K] x [K, N]
+
+    if op == "q_proj":
+        return (M_q, dim_i, dim_i, 1)
+    if op in ("k_proj", "v_proj"):
+        return (M_q, kv_dim, dim_i, 1)
+    if op == "wo_proj":
+        return (M_q, dim_i, dim_i, 1)
+    if op in ("ffn_up", "ffn_gate"):
+        return (M_q, ffn_out, dim_i, 1)
+    if op == "ffn_down":
+        return (M_q, dim_i, ffn_out, 1)
+    if op == "score":
+        M = int(batch_i * n_heads_i * q_i)
+        return (M, kv_i, head_dim, 1)
+    if op == "output":
+        M = int(batch_i * n_heads_i * q_i)
+        return (M, head_dim, kv_i, 1)
+
+    logger.debug(str(f"[MAP-MMAD] No match for op='{op}'"))
+    return None
 
 # --------------------------------------------------- Public predictor APIs (LUT) --------------------------------------
 

@@ -31,6 +31,7 @@ from cost_model_pim_backend import (
     _simulate_weight_loading_latency,
     _normalize_pim_op,
     PIM_TRACE_SUPPORTED_OPS,
+    _make_shared_model_dict,
 )
 from cost_model_npu_llmcompass_backend import (
     _normalize_npu_backend,
@@ -50,6 +51,13 @@ from cost_model_npu_ascend_backend import (
 logger = logging.getLogger(__name__)
 attach_local_debug_filter(logger, lambda: True)
 DTYPE_BYTES: Dict[str, float] = {'fp32': 4, 'fp16': 2, 'bf16': 2, 'int8': 1, 'int4': 0.5}
+
+
+class NpuFastModeConfigError(ValueError):
+    """Raised when per-device config entries required by NPU fast backend are missing."""
+
+class PimFastModeConfigError(ValueError):
+    """Raised when per-device config entries required by PIM fast backend are missing."""
 
 # Canonical op-key sets for NPU backends
 NPU_ACT_KEYS = {
@@ -83,6 +91,7 @@ def _normalize_npu_backend_safe(backend: Optional[str]) -> str:
 _DEVICE_NAME_FAMILY_PATTERNS = (
     (re.compile(r'(?i)^ascend_?910b(?:_|$)'), 'Ascend_910B'),
     (re.compile(r'(?i)^(?:nvidia_)?a100(?:_|$)'), 'A100'),
+    (re.compile(r'(?i)^(?:aim[ _-]?)?pim(?:\d+|[ _-]|$)'), 'pim'),
 )
 
 def _device_family_key_from_name(name: str) -> str:
@@ -117,6 +126,18 @@ def _lookup_cfg_by_device_name(cfg: Any, dev: Optional[Any]) -> Any:
             return name_map.get(fam.lower())
         if fam.upper() in name_map:
             return name_map.get(fam.upper())
+        if str(fam).lower() == 'pim':
+            for alias in (
+                'Aim PIM', 'AIM PIM', 'aim pim',
+                'Aim_PIM', 'AIM_PIM', 'aim_pim',
+                'PIM',
+            ):
+                if alias in name_map:
+                    return name_map.get(alias)
+                if alias.lower() in name_map:
+                    return name_map.get(alias.lower())
+                if alias.upper() in name_map:
+                    return name_map.get(alias.upper())
 
     # (2) Fallback: treat keys as raw prefixes
     if dev_name:
@@ -583,29 +604,43 @@ class PimTraceBackend(PimBackendBase):
     name = 'trace'
 
     def estimate_s(self, cm: "CostModel", node: TaskNode, dev: DeviceSpec, label: PlanLabel, ctx: PimOpContext) -> float:
-        # Trace mode: requires configs.
-        if not cm.pim_config_path or not cm.ramulator_config_path:
-            logger.debug(str(f'[PIM] Warning: PIM configs not set, returning 0 for {getattr(node, "name", "?")}'))
-            return 0.0
-
         op_in = str(ctx.op_key) if ctx.op_key is not None else ''
         op_norm = _normalize_pim_op(op_in) if op_in else ''
         traceable = bool(op_norm) and (op_norm in PIM_TRACE_SUPPORTED_OPS)
 
-        # Basic parameter guardrails
-        if (not op_in) or int(ctx.dim) <= 0 or int(ctx.n_heads) <= 0:
-            logger.debug(str(
-                f'[PIM] Warning: Insufficient parameters for {getattr(node,"name","?")} '
-                f'(op={ctx.op_key}, dim={ctx.dim}, heads={ctx.n_heads})'
-            ))
+        # Strict mode can be enabled either via CostModel(..., pim_trace_strict=True)
+        # or via environment variable PIM_TRACE_STRICT=1.
+        strict = bool(getattr(cm, 'pim_trace_strict', False))
+        env_strict = str(os.environ.get('PIM_TRACE_STRICT', '') or '').strip().lower()
+        if env_strict in ('1', 'true', 'yes', 'on'):
+            strict = True
 
-            return 0.0
+        # Trace mode requires configs.
+        if traceable and (not cm.pim_config_path or not cm.ramulator_config_path):
+            msg = (
+                "[PIM] Trace backend requires pim_config_path and ramulator_config_path, but got "
+                f"pim_config_path={cm.pim_config_path!r}, ramulator_config_path={cm.ramulator_config_path!r}. "
+                f"op='{op_in}' normalized='{op_norm}' node='{getattr(node, 'name', getattr(node, 'id', '?'))}'"
+            )
+            if strict:
+                raise RuntimeError(msg)
+            logger.warning(msg + " Falling back to compute-only estimate.")
+            traceable = False
+
+        # Basic parameter guardrails for trace path only.
+        if traceable and (int(ctx.dim) <= 0 or int(ctx.n_heads) <= 0):
+            msg = (
+                f"[PIM] Trace backend missing/invalid parameters for node='{getattr(node,'name','?')}' "
+                f"(op='{op_in}' normalized='{op_norm}', dim={ctx.dim}, heads={ctx.n_heads})."
+            )
+            if strict:
+                raise RuntimeError(msg)
+            logger.warning(msg + " Falling back to compute-only estimate.")
+            traceable = False
 
         # Prefer exact trace-based latency when supported.
         if traceable:
             try:
-                model_dict = cm.get_model_dict()
-
                 # --- Shard-aware dims (TP) ---
                 attrs = (ctx.attrs or {}) if isinstance(ctx.attrs, dict) else {}
                 hd = int(attrs.get('head_dim', 0) or 0)
@@ -626,6 +661,15 @@ class PimTraceBackend(PimBackendBase):
                     # Attention output (pre-WO) is typically q_dim.
                     o_dim = int(q_dim) if q_dim > 0 else 0
 
+                seqlen_i = int(ctx.seq_len) if int(ctx.seq_len) > 0 else 1
+                model_dict = cm.get_or_make_pim_model_dict(
+                    dim=int(ctx.dim),
+                    n_heads=int(ctx.n_heads),
+                    n_kv_heads=int(ctx.n_kv_heads),
+                    ffn_dim=int(ctx.ffn_dim),
+                    seqlen=int(seqlen_i),
+                )
+
                 compute_time = float(
                     _get_pim_latency_via_trace(
                         op=str(op_norm),
@@ -635,7 +679,7 @@ class PimTraceBackend(PimBackendBase):
                         n_heads=int(ctx.n_heads),
                         n_kv_heads=int(ctx.n_kv_heads),
                         ffn_dim=int(ctx.ffn_dim),
-                        seqlen=int(ctx.seq_len) if int(ctx.seq_len) > 0 else None,
+                        seqlen=int(seqlen_i) if int(seqlen_i) > 0 else None,
                         batch=int(ctx.batch) if int(ctx.batch) > 0 else 1,
                         phase=str(ctx.phase),
                         model_dict=model_dict,
@@ -644,34 +688,46 @@ class PimTraceBackend(PimBackendBase):
                         q_dim=int(q_dim) if int(q_dim) > 0 else None,
                         kv_dim=int(kv_dim) if int(kv_dim) > 0 else None,
                         o_dim=int(o_dim) if int(o_dim) > 0 else None,
+                        ramulator_timeout_s=int(getattr(cm, 'pim_ramulator_timeout_s', 3000) or 3000),
+                        keep_traces=bool(getattr(cm, 'pim_trace_keep_traces', False)),
+                        trace_dir=getattr(cm, 'pim_trace_dir', None),
                     )
                 )
+
+                # If DeviceSpec defines a different PIM frequency than config.PIM_FREQ_GHZ,
+                # rescale seconds accordingly: t_actual = t_cm * (PIM_FREQ_GHZ / dev_freq).
+                try:
+                    dev_freq = float(getattr(dev, 'freq_ghz', getattr(dev, 'pim_freq_ghz', 0.0)) or 0.0)
+                except Exception:
+                    dev_freq = 0.0
+                try:
+                    cm_freq = float(PIM_FREQ_GHZ)
+                except Exception:
+                    cm_freq = 0.0
+                if dev_freq > 0.0 and cm_freq > 0.0 and abs(dev_freq - cm_freq) / cm_freq > 1e-6:
+                    compute_time = float(compute_time) * float(cm_freq) / float(dev_freq)
+
                 return float(compute_time)
+
             except Exception as e:
-                # Do not fail scheduling when trace simulation cannot run.
-                # Fall back to compute-only estimate (NO mem_time for CENT backend).
-                logger.debug(str(
-                    f"[PIM] Trace backend failed for {getattr(node,'name','?')}: "
-                    f"op='{op_in}' normalized='{op_norm}' err={e}. "
-                    f"Falling back to compute-only estimate."
-                ))
+                msg = (
+                    f"[PIM] Trace backend failed for node='{getattr(node,'name','?')}' "
+                    f"op='{op_in}' normalized='{op_norm}' err={e}."
+                )
+                if strict:
+                    raise
+                logger.warning(msg + " Falling back to compute-only estimate.")
+
         else:
-            logger.debug(str(
+            # Only log unsupported ops at debug level to avoid noise.
+            if op_in:
+                logger.debug(
+                    str(
                 f"[PIM] Trace backend: skip unsupported op for {getattr(node,'name','?')}: "
                 f"op='{op_in}' normalized='{op_norm}'. Using compute-only estimate."
-            ))
+                    )
+                )
 
-        # Fallback path: compute-only estimate (seconds).
-        try:
-            flops = float(cm.estimate_flops(node, ctx.batch, ctx.seq_len, ctx.phase))
-            t = float(cm.flop_time(flops, dev))
-            return float(t)
-        except Exception as e:
-            logger.debug(str(f"[PIM] compute-only fallback failed for {getattr(node,'name','?')}: {e}"))
-            return 0.0
-
-
-        return float(compute_time + mem_time)
     def weight_load_s(self, cm: "CostModel", weight_bytes: int) -> float:
         # Keep the original behavior: fast-mode bypass
         if bool(cm.pim_fast_mode):
@@ -698,12 +754,59 @@ def build_pim_backend(pim_fast_mode: bool) -> PimBackendBase:
 
 
 class CostModel:
-    def __init__(self, cluster: Cluster, dtype: str='fp16', pim_config_path: Optional[Path]=None, gb_config_path: Optional[Path]=None, ramulator_config_path: Optional[Path]=None, simulation_log_file: Optional[Path]=None, debug_traces: bool=False, model_dict: Optional[Dict]=None, pim_fast_mode: bool=False, npu_backend: Optional[str]=None, tp_qkv: int=1, tp_ffn: int=1):
+    def __init__(
+        self,
+        cluster: Cluster,
+        dtype: str = 'fp16',
+        pim_config_path: Optional[Path] = None,
+        gb_config_path: Optional[Path] = None,
+        ramulator_config_path: Optional[Path] = None,
+        simulation_log_file: Optional[Path] = None,
+        debug_traces: bool = False,
+        model_dict: Optional[Dict] = None,
+        pim_fast_mode: bool = False,
+        npu_backend: Optional[str] = None,
+        tp_qkv: int = 1,
+        tp_ffn: int = 1,
+        pim_ramulator_bin: Optional[Path] = None,
+        pim_ramulator_timeout_s: Optional[int] = None,
+        pim_trace_strict: bool = False,
+        pim_trace_keep_traces: bool = False,
+        pim_trace_dir: Optional[Path] = None,
+    ):
         self.cluster = cluster
         self.dtype = dtype
         self.pim_config_path = pim_config_path
         self.gb_config_path = gb_config_path
         self.ramulator_config_path = ramulator_config_path
+        # -------------------------------------------------------------------
+        # PIM trace runtime knobs (keep CostModel + schedule_deploy_verify consistent)
+        # -------------------------------------------------------------------
+        self.pim_ramulator_bin: Optional[Path] = None
+        if pim_ramulator_bin:
+            try:
+                self.pim_ramulator_bin = Path(pim_ramulator_bin).expanduser().resolve()
+            except Exception:
+                self.pim_ramulator_bin = Path(str(pim_ramulator_bin)).expanduser()
+            # cost_model_pim_backend resolves ramulator2 via env vars.
+            os.environ['RAMULATOR2_BIN'] = str(self.pim_ramulator_bin)
+
+        try:
+            self.pim_ramulator_timeout_s: int = int(pim_ramulator_timeout_s) if pim_ramulator_timeout_s is not None else 3000
+        except Exception:
+            self.pim_ramulator_timeout_s = 3000
+
+        self.pim_trace_strict: bool = bool(pim_trace_strict)
+        self.pim_trace_keep_traces: bool = bool(pim_trace_keep_traces or debug_traces)
+        self.pim_trace_dir: Optional[Path] = None
+        if pim_trace_dir is not None:
+            try:
+                self.pim_trace_dir = Path(pim_trace_dir).expanduser().resolve()
+            except Exception:
+                self.pim_trace_dir = Path(str(pim_trace_dir)).expanduser()
+
+        # When user doesn't provide a shared model_dict, build per-(dim,heads,kv_heads,ffn,seqlen) dicts on demand.
+        self._pim_model_dict_cache: Dict[Tuple[int, int, int, int, int], Dict[str, Any]] = {}
         self.debug_traces = debug_traces
         self.pim_fast_mode = pim_fast_mode  # When True, skip all trace simulations
         self.npu_backend = _normalize_npu_backend_safe(npu_backend)
@@ -765,6 +868,36 @@ class CostModel:
     def has_model_dict(self) -> bool:
         return self._shared_model_dict is not None
 
+    def get_or_make_pim_model_dict(
+        self,
+        *,
+        dim: int,
+        n_heads: int,
+        n_kv_heads: int,
+        ffn_dim: int,
+        seqlen: int,
+    ) -> Dict[str, Any]:
+        """Return a model_dict for the CENT/AiM PIM trace backend.
+
+        If the user provided a shared model_dict (set_model_dict), that is returned.
+        Otherwise we lazily synthesize one and cache it by (dim, n_heads, n_kv_heads, ffn_dim, seqlen).
+        """
+        if self._shared_model_dict is not None:
+            return self._shared_model_dict
+
+        try:
+            key = (int(dim), int(n_heads), int(n_kv_heads), int(ffn_dim), int(seqlen))
+        except Exception:
+            key = (0, 0, 0, 0, 0)
+
+        md = self._pim_model_dict_cache.get(key)
+        if md is not None:
+            return md
+
+        md = _make_shared_model_dict(int(dim), int(n_heads), int(n_kv_heads), int(ffn_dim), int(seqlen))
+        self._pim_model_dict_cache[key] = md
+        return md
+
     def get_host_device(self) -> DeviceSpec:    
         if HOST_NAME in self.cluster.devices:
             return self.cluster.devices[HOST_NAME]
@@ -796,6 +929,36 @@ class CostModel:
                     f"available_keys={keys}"
                 )
             params = per
+
+        if dev_type == 'pim' and bool(getattr(self, 'pim_fast_mode', False)):
+            per = _lookup_cfg_by_device_name(cfg, dev)
+            if isinstance(per, dict) and per:
+                params = per
+            else:
+                try:
+                    name_map = cfg.get('by_device_name', cfg.get('by_name', {})) or {}
+                except Exception:
+                    name_map = {}
+                fallback = None
+                for k in ('pim', 'PIM'):
+                    if k in name_map:
+                        fallback = name_map.get(k)
+                        break
+                    if str(k).lower() in name_map:
+                        fallback = name_map.get(str(k).lower())
+                        break
+                    if str(k).upper() in name_map:
+                        fallback = name_map.get(str(k).upper())
+                        break
+                if isinstance(fallback, dict) and fallback:
+                    params = fallback
+                else:
+                    keys = list((cfg.get('by_device_name', cfg.get('by_name', {})) or {}).keys())
+                    logger.debug(
+                        "[PIM][FAST] COMPUTE_UTILIZATION missing by_device_name for dev_name='%s'. available_keys=%s. Fallback utilization=1.0",
+                        str(getattr(dev, 'name', '') or ''),
+                        keys,
+                    )
 
         # Allow simple scalar override (constant utilization).
         if isinstance(params, (int, float)):
@@ -888,12 +1051,12 @@ class CostModel:
         cfg = getattr(_config, 'KERNEL_LAUNCH_OVERHEAD', None)
         if not isinstance(cfg, dict) or not cfg:
             return {}
-        merged = dict(cfg)
         if dev is None:
-            return merged
+            return dict(cfg)
         dev_type = str(getattr(dev, 'type', '') or '').lower()
 
         self._ensure_backend_impls()
+
         if dev_type == 'npu' and str(getattr(self, '_npu_backend_impl_name', '') or '').lower() == 'fast':
             per = _lookup_cfg_by_device_name(cfg, dev)
             if not isinstance(per, dict) or not per:
@@ -904,7 +1067,43 @@ class CostModel:
                 )
             return dict(per)
 
-    def kernel_launch_overhead_s(self, op_key: str, dev: DeviceSpec, *, phase: str = 'prefill') -> float:
+        if dev_type == 'pim' and bool(getattr(self, 'pim_fast_mode', False)):
+            per = _lookup_cfg_by_device_name(cfg, dev)
+            if isinstance(per, dict) and per:
+                return dict(per)
+            try:
+                name_map = cfg.get('by_device_name', cfg.get('by_name', {})) or {}
+            except Exception:
+                name_map = {}
+            for k in ('pim', 'Aim PIM', 'AIM PIM', 'Aim_PIM', 'AIM_PIM', 'PIM'):
+                if k in name_map and isinstance(name_map.get(k), dict):
+                    return dict(name_map.get(k) or {})
+                kl = str(k).lower()
+                ku = str(k).upper()
+                if kl in name_map and isinstance(name_map.get(kl), dict):
+                    return dict(name_map.get(kl) or {})
+                if ku in name_map and isinstance(name_map.get(ku), dict):
+                    return dict(name_map.get(ku) or {})
+
+            keys = list((cfg.get('by_device_name', cfg.get('by_name', {})) or {}).keys())
+            logger.debug(
+                "[PIM][FAST] KERNEL_LAUNCH_OVERHEAD missing by_device_name for dev_name='%s'. available_keys=%s. "
+                "Fallback overhead=0",
+                str(getattr(dev, 'name', '') or ''),
+                keys,
+            )
+            return {}
+
+        return {}
+
+    def kernel_launch_overhead_s(
+        self,
+        op_key: str,
+        dev: DeviceSpec,
+        *,
+        phase: str = 'prefill',
+        time_scale: Optional[float] = None,
+    ) -> float:
         cfg = self._kernel_launch_cfg(dev)
         if not cfg or not bool(cfg.get('enabled', False)):
             return 0.0
@@ -912,15 +1111,22 @@ class CostModel:
         # Backend gating to avoid double-counting with empirical backends.
         apply_backends = cfg.get('apply_backends', None)
         if apply_backends not in (None, True, 'all', 'ALL'):
-            name = str(getattr(self, '_npu_backend_impl_name', None) or getattr(self, 'npu_backend', '') or '')
-            if isinstance(apply_backends, str):
-                apply_list = [apply_backends]
-            elif isinstance(apply_backends, (list, tuple, set)):
-                apply_list = list(apply_backends)
+            dev_type = str(getattr(dev, 'type', '') or '').lower()
+            if dev_type == 'pim':
+                try:
+                    name = str(getattr(self._pim_backend_impl, 'name', '') or '')
+                except Exception:
+                    name = 'fast' if bool(getattr(self, 'pim_fast_mode', False)) else 'trace'
             else:
-                apply_list = []
-            if apply_list and (name not in apply_list):
-                return 0.0
+                name = str(getattr(self, '_npu_backend_impl_name', None) or getattr(self, 'npu_backend', '') or '')
+                if isinstance(apply_backends, str):
+                    apply_list = [apply_backends]
+                elif isinstance(apply_backends, (list, tuple, set)):
+                    apply_list = list(apply_backends)
+                else:
+                    apply_list = []
+                if apply_list and (name not in apply_list):
+                    return 0.0
 
         op = str(op_key or '').strip().lower()
         if not op:
@@ -975,6 +1181,15 @@ class CostModel:
                     us = 0.0
 
         us = max(0.0, float(us or 0.0)) * max(0.0, float(scale))
+
+        if bool(cfg.get('scale_by_time_scale', False)) and time_scale is not None:
+            try:
+                ts = float(time_scale)
+                if ts > 0:
+                    us *= ts
+            except Exception:
+                pass
+
         return float(us) * 1e-6
 
     def _pim_parallel_access_bytes(self, dev: Optional[DeviceSpec] = None) -> int:
@@ -1702,9 +1917,7 @@ class CostModel:
             )
             t = float(self._npu_backend_impl.estimate_s(self, node, dev, ctx))
             overhead = float(self.kernel_launch_overhead_s(op_key, dev, phase=str(phase)))
-            if bool(self._kernel_launch_cfg(dev).get('scale_by_time_scale', False)):
-                overhead *= float(time_scale)
-            return float(t) * time_scale + float(overhead)
+            return float(t) + float(overhead)
 
         # ------------------------------------------------------------------
         # PIM
@@ -1713,6 +1926,8 @@ class CostModel:
             self._ensure_backend_impls()
 
             op_key = (str(getattr(node, 'name', '') or '')).strip().lower()
+            raw_key = str(getattr(node, 'name', '') or getattr(node, 'id', '') or '')
+            op_key_ovh = _normalize_npu_op_key(raw_key)
             ctx = PimOpContext(
                 op_key=op_key,
                 attrs=attrs,
@@ -1726,7 +1941,8 @@ class CostModel:
                 kv_in_pim=bool(kv_in_pim),
             )
             t = float(self._pim_backend_impl.estimate_s(self, node, dev, label, ctx))
-            return float(t) * time_scale
+            overhead = float(self.kernel_launch_overhead_s(op_key_ovh, dev, phase=str(phase), time_scale=float(time_scale)))
+            return float(t) * float(time_scale) + float(overhead)
 
         return 0.0
 

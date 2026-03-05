@@ -3,8 +3,8 @@
   "model_variant": "7b",
   "dtype": "fp16",
   "batch": 16,
-  "prefill_len": 1024,
-  "decode_len": 256,
+  "prefill_len": 2048,
+  "decode_len": 512,
   "decode_sample_stride": 64,
   "pim_config_path": "./aim_simulator/PIM_AiM.json",
   "gb_config_path": "./aim_simulator/gb.json",
@@ -13,20 +13,14 @@
   "result_dir": "./output/evaluate_single_test/hardware_1npu_2aim/",
   "hardware_json": "./examples/hardware_1npu_2aim.json",
   "algo": [
-    "hefthint",
-    "heft"
+    "hefthint"
   ],
   "baselines": [
-    "pd",
-    "attn_on_pim",
-    "weights_on_pim",
-    "ianus",
-    "facil",
-    "attacc"
+    "pd"
   ],
   "tp_qkv": 2,
   "tp_ffn": 2,
-  "npu_backend": "fast",
+  "npu_backend": "lut",
   "dump_graph": false,
   "dump_graph_dir": "./output/evaluate_single_test/hardware_1npu_2aim/graph_dumps"
 }

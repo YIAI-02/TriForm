@@ -35,21 +35,19 @@ FORMAT_SIZE_MULTIPLIER = {
 # Format conversion bandwidth (GB/s) per device type
 FORMAT_CONV_BW_GBs = {
     "cpu": 25.0,
-    "npu": 120.0,
-    "pim": 60.0,
-    "default": 25.0,
+    "npu": 409.6,
+    "pim": 8192
 }
 
 # data format cold start
 FORMAT_CONV_OVERHEAD_US = {
     "cpu": 1,
-    "npu": 0.5,
-    "pim": 0.8,
-    "default": 1,
+    "npu": 0.0,
+    "pim": 0.0
 }
 
 # “latency = transfer + convert” serial or overlap (0~1)
-NONOVERLAP_TIME = 1.0
+NONOVERLAP_TIME = 0.5
 
 # PIM 频率（GHz）：cycles / (PIM_FREQ_GHZ * 1e9) = seconds
 PIM_FREQ_GHZ: float = 1.0
@@ -199,11 +197,22 @@ COMPUTE_UTILIZATION = {
             'enabled': True,
             'curve': 'sigmoid',
             'min_util': 0.4,
-            'max_util': 0.8,
+            'max_util': 0.9,
             'flops_low': 5e7,
             'flops_high': 5e12,
-            'knee_flops': 1.5e11,
-            'slope': 3.0,
+            'knee_flops': 1.5e8,
+            'slope': 6.0,
+        },
+
+        'pim': {
+            'enabled': True,
+            'curve': 'sigmoid',
+            'min_util': 0.3,
+            'max_util': 0.4,
+            'flops_low': 5e7,
+            'flops_high': 5e12,
+            'knee_flops': 1.5e8,
+            'slope': 6.0,
         },
     },
 }
@@ -218,7 +227,6 @@ KERNEL_LAUNCH_OVERHEAD = {
     #   - name="Ascend_910B_NPU0" -> key "Ascend_910B"
     #   - name="A100_GPU0"        -> key "A100"
     'by_device_name': {
-        # Ascend 910B family (separate copy; currently same as the default)
         'Ascend_910B': {
             'enabled': True,
             'apply_backends': ['fast'],
@@ -243,8 +251,6 @@ KERNEL_LAUNCH_OVERHEAD = {
             },
         },
 
-        # NVIDIA A100
-        # TODO: tune these for CUDA / kernels.
         'A100': {
             'enabled': True,
             'apply_backends': ['fast'],
@@ -256,21 +262,46 @@ KERNEL_LAUNCH_OVERHEAD = {
             'scale_by_time_scale': False,
             'default_us': 0.0,
             'by_category_us': {
-                'norm': 53.0,        
-                'softmax': 13.0,
+                'norm': 54.0,        
+                'softmax': 11.6,
                 'activation': 19.5,
                 'elem': 29.0,
-                'gemm': 24.0,
+                'gemm': 22.0,
             },
 
             'by_op_us': {
-                'score': 39.0,
+                'score': 37.8,
                 'output': 22.0, 
-                'ffn_up': 31.1,
-                'ffn_gate': 34.1,
-                'ffn_down': 32.5,
-                'add': 29.0,
-                'swiglu': 19.5,
+                'ffn_up': 27.3,
+                'ffn_gate': 29.5,
+                'ffn_down': 26.6,
+                'add': 15.5,
+                'swiglu': 18.7,
+            },
+        },
+        
+        'Aim PIM': {
+            'enabled': True,
+            'apply_backends': ['fast'],
+            'phase_scale': {
+                'prefill': 1.0,
+                'decode': 1.0,
+            },
+            'scale_by_time_scale': False,
+
+            'default_us': 0.0,
+            'by_category_us': {
+                'norm': 0.0,
+                'softmax': 0.0,
+                'activation': 0.0,
+                'elem': 0.0,
+                'gemm': 0.0,
+            },
+            'by_op_us': {
+                'ln': 0.0,
+                'gelu': 0.0,
+                'softmax': 0.0,
+                'q_proj': 0.0,
             },
         },
     },

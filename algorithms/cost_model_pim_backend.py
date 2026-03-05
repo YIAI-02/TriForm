@@ -87,6 +87,9 @@ _PIM_OP_ALIASES = {
     'q': 'q_proj',
     'k': 'k_proj',
     'v': 'v_proj',
+    'wq': 'q_proj',
+    'wk': 'k_proj',
+    'wv': 'v_proj',
     'o': 'wo_proj',
     'wo': 'wo_proj',
 
@@ -133,18 +136,45 @@ PIM_TRACE_SUPPORTED_OPS = frozenset({
     'residual',
 })
 
+_PIM_OP_TOKENS: Tuple[str, ...] = (
+    'ffn_w1', 'ffn_w2', 'ffn_w3',
+    'mlp_w1', 'mlp_w2', 'mlp_w3',
+    'q_proj', 'k_proj', 'v_proj', 'wo_proj',
+    'ffn_gate', 'ffn_up', 'ffn_down',
+    'softmax', 'score', 'output',
+    'swi_glu', 'swiglu', 'silu', 'gelu',
+    'rope',
+    'residual', 'add',
+    'wq', 'wk', 'wv', 'wo',
+    'qk', 'sv',
+    'q', 'k', 'v', 'o',
+    'w1', 'w2', 'w3',
+)
+
+_PIM_OP_TOKEN_RE = re.compile(r'(^|_)(' + '|'.join(re.escape(t) for t in _PIM_OP_TOKENS) + r')($|_)')
+
+
+def _extract_pim_op_token(s: str) -> Optional[str]:
+    if not s:
+        return None
+    # Avoid accidental matches on comm-like ops (e.g., k_write / v_write).
+    ss = str(s).strip().lower()
+    if 'write' in ss and ('k_write' in ss or 'v_write' in ss or ss.endswith('_write')):
+        return None
+    m = _PIM_OP_TOKEN_RE.search(ss)
+    if not m:
+        return None
+    try:
+        return str(m.group(2))
+    except Exception:
+        return None
 
 def _normalize_pim_op(op: str) -> str:
-    """Normalize op names for the PIM trace backend.
-
-    If an op label looks like a normalization operator (LN / LayerNorm /
-    RMSNorm / *Norm / fused-*norm), return 'rmsnorm' since that is the only
-    norm op currently traceable by the CENT/AiM simulator.
-    """
+    """Normalize op names for the PIM trace backend."""
     s = (op or '').strip().lower()
     if not s:
         return s
-    s = s.replace('-', '_')
+    s = s.replace('-', '_').replace('.', '_').replace('/', '_').replace('\\', '_')
     if s in _PIM_NORM_ALIASES:
         return 'rmsnorm'
     # Common embedded/fused names: add_rmsnorm, rmsnorm_add, skip_layernorm, ...
@@ -155,7 +185,14 @@ def _normalize_pim_op(op: str) -> str:
         return 'rmsnorm'
     if _PIM_NORM_TOKEN_RE.search(s):
         return 'rmsnorm'
-    # Non-norm ops: map aliases to canonical trace ops (if known)
+
+    if s in _PIM_OP_ALIASES:
+        return _PIM_OP_ALIASES[s]
+    tok = _extract_pim_op_token(s)
+    if tok:
+        s = tok
+
+    # Final alias mapping to canonical trace ops (if known).
     s = _PIM_OP_ALIASES.get(s, s)
     return s
 
@@ -746,7 +783,8 @@ def _run_ramulator(trace_path: Path, ramulator_config: Path, timeout: int = 3000
 
 class PIMLatencyCache:
     def __init__(self, cache_file: Optional[Path]=None):
-        self.cache_file = cache_file or Path('./pkl/pim_latency_cache.pkl')
+        env_path = str(os.environ.get('PIM_LATENCY_CACHE_FILE', '') or '').strip()
+        self.cache_file = cache_file or (Path(env_path) if env_path else Path('./pkl/pim_latency_cache.pkl'))
         self.cache: Dict[str, Any] = {}
         self.lock = Lock()
         self._load_cache()
@@ -800,10 +838,12 @@ class PIMLatencyCache:
         )
         cfgs = f'{_file_signature(pim_config)}|{_file_signature(ramulator_config)}'
 
+        scale_flag = 1 if PIM_TRACE_SCALE_REPEATS else 0
+
         if int(b) == 1:
-            key = f'v2|{params_base}|{cfgs}'
+            key = f'v4|{params_base}|scale={int(scale_flag)}|{cfgs}'
         else:
-            key = f'v3|{params_base}|b={int(b)}|{cfgs}'
+            key = f'v5|{params_base}|b={int(b)}|scale={int(scale_flag)}|{cfgs}'
         return hashlib.md5(key.encode()).hexdigest()
 
     def get(

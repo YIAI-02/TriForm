@@ -16,8 +16,7 @@
                 "evaluate",
                 "--config",
                 "./examples/evaluate_test_config.json",
-                "--debug",
-                "--pim_fast_mode"
+                "--debug"
             ],
             "cwd": "${workspaceFolder}/algorithms",            
         }

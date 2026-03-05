@@ -868,7 +868,7 @@ def main():
     # Workload shapes
     ap.add_argument(
         "--llama-shape-json",
-        default="/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/configs/",
+        default="/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/configs/llama_7b_shape.json",
         help="Path to llama_shape.json (e.g. llama_7b_shape.json). If omitted, we try to auto-locate it.",
     )
 

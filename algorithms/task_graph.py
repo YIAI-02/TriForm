@@ -311,7 +311,6 @@ class JointTaskGraph:
                 for v in g_decode.successors(u):
                     joint.add_edge(f"D{t}::{u}", f"D{t}::{v}", barrier=False)
 
-            # 不同步 token step 之间的顺序边（barrier=True，不算通信）
             if idx > 0:
                 prev_t = positions[idx - 1]
                 for d_snk in snksD:

@@ -896,7 +896,8 @@ class SchedulerBase:
         start = max(float(self.avail.get(dev.name, 0.0)), kv_ready)
         compute = self.cost.node_device_cost(node, dev, label, batch, seq_len, phase_eff)
         wload = self._weight_load_time(node, dev, start, commit)
-        finish = start + wload + compute
+        finish = start + max(wload, compute)
+        # finish = start + compute
 
         if commit:
             self.avail[dev.name] = finish
@@ -2574,7 +2575,8 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
                     wload_t = float(self._estimate_weight_reload_time(wid, wsize, dev))
                     dev_cached.add(wid)
 
-            finish = float(start_t + wload_t + compute_t)
+            finish = start_t + max (wload_t,compute_t)
+            # finish = start_t + compute_t
             avail_shadow[dev.name] = finish
             prev_nid, prev_dev = nid, dev
 

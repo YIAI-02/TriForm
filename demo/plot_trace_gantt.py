@@ -6,10 +6,10 @@ python plot_trace_gantt.py \
   --out_dir ../figs/evaluate_single_test/hw_scale_down/gatt
 
 python plot_trace_gantt.py \
-  --base_dir evaluate_single_test/hw_scale_down/qwen_7b_int8_b4_s64 \
-  --policy algo_weights_on_pim \
-  --length 128x512 \
-  --out_dir ../figs/evaluate_single_test/hw_scale_down/gatt
+  --base_dir ../algorithms/output/evaluate_single_test/hardware_1npu_2aim/llama_7b_fp16_b16_s64\
+  --policy algo_pd \
+  --length prefill-2048xdecode_512 \
+  --out_dir ../figs/gantt/evaluate_single_test/hardware_1npu_2aim/llama_7b_fp16_b16_s64
 
 python plot_trace_gantt.py \
   --base_dir ../algorithms/output/experiment_scale_down/hw_scale_down_pima/st64/qwen_7b_int8_b8_s64 \
