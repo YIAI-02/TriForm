@@ -4,8 +4,8 @@
 Single CSV
 --------------------------
 python plot_dev_op_bar.py \
-  --csv ../../algorithms/output/hw_hardware_1npu_2aim/st64/llama_7b_bf16_b16_s64/algo_hefthint/hefthint_prefill-2048xdecode_256_ops_trace.csv \
-  --out_dir ../../figs/dev_op_bar/hw_hardware_1npu_2aim/st64/llama_7b_bf16_b16_s64/algo_hefthint \
+  --csv ../../algorithms/output/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b16_s64/algo_hefthint/hefthint_prefill-2048xdecode_256_ops_trace.csv \
+  --out_dir ../../figs/dev_op_bar/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b16_s64/algo_hefthint \
   --device_label cpu="NPU" \
   --device_label pim="PIM" \
   --label_threshold 0.03 \
@@ -14,9 +14,9 @@ python plot_dev_op_bar.py \
 Batch mode: scan a directory of many ops-trace CSVs
 ---------------------------------------------------
 python plot_dev_op_bar.py \
-  --csv_dir ../../algorithms/output/hw_hardware_1gpu_2aim/st64/qwen_1.8b_bf16_b1_s64/algo_hefthint \
+  --csv_dir ../../algorithms/output/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b8_s64/algo_hefthint \
   --pattern "*_ops_trace.csv" \
-  --out_dir ../../figs/dev_op_bar/hw_hardware_1gpu_2aim/st64/qwen_1.8b_bf16_b1_s64/algo_hefthint
+  --out_dir ../../figs/dev_op_bar/hw_hardware_1gpu_2aim/st64/llama_7b_bf16_b8_s64/algo_hefthint
 
 
   --device_label cpu="NPU" \

@@ -5,8 +5,8 @@
   "algo": ["heft,hefthint"],
   "baselines": ["ianus","attacc","facil","pd","weights_on_pim","attn_on_pim"],
   "split_by": "head",
-  "tp_qkv": 2,
-  "tp_ffn": 2,
+  "tp_qkv": 8,
+  "tp_ffn": 8,
   "npu_backend": "fast_mode",
   "dump_graph": false
 }

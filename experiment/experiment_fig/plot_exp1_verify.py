@@ -466,7 +466,7 @@ def plot_results(dim_results: Dict[Tuple[int, int], Dict[str, Metrics]],
 
         ax.set_title(f"{lin}x{lout}")
         ax.set_xticks(x)
-        ax.set_xticklabels([pretty_strategy_name(a) for a in order], rotation=30, ha="right", fontsize=9)
+        ax.set_xticklabels([pretty_strategy_name(a) for a in order], rotation=30, ha="right", fontsize=12)
         ax.set_ylim(0, y_max)
 
         if i == 0:
@@ -495,7 +495,7 @@ def plot_results(dim_results: Dict[Tuple[int, int], Dict[str, Metrics]],
 
             if show_error_text and np.isfinite(err_pct[j]):
                 y_text = max(yt, ym) + y_max * 0.015
-                ax.text(xc, y_text, f"{err_pct[j]:.1f}%", ha="center", va="bottom", fontsize=8, zorder=7)
+                ax.text(xc, y_text, f"{err_pct[j]:.1f}%", ha="center", va="bottom", fontsize=12, zorder=7)
 
         # Speedup line (secondary axis)
         ax2 = ax.twinx()
@@ -560,7 +560,7 @@ def plot_results(dim_results: Dict[Tuple[int, int], Dict[str, Metrics]],
                 xytext=(0, -9),
                 ha="center",
                 va="top",
-                fontsize=7,
+                fontsize=10,
                 color=trace_sp_color,
                 zorder=11,
             )
@@ -576,7 +576,7 @@ def plot_results(dim_results: Dict[Tuple[int, int], Dict[str, Metrics]],
                 xytext=(0, 6),
                 ha="center",
                 va="bottom",
-                fontsize=7,
+                fontsize=10,
                 color=meas_sp_color,
                 zorder=11,
             )
@@ -604,10 +604,10 @@ def plot_results(dim_results: Dict[Tuple[int, int], Dict[str, Metrics]],
         Line2D([0], [0], color=meas_sp_color, lw=border_lw * 0.8, linestyle="-", marker="s", markersize=4,
                label="speedup (meas_total, vs pd)"),
     ]
-    fig.legend(handles=handles, loc="upper center", ncol=6, frameon=False, bbox_to_anchor=(0.5, 1.12))
+    fig.legend(handles=handles, loc="upper center", ncol=6, frameon=False, bbox_to_anchor=(0.5, 1.12),fontsize=14)
 
-    # Note like your sample
-    fig.text(0.99, 1.02, "mean error relative to measurement%", ha="right", va="bottom", fontsize=12)
+    # # Note like your sample
+    # fig.text(0.99, 1.02, "mean error relative to measurement%", ha="right", va="bottom", fontsize=12)
 
     # Layout: leave more space for rotated x labels
     fig.tight_layout(rect=[0.02, 0.08, 0.98, 0.98])

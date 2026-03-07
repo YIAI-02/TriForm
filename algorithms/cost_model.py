@@ -90,6 +90,7 @@ def _normalize_npu_backend_safe(backend: Optional[str]) -> str:
 # --------------------------------------------------------------------------------------
 _DEVICE_NAME_FAMILY_PATTERNS = (
     (re.compile(r'(?i)^ascend_?910b(?:_|$)'), 'Ascend_910B'),
+    (re.compile(r'(?i)^ascend_?310b(?:_|$)'), 'Ascend_310B'),
     (re.compile(r'(?i)^(?:nvidia_)?a100(?:_|$)'), 'A100'),
     (re.compile(r'(?i)^(?:aim[ _-]?)?pim(?:\d+|[ _-]|$)'), 'pim'),
 )

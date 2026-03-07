@@ -1,4 +1,4 @@
- {
+{
   "hardware": {
     "topology": "fc",
     "devices": [
@@ -28,7 +28,7 @@
         "mem_bw_GBs": 16384.0,
         "mem_capacity_GB": 16,
         "pim_read_latency_ns": 5.0,
-        "pim_write_latency_ns": 30.0,    
+        "pim_write_latency_ns": 30.0,
         "pim_memory": {
           "addr_map_unit": "bits",
           "addr_map": {
@@ -39,7 +39,7 @@
             "offset": 12
           }
         }
-      },      
+      },
       {
         "name": "PIM1",
         "type": "pim",
@@ -48,7 +48,7 @@
         "mem_bw_GBs": 16384.0,
         "mem_capacity_GB": 16,
         "pim_read_latency_ns": 5.0,
-        "pim_write_latency_ns": 30.0,    
+        "pim_write_latency_ns": 30.0,
         "pim_memory": {
           "addr_map_unit": "bits",
           "addr_map": {
@@ -68,7 +68,7 @@
         "mem_bw_GBs": 16384.0,
         "mem_capacity_GB": 16,
         "pim_read_latency_ns": 5.0,
-        "pim_write_latency_ns": 30.0,    
+        "pim_write_latency_ns": 30.0,
         "pim_memory": {
           "addr_map_unit": "bits",
           "addr_map": {
@@ -79,7 +79,7 @@
             "offset": 12
           }
         }
-      },      
+      },
       {
         "name": "PIM3",
         "type": "pim",
@@ -88,7 +88,7 @@
         "mem_bw_GBs": 16384.0,
         "mem_capacity_GB": 16,
         "pim_read_latency_ns": 5.0,
-        "pim_write_latency_ns": 30.0,    
+        "pim_write_latency_ns": 30.0,
         "pim_memory": {
           "addr_map_unit": "bits",
           "addr_map": {
@@ -108,7 +108,7 @@
         "mem_bw_GBs": 16384.0,
         "mem_capacity_GB": 16,
         "pim_read_latency_ns": 5.0,
-        "pim_write_latency_ns": 30.0,    
+        "pim_write_latency_ns": 30.0,
         "pim_memory": {
           "addr_map_unit": "bits",
           "addr_map": {
@@ -128,7 +128,7 @@
         "mem_bw_GBs": 16384.0,
         "mem_capacity_GB": 16,
         "pim_read_latency_ns": 5.0,
-        "pim_write_latency_ns": 30.0,    
+        "pim_write_latency_ns": 30.0,
         "pim_memory": {
           "addr_map_unit": "bits",
           "addr_map": {
@@ -148,7 +148,7 @@
         "mem_bw_GBs": 16384.0,
         "mem_capacity_GB": 16,
         "pim_read_latency_ns": 5.0,
-        "pim_write_latency_ns": 30.0,    
+        "pim_write_latency_ns": 30.0,
         "pim_memory": {
           "addr_map_unit": "bits",
           "addr_map": {
@@ -168,7 +168,7 @@
         "mem_bw_GBs": 16384.0,
         "mem_capacity_GB": 16,
         "pim_read_latency_ns": 5.0,
-        "pim_write_latency_ns": 30.0,    
+        "pim_write_latency_ns": 30.0,
         "pim_memory": {
           "addr_map_unit": "bits",
           "addr_map": {
@@ -187,6 +187,6 @@
       "overhead_s": 0.0,
       "flit_size_B": 16,
       "max_payload_B": 256
-      }
+    }
   }
 }

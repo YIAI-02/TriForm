@@ -180,12 +180,12 @@ COMPUTE_UTILIZATION = {
     #   - name="Ascend_910B_NPU0" -> key "Ascend_910B"
     #   - name="A100_GPU0"        -> key "A100"
     'by_device_name': {
-        # TODO: tune these for your CUDA stack / kernels.
+
         'Ascend_910B': {
             'enabled': True,
             'curve': 'sigmoid',
             'min_util': 0.3,
-            'max_util': 1.0,
+            'max_util': 0.8,
             'flops_low': 5e7,
             'flops_high': 5e12,
             'knee_flops': 1.0e10,
@@ -196,8 +196,8 @@ COMPUTE_UTILIZATION = {
         'A100': {
             'enabled': True,
             'curve': 'sigmoid',
-            'min_util': 0.4,
-            'max_util': 0.9,
+            'min_util': 0.3,
+            'max_util': 0.8,
             'flops_low': 5e7,
             'flops_high': 5e12,
             'knee_flops': 1.5e8,
@@ -208,7 +208,7 @@ COMPUTE_UTILIZATION = {
             'enabled': True,
             'curve': 'sigmoid',
             'min_util': 0.3,
-            'max_util': 0.4,
+            'max_util': 0.8,
             'flops_low': 5e7,
             'flops_high': 5e12,
             'knee_flops': 1.5e8,
@@ -228,7 +228,7 @@ KERNEL_LAUNCH_OVERHEAD = {
     #   - name="A100_GPU0"        -> key "A100"
     'by_device_name': {
         'Ascend_910B': {
-            'enabled': True,
+            'enabled': False,
             'apply_backends': ['fast'],
             'phase_scale': {
                 'prefill': 0.5,
@@ -252,7 +252,7 @@ KERNEL_LAUNCH_OVERHEAD = {
         },
 
         'A100': {
-            'enabled': True,
+            'enabled': False,
             'apply_backends': ['fast'],
             'phase_scale': {
                 'prefill': 1.0,
@@ -281,7 +281,7 @@ KERNEL_LAUNCH_OVERHEAD = {
         },
         
         'Aim PIM': {
-            'enabled': True,
+            'enabled': False,
             'apply_backends': ['fast'],
             'phase_scale': {
                 'prefill': 1.0,

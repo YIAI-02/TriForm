@@ -3,8 +3,8 @@
 
 '''
 python3 ./verify/gen_job_tsv.py \
-  --input ./algorithms/output/hw_hardware_1gpu_2aim\
-  --prefill-len 2048\
+  --input ./algorithms/output/hw_hardware_1npu_2aim\
+  --prefill-len 256\
   --decode-len 64,128,256,512\
   --output ./verify/jobs_sweep.tsv
 
