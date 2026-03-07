@@ -1,4 +1,0 @@
-/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/schedule_deploy_verify.py:592: DtypeWarning: Columns (27,31) have mixed types. Specify dtype option on import or set low_memory=False.
-  df = pd.read_csv(path)
-/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/schedule_deploy_verify.py:592: DtypeWarning: Columns (27,31) have mixed types. Specify dtype option on import or set low_memory=False.
-  df = pd.read_csv(path)
