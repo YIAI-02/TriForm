@@ -30,6 +30,7 @@ from config import (
 )
 from types import SimpleNamespace
 import logging
+import sys
 import math
 import random
 import copy
@@ -214,6 +215,186 @@ class SchedulerBase:
 
     def set_seq_len(self, seq_len: int) -> None:
         self.seq_len = int(seq_len)
+
+
+    def export_fixed_plan(self, schedule: List["ScheduledTask"]) -> Dict[str, Any]:
+
+        node_order: List[str] = []
+        device_by_node: Dict[str, str] = {}
+        for t in list(schedule or []):
+            try:
+                nid = str(getattr(t, "node_id"))
+            except Exception:
+                continue
+            if not nid:
+                continue
+            node_order.append(nid)
+            try:
+                dname = str(getattr(t, "device", "") or "")
+            except Exception:
+                dname = ""
+            if dname in self.cluster.devices:
+                device_by_node[nid] = dname
+        return {
+            "order": tuple(node_order),
+            "device_by_node": dict(device_by_node),
+        }
+
+    def schedule_with_plan(
+        self,
+        g: TaskGraph,
+        phase: str,
+        plan: Optional[Mapping[str, Any]] = None,
+    ) -> List["ScheduledTask"]:
+
+        if getattr(self, "stats", None):
+            self.stats.set_phase(phase)
+
+        self.reset_state(clear_caches=False)
+        idx = self._get_graph_index(g)
+        remaining_preds = {nid: len(idx.preds[nid]) for nid in idx.nodes}
+
+        if not isinstance(plan, Mapping):
+            raise RuntimeError("schedule_with_plan requires a non-empty fixed plan mapping")
+        plan_map = dict(plan)
+
+        raw_order = plan_map.get("order", None)
+        if raw_order is None or isinstance(raw_order, (str, bytes)):
+            raise RuntimeError("Fixed plan missing iterable 'order'")
+        try:
+            order_iter = tuple(str(x) for x in raw_order)
+        except Exception as e:
+            raise RuntimeError("Fixed plan 'order' is not iterable") from e
+        if not order_iter:
+            raise RuntimeError("Fixed plan has empty 'order'")
+        if len(set(order_iter)) != len(order_iter):
+            raise RuntimeError("Fixed plan 'order' contains duplicate node ids")
+        unknown_in_order = [nid for nid in order_iter if nid not in idx.nodes_set]
+        if unknown_in_order:
+            raise RuntimeError(
+                f"Fixed plan order contains unknown nodes for this graph: {unknown_in_order[:16]}"
+            )
+        missing_in_order = [nid for nid in idx.nodes if nid not in set(order_iter)]
+        if missing_in_order:
+            raise RuntimeError(
+                f"Fixed plan order does not cover all graph nodes: missing {missing_in_order[:16]}"
+            )
+
+        raw_dev_map = plan_map.get("device_by_node", None)
+        if raw_dev_map is None:
+            raise RuntimeError("Fixed plan missing mapping 'device_by_node'")
+        if not isinstance(raw_dev_map, Mapping):
+            raise RuntimeError("Fixed plan field 'device_by_node' must be a mapping")
+        device_by_node: Dict[str, str] = {}
+        for k, v in raw_dev_map.items():
+            ks = str(k)
+            vs = str(v)
+            if not ks or not vs:
+                raise RuntimeError("Fixed plan 'device_by_node' contains empty key/value")
+            device_by_node[ks] = vs
+
+        missing_device_nodes: List[str] = []
+        for nid in idx.nodes:
+            node = g.nodes[nid]
+            if self._is_comm_node(node):
+                    continue
+            if nid not in device_by_node:
+                missing_device_nodes.append(str(nid))
+        if missing_device_nodes:
+            raise RuntimeError(
+                f"Fixed plan is missing concrete devices for non-comm nodes: {missing_device_nodes[:16]}"
+            )
+
+        schedule: List[ScheduledTask] = []
+        scheduled: set[str] = set()
+
+        for order_idx, nid in enumerate(order_iter):
+            if nid in scheduled:
+                raise RuntimeError(f"Fixed plan order repeats node {nid}")
+            if nid not in idx.nodes_set:
+                raise RuntimeError(f"Fixed plan referenced unknown node {nid}")
+            if remaining_preds[nid] != 0:
+                blocked_by = [p for p in idx.preds.get(nid, ()) if p not in scheduled]
+                raise RuntimeError(
+                    f"Fixed plan order is not executable at position {order_idx}: node {nid} still waits for predecessors {blocked_by[:16]}"
+                )
+
+            node = g.nodes[nid]
+
+            if self._is_comm_node(node):
+                host = self.cost.get_host_device()
+                start, finish = self._earliest_finish_on_device(
+                    g, nid, host, self.label, phase, commit=True
+                )
+                schedule.append(ScheduledTask(nid, "COMM", float(start), float(finish)))
+                self._after_commit_consume_predecessors(g, nid)
+
+                if getattr(self, "stats", None):
+                    op_name = node.attrs.get("op") or node.name
+                    try:
+                        self.stats.log_op_device(
+                            nid=nid,
+                            op=op_name,
+                            device="COMM",
+                            device_type="comm",
+                            start=float(start),
+                            end=float(finish),
+                            mode="FIXED_COMM",
+                        )
+                    except Exception:
+                        pass
+            else:
+                dname = device_by_node.get(str(nid), "")
+                if not dname:
+                    raise RuntimeError(f"Fixed plan has no device assignment for node {nid}")
+                dev = self.cluster.devices.get(str(dname))
+                if dev is None:
+                    raise RuntimeError(
+                        f"Fixed plan assigned unknown device '{dname}' to node {nid}"
+                    )
+
+                pinned = self._preferred_kv_write_device(g, nid)
+                if pinned is not None and str(getattr(pinned, "name", "")) != str(getattr(dev, "name", "")):
+                    raise RuntimeError(
+                        f"Fixed plan device mismatch for KV-pinned node {nid}: plan={dev.name}, required={pinned.name}"
+                    )
+                if not self._node_allowed_on(node, dev):
+                    raise RuntimeError(
+                        f"Fixed plan assigned illegal device '{dev.name}' to node {nid}"
+                    )
+
+                start, finish = self._earliest_finish_on_device(
+                    g, nid, dev, self.label, phase, commit=True
+                )
+                schedule.append(ScheduledTask(nid, dev.name, float(start), float(finish)))
+                self._after_commit_consume_predecessors(g, nid)
+
+                if getattr(self, "stats", None):
+                    op_name = node.attrs.get("op") or node.name
+                    try:
+                        self.stats.log_op_device(
+                            nid=nid,
+                            op=op_name,
+                            device=dev.name,
+                            device_type=dev.type,
+                            start=float(start),
+                            end=float(finish),
+                            mode="FIXED_PLAN",
+                        )
+                    except Exception:
+                        pass
+
+            scheduled.add(nid)
+            for v in idx.succs.get(nid, ()):
+                remaining_preds[v] -= 1
+
+        if len(scheduled) != len(idx.nodes):
+            missing = [n for n in idx.nodes if n not in scheduled]
+            raise RuntimeError(
+                f"Schedule failed: graph may have cycles or missing deps; unscheduled nodes: {missing[:16]}"
+            )
+
+        return schedule
 
     def _executor_device_types(self) -> Tuple[str, ...]:
         try:
@@ -2361,6 +2542,10 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
         self._weight_plan_hint: Dict[str, str] = {}
         self._model_total_weight_bytes: Optional[int] = None
         self._weight_chain_hits: Dict[str, float] = defaultdict(float)
+        self._decode_cur_token_idx: Optional[int] = None
+        self._decode_total_tokens: Optional[int] = None
+        self._decode_cfg_map: Dict[str, Any] = {}
+        self._decode_amort_eval_cache: Dict[Tuple[str, str, str, int, int, int], float] = {}
 
     def reset_state(self, *, clear_caches: bool = True) -> None:
         """Reset runtime state + clear COMMAWARE hints."""
@@ -2372,6 +2557,286 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
             self._weight_chain_hits.clear()
         except Exception:
             pass
+        try:
+            self._decode_amort_eval_cache.clear()
+        except Exception:
+            pass
+
+    # -----------------------------
+    # Long-horizon decode context
+    # -----------------------------
+    def set_decode_context(
+        self,
+        *,
+        cur_token_idx: Optional[int] = None,
+        total_decode_tokens: Optional[int] = None,
+        cfg: Optional[Mapping[str, Any]] = None,
+    ) -> None:
+        changed = False
+        nxt_cur = None if cur_token_idx is None else max(0, int(cur_token_idx))
+        nxt_total = None if total_decode_tokens is None else max(0, int(total_decode_tokens))
+        if nxt_cur != self._decode_cur_token_idx or nxt_total != self._decode_total_tokens:
+            changed = True
+        self._decode_cur_token_idx = nxt_cur
+        self._decode_total_tokens = nxt_total
+        if isinstance(cfg, Mapping):
+            new_cfg = dict(cfg)
+            if new_cfg != self._decode_cfg_map:
+                changed = True
+            self._decode_cfg_map = new_cfg
+        if changed:
+            try:
+                self._decode_amort_eval_cache.clear()
+            except Exception:
+                pass
+
+    def clear_decode_context(self) -> None:
+        self._decode_cur_token_idx = None
+        self._decode_total_tokens = None
+        self._decode_cfg_map = {}
+        try:
+            self._decode_amort_eval_cache.clear()
+        except Exception:
+            pass
+
+    def _decode_cfg_value(self, *names: str, default: Any = None) -> Any:
+        keys: List[str] = []
+        for name in names:
+            if not name:
+                continue
+            s = str(name)
+            for cand in (s, s.lower(), s.upper()):
+                if cand not in keys:
+                    keys.append(cand)
+
+        cfg_map = self._decode_cfg_map if isinstance(self._decode_cfg_map, Mapping) else {}
+        for k in keys:
+            try:
+                if k in cfg_map:
+                    return cfg_map[k]
+            except Exception:
+                continue
+            
+        mod = sys.modules.get('config', None)
+        if mod is not None:
+            for k in keys:
+                try:
+                    if hasattr(mod, k):
+                        return getattr(mod, k)
+                except Exception:
+                    continue
+        return default
+
+    @staticmethod
+    def _decode_cfg_bool(v: Any, default: bool = False) -> bool:
+        if v is None:
+            return bool(default)
+        if isinstance(v, bool):
+            return bool(v)
+        if isinstance(v, (int, float)):
+            return bool(v)
+        s = str(v).strip().lower()
+        if s in ("1", "true", "t", "yes", "y", "on", "enable", "enabled"):
+            return True
+        if s in ("0", "false", "f", "no", "n", "off", "disable", "disabled"):
+            return False
+        return bool(default)
+
+    def _decode_amort_enabled(self, phase: str) -> bool:
+        if str(phase or "").lower() != "decode":
+            return False
+        if self._decode_cur_token_idx is None or self._decode_total_tokens is None:
+            return False
+        raw = self._decode_cfg_value(
+            "decode_amort_enable",
+            "sched_decode_amort_enable",
+            "SCHED_DECODE_AMORT_ENABLE",
+            default=True,
+        )
+        return bool(self._decode_cfg_bool(raw, default=True))
+
+    def _remaining_decode_tokens(self) -> int:
+        total = 0 if self._decode_total_tokens is None else int(self._decode_total_tokens)
+        cur = 0 if self._decode_cur_token_idx is None else int(self._decode_cur_token_idx)
+        return max(1, int(total - cur))
+
+    def _decode_weight_service_profile(self, node: TaskNode, dev: DeviceSpec) -> Dict[str, float | int | str]:
+        """Contention-free weight service estimate for decode amortization.
+        """
+        wid = self._node_weight_id(node)
+        wsize_nd = int(self._node_weight_size(node) or 0)
+        if not wid or wsize_nd <= 0:
+            return {
+                'wid': str(wid or ''),
+                'weight_size_nd': int(wsize_nd),
+                'cached_nd': 0,
+                'need_nd': 0,
+                'warm_weight': 0.0,
+                'current_weight': 0.0,
+            }
+
+        def _ondevice_weight_mem_load_s(bytes_nd: int) -> float:
+            bytes_nd = int(bytes_nd or 0)
+            if bytes_nd <= 0:
+                return 0.0
+            fmt = self.cost.device_preferred_fmt(dev)
+            bytes_dev = int(self.cost.format_size(int(bytes_nd), str(fmt)))
+            return float(self.cost.mem_time(int(bytes_dev), dev))
+
+        full_mem_load = float(_ondevice_weight_mem_load_s(int(wsize_nd)))
+
+        if str(getattr(dev, 'type', '')).lower() == 'pim' and self._weights_preloaded_on_pim():
+            return {
+                'wid': str(wid),
+                'weight_size_nd': int(wsize_nd),
+                'cached_nd': int(wsize_nd),
+                'need_nd': 0,
+                'warm_weight': float(full_mem_load),
+                'current_weight': float(full_mem_load),
+            }
+
+        cached_nd = 0
+        cache = None
+        try:
+            cache = getattr(self.buffer, 'device_cache', {}).get(dev.name, None)
+            items = getattr(cache, 'items', None)
+            if isinstance(items, dict):
+                v = items.get(wid, 0)
+                if isinstance(v, (int, float)):
+                    cached_nd = int(v)
+        except Exception:
+            cached_nd = 0
+
+        if cached_nd <= 0:
+            try:
+                if self.buffer.is_cached(dev.name, wid):
+                    cached_nd = int(wsize_nd)
+            except Exception:
+                cached_nd = 0
+
+        if cached_nd >= wsize_nd:
+            return {
+                'wid': str(wid),
+                'weight_size_nd': int(wsize_nd),
+                'cached_nd': int(wsize_nd),
+                'need_nd': 0,
+                'warm_weight': float(full_mem_load),
+                'current_weight': float(full_mem_load),
+            }
+
+        need_nd = int(max(0, wsize_nd - max(0, cached_nd)))
+        try:
+            from_fmt = self.buffer.get_host_fmt(wid) or 'ND'
+        except Exception:
+            from_fmt = 'ND'
+        to_fmt = self.cost.device_preferred_fmt(dev)
+
+        rd_bytes = int(self.cost.format_size(int(need_nd), str(from_fmt)))
+        host = self.cost.get_host_device()
+        migrate_t = float(
+            self.cost.combine_transfer_and_convert(host, dev, int(rd_bytes), str(from_fmt), str(to_fmt))
+        )
+        if str(getattr(dev, 'type', '')).lower() == 'pim':
+            try:
+                migrate_t += float(self.cost.weight_load_time_pim(int(need_nd)))
+            except Exception:
+                pass
+
+        current_weight = float(max(full_mem_load, migrate_t))
+        return {
+            'wid': str(wid),
+            'weight_size_nd': int(wsize_nd),
+            'cached_nd': int(max(0, cached_nd)),
+            'need_nd': int(max(0, need_nd)),
+            'warm_weight': float(full_mem_load),
+            'current_weight': float(current_weight),
+        }
+
+    def _decode_phase_amortization_bias(self, g: TaskGraph, nid: str, dev: DeviceSpec, phase: str) -> float:
+        """Cross-token decode bias: amortize one-time migration over remaining decode steps.        """
+        if not self._decode_amort_enabled(phase):
+            return 0.0
+
+        try:
+            node = g.nodes[nid]
+        except Exception:
+            return 0.0
+
+        wid = self._node_weight_id(node)
+        wsize_nd = int(self._node_weight_size(node) or 0)
+        if not wid or wsize_nd <= 0:
+            return 0.0
+
+        rem = int(self._remaining_decode_tokens())
+        key = (
+            str(nid),
+            str(getattr(dev, 'name', '')),
+            str(phase or '').lower(),
+            int(rem),
+            int(getattr(self, 'seq_len', 0) or 0),
+            int(self._decode_cur_token_idx or 0),
+        )
+        cached_bias = self._decode_amort_eval_cache.get(key, None)
+        if cached_bias is not None:
+            return float(cached_bias)
+
+        phase_eff = self._node_phase(g, nid, phase)
+        batch_eff = self._node_batch(g, nid, phase_eff)
+        seq_eff = self._node_seq_len(g, nid, phase_eff)
+
+        try:
+            compute_t = float(self.cost.node_device_cost(node, dev, self.label, batch_eff, seq_eff, phase_eff))
+        except Exception:
+            compute_t = float('inf')
+        if not math.isfinite(compute_t):
+            self._decode_amort_eval_cache[key] = 0.0
+            return 0.0
+
+        prof = self._decode_weight_service_profile(node, dev)
+        warm_w = float(prof.get('warm_weight', 0.0) or 0.0)
+        cur_w = float(prof.get('current_weight', 0.0) or 0.0)
+
+        s_warm = float(max(compute_t, warm_w))
+        s_cur = float(max(compute_t, cur_w))
+        migrate_extra = float(max(0.0, s_cur - s_warm))
+        if migrate_extra <= 0.0:
+            self._decode_amort_eval_cache[key] = 0.0
+            return 0.0
+
+        alpha = float(self._decode_cfg_value(
+            'decode_amort_alpha',
+            'sched_decode_amort_alpha',
+            'SCHED_DECODE_AMORT_ALPHA',
+            default=1.0,
+        ) or 0.0)
+        if alpha == 0.0:
+            self._decode_amort_eval_cache[key] = 0.0
+            return 0.0
+
+        rmin = float(self._decode_cfg_value(
+            'decode_amort_rmin',
+            'sched_decode_amort_rmin',
+            'SCHED_DECODE_AMORT_RMIN',
+            default=1.0,
+        ) or 1.0)
+        reuse_prob = float(self._decode_cfg_value(
+            'decode_amort_reuse_prob',
+            'sched_decode_amort_reuse_prob',
+            'SCHED_DECODE_AMORT_REUSE_PROB',
+            default=1.0,
+        ) or 1.0)
+        reuse_prob = min(1.0, max(0.0, reuse_prob))
+
+        r_eff = max(float(rmin), float(rem) * float(reuse_prob))
+        avg_decode_service = float(s_warm + migrate_extra / max(1.0, r_eff))
+
+        bias = float(alpha * (avg_decode_service - s_cur))
+        if bias > 0.0:
+            bias = 0.0
+
+        self._decode_amort_eval_cache[key] = float(bias)
+        return float(bias)
+
     # -----------------------------
     # Helpers for COMMAWARE HEFT
     # -----------------------------
@@ -2980,10 +3445,13 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
                         g, chain=chain, first_dev=dev, first_eft=eft, phase=phase
                     )
 
-                # Strategy 2: weight-reuse bias (PIM only).
+                # Strategy 2: short-horizon weight/device consistency bias.
                 bias = float(self._weight_reuse_bias(g, idx, nid, dev, phase=phase))
 
-                score = float((1.0 - gamma) * eft + gamma * float(window_est) + bias)
+                # Strategy 3: long-horizon decode amortization bias (cross-token only).
+                decode_phase_bias = float(self._decode_phase_amortization_bias(g, nid, dev, phase=phase))
+
+                score = float((1.0 - gamma) * eft + gamma * float(window_est) + bias + decode_phase_bias)
 
                 # Tie-breakers: prefer lower EFT, then random.
                 if (score < best_score) or (

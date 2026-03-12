@@ -1,20 +1,7 @@
 # config.py
 import logging
 
-# =========================
-# Hybrid scheduling params
-# =========================
-ALLOW_HYBRID: bool = False    # allow hybrid scheduling (some ops on NPU, some on PIM)
-# =========================
-# Rank-U weight load option
-# =========================
 RANKU_INCLUDE_AVG_WEIGHT_LOAD: bool = True
-
-# =========================
-# Weight storage & formats
-# =========================
-
-# Host (weights live in "main memory")
 HOST_NAME: str = "CPU0"
 
 # Preferred on-device formats
@@ -164,11 +151,19 @@ SCHED_DEFAULT: str = "heft"
 # in large unrolled decode graphs.
 SCHED_JOINT_LK_ENABLE: bool = True
 SCHED_JOINT_LK_H: int = 3
-SCHED_JOINT_LK_GAMMA: float = 0.2
-SCHED_JOINT_LK_CONSIST_LAMBDA: float = 8
+SCHED_JOINT_LK_GAMMA: float = 0.6
+SCHED_JOINT_LK_CONSIST_LAMBDA: float = 0
 SCHED_JOINT_LK_PLAN_HINT_MAX: int =  3
 # Weight-reuse bias gain multiplier (eta in bias formula)
-SCHED_WEIGHT_BIAS_ETA: float = 50
+SCHED_WEIGHT_BIAS_ETA: float = 1.0
+
+#AMORT
+SCHED_DECODE_AMORT_ENABLE = True
+SCHED_DECODE_AMORT_ALPHA = 2
+SCHED_DECODE_AMORT_RMIN = 1
+# Optional reuse probability multiplier (useful later for MoE / gated subgraphs).
+# For dense decode, keep 1.0.
+SCHED_DECODE_AMORT_REUSE_PROB = 1.0
 
 
 # -------------------------------------------------------------------------------------------------
@@ -189,7 +184,7 @@ COMPUTE_UTILIZATION = {
             'flops_low': 5e7,
             'flops_high': 5e12,
             'knee_flops': 1.0e10,
-            'slope': 5.0,
+            'slope': 3.0,
         },
 
         # NVIDIA A100
@@ -201,18 +196,18 @@ COMPUTE_UTILIZATION = {
             'flops_low': 5e7,
             'flops_high': 5e12,
             'knee_flops': 1.5e8,
-            'slope': 6.0,
+            'slope': 3.0,
         },
 
         'pim': {
             'enabled': True,
             'curve': 'sigmoid',
             'min_util': 0.3,
-            'max_util': 0.8,
+            'max_util': 0.4,
             'flops_low': 5e7,
             'flops_high': 5e12,
             'knee_flops': 1.5e8,
-            'slope': 6.0,
+            'slope': 3.0,
         },
     },
 }

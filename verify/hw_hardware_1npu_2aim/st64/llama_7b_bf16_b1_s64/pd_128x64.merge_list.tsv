@@ -1,2 +1,0 @@
-prefix_combo	prefill_len	decode_stride	batch	schedule_csv	merge_csv	debug_txt
-pd_128x64	128	64	1	/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/algorithms/output/hw_hardware_1npu_2aim/st64/llama_7b_bf16_b1_s64/algo_pd/pd_prefill-128xdecode_64_ops_trace.csv	/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1npu_2aim/st64/llama_7b_bf16_b1_s64/pd_128x64.merge.csv	/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/verify/hw_hardware_1npu_2aim/st64/llama_7b_bf16_b1_s64/pd_128x64.merge.debug.txt

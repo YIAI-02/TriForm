@@ -50,9 +50,8 @@ GELU_LUT="${GELU_LUT:-}"
 NORM_LUT="${NORM_LUT:-}"
 
 NPU_DTYPE="${NPU_DTYPE:-}"
-NPU_MEM_BW_GBS="${NPU_MEM_BW_GBS:-0}"
+NPU_MEM_BW_GBS="${NPU_MEM_BW_GBS:-}"
 NPU_OP_OVERHEAD_US="${NPU_OP_OVERHEAD_US:-0}"
-NPU_NO_MEM_BOUND="${NPU_NO_MEM_BOUND:-0}"
 
 NPU_DEBUG="${NPU_DEBUG:-0}"
 NPU_DEBUG_TXT="${NPU_DEBUG_TXT:-}"
@@ -61,6 +60,17 @@ if [[ -z "$TASKS_JSON" || -z "$OUT_JSON" ]]; then
   echo "[slurm] ERROR: TASKS_JSON and OUT_JSON must be set" >&2
   exit 2
 fi
+
+# Activation RW is mandatory (schedule_deploy_verify enforces this too).
+if [[ -z "$NPU_MEM_BW_GBS" ]]; then
+  echo "[slurm] ERROR: NPU_MEM_BW_GBS must be set and >0 (Activation RW is mandatory)" >&2
+  exit 2
+fi
+if ! awk -v v="$NPU_MEM_BW_GBS" 'BEGIN{exit (v>0)?0:1}'; then
+  echo "[slurm] ERROR: NPU_MEM_BW_GBS must be >0 (got '$NPU_MEM_BW_GBS')" >&2
+  exit 2
+fi
+
 if [[ -z "$OK_FILE" ]]; then
   OK_FILE="${OUT_JSON}.ok"
 fi
@@ -87,9 +97,6 @@ fi
 # Always pass numeric knobs (defaults are fine)
 cmd+=(--npu-mem-bw-gbs "$NPU_MEM_BW_GBS")
 cmd+=(--npu-op-overhead-us "$NPU_OP_OVERHEAD_US")
-if [[ "$NPU_NO_MEM_BOUND" == "1" || "$NPU_NO_MEM_BOUND" == "true" ]]; then
-  cmd+=(--npu-no-mem-bound)
-fi
 
 if [[ -n "$BATCH" ]]; then
   cmd+=(--batch "$BATCH")
@@ -107,7 +114,7 @@ echo "[slurm] TASKS_JSON=${TASKS_JSON}"
 echo "[slurm] OUT_JSON=${OUT_JSON}"
 echo "[slurm] OK_FILE=${OK_FILE}"
 echo "[slurm] LUT: MMAD_LUT=${MMAD_LUT:-<default>} SOFTMAX_LUT=${SOFTMAX_LUT:-<default>} GELU_LUT=${GELU_LUT:-<default>} NORM_LUT=${NORM_LUT:-<default>}"
-echo "[slurm] NPU_MEM_BW_GBS=${NPU_MEM_BW_GBS} NPU_OP_OVERHEAD_US=${NPU_OP_OVERHEAD_US} NPU_NO_MEM_BOUND=${NPU_NO_MEM_BOUND}"
+echo "[slurm] NPU_MEM_BW_GBS=${NPU_MEM_BW_GBS} NPU_OP_OVERHEAD_US=${NPU_OP_OVERHEAD_US}"
 echo "[slurm] cmd: ${cmd[*]}"
 
 rm -f "$OK_FILE"

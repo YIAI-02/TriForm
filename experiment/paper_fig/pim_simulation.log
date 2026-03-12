@@ -1,0 +1,304 @@
+================================================================================
+PIM Simulation Log - 2026-03-01 14:48:20
+================================================================================
+
+[PIM] Computing latency for q_proj phase=prefill (scaled: base_phase=decode, base_batch=1, scale=512; dim=4096, heads=32, seq=512, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_408qcaog/Q_prefill_B1_S512_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=6.366000e-06s (6366 cycles), scale=512 => total=3.259392e-03s
+[PIM] Computing latency for k_proj phase=prefill (scaled: base_phase=decode, base_batch=1, scale=512; dim=4096, heads=32, seq=512, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_1suk5nmr/K_prefill_B1_S512_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=6.366000e-06s (6366 cycles), scale=512 => total=3.259392e-03s
+[PIM] Computing latency for v_proj phase=prefill (scaled: base_phase=decode, base_batch=1, scale=512; dim=4096, heads=32, seq=512, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_excg3tlp/V_prefill_B1_S512_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=6.366000e-06s (6366 cycles), scale=512 => total=3.259392e-03s
+[PIM] Computing latency for wo_proj phase=prefill (scaled: base_phase=decode, base_batch=1, scale=512; dim=4096, heads=32, seq=512, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_11k0y3iq/O_prefill_B1_S512_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=6.366000e-06s (6366 cycles), scale=512 => total=3.259392e-03s
+[PIM] Computing latency for score phase=prefill (scaled: base_phase=decode, base_batch=1, scale=512; dim=4096, heads=32, seq=512, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_ni1pyo1n/QK_prefill_B1_S512_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=3.440000e-06s (3440 cycles), scale=512 => total=1.761280e-03s
+[PIM] Computing latency for softmax phase=prefill (scaled: base_phase=decode, base_batch=1, scale=512; dim=4096, heads=32, seq=512, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_c1duyq6g/SOFTMAX_prefill_B1_S512_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=3.279000e-06s (3279 cycles), scale=512 => total=1.678848e-03s
+[PIM] Computing latency for output phase=prefill (scaled: base_phase=decode, base_batch=1, scale=512; dim=4096, heads=32, seq=512, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_j4tytyxa/SV_prefill_B1_S512_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=1.840000e-06s (1840 cycles), scale=512 => total=9.420800e-04s
+[PIM] Computing latency for rmsnorm phase=prefill (scaled: base_phase=decode, base_batch=1, scale=512; dim=4096, heads=32, seq=512, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_aqbmy62x/LN_prefill_B1_S512_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=1.314000e-06s (1314 cycles), scale=512 => total=6.727680e-04s
+[PIM] Computing latency for rope phase=prefill (scaled: base_phase=decode, base_batch=1, scale=512; dim=4096, heads=32, seq=512, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_br3lqk6b/ROPE_prefill_B1_S512_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=8.321000e-06s (8321 cycles), scale=512 => total=4.260352e-03s
+[PIM] Computing latency for ffn_gate phase=prefill (scaled: base_phase=decode, base_batch=1, scale=512; dim=4096, heads=32, seq=512, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_cdswx1et/FFN_W1_prefill_B1_S512_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=6.974000e-06s (6974 cycles), scale=512 => total=3.570688e-03s
+[PIM] Computing latency for ffn_up phase=prefill (scaled: base_phase=decode, base_batch=1, scale=512; dim=4096, heads=32, seq=512, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_sitlac_h/FFN_W3_prefill_B1_S512_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=6.366000e-06s (6366 cycles), scale=512 => total=3.259392e-03s
+[PIM] Computing latency for ffn_down phase=prefill (scaled: base_phase=decode, base_batch=1, scale=512; dim=4096, heads=32, seq=512, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_mz7qjf6i/FFN_W2_prefill_B1_S512_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=6.366000e-06s (6366 cycles), scale=512 => total=3.259392e-03s
+[PIM] Computing latency for silu phase=prefill (scaled: base_phase=decode, base_batch=1, scale=512; dim=4096, heads=32, seq=512, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_oj71ivec/SWIGLU_prefill_B1_S512_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=3.570000e-07s (357 cycles), scale=512 => total=1.827840e-04s
+[PIM] Computing latency for gelu phase=prefill (scaled: base_phase=decode, base_batch=1, scale=512; dim=4096, heads=32, seq=512, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_ha893udd/GELU_prefill_B1_S512_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=3.570000e-07s (357 cycles), scale=512 => total=1.827840e-04s
+[PIM] Computing latency for residual phase=prefill (scaled: base_phase=decode, base_batch=1, scale=512; dim=4096, heads=32, seq=512, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_aypbhq_f/ADD_prefill_B1_S512_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=3.000000e-09s (3 cycles), scale=512 => total=1.536000e-06s
+[PIM] Computing latency for q_proj phase=prefill (scaled: base_phase=decode, base_batch=1, scale=1024; dim=4096, heads=32, seq=1024, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_ixapkbu0/Q_prefill_B1_S1024_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=6.366000e-06s (6366 cycles), scale=1024 => total=6.518784e-03s
+[PIM] Computing latency for k_proj phase=prefill (scaled: base_phase=decode, base_batch=1, scale=1024; dim=4096, heads=32, seq=1024, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_4mf2bpgu/K_prefill_B1_S1024_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=6.366000e-06s (6366 cycles), scale=1024 => total=6.518784e-03s
+[PIM] Computing latency for v_proj phase=prefill (scaled: base_phase=decode, base_batch=1, scale=1024; dim=4096, heads=32, seq=1024, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_ijsldnd3/V_prefill_B1_S1024_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=6.366000e-06s (6366 cycles), scale=1024 => total=6.518784e-03s
+[PIM] Computing latency for wo_proj phase=prefill (scaled: base_phase=decode, base_batch=1, scale=1024; dim=4096, heads=32, seq=1024, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_5en71r3k/O_prefill_B1_S1024_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=6.366000e-06s (6366 cycles), scale=1024 => total=6.518784e-03s
+[PIM] Computing latency for score phase=prefill (scaled: base_phase=decode, base_batch=1, scale=1024; dim=4096, heads=32, seq=1024, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_8prihpjw/QK_prefill_B1_S1024_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=6.880000e-06s (6880 cycles), scale=1024 => total=7.045120e-03s
+[PIM] Computing latency for softmax phase=prefill (scaled: base_phase=decode, base_batch=1, scale=1024; dim=4096, heads=32, seq=1024, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_lh8sm2qb/SOFTMAX_prefill_B1_S1024_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=6.479000e-06s (6479 cycles), scale=1024 => total=6.634496e-03s
+[PIM] Computing latency for output phase=prefill (scaled: base_phase=decode, base_batch=1, scale=1024; dim=4096, heads=32, seq=1024, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_jdf_ls61/SV_prefill_B1_S1024_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=2.416000e-06s (2416 cycles), scale=1024 => total=2.473984e-03s
+[PIM] Computing latency for rmsnorm phase=prefill (scaled: base_phase=decode, base_batch=1, scale=1024; dim=4096, heads=32, seq=1024, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_e5wczoxb/LN_prefill_B1_S1024_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=1.314000e-06s (1314 cycles), scale=1024 => total=1.345536e-03s
+[PIM] Computing latency for rope phase=prefill (scaled: base_phase=decode, base_batch=1, scale=1024; dim=4096, heads=32, seq=1024, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_cgg7c7h9/ROPE_prefill_B1_S1024_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=8.321000e-06s (8321 cycles), scale=1024 => total=8.520704e-03s
+[PIM] Computing latency for ffn_gate phase=prefill (scaled: base_phase=decode, base_batch=1, scale=1024; dim=4096, heads=32, seq=1024, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_gl4oytf5/FFN_W1_prefill_B1_S1024_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=6.974000e-06s (6974 cycles), scale=1024 => total=7.141376e-03s
+[PIM] Computing latency for ffn_up phase=prefill (scaled: base_phase=decode, base_batch=1, scale=1024; dim=4096, heads=32, seq=1024, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_1pga0od6/FFN_W3_prefill_B1_S1024_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=6.366000e-06s (6366 cycles), scale=1024 => total=6.518784e-03s
+[PIM] Computing latency for ffn_down phase=prefill (scaled: base_phase=decode, base_batch=1, scale=1024; dim=4096, heads=32, seq=1024, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_jyg9ghby/FFN_W2_prefill_B1_S1024_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=6.366000e-06s (6366 cycles), scale=1024 => total=6.518784e-03s
+[PIM] Computing latency for silu phase=prefill (scaled: base_phase=decode, base_batch=1, scale=1024; dim=4096, heads=32, seq=1024, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_5fyd6vfp/SWIGLU_prefill_B1_S1024_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=3.570000e-07s (357 cycles), scale=1024 => total=3.655680e-04s
+[PIM] Computing latency for gelu phase=prefill (scaled: base_phase=decode, base_batch=1, scale=1024; dim=4096, heads=32, seq=1024, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_q3qdeibo/GELU_prefill_B1_S1024_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=3.570000e-07s (357 cycles), scale=1024 => total=3.655680e-04s
+[PIM] Computing latency for residual phase=prefill (scaled: base_phase=decode, base_batch=1, scale=1024; dim=4096, heads=32, seq=1024, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_fvo6r390/ADD_prefill_B1_S1024_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=3.000000e-09s (3 cycles), scale=1024 => total=3.072000e-06s
+[PIM] Computing latency for q_proj phase=prefill (scaled: base_phase=decode, base_batch=1, scale=2048; dim=4096, heads=32, seq=2048, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_l2ovy85t/Q_prefill_B1_S2048_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=6.366000e-06s (6366 cycles), scale=2048 => total=1.303757e-02s
+[PIM] Computing latency for k_proj phase=prefill (scaled: base_phase=decode, base_batch=1, scale=2048; dim=4096, heads=32, seq=2048, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_jclsmhw5/K_prefill_B1_S2048_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=6.366000e-06s (6366 cycles), scale=2048 => total=1.303757e-02s
+[PIM] Computing latency for v_proj phase=prefill (scaled: base_phase=decode, base_batch=1, scale=2048; dim=4096, heads=32, seq=2048, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_ka1zekb7/V_prefill_B1_S2048_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=6.366000e-06s (6366 cycles), scale=2048 => total=1.303757e-02s
+[PIM] Computing latency for wo_proj phase=prefill (scaled: base_phase=decode, base_batch=1, scale=2048; dim=4096, heads=32, seq=2048, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_39t9mv3e/O_prefill_B1_S2048_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=6.366000e-06s (6366 cycles), scale=2048 => total=1.303757e-02s
+[PIM] Computing latency for score phase=prefill (scaled: base_phase=decode, base_batch=1, scale=2048; dim=4096, heads=32, seq=2048, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_56lsgn3c/QK_prefill_B1_S2048_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=1.376000e-05s (13760 cycles), scale=2048 => total=2.818048e-02s
+[PIM] Computing latency for softmax phase=prefill (scaled: base_phase=decode, base_batch=1, scale=2048; dim=4096, heads=32, seq=2048, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_0jkwngs_/SOFTMAX_prefill_B1_S2048_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=1.287900e-05s (12879 cycles), scale=2048 => total=2.637619e-02s
+[PIM] Computing latency for output phase=prefill (scaled: base_phase=decode, base_batch=1, scale=2048; dim=4096, heads=32, seq=2048, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_mbziakec/SV_prefill_B1_S2048_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=3.568000e-06s (3568 cycles), scale=2048 => total=7.307264e-03s
+[PIM] Computing latency for rmsnorm phase=prefill (scaled: base_phase=decode, base_batch=1, scale=2048; dim=4096, heads=32, seq=2048, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_7d4tzo2i/LN_prefill_B1_S2048_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=1.314000e-06s (1314 cycles), scale=2048 => total=2.691072e-03s
+[PIM] Computing latency for rope phase=prefill (scaled: base_phase=decode, base_batch=1, scale=2048; dim=4096, heads=32, seq=2048, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace__kwt0vyb/ROPE_prefill_B1_S2048_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=8.321000e-06s (8321 cycles), scale=2048 => total=1.704141e-02s
+[PIM] Computing latency for ffn_gate phase=prefill (scaled: base_phase=decode, base_batch=1, scale=2048; dim=4096, heads=32, seq=2048, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_j341ptcl/FFN_W1_prefill_B1_S2048_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=6.974000e-06s (6974 cycles), scale=2048 => total=1.428275e-02s
+[PIM] Computing latency for ffn_up phase=prefill (scaled: base_phase=decode, base_batch=1, scale=2048; dim=4096, heads=32, seq=2048, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_ky3jcj5y/FFN_W3_prefill_B1_S2048_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=6.366000e-06s (6366 cycles), scale=2048 => total=1.303757e-02s
+[PIM] Computing latency for ffn_down phase=prefill (scaled: base_phase=decode, base_batch=1, scale=2048; dim=4096, heads=32, seq=2048, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_osqboo01/FFN_W2_prefill_B1_S2048_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=6.366000e-06s (6366 cycles), scale=2048 => total=1.303757e-02s
+[PIM] Computing latency for silu phase=prefill (scaled: base_phase=decode, base_batch=1, scale=2048; dim=4096, heads=32, seq=2048, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_48dyib_x/SWIGLU_prefill_B1_S2048_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=3.570000e-07s (357 cycles), scale=2048 => total=7.311360e-04s
+[PIM] Computing latency for gelu phase=prefill (scaled: base_phase=decode, base_batch=1, scale=2048; dim=4096, heads=32, seq=2048, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_515w2b69/GELU_prefill_B1_S2048_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=3.570000e-07s (357 cycles), scale=2048 => total=7.311360e-04s
+[PIM] Computing latency for residual phase=prefill (scaled: base_phase=decode, base_batch=1, scale=2048; dim=4096, heads=32, seq=2048, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_s45_wgin/ADD_prefill_B1_S2048_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=3.000000e-09s (3 cycles), scale=2048 => total=6.144000e-06s
+[PIM] Computing latency for q_proj phase=prefill (scaled: base_phase=decode, base_batch=1, scale=4096; dim=4096, heads=32, seq=4096, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_adf0ftt3/Q_prefill_B1_S4096_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=6.366000e-06s (6366 cycles), scale=4096 => total=2.607514e-02s
+[PIM] Computing latency for k_proj phase=prefill (scaled: base_phase=decode, base_batch=1, scale=4096; dim=4096, heads=32, seq=4096, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_sw7xkybu/K_prefill_B1_S4096_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=6.366000e-06s (6366 cycles), scale=4096 => total=2.607514e-02s
+[PIM] Computing latency for v_proj phase=prefill (scaled: base_phase=decode, base_batch=1, scale=4096; dim=4096, heads=32, seq=4096, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_tttzodxn/V_prefill_B1_S4096_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=6.366000e-06s (6366 cycles), scale=4096 => total=2.607514e-02s
+[PIM] Computing latency for wo_proj phase=prefill (scaled: base_phase=decode, base_batch=1, scale=4096; dim=4096, heads=32, seq=4096, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_je8i_f0h/O_prefill_B1_S4096_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=6.366000e-06s (6366 cycles), scale=4096 => total=2.607514e-02s
+[PIM] Computing latency for score phase=prefill (scaled: base_phase=decode, base_batch=1, scale=4096; dim=4096, heads=32, seq=4096, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_s2d8mp4c/QK_prefill_B1_S4096_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=2.752000e-05s (27520 cycles), scale=4096 => total=1.127219e-01s
+[PIM] Computing latency for softmax phase=prefill (scaled: base_phase=decode, base_batch=1, scale=4096; dim=4096, heads=32, seq=4096, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_11rfes9m/SOFTMAX_prefill_B1_S4096_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=2.593900e-05s (25939 cycles), scale=4096 => total=1.062461e-01s
+[PIM] Computing latency for output phase=prefill (scaled: base_phase=decode, base_batch=1, scale=4096; dim=4096, heads=32, seq=4096, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_az4zcg29/SV_prefill_B1_S4096_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=7.136000e-06s (7136 cycles), scale=4096 => total=2.922906e-02s
+[PIM] Computing latency for rmsnorm phase=prefill (scaled: base_phase=decode, base_batch=1, scale=4096; dim=4096, heads=32, seq=4096, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_9ld74m33/LN_prefill_B1_S4096_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=1.314000e-06s (1314 cycles), scale=4096 => total=5.382144e-03s
+[PIM] Computing latency for rope phase=prefill (scaled: base_phase=decode, base_batch=1, scale=4096; dim=4096, heads=32, seq=4096, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_15cz3z06/ROPE_prefill_B1_S4096_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=8.321000e-06s (8321 cycles), scale=4096 => total=3.408282e-02s
+[PIM] Computing latency for ffn_gate phase=prefill (scaled: base_phase=decode, base_batch=1, scale=4096; dim=4096, heads=32, seq=4096, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_3zozvl1w/FFN_W1_prefill_B1_S4096_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=6.974000e-06s (6974 cycles), scale=4096 => total=2.856550e-02s
+[PIM] Computing latency for ffn_up phase=prefill (scaled: base_phase=decode, base_batch=1, scale=4096; dim=4096, heads=32, seq=4096, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_edf57i3c/FFN_W3_prefill_B1_S4096_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=6.366000e-06s (6366 cycles), scale=4096 => total=2.607514e-02s
+[PIM] Computing latency for ffn_down phase=prefill (scaled: base_phase=decode, base_batch=1, scale=4096; dim=4096, heads=32, seq=4096, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_eid5rdw3/FFN_W2_prefill_B1_S4096_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=6.366000e-06s (6366 cycles), scale=4096 => total=2.607514e-02s
+[PIM] Computing latency for silu phase=prefill (scaled: base_phase=decode, base_batch=1, scale=4096; dim=4096, heads=32, seq=4096, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_lyrv4tlr/SWIGLU_prefill_B1_S4096_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=3.570000e-07s (357 cycles), scale=4096 => total=1.462272e-03s
+[PIM] Computing latency for gelu phase=prefill (scaled: base_phase=decode, base_batch=1, scale=4096; dim=4096, heads=32, seq=4096, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_4u71py22/GELU_prefill_B1_S4096_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=3.570000e-07s (357 cycles), scale=4096 => total=1.462272e-03s
+[PIM] Computing latency for residual phase=prefill (scaled: base_phase=decode, base_batch=1, scale=4096; dim=4096, heads=32, seq=4096, batch=1)
+[PIM] Generating unit trace: /tmp/pim_trace_a1a8dibf/ADD_prefill_B1_S4096_decode_unit.trace
+[PIM] Unit trace generation completed
+[PIM] Starting ramulator simulation (unit trace)...
+[PIM] Latency computed: base=3.000000e-09s (3 cycles), scale=4096 => total=1.228800e-05s

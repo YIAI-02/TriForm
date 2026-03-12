@@ -1,26 +1,27 @@
 {
   "model_family": "llama",
-  "model_variant": "7b",
+  "model_variant": "70b",
   "dtype": "fp16",
-  "batch": 16,
-  "prefill_len": 2048,
-  "decode_len": 512,
+  "batch": 1,
+  "prefill_len": 256,
+  "decode_len": 256,
   "decode_sample_stride": 64,
+  "decode_plan_refresh_stride":64,
   "pim_config_path": "./aim_simulator/PIM_AiM.json",
   "gb_config_path": "./aim_simulator/gb.json",
   "ramulator_config_path": "./aim_simulator/example.yaml",
-  "simulation_log_file": "./output/evaluate_single_test/hardware_1npu_2aim/pim_simulation.txt",
-  "result_dir": "./output/evaluate_single_test/hardware_1npu_2aim/",
-  "hardware_json": "./examples/hardware_1npu_2aim.json",
+  "simulation_log_file": "./output/evaluate_single_test/hardware_1npu_8aim/pim_simulation.txt",
+  "result_dir": "./output/evaluate_single_test/hardware_1npu_8aim/",
+  "hardware_json": "./examples/hardware_1npu_8aim.json",
   "algo": [
     "hefthint"
   ],
   "baselines": [
     "pd"
   ],
-  "tp_qkv": 2,
-  "tp_ffn": 2,
+  "tp_qkv": 8,
+  "tp_ffn": 8,
   "npu_backend": "lut",
   "dump_graph": false,
-  "dump_graph_dir": "./output/evaluate_single_test/hardware_1npu_2aim/graph_dumps"
+  "dump_graph_dir": "./output/evaluate_single_test/hardware_1npu_8aim/graph_dumps"
 }

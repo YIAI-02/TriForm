@@ -1,16 +1,25 @@
+
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Plot experiment results from *merge_all.csv files.
-find . -type f -print > files.txt
+Plot latency comparison from *merge_all.csv files.
+
+Example:
 python3 plot_exp1_verify.py \
-  --file-list ../../verify/hw_hardware_1npu_2aim/st64/llama_7b_bf16_b16_s64/files.txt \
-  --dims "2048x64, 2048x128, 2048x256, 2048x512" \
-  --output ../../figs/verify/hw_hardware_1npu_2aim/st64/llama_7b_bf16_b16_s64/exp1_2048_x.pdf 
-  
-  --search-dir /path/to/verify/evaluate_single_test/hardware_1gpu_4aim \
-    
-    
+  --file-list ../../verify/sst64_rst64/llama_7b_fp16_b16_s64/files.txt \
+  --algo-order "pd,attn_on_pim, ianus,facil,attacc,hefthint" \
+  --exclude "weights_on_pim"\
+  --dims "128x128,128x512,128x1024,1024x128,1024x512,1024x1024"\
+  --name-map "pd=PD,ianus=IANUS,facil=Facil,attacc=AttAcc,attn_on_pim=AF,hefthint=Bifocal" \
+  --output ../../figs/verify/sst64_rst64/llama_7b_fp16_b16_s64.pdf 
+
+python3 plot_exp1_verify.py \
+  --file-list ../../verify/sst64_rst64/qwen_1.8b_fp16_b4_s64/files.txt \
+  --algo-order "pd,attn_on_pim, ianus,facil,attacc,hefthint" \
+  --exclude "weights_on_pim"\
+  --dims "128x128,128x512,128x1024,1024x128,1024x512,1024x1024"\
+  --name-map "pd=PD,ianus=IANUS,facil=Facil,attacc=AttAcc,attn_on_pim=AF,hefthint=Bifocal" \
+  --output ../../figs/verify/sst64_rst64/qwen_1_8b_fp16_b4_s64.pdf 
 """
 
 from __future__ import annotations
@@ -22,29 +31,70 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-from matplotlib.patches import Patch, Rectangle
 from matplotlib.lines import Line2D
+from matplotlib.patches import Patch, Rectangle
 
 
-# --- Config ---
-# Strategy order: keep preferred methods first, but ALWAYS put hefthint at the very end.
-PREFERRED_ORDER: List[str] = ["pd", "ianus", "facil", "hefthint"]
+# ============================================================================
+# USER EDIT ZONE
+# ============================================================================
+# 1) Default algorithm order on the x-axis.
+#    You can change the order directly here, or override it from CLI by --algo-order.
+DEFAULT_ALGO_ORDER: List[str] = [
+    "pd",
+    "ianus",
+    "facil",
+    "attacc",
+    "attn_on_pim",
+    "weights_on_pim",
+    "hefthint",
+]
 
-# Display name overrides (only affects x-axis tick labels).
-DISPLAY_NAME_MAP: Dict[str, str] = {
-    # user-facing label for hefthint
-    "hefthint": "this work",
+# 2) Mapping from the name read from files -> name shown on the plot.
+#    You can change it here, or override it from CLI by --name-map.
+DEFAULT_DISPLAY_NAME_MAP: Dict[str, str] = {
+    "pd": "PD",
+    "ianus": "IANUS",
+    "facil": "Facil",
+    "attacc": "AttAcc",
+    "attn_on_pim": "Attn-on-PIM",
+    "weights_on_pim": "Weights-on-PIM",
+    "hefthint": "Bifocal (this work)",
 }
 
-# Manually exclude strategies from plotting (edit this list if you want).
-# You can also pass the same via CLI: --exclude ianus,facil
+# 3) Highlight these x tick labels (red + bold).
+HIGHLIGHT_KEYS = {"hefthint"}
+
+# 4) Manual exclude list (can also pass --exclude on CLI).
 MANUAL_EXCLUDE: List[str] = []
 
-# For plotting label "hefthint", candidates on disk can be either "heft" or "hefthint"
+# 5) For plotted label "hefthint", candidates on disk can be either "heft" or "hefthint".
 HEFT_VARIANTS: List[str] = ["heft", "hefthint"]
+
+# 6) Spacing knobs.
+#    BAR_WIDTH controls how narrow each bar is.
+BAR_WIDTH = 0.01
+
+#    PAIR_SEP is the center-to-center distance between trace and verification bars of ONE algorithm.
+#    If PAIR_SEP == BAR_WIDTH, the two bars just touch each other.
+PAIR_SEP = BAR_WIDTH
+
+#    GROUP_STEP is the center-to-center distance between neighboring algorithms.
+#    If GROUP_STEP == BAR_WIDTH + PAIR_SEP, neighboring algorithms also just touch each other.
+#    This is the parameter to change if you want more / less blank between algorithms.
+GROUP_STEP = BAR_WIDTH + PAIR_SEP + 0.5 * BAR_WIDTH
+
+# 7) No blank between subplots.
+SUBPLOT_WSPACE = 0.03
+
+# 8) Figure size. Width kept close to old 4-panel figure; height is about 1.5x taller.
+DEFAULT_FIG_WIDTH = 20.0
+DEFAULT_FIG_HEIGHT = 3.0
+# ============================================================================
+
 
 # Parse: <strategy>_<Lin>x<Lout>.merge_all.csv
 FNAME_RE = re.compile(r"^(?P<algo>.+?)_(?P<lin>\d+)x(?P<lout>\d+)\.merge_all\.csv$")
@@ -52,8 +102,8 @@ FNAME_RE = re.compile(r"^(?P<algo>.+?)_(?P<lin>\d+)x(?P<lout>\d+)\.merge_all\.cs
 
 @dataclass
 class Metrics:
-    algo_label: str               # label used in plot (strategy name)
-    source_variant: str           # actual variant on disk (may differ for hefthint chosen from heft/hefthint)
+    algo_label: str
+    source_variant: str
     csv_path: Path
     n_rows: int
 
@@ -65,13 +115,10 @@ class Metrics:
     meas_decode: float
     meas_total: float
 
-    delta_total_mean: float       # mean(delta_total_s) = mean(meas_total - trace_total)
-    mean_abs_rel_err_pct: float   # mean(|delta_total|/meas_total)*100
-
 
 def _read_text_lines(p: Path) -> List[str]:
     txt = p.read_text(encoding="utf-8", errors="ignore")
-    lines = []
+    lines: List[str] = []
     for raw in txt.splitlines():
         s = raw.strip()
         if not s or s.startswith("#"):
@@ -81,17 +128,6 @@ def _read_text_lines(p: Path) -> List[str]:
 
 
 def resolve_file_list_paths(file_list: Path, root: Optional[Path] = None) -> List[Path]:
-    """
-    Read a file-list and resolve lines to existing Paths.
-
-    Robust resolution order for each line:
-      1) absolute path: itself
-      2) <cwd>/<line>
-      3) <root>/<line>                (if --root provided)
-      4) <file_list_dir>/<line>
-      5) for parent in parents(file_list_dir):
-            <parent>/<line_stripped>   (line_stripped removes leading "./")
-    """
     file_list = file_list.resolve()
     base_dir = file_list.parent
     cwd = Path.cwd().resolve()
@@ -111,7 +147,6 @@ def resolve_file_list_paths(file_list: Path, root: Optional[Path] = None) -> Lis
             if root is not None:
                 tries.append(root / p)
             tries.append(base_dir / p)
-
             for parent in [base_dir] + list(base_dir.parents):
                 tries.append(parent / line_stripped)
 
@@ -140,10 +175,6 @@ def glob_merge_all(search_dir: Path) -> List[Path]:
 
 
 def index_merge_all(csv_paths: List[Path]) -> Dict[Tuple[int, int], Dict[str, List[Path]]]:
-    """
-    Build an index:
-      (Lin, Lout) -> { algo_on_disk -> [csv_paths...] }
-    """
     idx: Dict[Tuple[int, int], Dict[str, List[Path]]] = {}
     for p in csv_paths:
         m = FNAME_RE.match(p.name)
@@ -158,11 +189,9 @@ def index_merge_all(csv_paths: List[Path]) -> Dict[Tuple[int, int], Dict[str, Li
 
 def load_metrics(csv_path: Path, algo_label: str, source_variant: str) -> Metrics:
     df = pd.read_csv(csv_path)
-
     required = [
         "prefill_time_s", "decode_time_s", "total_time_s",
         "trace_prefill_s", "trace_decode_s", "trace_total_s",
-        "delta_total_s",
     ]
     missing = [c for c in required if c not in df.columns]
     if missing:
@@ -171,38 +200,26 @@ def load_metrics(csv_path: Path, algo_label: str, source_variant: str) -> Metric
     for c in required:
         df[c] = pd.to_numeric(df[c], errors="coerce")
 
-    df = df.dropna(subset=["total_time_s", "trace_total_s"])
+    df = df.dropna(subset=required)
     if df.empty:
-        raise ValueError(f"{csv_path} has no valid rows after dropping NaNs in total columns")
+        raise ValueError(f"{csv_path} has no valid rows after dropping NaNs")
 
     means = df[required].mean(numeric_only=True)
-
-    rel_err = np.abs(df["delta_total_s"]) / df["total_time_s"]
-    mean_abs_rel_err_pct = float(np.nanmean(rel_err) * 100.0)
-
     return Metrics(
         algo_label=algo_label,
         source_variant=source_variant,
         csv_path=csv_path,
         n_rows=int(len(df)),
-
         trace_prefill=float(means["trace_prefill_s"]),
         trace_decode=float(means["trace_decode_s"]),
         trace_total=float(means["trace_total_s"]),
-
         meas_prefill=float(means["prefill_time_s"]),
         meas_decode=float(means["decode_time_s"]),
         meas_total=float(means["total_time_s"]),
-
-        delta_total_mean=float(means["delta_total_s"]),
-        mean_abs_rel_err_pct=mean_abs_rel_err_pct,
     )
 
 
 def pick_best_by_trace_total(paths: List[Path], algo_label: str, source_variant: str) -> Metrics:
-    """
-    If multiple csv candidates exist, pick the one with the smallest mean(trace_total_s).
-    """
     best: Optional[Metrics] = None
     for p in paths:
         try:
@@ -218,7 +235,7 @@ def pick_best_by_trace_total(paths: List[Path], algo_label: str, source_variant:
 
 
 def infer_dims(idx: Dict[Tuple[int, int], Dict[str, List[Path]]]) -> List[Tuple[int, int]]:
-    return sorted(idx.keys(), key=lambda t: (t[0] * t[1], t[0], t[1]))
+    return sorted(idx.keys(), key=lambda t: (t[0], t[1]))
 
 
 def parse_dims_arg(s: str) -> List[Tuple[int, int]]:
@@ -234,17 +251,47 @@ def parse_dims_arg(s: str) -> List[Tuple[int, int]]:
     return dims
 
 
-def build_dim_results(idx: Dict[Tuple[int, int], Dict[str, List[Path]]],
-                      dims: List[Tuple[int, int]]) -> Dict[Tuple[int, int], Dict[str, Metrics]]:
-    """
-    Return:
-      (Lin,Lout) -> { strategy_label -> Metrics }
+def _normalize_strategy_token(s: str) -> str:
+    raw = (s or "").strip().lower()
+    compact = re.sub(r"[\s_\-]+", "", raw)
+    if compact in {"thiswork", "bifocal(thiswork)", "bifocal", "hefthint", "heft"}:
+        return "hefthint"
+    return raw
 
-    Notes:
-      - All discovered strategies are included.
-      - "heft" and "hefthint" are merged into a single plotted label "hefthint",
-        selecting the faster variant by mean(trace_total_s).
-    """
+
+def parse_exclude_arg(exclude_arg: Optional[str]) -> List[str]:
+    if not exclude_arg:
+        return []
+    parts = [p.strip() for p in exclude_arg.split(",")]
+    return [p for p in parts if p]
+
+
+def parse_algo_order_arg(algo_order_arg: Optional[str]) -> List[str]:
+    if not algo_order_arg:
+        return list(DEFAULT_ALGO_ORDER)
+    parts = [p.strip() for p in algo_order_arg.split(",")]
+    return [_normalize_strategy_token(p) for p in parts if p.strip()]
+
+
+def parse_name_map_arg(name_map_arg: Optional[str]) -> Dict[str, str]:
+    out = dict(DEFAULT_DISPLAY_NAME_MAP)
+    if not name_map_arg:
+        return out
+    for item in name_map_arg.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        if "=" not in item:
+            raise ValueError(f"Bad --name-map item '{item}', expected key=value")
+        k, v = item.split("=", 1)
+        out[_normalize_strategy_token(k)] = v.strip()
+    return out
+
+
+def build_dim_results(
+    idx: Dict[Tuple[int, int], Dict[str, List[Path]]],
+    dims: List[Tuple[int, int]],
+) -> Dict[Tuple[int, int], Dict[str, Metrics]]:
     out: Dict[Tuple[int, int], Dict[str, Metrics]] = {}
 
     for dim in dims:
@@ -252,7 +299,7 @@ def build_dim_results(idx: Dict[Tuple[int, int], Dict[str, List[Path]]],
         dim_entry = idx.get(dim, {})
         res: Dict[str, Metrics] = {}
 
-        # 1) Normal strategies (everything except heft/heftHint)
+        # Normal strategies (except heft/hefthint)
         for algo_on_disk, paths in dim_entry.items():
             if algo_on_disk in HEFT_VARIANTS:
                 continue
@@ -261,7 +308,7 @@ def build_dim_results(idx: Dict[Tuple[int, int], Dict[str, List[Path]]],
             except Exception as e:
                 print(f"[WARN] {lin}x{lout}: cannot load '{algo_on_disk}': {e}", file=sys.stderr)
 
-        # 2) Special: heft vs hefthint -> plotted label "hefthint"
+        # Merge heft / hefthint into plotted key "hefthint"
         variant_metrics: List[Metrics] = []
         for variant in HEFT_VARIANTS:
             if variant in dim_entry:
@@ -275,24 +322,30 @@ def build_dim_results(idx: Dict[Tuple[int, int], Dict[str, List[Path]]],
         if variant_metrics:
             best = min(variant_metrics, key=lambda m: m.trace_total)
             res["hefthint"] = best
-            print(f"[INFO] {lin}x{lout}: choose '{best.source_variant}' for plotted label 'hefthint' "
-                  f"(mean trace_total_s={best.trace_total:.6g}) from {best.csv_path}")
-        else:
-            # not an error; just no such strategy for this dim
-            pass
+            print(
+                f"[INFO] {lin}x{lout}: choose '{best.source_variant}' for plotted label 'hefthint' "
+                f"(mean trace_total_s={best.trace_total:.6g}) from {best.csv_path}"
+            )
 
         out[dim] = res
 
     return out
 
 
-def pretty_strategy_name(strategy_key: str) -> str:
-    """Human-facing label for x-axis ticks."""
-    return DISPLAY_NAME_MAP.get(strategy_key, strategy_key)
+def strategy_order(res: Dict[str, Metrics], preferred_order: List[str]) -> List[str]:
+    present = list(res.keys())
+    preferred = [_normalize_strategy_token(s) for s in preferred_order]
+    order: List[str] = [s for s in preferred if s in res]
+    rest = sorted([s for s in present if s not in set(order)])
+    order.extend(rest)
+    return order
+
+
+def pretty_strategy_name(strategy_key: str, display_name_map: Dict[str, str]) -> str:
+    return display_name_map.get(strategy_key, strategy_key)
 
 
 def format_speedup(sp: float) -> str:
-    """Format speedup multiplier text shown next to speedup points."""
     if not np.isfinite(sp):
         return ""
     if sp >= 100:
@@ -302,315 +355,209 @@ def format_speedup(sp: float) -> str:
     return f"{sp:.2f}×"
 
 
-def _normalize_strategy_token(s: str) -> str:
-    """Normalize strategy tokens for exclude-list matching (case-insensitive, alias-aware)."""
-    raw = (s or "").strip().lower()
-    compact = re.sub(r"[\s_\-]+", "", raw)
-
-    # aliases for hefthint
-    if compact in {"thiswork", "hefthint", "heft"}:
-        return "hefthint"
-
-    return raw
-
-
-def parse_exclude_arg(exclude_arg: Optional[str]) -> List[str]:
-    if not exclude_arg:
-        return []
-    parts = [p.strip() for p in exclude_arg.split(",")]
-    return [p for p in parts if p]
-
-
-def strategy_order(res: Dict[str, Metrics]) -> List[str]:
-    present = list(res.keys())
-    # Keep preferred order (except hefthint), then any other discovered strategies,
-    # and ALWAYS put hefthint at the very end if present.
-    preferred_no_heft = [s for s in PREFERRED_ORDER if s != "hefthint"]
-    order: List[str] = [s for s in preferred_no_heft if s in res]
-    rest = sorted([s for s in present if s not in set(PREFERRED_ORDER) and s != "hefthint"])
-    order += rest
-    if "hefthint" in res:
-        order.append("hefthint")
-    return order
+def add_dim_separators(fig: plt.Figure, axes: np.ndarray, color: str = "#dddddd", lw: float = 0.8) -> None:
+    if len(axes) <= 1:
+        return
+    for i in range(len(axes) - 1):
+        p0 = axes[i].get_position()
+        p1 = axes[i + 1].get_position()
+        x = (p0.x1 + p1.x0) * 0.5
+        y0 = min(p0.y0, p1.y0)
+        y1 = max(p0.y1, p1.y1)
+        fig.add_artist(
+            Line2D(
+                [x, x], [y0, y1],
+                transform=fig.transFigure,
+                linestyle="--",
+                linewidth=lw,
+                color=color,
+                zorder=20,
+            )
+        )
 
 
-def plot_results(dim_results: Dict[Tuple[int, int], Dict[str, Metrics]],
-                 dims: List[Tuple[int, int]],
-                 output: Path,
-                 title: Optional[str] = None,
-                 show_error_text: bool = True,
-                 dpi: int = 200,
-                 border_lw: float = 0.5) -> None:
+def plot_results(
+    dim_results: Dict[Tuple[int, int], Dict[str, Metrics]],
+    dims: List[Tuple[int, int]],
+    output: Path,
+    title: Optional[str] = None,
+    dpi: int = 200,
+    border_lw: float = 0.7,
+    max_panels: int = 8,
+    algo_order: Optional[List[str]] = None,
+    display_name_map: Optional[Dict[str, str]] = None,
+    fig_width: float = DEFAULT_FIG_WIDTH,
+    fig_height: float = DEFAULT_FIG_HEIGHT,
+) -> None:
+    deep_green = "#39a937"
+    light_green = "#aee4ad"
+    deep_blue = "#3760a9"
+    light_blue = "#add9e4"
 
-    # Colors (tweak as needed)
-    deep_green = "#2ca02c"
-    light_green = "#98df8a"
-    deep_blue = "#1f77b4"
-    light_blue = "#aec7e8"
+    trace_sp_color = "#8c8c8c"
+    meas_sp_color = "k"
 
-    # Speedup styling
-    trace_sp_color = "#9e9e9e"  # trace speedup line (simulation) in grey
-    meas_sp_color  = "k"        # measured speedup (black squares, connected)
+    algo_order = list(DEFAULT_ALGO_ORDER if algo_order is None else algo_order)
+    display_name_map = dict(DEFAULT_DISPLAY_NAME_MAP if display_name_map is None else display_name_map)
 
-    # Determine global y-lims (time) and speedup y-lims
+    dims_to_plot = dims[:max_panels]
+
     max_time = 0.0
     max_speedup = 1.0
-    max_categories = 1
+    width_ratios: List[float] = []
 
-    for dim in dims:
+    for dim in dims_to_plot:
         res = dim_results.get(dim, {})
         if not res:
+            width_ratios.append(1.0)
             continue
-
-        order = strategy_order(res)
-        max_categories = max(max_categories, len(order))
-
+        order = strategy_order(res, algo_order)
+        width_ratios.append(float(max(1, len(order))))
         for m in res.values():
-            max_time = max(max_time, m.meas_total, m.trace_total)
+            max_time = max(max_time, m.trace_total, m.meas_total)
 
         pd_m = res.get("pd")
-        if pd_m:
-            # Trace-based speedup (simulation)
-            if pd_m.trace_total > 0:
-                base_trace = pd_m.trace_total
-                for m in res.values():
-                    if m.trace_total and m.trace_total > 0:
-                        sp = base_trace / m.trace_total
-                        if np.isfinite(sp):
-                            max_speedup = max(max_speedup, float(sp))
-
-            # Measurement-based speedup (real run time)
-            if pd_m.meas_total > 0:
-                base_meas = pd_m.meas_total
-                for m in res.values():
-                    if m.meas_total and m.meas_total > 0:
-                        sp = base_meas / m.meas_total
-                        if np.isfinite(sp):
-                            max_speedup = max(max_speedup, float(sp))
+        if pd_m is not None and pd_m.trace_total > 0 and pd_m.meas_total > 0:
+            for m in res.values():
+                if m.trace_total > 0:
+                    max_speedup = max(max_speedup, pd_m.trace_total / m.trace_total)
+                if m.meas_total > 0:
+                    max_speedup = max(max_speedup, pd_m.meas_total / m.meas_total)
 
     if max_time <= 0:
         max_time = 1.0
 
-    # Headroom for arrows/text
-    y_max = max_time * 1.25
-    # Extra headroom for per-point speedup labels
-    sp_max = max(1.2, max_speedup * 1.30)
+    y_max = max_time * 1.02
+    sp_max = max(1.2, max_speedup * 1.02)
 
-    # Dynamic figure width (keeps labels readable when there are many strategies)
-    per_subplot_w = max(4.5, 0.45 * max_categories)
-    fig_w = max(20.0, 4.0 * per_subplot_w)
-    fig_w = min(fig_w, 80.0)  # avoid absurdly wide figures
-    fig_h = 3.0
-
-    fig, axes = plt.subplots(1, 4, sharey=True, figsize=(fig_w, fig_h))
+    fig, axes = plt.subplots(
+        1,
+        len(dims_to_plot),
+        sharey=True,
+        figsize=(fig_width, fig_height),
+        gridspec_kw={"wspace": SUBPLOT_WSPACE, "width_ratios": width_ratios},
+    )
     if not isinstance(axes, np.ndarray):
         axes = np.array([axes])
 
-    bar_w = 0.34
+    cluster_half_width = (PAIR_SEP + BAR_WIDTH) / 2.0
 
     for i, ax in enumerate(axes):
-        # Spine width to match bar borders visually
         for sp in ax.spines.values():
             sp.set_linewidth(border_lw)
-        ax.tick_params(width=border_lw * 0.6)
+            sp.set_color("#bfbfbf")
+        ax.tick_params(width=max(border_lw * 0.8, 0.5), length=3)
+        ax.tick_params(axis="x", pad=1)
 
-        if i >= len(dims):
-            ax.axis("off")
-            continue
-
-        lin, lout = dims[i]
+        lin, lout = dims_to_plot[i]
         res = dim_results.get((lin, lout), {})
 
         if not res:
-            ax.set_title(f"{lin}x{lout}\n(no data)")
+            ax.set_title(f"{lin}×{lout}\n(no data)", fontsize=12)
             ax.set_xticks([])
             ax.set_ylim(0, y_max)
             continue
 
-        order = strategy_order(res)
+        order = strategy_order(res, algo_order)
         n = len(order)
-        x = np.arange(n, dtype=float)
+        x = np.arange(n, dtype=float) * GROUP_STEP
+        pos_trace = x - PAIR_SEP / 2.0
+        pos_meas = x + PAIR_SEP / 2.0
 
-        # Build arrays in order
         trace_prefill = np.array([res[a].trace_prefill for a in order], dtype=float)
-        trace_decode  = np.array([res[a].trace_decode  for a in order], dtype=float)
-        meas_prefill  = np.array([res[a].meas_prefill  for a in order], dtype=float)
-        meas_decode   = np.array([res[a].meas_decode   for a in order], dtype=float)
-        trace_total   = np.array([res[a].trace_total   for a in order], dtype=float)
-        meas_total    = np.array([res[a].meas_total    for a in order], dtype=float)
-        err_pct       = np.array([res[a].mean_abs_rel_err_pct for a in order], dtype=float)
+        trace_decode = np.array([res[a].trace_decode for a in order], dtype=float)
+        meas_prefill = np.array([res[a].meas_prefill for a in order], dtype=float)
+        meas_decode = np.array([res[a].meas_decode for a in order], dtype=float)
 
-        pos_trace = x - bar_w / 2
-        pos_meas  = x + bar_w / 2
+        ax.bar(pos_trace, trace_prefill, width=BAR_WIDTH, color=deep_green, edgecolor="none", linewidth=0, zorder=2)
+        ax.bar(pos_trace, trace_decode, width=BAR_WIDTH, bottom=trace_prefill, color=light_green, edgecolor="none", linewidth=0, zorder=2)
+        ax.bar(pos_meas, meas_prefill, width=BAR_WIDTH, color=deep_blue, edgecolor="none", linewidth=0, zorder=2)
+        ax.bar(pos_meas, meas_decode, width=BAR_WIDTH, bottom=meas_prefill, color=light_blue, edgecolor="none", linewidth=0, zorder=2)
 
-        # Stacked bars (no edges on segments; we draw a single outline per stacked bar)
-        ax.bar(pos_trace, trace_prefill, width=bar_w, color=deep_green, edgecolor="none", linewidth=0, zorder=2)
-        ax.bar(pos_trace, trace_decode,  width=bar_w, bottom=trace_prefill, color=light_green, edgecolor="none", linewidth=0, zorder=2)
-
-        ax.bar(pos_meas,  meas_prefill, width=bar_w, color=deep_blue, edgecolor="none", linewidth=0, zorder=2)
-        ax.bar(pos_meas,  meas_decode,  width=bar_w, bottom=meas_prefill, color=light_blue, edgecolor="none", linewidth=0, zorder=2)
-
-        # Thick outlines around each stacked bar
         trace_stack_total = trace_prefill + trace_decode
-        meas_stack_total  = meas_prefill + meas_decode
+        meas_stack_total = meas_prefill + meas_decode
         for px, h in zip(pos_trace, trace_stack_total):
-            if not np.isfinite(h):
-                continue
-            ax.add_patch(Rectangle((px - bar_w / 2, 0), bar_w, h,
-                                   fill=False, edgecolor="k", linewidth=border_lw, zorder=4))
+            ax.add_patch(Rectangle((px - BAR_WIDTH / 2, 0), BAR_WIDTH, h, fill=False, edgecolor="k", linewidth=border_lw, zorder=4))
         for px, h in zip(pos_meas, meas_stack_total):
-            if not np.isfinite(h):
-                continue
-            ax.add_patch(Rectangle((px - bar_w / 2, 0), bar_w, h,
-                                   fill=False, edgecolor="k", linewidth=border_lw, zorder=4))
+            ax.add_patch(Rectangle((px - BAR_WIDTH / 2, 0), BAR_WIDTH, h, fill=False, edgecolor="k", linewidth=border_lw, zorder=4))
 
-        ax.set_title(f"{lin}x{lout}")
+        # ax.set_title(f"{lin}×{lout}", fontsize=12, pad=8)
+        ax.text(
+            0.03, 0.97, f"{lin}×{lout}",
+            transform=ax.transAxes,
+            ha="left",
+            va="top",
+            fontsize=11,
+        )
         ax.set_xticks(x)
-        ax.set_xticklabels([pretty_strategy_name(a) for a in order], rotation=30, ha="right", fontsize=12)
+        ax.set_xticklabels(
+            [pretty_strategy_name(a, display_name_map) for a in order],
+            rotation=90,
+            ha="center",
+            va="top",
+            fontsize=11,
+        )
         ax.set_ylim(0, y_max)
+        ax.set_xlim(x[0] - cluster_half_width, x[-1] + cluster_half_width)
+        ax.grid(axis="y", linestyle="--", linewidth=0.6, alpha=0.30)
 
         if i == 0:
-            ax.set_ylabel("Time (s)")
+            ax.set_ylabel("Latency (s)", fontsize=12)
 
-        # Mean error arrows (between trace_total and meas_total)
-        # Place the arrow above the *shorter* of the two bars (instead of in-between).
-        cap_half = bar_w * 0.55  # cap spans roughly one bar width
-        for j in range(n):
-            yt = trace_total[j]
-            ym = meas_total[j]
-            if not (np.isfinite(yt) and np.isfinite(ym)):
-                continue
+        for tick_label, strategy_key in zip(ax.get_xticklabels(), order):
+            if strategy_key in HIGHLIGHT_KEYS:
+                tick_label.set_color("blue")
+                # tick_label.set_fontweight("bold")
 
-            # Arrow x-position: align with the shorter bar
-            xc = pos_trace[j] if yt <= ym else pos_meas[j]
-            ax.plot([xc - cap_half, xc + cap_half], [yt, yt], color="k", lw=border_lw, zorder=5)
-            ax.plot([xc - cap_half, xc + cap_half], [ym, ym], color="k", lw=border_lw, zorder=5)
-            ax.annotate(
-                "",
-                xy=(xc, yt),
-                xytext=(xc, ym),
-                arrowprops=dict(arrowstyle="<->", color="k", lw=border_lw * 0.8),
-                zorder=6,
-            )
-
-            if show_error_text and np.isfinite(err_pct[j]):
-                y_text = max(yt, ym) + y_max * 0.015
-                ax.text(xc, y_text, f"{err_pct[j]:.1f}%", ha="center", va="bottom", fontsize=12, zorder=7)
-
-        # Speedup line (secondary axis)
         ax2 = ax.twinx()
         for sp in ax2.spines.values():
             sp.set_linewidth(border_lw)
-        ax2.tick_params(width=border_lw * 0.6)
+            sp.set_color("#bfbfbf")
+        ax2.tick_params(width=max(border_lw * 0.8, 0.5), length=3)
 
         pd_m = res.get("pd")
-
-        # Trace-based speedup (simulation)
         if pd_m and pd_m.trace_total > 0:
-            base_trace = pd_m.trace_total
-            speedup_trace = np.array(
-                [base_trace / res[a].trace_total if res[a].trace_total > 0 else np.nan for a in order],
-                dtype=float,
-            )
+            speedup_trace = np.array([pd_m.trace_total / res[a].trace_total if res[a].trace_total > 0 else np.nan for a in order], dtype=float)
         else:
-            speedup_trace = np.array([np.nan] * n, dtype=float)
+            speedup_trace = np.full(n, np.nan, dtype=float)
 
-        # Measurement-based speedup (real run time)
         if pd_m and pd_m.meas_total > 0:
-            base_meas = pd_m.meas_total
-            speedup_meas = np.array(
-                [base_meas / res[a].meas_total if res[a].meas_total > 0 else np.nan for a in order],
-                dtype=float,
-            )
+            speedup_meas = np.array([pd_m.meas_total / res[a].meas_total if res[a].meas_total > 0 else np.nan for a in order], dtype=float)
         else:
-            speedup_meas = np.array([np.nan] * n, dtype=float)
+            speedup_meas = np.full(n, np.nan, dtype=float)
 
-        # Trace speedup line in grey (was black)
-        ax2.plot(
-            x,
-            speedup_trace,
-            color=trace_sp_color,
-            lw=border_lw * 0.8,
-            marker="o",
-            markersize=4,
-            zorder=10,
-        )
-
-        # Measured speedup: black squares, connected
-        ax2.plot(
-            x,
-            speedup_meas,
-            linestyle="-",
-            lw=border_lw * 0.8,
-            color=meas_sp_color,
-            marker="s",
-            markersize=3.5,
-            zorder=10,
-        )
-
+        ax2.plot(x, speedup_trace, color=trace_sp_color, lw=0.8, marker="o", markersize=3.2, zorder=10)
+        ax2.plot(x, speedup_meas, color=meas_sp_color, lw=0.8, linestyle="-", marker="s", markersize=2.9, zorder=10)
         ax2.set_ylim(0, sp_max)
 
         for j, sp in enumerate(speedup_trace):
-            if not np.isfinite(sp):
-                continue
-            ax2.annotate(
-                format_speedup(float(sp)),
-                xy=(x[j], float(sp)),
-                textcoords="offset points",
-                xytext=(0, -9),
-                ha="center",
-                va="top",
-                fontsize=10,
-                color=trace_sp_color,
-                zorder=11,
-            )
-
-        # Label measured speedup at each point (black)
+            if np.isfinite(sp):
+                ax2.annotate(format_speedup(float(sp)), xy=(x[j], float(sp)), textcoords="offset points", xytext=(0, -8), ha="center", va="top", fontsize=9, color=trace_sp_color, zorder=11)
         for j, sp in enumerate(speedup_meas):
-            if not np.isfinite(sp):
-                continue
-            ax2.annotate(
-                format_speedup(float(sp)),
-                xy=(x[j], float(sp)),
-                textcoords="offset points",
-                xytext=(0, 6),
-                ha="center",
-                va="bottom",
-                fontsize=10,
-                color=meas_sp_color,
-                zorder=11,
-            )
+            if np.isfinite(sp):
+                ax2.annotate(format_speedup(float(sp)), xy=(x[j], float(sp)), textcoords="offset points", xytext=(0, 4), ha="center", va="bottom", fontsize=9, color=meas_sp_color, zorder=11)
 
-        # Only show speedup ticks on the right-most visible subplot
-        if i == min(len(dims), 4) - 1:
-            ax2.set_ylabel("Speedup (vs pd)")
+        if i == len(dims_to_plot) - 1:
+            ax2.set_ylabel("Speedup (vs pd)", fontsize=12)
         else:
             ax2.set_yticks([])
             ax2.set_ylabel("")
 
-        ax.grid(axis="y", linestyle="--", linewidth=0.6, alpha=0.35)
-
     if title:
-        fig.suptitle(title, y=1.02)
+        fig.suptitle(title, y=0.985, fontsize=13)
 
-    # Global legend
     handles = [
-        Patch(facecolor=deep_green, label="trace_prefill_s"),
-        Patch(facecolor=light_green, label="trace_decode_s"),
-        Patch(facecolor=deep_blue, label="prefill_time_s"),
-        Patch(facecolor=light_blue, label="decode_time_s"),
-        Line2D([0], [0], color=trace_sp_color, lw=border_lw * 0.8, marker="o", markersize=4,
-               label="speedup (trace_total, vs pd)"),
-        Line2D([0], [0], color=meas_sp_color, lw=border_lw * 0.8, linestyle="-", marker="s", markersize=4,
-               label="speedup (meas_total, vs pd)"),
+        Patch(facecolor=deep_green, label="Simulated prefill"),
+        Patch(facecolor=light_green, label="Simulated decode"),
+        Patch(facecolor=deep_blue, label="Verification prefill"),
+        Patch(facecolor=light_blue, label="Verification decode"),
+        Line2D([0], [0], color=trace_sp_color, lw=0.8, marker="o", markersize=4, label="Speedup (trace total, vs pd)"),
+        Line2D([0], [0], color=meas_sp_color, lw=0.8, linestyle="-", marker="s", markersize=4, label="Speedup (verification total, vs pd)"),
     ]
-    fig.legend(handles=handles, loc="upper center", ncol=6, frameon=False, bbox_to_anchor=(0.5, 1.12),fontsize=14)
+    fig.legend(handles=handles, loc="upper center", ncol=6, frameon=False, bbox_to_anchor=(0.5, 0.94), fontsize=11, handlelength=1.6, columnspacing=1.0)
 
-    # # Note like your sample
-    # fig.text(0.99, 1.02, "mean error relative to measurement%", ha="right", va="bottom", fontsize=12)
-
-    # Layout: leave more space for rotated x labels
-    fig.tight_layout(rect=[0.02, 0.08, 0.98, 0.98])
+    fig.subplots_adjust(left=0.055, right=0.965, bottom=0.31, top=0.80, wspace=SUBPLOT_WSPACE)
+    add_dim_separators(fig, axes)
 
     output.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output, dpi=dpi, bbox_inches="tight")
@@ -619,23 +566,20 @@ def plot_results(dim_results: Dict[Tuple[int, int], Dict[str, Metrics]],
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--file-list", type=str, default=None,
-                    help="Path to a text file listing result files (recommended).")
-    ap.add_argument("--root", type=str, default=None,
-                    help="Optional root directory to resolve relative paths in file-list.")
-    ap.add_argument("--search-dir", type=str, default=None,
-                    help="If --file-list is not provided, recursively search this directory for *.merge_all.csv")
-    ap.add_argument("--dims", type=str, default=None,
-                    help="Comma-separated dims to plot, like: 1024x1024,2048x1024,4096x4096,.... "
-                         "If not given, infer from discovered csv files.")
-    ap.add_argument("--output", type=str, default="plot.png", help="Output image path.")
+    ap.add_argument("--file-list", type=str, default=None, help="Path to a text file listing result files (recommended).")
+    ap.add_argument("--root", type=str, default=None, help="Optional root directory to resolve relative paths in file-list.")
+    ap.add_argument("--search-dir", type=str, default=None, help="If --file-list is not provided, recursively search this directory for *.merge_all.csv")
+    ap.add_argument("--dims", type=str, default=None, help="Comma-separated dims to plot, like: 128x128,128x256,...")
+    ap.add_argument("--output", type=str, default="plot_latency.png", help="Output image path.")
     ap.add_argument("--title", type=str, default=None, help="Figure title.")
-    ap.add_argument("--no-error-text", action="store_true", help="Do not draw % text for mean error.")
-    ap.add_argument("--exclude", type=str, default=None,
-                    help="Comma-separated strategy names to exclude from plotting (case-insensitive). "
-                         "Example: --exclude ianus,facil . Aliases: 'this work'/'heft' -> hefthint.")
+    ap.add_argument("--exclude", type=str, default=None, help="Comma-separated strategy names to exclude from plotting.")
+    ap.add_argument("--algo-order", type=str, default=None, help="Comma-separated x-axis order, e.g. 'pd,ianus,facil,hefthint'")
+    ap.add_argument("--name-map", type=str, default=None, help="Comma-separated display-name map, e.g. 'pd=PD,hefthint=Bifocal (this work)'")
     ap.add_argument("--dpi", type=int, default=200)
-    ap.add_argument("--border-lw", type=float, default=1.0, help="Bar outline / spine linewidth.")
+    ap.add_argument("--border-lw", type=float, default=0.7, help="Bar outline / spine linewidth.")
+    ap.add_argument("--max-panels", type=int, default=8, help="Maximum number of dims to show in one row.")
+    ap.add_argument("--fig-width", type=float, default=DEFAULT_FIG_WIDTH)
+    ap.add_argument("--fig-height", type=float, default=DEFAULT_FIG_HEIGHT)
     ap.add_argument("--show", action="store_true", help="Show interactively (in addition to saving).")
 
     args = ap.parse_args()
@@ -660,22 +604,14 @@ def main() -> None:
         ap.error("No *.merge_all.csv found. Check inputs / paths.")
 
     idx = index_merge_all(csv_paths)
+    dims = parse_dims_arg(args.dims) if args.dims else infer_dims(idx)
 
-    # Decide dims
-    if args.dims:
-        dims = parse_dims_arg(args.dims)
-    else:
-        dims = infer_dims(idx)
-
-    # Keep at most 4 dims (to match required 4 subplots)
-    if len(dims) >= 4:
-        dims = dims[:4]
-    else:
-        print(f"[WARN] only found {len(dims)} dims; remaining subplots will be blank.", file=sys.stderr)
+    if len(dims) > args.max_panels:
+        print(f"[WARN] {len(dims)} dims provided; only the first {args.max_panels} will be shown in the latency plot.", file=sys.stderr)
+        dims = dims[: args.max_panels]
 
     dim_results = build_dim_results(idx, dims)
 
-    # Apply manual/CLI excludes
     exclude_tokens: List[str] = []
     exclude_tokens.extend(MANUAL_EXCLUDE)
     exclude_tokens.extend(parse_exclude_arg(args.exclude))
@@ -688,14 +624,21 @@ def main() -> None:
                 if _normalize_strategy_token(k) in exclude_set:
                     res.pop(k, None)
 
+    algo_order = parse_algo_order_arg(args.algo_order)
+    display_name_map = parse_name_map_arg(args.name_map)
+
     plot_results(
         dim_results=dim_results,
         dims=dims,
         output=Path(args.output),
         title=args.title,
-        show_error_text=(not args.no_error_text),
-        dpi=args.dpi,
+        dpi=int(args.dpi),
         border_lw=float(args.border_lw),
+        max_panels=int(args.max_panels),
+        algo_order=algo_order,
+        display_name_map=display_name_map,
+        fig_width=float(args.fig_width),
+        fig_height=float(args.fig_height),
     )
 
     if args.show:
@@ -704,4 +647,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

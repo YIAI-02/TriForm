@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -J 0224_test
+#SBATCH -J gpu_aim_2
 #SBATCH -p C064M0256G
 #SBATCH --qos=high
 #SBATCH -N 1

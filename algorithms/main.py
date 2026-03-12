@@ -40,23 +40,29 @@ attach_local_debug_filter(logger, lambda: True)
 ALL_PASSES_RESULT_PATH = "./output/all_passes.json"
 BEST_PASS_SUMMARY_PATH = "./output/best_summary.json"
 
+def _result_stride_for_naming(cfg: Dict) -> Any:
+    stride = cfg.get('decode_plan_refresh_stride', None)
+    if stride in (None, ''):
+        stride = cfg.get('decode_sample_stride', None)
+    return stride
+
 # ---- path helper (unify result_dir naming incl. batch) ----
 def _build_result_dir(cfg: Dict, default_root: str = './output') -> Path:
     """
     Compose a result directory path that always includes batch:
-            <base>/<family>_<variant>_<dtype>_b<batch>[_s<stride>]
+            <base>/<family>_<variant>_<dtype>_b<batch>[_s<refresh_stride>]
     """
     base   = cfg.get('result_dir') or default_root
     family = cfg.get('model_family', 'unnamed')
     variant= cfg.get('model_variant', '')
     dtype  = cfg.get('dtype', 'fp16')
     batch  = int(cfg.get('batch', 1))
-    stride = cfg.get('decode_sample_stride', None)
+    stride = _result_stride_for_naming(cfg)
     stride_suffix = f"_s{int(stride)}" if stride not in (None, '') else ""
     return Path(base) / f"{family}_{variant}_{dtype}_b{batch}{stride_suffix}"
 
 def _build_tag(cfg: dict) -> str:
-    """Build a safe tag for output files: SxT + optional stride if provided."""
+    """Build a safe tag for output files: SxT + optional refresh stride if provided."""
     try:
         S = int(cfg.get('prefill_len', 0) or 0)
     except Exception:
@@ -66,7 +72,7 @@ def _build_tag(cfg: dict) -> str:
     except Exception:
         T = 0
     parts = [f"{S}x{T}"]
-    st = cfg.get('decode_sample_stride', None)
+    st = _result_stride_for_naming(cfg)
     try:
         if st is not None:
             stv = int(st)
@@ -608,149 +614,141 @@ def simulate_prefill(sched: SchedulerBase, cfg: Dict, graph: TaskGraph) -> tuple
     prefill_time = sched.makespan(prefill_sched)
     return (prefill_time, _serialize_schedule(prefill_sched, phase='prefill', token_idx=None))
 
+
 def simulate_decode_progressive(sched: SchedulerBase, cfg: Dict, graph: TaskGraph, prefill_end: float) -> tuple[float, List[Dict]]:
-  
     prefill_len = int(cfg.get('prefill_len', 128))
-    decode_len  = int(cfg.get('decode_len', 32))
-    global_end  = float(prefill_end)
+    decode_len = int(cfg.get('decode_len', 32))
+    global_end = float(prefill_end)
     steps_serialized: List[Dict] = []
 
     if isinstance(cfg, dict):
-        stride = int(cfg.get('decode_sample_stride', 64))
-    # token by token
-    if stride <= 1:
+        dump_raw = cfg.get('decode_sample_stride', 1)
+        refresh_cfg = cfg.get('decode_plan_refresh_stride', 64)
+        dump_stride = int(1 if dump_raw is None else dump_raw)
+        refresh_raw = int(64 if refresh_cfg is None else refresh_cfg)
+    else:
+        dump_stride = 1
+        refresh_raw = 64
+
+    dump_stride = max(1, int(dump_stride))
+    refresh_stride = max(0, int(refresh_raw))
+    current_plan: Dict[str, Any] | None = None
+
+    def _set_decode_ctx(token_idx: int) -> None:
+        setter = getattr(sched, 'set_decode_context', None)
+        if callable(setter):
+            try:
+                setter(cur_token_idx=int(token_idx), total_decode_tokens=int(decode_len), cfg=cfg)
+            except TypeError:
+                try:
+                    setter(cur_token_idx=int(token_idx), total_decode_tokens=int(decode_len))
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+    def _clear_decode_ctx() -> None:
+        clearer = getattr(sched, 'clear_decode_context', None)
+        if callable(clearer):
+            try:
+                clearer()
+            except Exception:
+                pass
+
+    def _need_exact_token(token_idx: int) -> bool:
+        if token_idx < 2:
+            return True
+        if current_plan is None:
+            return True
+        if refresh_stride > 0 and (token_idx % refresh_stride) == 0:
+            return True
+        return False
+
+    def _should_dump_schedule(token_idx: int) -> bool:
+        if dump_stride <= 1:
+            return True
+        if token_idx in (0, 1, max(0, decode_len - 1)):
+            return True
+        return (token_idx % dump_stride) == 0
+
+    def _validate_fixed_plan_or_raise(plan_obj: Any) -> Dict[str, Any]:
+        try:
+            plan_map = dict(plan_obj or {})
+        except Exception as e:
+            raise RuntimeError('Fixed decode plan is not mapping-like') from e
+
+        raw_order = plan_map.get('order', None)
+        if raw_order is None or isinstance(raw_order, (str, bytes)):
+            raise RuntimeError("Fixed decode plan missing iterable 'order'")
+        try:
+            order = tuple(str(x) for x in raw_order)
+        except Exception as e:
+            raise RuntimeError("Fixed decode plan 'order' is not iterable") from e
+        if not order:
+            raise RuntimeError("Fixed decode plan has empty 'order'")
+        if len(set(order)) != len(order):
+            raise RuntimeError("Fixed decode plan 'order' contains duplicate node ids")
+
+        raw_dev_map = plan_map.get('device_by_node', None)
+        try:
+            device_by_node = {str(k): str(v) for k, v in dict(raw_dev_map or {}).items()}
+        except Exception as e:
+            raise RuntimeError("Fixed decode plan missing mapping 'device_by_node'") from e
+        if not device_by_node:
+            raise RuntimeError("Fixed decode plan has empty 'device_by_node'")
+
+        return {
+            'order': order,
+            'device_by_node': device_by_node,
+        }
+
+    def _refresh_plan_from_schedule(dec_sched: List[ScheduledTask]) -> None:
+        nonlocal current_plan
+        exporter = getattr(sched, 'export_fixed_plan', None)
+        if not callable(exporter):
+            raise RuntimeError('Scheduler does not implement export_fixed_plan()')
+        plan_obj = exporter(dec_sched)
+        current_plan = _validate_fixed_plan_or_raise(plan_obj)
+
+    try:
         for t in range(decode_len):
-            cur_len = prefill_len + t
+            cur_len = int(prefill_len + t)
             sched.set_seq_len(cur_len)
-            dec_sched = sched.schedule(graph, phase='decode')
+            _set_decode_ctx(t)
+
+            if _need_exact_token(t):
+                dec_sched = sched.schedule(graph, phase='decode')
+                _refresh_plan_from_schedule(dec_sched)
+                estimated = False
+            else:
+                plan_runner = getattr(sched, 'schedule_with_plan', None)
+                if not callable(plan_runner):
+                    raise RuntimeError(
+                        'decode fixed-plan replay requested, but scheduler does not implement schedule_with_plan()'
+                    )
+                if current_plan is None:
+                    raise RuntimeError('decode fixed-plan replay requested before any valid fixed plan was prepared')
+                dec_sched = plan_runner(graph, phase='decode', plan=current_plan)
+                estimated = True
+
             token_end = float(sched.makespan(dec_sched))
-            step_time = max(0.0, token_end - global_end)
-            global_end = token_end
+            step_time = max(0.0, float(token_end - global_end))
+            global_end = float(token_end)
+
             steps_serialized.append({
-                't': t, 'seq_len': cur_len, 'step_time': float(step_time),
-                'estimated': False, 'schedule': _serialize_schedule(dec_sched, phase='decode', token_idx=t)
-            })
-        return (float(global_end - prefill_end), steps_serialized)
-
-    def _advance_to(t_target: float):
-        try:
-            for name in list(getattr(sched, 'avail', {}).keys()):
-                sched.avail[name] = max(float(sched.avail.get(name, 0.0)), float(t_target))
-        except Exception:
-            pass
-        try:
-            tl = getattr(getattr(sched, 'comm', None), 'timeline_end', None)
-            if isinstance(tl, dict):
-                for k in list(tl.keys()):
-                    tl[k] = max(float(tl.get(k, 0.0)), float(t_target))
-        except Exception:
-            pass
-
-    stride = int(max(1, int(stride)))
-    # Be defensive even if the user guarantees divisibility.
-    n_blocks = int(decode_len // stride) if (decode_len % stride == 0) else int(math.ceil(decode_len / stride))
-
-    start_block_idx = 0
-    if decode_len > 0 and stride > 1:
-        # --- Token 0: always simulate and DO NOT scale by stride.
-        _advance_to(global_end)
-        t0 = 0
-        cur_len0 = int(prefill_len + t0)
-        block_begin0 = float(global_end)
-        sched.set_seq_len(cur_len0)
-        dec_sched0 = sched.schedule(graph, phase='decode')
-        token0_end = float(sched.makespan(dec_sched0))
-        step0 = max(0.0, float(token0_end - block_begin0))
-        steps_serialized.append({
-            't': int(t0),
-            'seq_len': int(cur_len0),
-            'step_time': float(step0),
-            'estimated': False,
-            'schedule': _serialize_schedule(dec_sched0, phase='decode', token_idx=t0),
-        })
-
-        # If there is only one decode token, we're done.
-        if decode_len == 1:
-            global_end = float(token0_end)
-            _advance_to(global_end)
-            return (float(global_end - prefill_end), steps_serialized)
-
-        # --- Token 1: simulate and use it to estimate the remaining tokens in the first block.
-        # First block token count may be smaller than stride when decode_len < stride.
-        first_block_tokens = int(min(stride, decode_len))
-
-        _advance_to(token0_end)
-        t1 = 1
-        cur_len1 = int(prefill_len + t1)
-        block_begin1 = float(token0_end)
-        sched.set_seq_len(cur_len1)
-        dec_sched1 = sched.schedule(graph, phase='decode')
-        token1_end = float(sched.makespan(dec_sched1))
-        step1 = max(0.0, float(token1_end - block_begin1))
-        steps_serialized.append({
-            't': int(t1),
-            'seq_len': int(cur_len1),
-            'step_time': float(step1),
-            'estimated': False,
-            'schedule': _serialize_schedule(dec_sched1, phase='decode', token_idx=t1),
-        })
-
-        # Fill the rest of the first block using token-1's latency.
-        # Requirement: use 2nd token * (stride-1) (or (first_block_tokens-1) if shorter).
-        for u in range(2, int(first_block_tokens)):
-            steps_serialized.append({
-                't': int(u),
-                'seq_len': int(prefill_len + u),
-                'step_time': float(step1),
-                'estimated': True,
-                'schedule': None,
-            })
-
-        global_end = float(token0_end + float(step1) * float(first_block_tokens - 1))
-        _advance_to(global_end)
-        start_block_idx = 1  # block-0 already covered (tokens [0, first_block_tokens))
-
-    for b in range(start_block_idx, n_blocks):
-        block_start = int(b * stride)
-        t = int(block_start)  # sample at block start
-        cur_len = int(prefill_len + t)
-        block_tokens = int(min(stride, max(0, decode_len - block_start)))
-
-        # If the first block was handled by the special-case above, skip any overlap.
-        if b == 0 and start_block_idx == 1:
-            continue
-        if block_tokens <= 0:
-            continue
-
-        # Advance the device/comm timelines to the current global time.
-        _advance_to(global_end)
-        block_begin = float(global_end)
-
-        # Simulate only one token for this block.
-        sched.set_seq_len(cur_len)
-        dec_sched = sched.schedule(graph, phase='decode')
-        token_end = float(sched.makespan(dec_sched))
-        step_time = max(0.0, float(token_end - block_begin))
-
-        steps_serialized.append({
-            't': int(t),
-            'seq_len': int(cur_len),
-            'step_time': float(step_time),
-            'estimated': False,
-            'schedule': _serialize_schedule(dec_sched, phase='decode', token_idx=t),
-        })
-
-        block_end_excl = int(min(decode_len, block_start + block_tokens))
-        for u in range(int(t) + 1, int(block_end_excl)):
-            steps_serialized.append({
-                't': int(u),
-                'seq_len': int(prefill_len + u),
+                't': int(t),
+                'seq_len': int(cur_len),
                 'step_time': float(step_time),
-                'estimated': True,
-                'schedule': None,
+                'estimated': bool(estimated),
+                'schedule': (
+                    _serialize_schedule(dec_sched, phase='decode', token_idx=t)
+                    if _should_dump_schedule(t)
+                    else None
+                ),
             })
-        global_end = float(block_begin + float(step_time) * float(block_tokens))
-        _advance_to(global_end)
+    finally:
+        _clear_decode_ctx()
+
     return (float(global_end - prefill_end), steps_serialized)
 
 def _make_scheduler(name: str, cluster: Cluster, cost: CostModel, label: PlanLabel, batch: int, seq_len: int, buffer: GlobalMemoryManager):
@@ -1711,7 +1709,7 @@ def _eval_one_baseline(cfg: Dict, policy: str) -> Dict:
     try:
         if best_sched is not None and hasattr(best_sched, "stats"):
             prefix = f"{policy}_prefill-{prefill_len}xdecode_{decode_len}"
-            decode_stride = int(cfg.get("decode_sample_stride", 1) or 16)
+            decode_stride = int(cfg.get("decode_sample_stride", 64) or 64)
             trace_ops = algo_dir / f"{prefix}_ops_trace.csv"
             trace_comms = algo_dir / f"{prefix}_comms_trace.csv"
             trace_ops.parent.mkdir(parents=True, exist_ok=True)
@@ -1884,7 +1882,7 @@ def _run_strategy_once(strategy: str, cfg: Dict, *, shared_graph=None, shared_sh
             prefix = f"{strategy}_prefill-{prefill_len}xdecode_{decode_len}"
             result_dir = Path(cfg.get("result_dir", "./output/strategy_results"))
             result_dir.mkdir(parents=True, exist_ok=True)
-            decode_stride = int(cfg.get("decode_sample_stride", 1) or 16)
+            decode_stride = int(cfg.get("decode_sample_stride", 64) or 64)
             trace_ops = result_dir / f"{prefix}_ops_trace.csv"
             trace_comms = result_dir / f"{prefix}_comms_trace.csv"
             best_sched.stats.dump_trace_csv(
@@ -2086,6 +2084,8 @@ def parse_args():
     sp_eval.add_argument('--prefill_len', type=int)
     sp_eval.add_argument('--decode_len', type=int)
     sp_eval.add_argument('--decode_sample_stride', type=int)
+    sp_eval.add_argument('--decode_plan_refresh_stride', type=int,
+                         help='Run a full decode search every N tokens; hidden tokens replay a fixed plan. 0 means freeze after warmup.')
     sp_eval.add_argument('--result_dir', type=str)
     sp_eval.add_argument('--hardware_json', type=str,
                          help='Path to a JSON file with hardware topology (devices + links).')
@@ -2113,6 +2113,8 @@ def parse_args():
     sp_ws.add_argument('--prefill_len', type=int)
     sp_ws.add_argument('--decode_len', type=int)
     sp_ws.add_argument('--decode_sample_stride', type=int)
+    sp_ws.add_argument('--decode_plan_refresh_stride', type=int,
+                       help='Run a full decode search every N tokens; hidden tokens replay a fixed plan. 0 means freeze after warmup.')
     sp_ws.add_argument('--result_dir', type=str)
     sp_ws.add_argument('--hardware_json', type=str,
                          help='Path to a JSON file with hardware topology (devices + links).')
@@ -2194,6 +2196,7 @@ def main():
             'prefill_len',
             'decode_len',
             'decode_sample_stride',
+            'decode_plan_refresh_stride',
             'tp_qkv',
             'tp_ffn',
             'result_dir',

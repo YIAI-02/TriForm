@@ -1,6 +1,6 @@
-measurements/**/build/**
-algorithms/debug_log.txt
-algorithms/output/
+/measurements/**/build/**
+/algorithms/debug_log.txt
+/algorithms/output/
 figs/
 output/
 # Python cache
@@ -16,8 +16,7 @@ __pycache__/
 #
 submodules/CENT
 submodules/LLMCompass
-verify/evaluate_single_test
-verify/hw_hardware_1gpu_4aim
-verify/hardware_1gpu_2aim
-verify/hardware_1npu_2aim
-verify/hw_hardware_1gpu_2aim
+verify/sst64_rst64
+/algorithms/output/
+/verify/hw_hardware_1gpu_2aim/
+/verify/hw_hardware_1npu_2aim/

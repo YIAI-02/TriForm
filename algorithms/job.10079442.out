@@ -1,0 +1,1079 @@
+[1;32m[1m███████  PIM FAST MODE: OFF ███████[0m
+Config                : ./examples/evaluate_len_sweep_config_npu_8.json
+Output root           : ./output/exp2/8shards
+Sample stride         : 64
+Plan refresh stride   : 64
+DType/Batch           : fp16 / 1 4 8 16
+Parallel jobs         : 32
+Hardwares             : 1 file(s)
+Models                : 2 family entry(s)
+====================================
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=128 T=64 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=128 T=128 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=128 T=256 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=128 T=512 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=128 T=1024 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=256 T=64 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=256 T=128 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=256 T=256 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=256 T=512 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=256 T=1024 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=512 T=64 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=512 T=128 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=512 T=256 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=512 T=512 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=512 T=1024 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=1024 T=64 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=1024 T=128 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=1024 T=256 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=1024 T=512 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=1024 T=1024 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=2048 T=64 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=2048 T=128 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=2048 T=256 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=2048 T=512 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=2048 T=1024 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=4096 T=64 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=4096 T=128 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=4096 T=256 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=4096 T=512 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=4096 T=1024 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=128 T=64 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=128 T=128 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64
+[evaluate] algos=['heft', 'hefthint'] baselines=['ianus', 'attacc', 'facil', 'pd', 'weights_on_pim', 'attn_on_pim'] result_dir=output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64 tag=128x64
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+[REPORT] Combined comparison saved to: output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64/baseline_compare_128x64.json
+
+=== Strategy/Baseline Comparison ===
+Policy                 PIM        Prefill(s)    Decode(s)     Total(s)
+----------------------------------------------------------------------
+algo:ianus             pim_by_capacity       0.8173       0.8865       1.7039
+algo:attacc            pim_by_capacity       0.8173       1.8580       2.6754
+algo:facil             pim_by_capacity       0.8173       0.5495       1.3668
+algo:pd                pim_by_capacity       0.8173       0.2461       1.0634
+algo:weights_on_pim    pim_by_capacity       0.1613       0.1474       0.3088
+algo:attn_on_pim       pim_by_capacity       0.6282       1.2887       1.9170
+algo:heft              pim            0.1563       0.2929       0.4491
+algo:hefthint          pim            0.1615       0.4026       0.5641
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=128 T=256 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64
+[evaluate] algos=['heft', 'hefthint'] baselines=['ianus', 'attacc', 'facil', 'pd', 'weights_on_pim', 'attn_on_pim'] result_dir=output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64 tag=256x64
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+[REPORT] Combined comparison saved to: output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64/baseline_compare_256x64.json
+
+=== Strategy/Baseline Comparison ===
+Policy                 PIM        Prefill(s)    Decode(s)     Total(s)
+----------------------------------------------------------------------
+algo:ianus             pim_by_capacity       0.8187       0.9013       1.7200
+algo:attacc            pim_by_capacity       0.8187       1.8580       2.6767
+algo:facil             pim_by_capacity       0.8187       0.5505       1.3692
+algo:pd                pim_by_capacity       0.8187       0.2471       1.0658
+algo:weights_on_pim    pim_by_capacity       0.3226       0.1828       0.5053
+algo:attn_on_pim       pim_by_capacity       0.7149       1.2898       2.0046
+algo:heft              pim            0.2763       0.5587       0.8350
+algo:hefthint          npu            0.3090       0.4056       0.7146
+[evaluate] algos=['heft', 'hefthint'] baselines=['ianus', 'attacc', 'facil', 'pd', 'weights_on_pim', 'attn_on_pim'] result_dir=output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64 tag=512x64
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+[REPORT] Combined comparison saved to: output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64/baseline_compare_512x64.json
+
+=== Strategy/Baseline Comparison ===
+Policy                 PIM        Prefill(s)    Decode(s)     Total(s)
+----------------------------------------------------------------------
+algo:ianus             pim_by_capacity       0.8224       0.9297       1.7521
+algo:attacc            pim_by_capacity       0.8224       1.8580       2.6804
+algo:facil             pim_by_capacity       0.8224       0.5546       1.3770
+algo:pd                pim_by_capacity       0.8224       0.2512       1.0735
+algo:weights_on_pim    pim_by_capacity       0.6452       0.2460       0.8912
+algo:attn_on_pim       pim_by_capacity       0.8988       1.2939       2.1927
+algo:heft              pim            0.4629       0.9542       1.4171
+algo:hefthint          pim            0.5019       0.3704       0.8723
+[evaluate] algos=['heft', 'hefthint'] baselines=['ianus', 'attacc', 'facil', 'pd', 'weights_on_pim', 'attn_on_pim'] result_dir=output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64 tag=128x64
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+[REPORT] Combined comparison saved to: output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64/baseline_compare_128x64.json
+
+=== Strategy/Baseline Comparison ===
+Policy                 PIM        Prefill(s)    Decode(s)     Total(s)
+----------------------------------------------------------------------
+algo:ianus             pim_by_capacity       0.8209       0.7450       1.5659
+algo:attacc            pim_by_capacity       0.8209       1.8603       2.6812
+algo:facil             pim_by_capacity       0.8209       0.7177       1.5386
+algo:pd                pim_by_capacity       0.8209       0.5511       1.3721
+algo:weights_on_pim    pim_by_capacity       0.6448       0.4900       1.1348
+algo:attn_on_pim       pim_by_capacity       0.8749       1.4138       2.2887
+algo:heft              pim            0.4624       0.9736       1.4360
+algo:hefthint          pim            0.4917       0.6515       1.1432
+[evaluate] algos=['heft', 'hefthint'] baselines=['ianus', 'attacc', 'facil', 'pd', 'weights_on_pim', 'attn_on_pim'] result_dir=output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64 tag=1024x64
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+[REPORT] Combined comparison saved to: output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64/baseline_compare_1024x64.json
+
+=== Strategy/Baseline Comparison ===
+Policy                 PIM        Prefill(s)    Decode(s)     Total(s)
+----------------------------------------------------------------------
+algo:ianus             pim_by_capacity       0.8329       0.6691       1.5020
+algo:attacc            pim_by_capacity       0.8329       1.8580       2.6909
+algo:facil             pim_by_capacity       0.8329       0.5663       1.3992
+algo:pd                pim_by_capacity       0.8329       0.2626       1.0955
+algo:weights_on_pim    pim_by_capacity       1.2913       0.3644       1.6557
+algo:attn_on_pim       pim_by_capacity       1.3489       1.3056       2.6545
+algo:heft              pim            0.6683       1.4055       2.0739
+algo:hefthint          pim            0.6489       0.4812       1.1302
+[evaluate] algos=['heft', 'hefthint'] baselines=['ianus', 'attacc', 'facil', 'pd', 'weights_on_pim', 'attn_on_pim'] result_dir=output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64 tag=4096x64
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+[REPORT] Combined comparison saved to: output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64/baseline_compare_4096x64.json
+
+=== Strategy/Baseline Comparison ===
+Policy                 PIM        Prefill(s)    Decode(s)     Total(s)
+----------------------------------------------------------------------
+algo:ianus             pim_by_capacity       0.9761       1.0274       2.0035
+algo:attacc            pim_by_capacity       0.9761       1.8580       2.8341
+algo:facil             pim_by_capacity       0.9761       0.6161       1.5922
+algo:pd                pim_by_capacity       0.9761       0.3090       1.2851
+algo:weights_on_pim    pim_by_capacity       5.1880       1.0431       6.2311
+algo:attn_on_pim       pim_by_capacity       6.9959       1.3554       8.3512
+algo:heft              host           0.9645       0.5739       1.5384
+algo:hefthint          pim            0.9761       0.5692       1.5453
+[evaluate] algos=['heft', 'hefthint'] baselines=['ianus', 'attacc', 'facil', 'pd', 'weights_on_pim', 'attn_on_pim'] result_dir=output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64 tag=2048x64
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+[REPORT] Combined comparison saved to: output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64/baseline_compare_2048x64.json
+
+=== Strategy/Baseline Comparison ===
+Policy                 PIM        Prefill(s)    Decode(s)     Total(s)
+----------------------------------------------------------------------
+algo:ianus             pim_by_capacity       0.8654       0.7887       1.6541
+algo:attacc            pim_by_capacity       0.8654       1.8580       2.7234
+algo:facil             pim_by_capacity       0.8654       0.5829       1.4483
+algo:pd                pim_by_capacity       0.8654       0.2785       1.1438
+algo:weights_on_pim    pim_by_capacity       2.5864       0.5932       3.1796
+algo:attn_on_pim       pim_by_capacity       2.7107       1.3222       4.0330
+algo:heft              host           0.8586       0.0266       0.8852
+algo:hefthint          pim            0.8426       0.5153       1.3579
+[evaluate] algos=['heft', 'hefthint'] baselines=['ianus', 'attacc', 'facil', 'pd', 'weights_on_pim', 'attn_on_pim'] result_dir=output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64 tag=128x128
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+[REPORT] Combined comparison saved to: output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64/baseline_compare_128x128.json
+
+=== Strategy/Baseline Comparison ===
+Policy                 PIM        Prefill(s)    Decode(s)     Total(s)
+----------------------------------------------------------------------
+algo:ianus             pim_by_capacity       0.8173       1.4064       2.2238
+algo:attacc            pim_by_capacity       0.8173       3.7160       4.5334
+algo:facil             pim_by_capacity       0.8173       1.0298       1.8471
+algo:pd                pim_by_capacity       0.8173       0.3739       1.1912
+algo:weights_on_pim    pim_by_capacity       0.1613       0.3115       0.4728
+algo:attn_on_pim       pim_by_capacity       0.6282       2.5781       3.2063
+algo:heft              pim            0.1563       0.5893       0.7456
+algo:hefthint          pim            0.1615       0.6774       0.8389
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=128 T=512 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64
+[evaluate] algos=['heft', 'hefthint'] baselines=['ianus', 'attacc', 'facil', 'pd', 'weights_on_pim', 'attn_on_pim'] result_dir=output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64 tag=256x128
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+[REPORT] Combined comparison saved to: output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64/baseline_compare_256x128.json
+
+=== Strategy/Baseline Comparison ===
+Policy                 PIM        Prefill(s)    Decode(s)     Total(s)
+----------------------------------------------------------------------
+algo:ianus             pim_by_capacity       0.8187       1.4359       2.2546
+algo:attacc            pim_by_capacity       0.8187       3.7160       4.5347
+algo:facil             pim_by_capacity       0.8187       1.0318       1.8505
+algo:pd                pim_by_capacity       0.8187       0.3758       1.1945
+algo:weights_on_pim    pim_by_capacity       0.3226       0.3803       0.7028
+algo:attn_on_pim       pim_by_capacity       0.7149       2.5800       3.2949
+algo:heft              pim            0.2763       1.1175       1.3938
+algo:hefthint          pim            0.3155       0.6640       0.9795
+[evaluate] algos=['heft', 'hefthint'] baselines=['ianus', 'attacc', 'facil', 'pd', 'weights_on_pim', 'attn_on_pim'] result_dir=output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64 tag=512x128
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+[REPORT] Combined comparison saved to: output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64/baseline_compare_512x128.json
+
+=== Strategy/Baseline Comparison ===
+Policy                 PIM        Prefill(s)    Decode(s)     Total(s)
+----------------------------------------------------------------------
+algo:ianus             pim_by_capacity       0.8224       1.4926       2.3149
+algo:attacc            pim_by_capacity       0.8224       3.7160       4.5384
+algo:facil             pim_by_capacity       0.8224       1.0401       1.8625
+algo:pd                pim_by_capacity       0.8224       0.3841       1.2065
+algo:weights_on_pim    pim_by_capacity       0.6452       0.5056       1.1507
+algo:attn_on_pim       pim_by_capacity       0.8988       2.5884       3.4872
+algo:heft              host           0.4628       1.8996       2.3625
+algo:hefthint          pim            0.5017       0.6275       1.1292
+[evaluate] algos=['heft', 'hefthint'] baselines=['ianus', 'attacc', 'facil', 'pd', 'weights_on_pim', 'attn_on_pim'] result_dir=output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64 tag=128x128
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+[REPORT] Combined comparison saved to: output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64/baseline_compare_128x128.json
+
+=== Strategy/Baseline Comparison ===
+Policy                 PIM        Prefill(s)    Decode(s)     Total(s)
+----------------------------------------------------------------------
+algo:ianus             pim_by_capacity       0.8209       1.4462       2.2672
+algo:attacc            pim_by_capacity       0.8209       3.7206       4.5415
+algo:facil             pim_by_capacity       0.8209       1.3698       2.1907
+algo:pd                pim_by_capacity       0.8209       0.9910       1.8120
+algo:weights_on_pim    pim_by_capacity       0.6448       1.0368       1.6816
+algo:attn_on_pim       pim_by_capacity       0.8749       2.8298       3.7047
+algo:heft              pim            0.4624       1.9474       2.4098
+algo:hefthint          pim            0.4917       1.1425       1.6342
+[evaluate] algos=['heft', 'hefthint'] baselines=['ianus', 'attacc', 'facil', 'pd', 'weights_on_pim', 'attn_on_pim'] result_dir=output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64 tag=1024x128
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+[REPORT] Combined comparison saved to: output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64/baseline_compare_1024x128.json
+
+=== Strategy/Baseline Comparison ===
+Policy                 PIM        Prefill(s)    Decode(s)     Total(s)
+----------------------------------------------------------------------
+algo:ianus             pim_by_capacity       0.8329       1.2324       2.0653
+algo:attacc            pim_by_capacity       0.8329       3.7160       4.5489
+algo:facil             pim_by_capacity       0.8329       1.0635       1.8964
+algo:pd                pim_by_capacity       0.8329       0.4073       1.2401
+algo:weights_on_pim    pim_by_capacity       1.2913       0.7417       2.0330
+algo:attn_on_pim       pim_by_capacity       1.3489       2.6118       3.9606
+algo:heft              pim            0.6683       2.8112       3.4795
+algo:hefthint          npu            0.6122       1.0169       1.6290
+[evaluate] algos=['heft', 'hefthint'] baselines=['ianus', 'attacc', 'facil', 'pd', 'weights_on_pim', 'attn_on_pim'] result_dir=output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64 tag=2048x128
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+[REPORT] Combined comparison saved to: output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64/baseline_compare_2048x128.json
+
+=== Strategy/Baseline Comparison ===
+Policy                 PIM        Prefill(s)    Decode(s)     Total(s)
+----------------------------------------------------------------------
+algo:ianus             pim_by_capacity       0.8654       1.4716       2.3369
+algo:attacc            pim_by_capacity       0.8654       3.7160       4.5814
+algo:facil             pim_by_capacity       0.8654       1.0966       1.9620
+algo:pd                pim_by_capacity       0.8654       0.4397       1.3050
+algo:weights_on_pim    pim_by_capacity       2.5864       1.1990       3.7853
+algo:attn_on_pim       pim_by_capacity       2.7107       2.6449       5.3556
+algo:heft              host           0.8586       0.7286       1.5873
+algo:hefthint          pim            0.8426       1.0386       1.8812
+[evaluate] algos=['heft', 'hefthint'] baselines=['ianus', 'attacc', 'facil', 'pd', 'weights_on_pim', 'attn_on_pim'] result_dir=output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64 tag=4096x128
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+[REPORT] Combined comparison saved to: output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64/baseline_compare_4096x128.json
+
+=== Strategy/Baseline Comparison ===
+Policy                 PIM        Prefill(s)    Decode(s)     Total(s)
+----------------------------------------------------------------------
+algo:ianus             pim_by_capacity       0.9761       1.9490       2.9251
+algo:attacc            pim_by_capacity       0.9761       3.7160       4.6921
+algo:facil             pim_by_capacity       0.9761       1.1629       2.1390
+algo:pd                pim_by_capacity       0.9761       0.5033       1.4794
+algo:weights_on_pim    pim_by_capacity       5.1880       2.0986       7.2866
+algo:attn_on_pim       pim_by_capacity       6.9959       2.7112       9.7070
+algo:heft              pim            0.9709       1.1776       2.1485
+algo:hefthint          pim            0.9761       1.1354       2.1115
+[evaluate] algos=['heft', 'hefthint'] baselines=['ianus', 'attacc', 'facil', 'pd', 'weights_on_pim', 'attn_on_pim'] result_dir=output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64 tag=128x256
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+[REPORT] Combined comparison saved to: output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64/baseline_compare_128x256.json
+
+=== Strategy/Baseline Comparison ===
+Policy                 PIM        Prefill(s)    Decode(s)     Total(s)
+----------------------------------------------------------------------
+algo:ianus             pim_by_capacity       0.8173       2.3495       3.1668
+algo:attacc            pim_by_capacity       0.8173       7.4320       8.2494
+algo:facil             pim_by_capacity       0.8173       1.9919       2.8092
+algo:pd                pim_by_capacity       0.8173       0.5859       1.4032
+algo:weights_on_pim    pim_by_capacity       0.1613       0.6901       0.8515
+algo:attn_on_pim       pim_by_capacity       0.6282       5.1581       5.7863
+algo:heft              pim            0.1563       1.1823       1.3386
+algo:hefthint          pim            0.1615       1.3960       1.5575
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=128 T=1024 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64
+[evaluate] algos=['heft', 'hefthint'] baselines=['ianus', 'attacc', 'facil', 'pd', 'weights_on_pim', 'attn_on_pim'] result_dir=output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64 tag=256x256
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+[REPORT] Combined comparison saved to: output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64/baseline_compare_256x256.json
+
+=== Strategy/Baseline Comparison ===
+Policy                 PIM        Prefill(s)    Decode(s)     Total(s)
+----------------------------------------------------------------------
+algo:ianus             pim_by_capacity       0.8187       2.4143       3.2330
+algo:attacc            pim_by_capacity       0.8187       7.4320       8.2507
+algo:facil             pim_by_capacity       0.8187       1.9958       2.8144
+algo:pd                pim_by_capacity       0.8187       0.5897       1.4084
+algo:weights_on_pim    pim_by_capacity       0.3226       0.8227       1.1452
+algo:attn_on_pim       pim_by_capacity       0.7149       5.1619       5.8768
+algo:heft              pim            0.2763       2.2353       2.5116
+algo:hefthint          pim            0.3155       1.4586       1.7741
+[evaluate] algos=['heft', 'hefthint'] baselines=['ianus', 'attacc', 'facil', 'pd', 'weights_on_pim', 'attn_on_pim'] result_dir=output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64 tag=512x256
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+[REPORT] Combined comparison saved to: output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64/baseline_compare_512x256.json
+
+=== Strategy/Baseline Comparison ===
+Policy                 PIM        Prefill(s)    Decode(s)     Total(s)
+----------------------------------------------------------------------
+algo:ianus             pim_by_capacity       0.8224       2.5274       3.3497
+algo:attacc            pim_by_capacity       0.8224       7.4320       8.2544
+algo:facil             pim_by_capacity       0.8224       2.0125       2.8349
+algo:pd                pim_by_capacity       0.8224       0.6064       1.4287
+algo:weights_on_pim    pim_by_capacity       0.6452       1.0696       1.7148
+algo:attn_on_pim       pim_by_capacity       0.8988       5.1787       6.0775
+algo:heft              host           0.4628       3.7963       4.2592
+algo:hefthint          pim            0.5019       1.6101       2.1120
+[evaluate] algos=['heft', 'hefthint'] baselines=['ianus', 'attacc', 'facil', 'pd', 'weights_on_pim', 'attn_on_pim'] result_dir=output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64 tag=1024x256
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+[REPORT] Combined comparison saved to: output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64/baseline_compare_1024x256.json
+
+=== Strategy/Baseline Comparison ===
+Policy                 PIM        Prefill(s)    Decode(s)     Total(s)
+----------------------------------------------------------------------
+algo:ianus             pim_by_capacity       0.8329       2.3586       3.1915
+algo:attacc            pim_by_capacity       0.8329       7.4320       8.2649
+algo:facil             pim_by_capacity       0.8329       2.0588       2.8917
+algo:pd                pim_by_capacity       0.8329       0.6525       1.4853
+algo:weights_on_pim    pim_by_capacity       1.2913       1.5396       2.8309
+algo:attn_on_pim       pim_by_capacity       1.3489       5.2250       6.5739
+algo:heft              pim            0.6683       5.6226       6.2909
+algo:hefthint          pim            0.6489       1.9750       2.6240
+[evaluate] algos=['heft', 'hefthint'] baselines=['ianus', 'attacc', 'facil', 'pd', 'weights_on_pim', 'attn_on_pim'] result_dir=output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64 tag=2048x256
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+[REPORT] Combined comparison saved to: output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64/baseline_compare_2048x256.json
+
+=== Strategy/Baseline Comparison ===
+Policy                 PIM        Prefill(s)    Decode(s)     Total(s)
+----------------------------------------------------------------------
+algo:ianus             pim_by_capacity       0.8654       2.8370       3.7023
+algo:attacc            pim_by_capacity       0.8654       7.4320       8.2974
+algo:facil             pim_by_capacity       0.8654       2.1251       2.9905
+algo:pd                pim_by_capacity       0.8654       0.7180       1.5834
+algo:weights_on_pim    pim_by_capacity       2.5864       2.4531       5.0395
+algo:attn_on_pim       pim_by_capacity       2.7107       5.2913       8.0020
+algo:heft              host           0.8586       1.8916       2.7502
+algo:hefthint          pim            0.8426       2.0924       2.9351
+[evaluate] algos=['heft', 'hefthint'] baselines=['ianus', 'attacc', 'facil', 'pd', 'weights_on_pim', 'attn_on_pim'] result_dir=output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64 tag=4096x256
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+[REPORT] Combined comparison saved to: output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64/baseline_compare_4096x256.json
+
+=== Strategy/Baseline Comparison ===
+Policy                 PIM        Prefill(s)    Decode(s)     Total(s)
+----------------------------------------------------------------------
+algo:ianus             pim_by_capacity       0.9761       3.7919       4.7680
+algo:attacc            pim_by_capacity       0.9761       7.4320       8.4081
+algo:facil             pim_by_capacity       0.9761       2.2576       3.2337
+algo:pd                pim_by_capacity       0.9761       0.8479       1.8240
+algo:weights_on_pim    pim_by_capacity       5.1880       4.2516       9.4396
+algo:attn_on_pim       pim_by_capacity       6.9959       5.4238      12.4197
+algo:heft              pim            0.9709       2.2797       3.2506
+algo:hefthint          pim            0.9761       2.2614       3.2375
+[evaluate] algos=['heft', 'hefthint'] baselines=['ianus', 'attacc', 'facil', 'pd', 'weights_on_pim', 'attn_on_pim'] result_dir=output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64 tag=128x256
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+[REPORT] Combined comparison saved to: output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64/baseline_compare_128x256.json
+
+=== Strategy/Baseline Comparison ===
+Policy                 PIM        Prefill(s)    Decode(s)     Total(s)
+----------------------------------------------------------------------
+algo:ianus             pim_by_capacity       0.8209       2.8936       3.7145
+algo:attacc            pim_by_capacity       0.8209       7.4412       8.2621
+algo:facil             pim_by_capacity       0.8209       2.6796       3.5006
+algo:pd                pim_by_capacity       0.8209       1.8326       2.6536
+algo:weights_on_pim    pim_by_capacity       0.6448       2.3034       2.9482
+algo:attn_on_pim       pim_by_capacity       0.8749       5.6676       6.5424
+algo:heft              pim            0.4624       3.8957       4.3580
+algo:hefthint          pim            0.4918       2.4848       2.9766
+[evaluate] algos=['heft', 'hefthint'] baselines=['ianus', 'attacc', 'facil', 'pd', 'weights_on_pim', 'attn_on_pim'] result_dir=output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64 tag=128x512
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+[REPORT] Combined comparison saved to: output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64/baseline_compare_128x512.json
+
+=== Strategy/Baseline Comparison ===
+Policy                 PIM        Prefill(s)    Decode(s)     Total(s)
+----------------------------------------------------------------------
+algo:ianus             pim_by_capacity       0.8173       4.2406       5.0580
+algo:attacc            pim_by_capacity       0.8173      14.8641      15.6814
+algo:facil             pim_by_capacity       0.8173       3.9264       4.7437
+algo:pd                pim_by_capacity       0.8173       1.0168       1.8341
+algo:weights_on_pim    pim_by_capacity       0.1613       1.6365       1.7978
+algo:attn_on_pim       pim_by_capacity       0.6282      10.3283      10.9566
+algo:heft              pim            0.1563       2.3735       2.5298
+algo:hefthint          pim            0.1615       2.9451       3.1066
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=256 T=64 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64
+[evaluate] algos=['heft', 'hefthint'] baselines=['ianus', 'attacc', 'facil', 'pd', 'weights_on_pim', 'attn_on_pim'] result_dir=output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64 tag=256x512
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+[REPORT] Combined comparison saved to: output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64/baseline_compare_256x512.json
+
+=== Strategy/Baseline Comparison ===
+Policy                 PIM        Prefill(s)    Decode(s)     Total(s)
+----------------------------------------------------------------------
+algo:ianus             pim_by_capacity       0.8187       4.3619       5.1806
+algo:attacc            pim_by_capacity       0.8187      14.8641      15.6828
+algo:facil             pim_by_capacity       0.8187       3.9386       4.7573
+algo:pd                pim_by_capacity       0.8187       1.0290       1.8477
+algo:weights_on_pim    pim_by_capacity       0.3226       1.8907       2.2132
+algo:attn_on_pim       pim_by_capacity       0.7149      10.3406      11.0555
+algo:heft              pim            0.2763       4.4806       4.7569
+algo:hefthint          pim            0.3155       3.1268       3.4423
+[evaluate] algos=['heft', 'hefthint'] baselines=['ianus', 'attacc', 'facil', 'pd', 'weights_on_pim', 'attn_on_pim'] result_dir=output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64 tag=512x512
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+[REPORT] Combined comparison saved to: output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64/baseline_compare_512x512.json
+
+=== Strategy/Baseline Comparison ===
+Policy                 PIM        Prefill(s)    Decode(s)     Total(s)
+----------------------------------------------------------------------
+algo:ianus             pim_by_capacity       0.8224       4.6908       5.5131
+algo:attacc            pim_by_capacity       0.8224      14.8641      15.6864
+algo:facil             pim_by_capacity       0.8224       3.9629       4.7853
+algo:pd                pim_by_capacity       0.8224       1.0533       1.8756
+algo:weights_on_pim    pim_by_capacity       0.6452       2.3748       3.0200
+algo:attn_on_pim       pim_by_capacity       0.8988      10.3649      11.2637
+algo:heft              pim            0.4629       7.6356       8.0985
+algo:hefthint          pim            0.5020       3.4747       3.9766
+[evaluate] algos=['heft', 'hefthint'] baselines=['ianus', 'attacc', 'facil', 'pd', 'weights_on_pim', 'attn_on_pim'] result_dir=output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64 tag=2048x512
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+[REPORT] Combined comparison saved to: output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64/baseline_compare_2048x512.json
+
+=== Strategy/Baseline Comparison ===
+Policy                 PIM        Prefill(s)    Decode(s)     Total(s)
+----------------------------------------------------------------------
+algo:ianus             pim_by_capacity       0.8654       5.6116       6.4769
+algo:attacc            pim_by_capacity       0.8654      14.8641      15.7294
+algo:facil             pim_by_capacity       0.8654       4.1873       5.0527
+algo:pd                pim_by_capacity       0.8654       1.2767       2.1421
+algo:weights_on_pim    pim_by_capacity       2.5864       5.1314       7.7178
+algo:attn_on_pim       pim_by_capacity       2.7107      10.5893      13.3001
+algo:heft              host           0.8586       4.3769       5.2355
+algo:hefthint          pim            0.8426       3.9804       4.8230
+[evaluate] algos=['heft', 'hefthint'] baselines=['ianus', 'attacc', 'facil', 'pd', 'weights_on_pim', 'attn_on_pim'] result_dir=output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64 tag=1024x512
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+[REPORT] Combined comparison saved to: output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64/baseline_compare_1024x512.json
+
+=== Strategy/Baseline Comparison ===
+Policy                 PIM        Prefill(s)    Decode(s)     Total(s)
+----------------------------------------------------------------------
+algo:ianus             pim_by_capacity       0.8329       4.6551       5.4880
+algo:attacc            pim_by_capacity       0.8329      14.8641      15.6970
+algo:facil             pim_by_capacity       0.8329       4.0548       4.8877
+algo:pd                pim_by_capacity       0.8329       1.1449       1.9778
+algo:weights_on_pim    pim_by_capacity       1.2913       3.3066       4.5979
+algo:attn_on_pim       pim_by_capacity       1.3489      10.4568      11.8057
+algo:heft              pim            0.6683      11.2466      11.9149
+algo:hefthint          pim            0.6489       3.8455       4.4944
+[evaluate] algos=['heft', 'hefthint'] baselines=['ianus', 'attacc', 'facil', 'pd', 'weights_on_pim', 'attn_on_pim'] result_dir=output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64 tag=4096x512
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+[REPORT] Combined comparison saved to: output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64/baseline_compare_4096x512.json
+
+=== Strategy/Baseline Comparison ===
+Policy                 PIM        Prefill(s)    Decode(s)     Total(s)
+----------------------------------------------------------------------
+algo:ianus             pim_by_capacity       0.9761       7.5215       8.4976
+algo:attacc            pim_by_capacity       0.9761      14.8641      15.8402
+algo:facil             pim_by_capacity       0.9761       4.4524       5.4285
+algo:pd                pim_by_capacity       0.9761       1.5391       2.5152
+algo:weights_on_pim    pim_by_capacity       5.1880       8.7259      13.9139
+algo:attn_on_pim       pim_by_capacity       6.9959      10.8544      17.8503
+algo:heft              pim            0.9709       4.4868       5.4577
+algo:hefthint          pim            0.9761       4.2446       5.2207
+[evaluate] algos=['heft', 'hefthint'] baselines=['ianus', 'attacc', 'facil', 'pd', 'weights_on_pim', 'attn_on_pim'] result_dir=output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64 tag=256x64
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+[REPORT] Combined comparison saved to: output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64/baseline_compare_256x64.json
+
+=== Strategy/Baseline Comparison ===
+Policy                 PIM        Prefill(s)    Decode(s)     Total(s)
+----------------------------------------------------------------------
+algo:ianus             pim_by_capacity       0.8272       0.8032       1.6304
+algo:attacc            pim_by_capacity       0.8272       1.8603       2.6875
+algo:facil             pim_by_capacity       0.8272       0.7218       1.5489
+algo:pd                pim_by_capacity       0.8272       0.5551       1.3823
+algo:weights_on_pim    pim_by_capacity       1.2899       0.6062       1.8961
+algo:attn_on_pim       pim_by_capacity       1.2214       1.4179       2.6393
+algo:heft              pim            0.6652       1.4160       2.0812
+algo:hefthint          npu            0.6136       0.7275       1.3411
+[evaluate] algos=['heft', 'hefthint'] baselines=['ianus', 'attacc', 'facil', 'pd', 'weights_on_pim', 'attn_on_pim'] result_dir=output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64 tag=128x512
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+[REPORT] Combined comparison saved to: output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64/baseline_compare_128x512.json
+
+=== Strategy/Baseline Comparison ===
+Policy                 PIM        Prefill(s)    Decode(s)     Total(s)
+----------------------------------------------------------------------
+algo:ianus             pim_by_capacity       0.8209       6.1373       6.9583
+algo:attacc            pim_by_capacity       0.8209      14.8823      15.7033
+algo:facil             pim_by_capacity       0.8209       5.3403       6.1613
+algo:pd                pim_by_capacity       0.8209       3.5536       4.3745
+algo:weights_on_pim    pim_by_capacity       0.6448       5.5227       6.1675
+algo:attn_on_pim       pim_by_capacity       0.8749      11.3840      12.2589
+algo:heft              pim            0.4624       7.8126       8.2750
+algo:hefthint          pim            0.4920       5.1982       5.6902
+[evaluate] algos=['heft', 'hefthint'] baselines=['ianus', 'attacc', 'facil', 'pd', 'weights_on_pim', 'attn_on_pim'] result_dir=output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64 tag=128x1024
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+[REPORT] Combined comparison saved to: output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64/baseline_compare_128x1024.json
+
+=== Strategy/Baseline Comparison ===
+Policy                 PIM        Prefill(s)    Decode(s)     Total(s)
+----------------------------------------------------------------------
+algo:ianus             pim_by_capacity       0.8173       8.4708       9.2882
+algo:attacc            pim_by_capacity       0.8173      29.7281      30.5455
+algo:facil             pim_by_capacity       0.8173       7.8430       8.6604
+algo:pd                pim_by_capacity       0.8173       1.9264       2.7437
+algo:weights_on_pim    pim_by_capacity       0.1613       4.2458       4.4072
+algo:attn_on_pim       pim_by_capacity       0.6282      20.7167      21.3449
+algo:heft              pim            0.1563       4.7724       4.9286
+algo:hefthint          pim            0.1615       6.5022       6.6636
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=256 T=128 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=256 T=256 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=256 T=512 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=256 T=1024 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=512 T=64 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64
+[evaluate] algos=['heft', 'hefthint'] baselines=['ianus', 'attacc', 'facil', 'pd', 'weights_on_pim', 'attn_on_pim'] result_dir=output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64 tag=256x1024
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+[REPORT] Combined comparison saved to: output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64/baseline_compare_256x1024.json
+
+=== Strategy/Baseline Comparison ===
+Policy                 PIM        Prefill(s)    Decode(s)     Total(s)
+----------------------------------------------------------------------
+algo:ianus             pim_by_capacity       0.8187       8.7052       9.5239
+algo:attacc            pim_by_capacity       0.8187      29.7281      30.5468
+algo:facil             pim_by_capacity       0.8187       7.8782       8.6969
+algo:pd                pim_by_capacity       0.8187       1.9616       2.7802
+algo:weights_on_pim    pim_by_capacity       0.3226       4.7338       5.0564
+algo:attn_on_pim       pim_by_capacity       0.7149      20.7519      21.4667
+algo:heft              pim            0.2763       8.9832       9.2595
+algo:hefthint          pim            0.3155       6.7792       7.0947
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=512 T=128 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=512 T=256 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=512 T=512 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=512 T=1024 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=1024 T=64 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64
+[evaluate] algos=['heft', 'hefthint'] baselines=['ianus', 'attacc', 'facil', 'pd', 'weights_on_pim', 'attn_on_pim'] result_dir=output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64 tag=512x1024
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+[REPORT] Combined comparison saved to: output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64/baseline_compare_512x1024.json
+
+=== Strategy/Baseline Comparison ===
+Policy                 PIM        Prefill(s)    Decode(s)     Total(s)
+----------------------------------------------------------------------
+algo:ianus             pim_by_capacity       0.8224       9.1672       9.9896
+algo:attacc            pim_by_capacity       0.8224      29.7281      30.5505
+algo:facil             pim_by_capacity       0.8224       7.9481       8.7704
+algo:pd                pim_by_capacity       0.8224       2.0313       2.8537
+algo:weights_on_pim    pim_by_capacity       0.6452       5.6798       6.3250
+algo:attn_on_pim       pim_by_capacity       0.8988      20.8217      21.7205
+algo:heft              pim            0.4629      15.2929      15.7558
+algo:hefthint          pim            0.5018       7.1354       7.6373
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=1024 T=128 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=1024 T=256 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=1024 T=512 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=1024 T=1024 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=2048 T=64 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64
+[evaluate] algos=['heft', 'hefthint'] baselines=['ianus', 'attacc', 'facil', 'pd', 'weights_on_pim', 'attn_on_pim'] result_dir=output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64 tag=1024x1024
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+[REPORT] Combined comparison saved to: output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64/baseline_compare_1024x1024.json
+
+=== Strategy/Baseline Comparison ===
+Policy                 PIM        Prefill(s)    Decode(s)     Total(s)
+----------------------------------------------------------------------
+algo:ianus             pim_by_capacity       0.8329       9.5970      10.4299
+algo:attacc            pim_by_capacity       0.8329      29.7281      30.5610
+algo:facil             pim_by_capacity       0.8329       8.0878       8.9207
+algo:pd                pim_by_capacity       0.8329       2.1709       3.0038
+algo:weights_on_pim    pim_by_capacity       1.2913       7.5266       8.8179
+algo:attn_on_pim       pim_by_capacity       1.3489      20.9615      22.3103
+algo:heft              pim            0.6683      22.5158      23.1842
+algo:hefthint          pim            0.6489       7.5679       8.2168
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=2048 T=128 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=2048 T=256 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=2048 T=512 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=2048 T=1024 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=4096 T=64 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64
+[evaluate] algos=['heft', 'hefthint'] baselines=['ianus', 'attacc', 'facil', 'pd', 'weights_on_pim', 'attn_on_pim'] result_dir=output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64 tag=2048x1024
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+[REPORT] Combined comparison saved to: output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64/baseline_compare_2048x1024.json
+
+=== Strategy/Baseline Comparison ===
+Policy                 PIM        Prefill(s)    Decode(s)     Total(s)
+----------------------------------------------------------------------
+algo:ianus             pim_by_capacity       0.8654      11.5072      12.3725
+algo:attacc            pim_by_capacity       0.8654      29.7281      30.5935
+algo:facil             pim_by_capacity       0.8654       8.3529       9.2183
+algo:pd                pim_by_capacity       0.8654       2.4352       3.3006
+algo:weights_on_pim    pim_by_capacity       2.5864      11.1474      13.7338
+algo:attn_on_pim       pim_by_capacity       2.7107      21.2265      23.9373
+algo:heft              host           0.8586      10.0039      10.8625
+algo:hefthint          pim            0.8426       7.8640       8.7066
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=4096 T=128 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=4096 T=256 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=4096 T=512 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=4096 T=1024 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b4_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=128 T=64 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=8 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b8_s64
+[evaluate] algos=['heft', 'hefthint'] baselines=['ianus', 'attacc', 'facil', 'pd', 'weights_on_pim', 'attn_on_pim'] result_dir=output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64 tag=4096x1024
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+DEBUG: Loaded hardware config from ./examples/hardware_1npu_8aim.json
+[REPORT] Combined comparison saved to: output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b1_s64/baseline_compare_4096x1024.json
+
+=== Strategy/Baseline Comparison ===
+Policy                 PIM        Prefill(s)    Decode(s)     Total(s)
+----------------------------------------------------------------------
+algo:ianus             pim_by_capacity       0.9761      15.3295      16.3056
+algo:attacc            pim_by_capacity       0.9761      29.7281      30.7042
+algo:facil             pim_by_capacity       0.9761       8.8830       9.8591
+algo:pd                pim_by_capacity       0.9761       2.9627       3.9388
+algo:weights_on_pim    pim_by_capacity       5.1880      18.3478      23.5359
+algo:attn_on_pim       pim_by_capacity       6.9959      21.7566      28.7525
+algo:heft              pim            0.9709       8.9312       9.9021
+algo:hefthint          pim            0.9761       8.4709       9.4470
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=128 T=128 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=8 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b8_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=128 T=256 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=8 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b8_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=128 T=512 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=8 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b8_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=128 T=1024 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=8 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b8_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:13b | S=256 T=64 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=8 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_13b_fp16_b8_s64

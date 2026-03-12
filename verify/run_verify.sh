@@ -10,7 +10,8 @@ MERGE_LOG_DIR=/path/logs_merge \
 
 export PYTHONPATH="$PWD:$PWD/algorithm:$PWD/algorithms:${PYTHONPATH:-}"
 
-  ./verify/run_verify.sh ./verify/jobs_sweep.tsv \
+  ./verify/run_verify.sh \
+    ./verify/jobs_sweep.tsv \
     ./verify/run_gpu_wm2_param.slurm \
     ./verify/run_pim_param.slurm \
     ./verify/run_merge_param.slurm
@@ -61,6 +62,7 @@ KV_DTYPE_BYTES=${KV_DTYPE_BYTES:-2}         # fp16/bf16=2, int8=1
 KV_LOAD_OVERHEAD_US=${KV_LOAD_OVERHEAD_US:-0}
 N_KV_HEADS=${N_KV_HEADS:-""}                # GQA/MQA 用；空表示用 n_heads
 BATCH=${BATCH:-1}
+BATCHES_USER_SET=${BATCHES+x}
 BATCHES=${BATCHES:-"$BATCH"}
 
 # run-gpu benchmark args
@@ -74,9 +76,8 @@ SOFTMAX_LUT=${SOFTMAX_LUT:-""}
 GELU_LUT=${GELU_LUT:-""}
 NORM_LUT=${NORM_LUT:-""}
 NPU_DTYPE=${NPU_DTYPE:-""}              # fp16|bf16|fp32|int8 (optional, for mem bound)
-NPU_MEM_BW_GBS=${NPU_MEM_BW_GBS:-"0"}   # >0 to enable mem bound
+NPU_MEM_BW_GBS=${NPU_MEM_BW_GBS:-"819.2"}   # must be >0 when backend=npu (Activation RW is mandatory)
 NPU_OP_OVERHEAD_US=${NPU_OP_OVERHEAD_US:-"0"}
-NPU_NO_MEM_BOUND=${NPU_NO_MEM_BOUND:-"0"}
 NPU_DEBUG=${NPU_DEBUG:-0}
 
 # run-pim args (global)
@@ -166,6 +167,15 @@ infer_prefill_and_stride() {
   else
     echo "$pre $dec"
   fi
+}
+
+infer_batch_from_path() {
+  local p="$1"
+  local b=""
+  if [[ "$p" =~ (^|/|_)(b|bs|batch)([0-9]+)($|/|_) ]]; then
+    b="${BASH_REMATCH[3]}"
+  fi
+  echo "$b"
 }
 
 infer_compute_backend() {
@@ -426,7 +436,7 @@ while IFS=$'\t,' read -r schedule_csv comms_csv prefix out_dir prefill_len decod
   if [[ ${#dec_list[@]} -eq 0 && -n "$DECODE_STRIDES" ]]; then
     while IFS= read -r x; do dec_list+=("$x"); done < <(split_list "$DECODE_STRIDES")
   fi
-  if [[ ${#batch_list[@]} -eq 0 && -n "$BATCHES" ]]; then
+  if [[ ${#batch_list[@]} -eq 0 && -n "${BATCHES_USER_SET:-}" && -n "$BATCHES" ]]; then
     while IFS= read -r x; do batch_list+=("$x"); done < <(split_list "$BATCHES")
   fi
 
@@ -571,6 +581,15 @@ while IFS=$'\t,' read -r schedule_csv comms_csv prefix out_dir prefill_len decod
       compute_slurm="$GPU_SLURM_ABS"
 
       if [[ "$backend" == "npu" ]]; then
+        # Activation RW is mandatory for the Ascend LUT backend.
+        if [[ -z "${NPU_MEM_BW_GBS:-}" ]]; then
+          echo "  [combo] ERROR: backend=npu requires NPU_MEM_BW_GBS to be set and >0 (Activation RW is mandatory)." >&2
+          exit 12
+        fi
+        if ! awk -v v="$NPU_MEM_BW_GBS" 'BEGIN{exit (v>0)?0:1}'; then
+          echo "  [combo] ERROR: backend=npu requires NPU_MEM_BW_GBS >0 (got '$NPU_MEM_BW_GBS')." >&2
+          exit 12
+        fi
         if [[ -z "${NPU_SLURM_ABS:-}" ]]; then
           echo "  [combo] ERROR: backend=npu but NPU_SLURM_ABS is empty. Set NPU_SLURM or place run_npu_lut_param.slurm under $SCRIPT_DIR." >&2
           exit 12
@@ -589,7 +608,7 @@ while IFS=$'\t,' read -r schedule_csv comms_csv prefix out_dir prefill_len decod
         echo "  [combo] submitted run-gpu: jobid=$jid_compute" >&2
       else
         # NPU (LUT) stage: CPU job that calls `python <PY_SCRIPT> run-npu`
-        jid_compute=$(sbatch --parsable $compute_sbatch_args           -J "$compute_job"           --chdir="$job_chdir"           -o "$compute_log_dir/%x.%j.out" -e "$compute_log_dir/%x.%j.err"           --export=ALL,LOG_DIR="$compute_log_dir",OUT_DIR="$out_dir",PREFIX="$prefix_combo",PY_SCRIPT="$PY_ABS",TASKS_JSON="$gpu_tasks",OUT_JSON="$compute_res",BATCH="$b",OK_FILE="$compute_ok",MMAD_LUT="$MMAD_LUT",SOFTMAX_LUT="$SOFTMAX_LUT",GELU_LUT="$GELU_LUT",NORM_LUT="$NORM_LUT",NPU_DTYPE="$NPU_DTYPE",NPU_MEM_BW_GBS="$NPU_MEM_BW_GBS",NPU_OP_OVERHEAD_US="$NPU_OP_OVERHEAD_US",NPU_NO_MEM_BOUND="$NPU_NO_MEM_BOUND",NPU_DEBUG="$NPU_DEBUG",NPU_DEBUG_TXT="$compute_debug_txt"           "$compute_slurm")
+        jid_compute=$(sbatch --parsable $compute_sbatch_args           -J "$compute_job"           --chdir="$job_chdir"           -o "$compute_log_dir/%x.%j.out" -e "$compute_log_dir/%x.%j.err"           --export=ALL,LOG_DIR="$compute_log_dir",OUT_DIR="$out_dir",PREFIX="$prefix_combo",PY_SCRIPT="$PY_ABS",TASKS_JSON="$gpu_tasks",OUT_JSON="$compute_res",BATCH="$b",OK_FILE="$compute_ok",MMAD_LUT="$MMAD_LUT",SOFTMAX_LUT="$SOFTMAX_LUT",GELU_LUT="$GELU_LUT",NORM_LUT="$NORM_LUT",NPU_DTYPE="$NPU_DTYPE",NPU_MEM_BW_GBS="$NPU_MEM_BW_GBS",NPU_OP_OVERHEAD_US="$NPU_OP_OVERHEAD_US",NPU_DEBUG="$NPU_DEBUG",NPU_DEBUG_TXT="$compute_debug_txt"           "$compute_slurm")
         echo "  [combo] submitted run-npu: jobid=$jid_compute" >&2
       fi
 

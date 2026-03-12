@@ -1,0 +1,13 @@
+{
+  "pim_config_path": "./aim_simulator/PIM_AiM.json",
+  "gb_config_path": "./aim_simulator/gb.json",
+  "ramulator_config_path": "./aim_simulator/example.yaml",
+  "algo": ["hefthint"],
+  "baselines": [],
+  "split_by": "head",
+  "tp_qkv": 1,
+  "tp_ffn": 1,
+  "npu_backend": "lut",
+  "dump_graph": false
+}
+

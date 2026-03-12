@@ -4,8 +4,8 @@
 
 1) 批量：
 python plot_exp1_simulated.py \
-  --output-root ../../algorithms/output/exp2\
-  --out-dir ../../figs/speedup/exp2
+  --output-root ../../algorithms/output/exp1\
+  --out-dir ../../figs/speedup/exp1
 
 
 不要传hw_ 这一层目录
@@ -451,10 +451,10 @@ def plot_compare_grid(files: Sequence[Path], *, outfile: Path, sharey: bool = Fa
 
 
 def iter_model_dirs(output_root: Path) -> Iterator[Tuple[str, str, Path]]:
-    """模仿 batch_speedup.py：遍历 hw_* / st* / <model_dir>"""
+    """模仿 batch_speedup.py：遍历 hw_* / sst* / <model_dir>"""
     output_root = output_root.resolve()
     for hw_dir in sorted([p for p in output_root.glob("hw_*") if p.is_dir()]):
-        for stride_dir in sorted([p for p in hw_dir.glob("st*") if p.is_dir()]):
+        for stride_dir in sorted([p for p in hw_dir.glob("sst*") if p.is_dir()]):
             for model_dir in sorted([p for p in stride_dir.iterdir() if p.is_dir()]):
                 yield hw_dir.name, stride_dir.name, model_dir
 

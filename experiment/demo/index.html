@@ -1,0 +1,3029 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>LLM Schedule Demo (DAG)</title>
+
+  <!-- Front-end deps: Cytoscape + dagre layout plugin (CDN) -->
+  <script src="https://unpkg.com/cytoscape/dist/cytoscape.min.js"></script>
+  <script src="https://unpkg.com/dagre/dist/dagre.min.js"></script>
+  <script src="https://unpkg.com/cytoscape-dagre/cytoscape-dagre.js"></script>
+
+  <style>
+    *, *::before, *::after{ box-sizing: border-box; }
+
+    :root{
+      --bg:#0b0f14;
+      --fg:#e5e7eb;
+      --muted:#9aa4af;
+      --card:#10161f;
+      --border:#1f2937;
+      --accent:#3b82f6;
+      --accent2:#22c55e;
+      --warn:#f59e0b;
+      --danger:#ef4444;
+      --shadow: 0 10px 30px rgba(0,0,0,.35);
+    }
+
+    @media (prefers-color-scheme: light){
+      :root{
+        --bg:#ffffff;
+        --fg:#0f172a;
+        --muted:#6b7280;
+        --card:#ffffff;
+        --border:#e5e7eb;
+        --accent:#2563eb;
+        --accent2:#16a34a;
+        --warn:#d97706;
+        --danger:#dc2626;
+        --shadow: 0 10px 30px rgba(0,0,0,.12);
+      }
+    }
+
+    html, body{
+      height:100%;
+      margin:0;
+      background:var(--bg);
+      color:var(--fg);
+      font: 14px/1.4 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      overflow:hidden;
+    }
+
+    .wrap{
+      display:grid;
+      grid-template-columns: 360px 1fr;
+      height:100vh;
+    }
+
+    .panel{
+      padding: 14px 14px 18px;
+      border-right: 1px solid var(--border);
+      background: var(--card);
+      overflow:auto;
+    }
+
+    .panel h1{
+      font-size: 16px;
+      margin: 0 0 10px;
+      letter-spacing: .2px;
+    }
+
+    .control{
+      margin-bottom: 12px;
+    }
+
+    .controlRow{
+      display:flex;
+      gap:10px;
+      align-items:flex-end;
+      flex-wrap: wrap;
+    }
+    .controlRow .control{
+      flex: 1 1 150px;
+      min-width: 150px;
+      margin-bottom: 10px;
+    }
+
+    .buttonRow{
+      display:flex;
+      gap:10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .buttonRow button{
+      flex: 1 1 96px;
+    }
+
+    label{
+      display:block;
+      margin-bottom: 6px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    select, input[type="file"], input[type="number"]{
+      width:100%;
+      padding: 8px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: transparent;
+      color: var(--fg);
+      outline:none;
+    }
+
+    input[type="range"]{
+      width:100%;
+    }
+
+    button{
+      padding: 9px 10px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--accent);
+      color: white;
+      cursor:pointer;
+      transition: transform .04s ease;
+    }
+    button:active{ transform: translateY(1px); }
+    button.secondary{
+      background: transparent;
+      color: var(--fg);
+    }
+    button.good{
+      background: var(--accent2);
+    }
+
+    .filetag{
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    hr{
+      border:none;
+      border-top: 1px solid var(--border);
+      margin: 10px 0 12px;
+    }
+
+    .main{
+      display:grid;
+      grid-template-rows: auto 1fr 210px;
+      height:100vh;
+      overflow:hidden;
+    }
+
+    .infobar{
+      display:flex;
+      align-items:center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.0));
+    }
+    .infoLeft{
+      display:flex;
+      flex-direction:column;
+      gap:2px;
+      min-width: 240px;
+    }
+    .infoTitle{
+      font-weight: 650;
+      letter-spacing: .2px;
+    }
+    .infoSub{
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .infoRight{
+      display:flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content:flex-end;
+      align-items:center;
+    }
+    .pill{
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.03);
+      padding: 6px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      color: var(--fg);
+      display:flex;
+      gap:6px;
+      align-items:center;
+      white-space: nowrap;
+    }
+    .pill b{
+      font-weight: 650;
+    }
+    .pill.good b{ color: var(--accent2); }
+    .pill.warn b{ color: var(--warn); }
+    .pill.danger b{ color: var(--danger); }
+
+    .graphs{
+      display:grid;
+      grid-template-rows: 1fr 1fr;
+      gap: 10px;
+      padding: 10px;
+      overflow:hidden;
+    }
+
+    .chartCard{
+      padding: 0 10px 10px;
+      overflow:hidden;
+      min-height: 0;
+    }
+
+    .chartWrap{
+      position: relative;
+      height: 190px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow:hidden;
+      background: rgba(255,255,255,0.02);
+      box-shadow: var(--shadow);
+    }
+
+    #speedChart{
+      width: 100%;
+      height: 100%;
+      display:block;
+    }
+
+    .chartOverlay{
+      position:absolute;
+      left: 12px;
+      top: 10px;
+      right: 12px;
+      display:flex;
+      flex-direction:column;
+      gap: 2px;
+      pointer-events:none;
+      user-select:none;
+    }
+    .chartTitle{
+      font-weight: 650;
+      font-size: 12px;
+      letter-spacing: .2px;
+      color: var(--fg);
+      text-shadow: 0 6px 18px rgba(0,0,0,.35);
+    }
+    .chartSub{
+      font-size: 11px;
+      color: var(--muted);
+      text-shadow: 0 6px 18px rgba(0,0,0,.35);
+    }
+
+    .graphCard{
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow:hidden;
+      background: rgba(255,255,255,0.02);
+      box-shadow: var(--shadow);
+      display:grid;
+      grid-template-rows: auto 1fr;
+      min-height: 0;
+    }
+
+    .graphHeader{
+      display:flex;
+      align-items:center;
+      justify-content: space-between;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255,255,255,0.02);
+    }
+    .tag{
+      font-size: 12px;
+      color: var(--fg);
+      display:inline-flex;
+      gap: 8px;
+      align-items:center;
+    }
+    .tag .dot{
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: var(--accent);
+      display:inline-block;
+    }
+    .tag .dot.good{ background: var(--accent2); }
+
+    .graphWrap{
+      position:relative;
+      min-height:0;
+    }
+    .cy{
+      position:absolute;
+      inset:0;
+    }
+    .overlay{
+      position:absolute;
+      inset:0;
+      pointer-events:none;
+    }
+    .devIcon{
+      position:absolute;
+      width: 16px;
+      height: 16px;
+      border: 1px solid var(--border);
+      box-shadow: 0 6px 18px rgba(0,0,0,.25);
+      opacity: 0.95;
+      transition: left 120ms linear, top 120ms linear, opacity 120ms linear, filter 120ms linear, transform 120ms linear;
+    }
+    .devIcon .lbl{
+      position:absolute;
+      left: 20px;
+      top: -1px;
+      font-size: 11px;
+      color: var(--muted);
+      white-space: nowrap;
+      text-shadow: 0 2px 10px rgba(0,0,0,.4);
+    }
+    .devIcon.idle{
+      filter: grayscale(1);
+      opacity: 0.45;
+    }
+    .devIcon.npu{ border-radius: 999px; }
+    .devIcon.pim{ border-radius: 4px; }
+    .devIcon.other{ transform: rotate(45deg); border-radius: 3px; }
+    .devIcon.other .lbl{ transform: rotate(-45deg); transform-origin: left top; }
+
+    .jumpBadge{
+      position:absolute;
+      top: 12px;
+      right: 12px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px dashed rgba(255,255,255,0.25);
+      background: rgba(0,0,0,0.35);
+      color: white;
+      font-weight: 650;
+      font-size: 12px;
+      letter-spacing: .4px;
+      display:none;
+      pointer-events:none;
+    }
+
+    .smallNote{
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    /* =========================
+       Legend (operator shapes)
+    ========================= */
+    .legend{
+      margin: 10px 0 12px;
+      padding: 10px 10px 8px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: rgba(255,255,255,0.02);
+    }
+    .legendTitle{
+      font-size: 12px;
+      font-weight: 650;
+      letter-spacing: .2px;
+      margin: 0 0 8px;
+      color: var(--fg);
+    }
+    .legendGrid{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px 10px;
+    }
+    .legendItem{
+      display:flex;
+      align-items:center;
+      gap: 8px;
+      min-width: 0;
+    }
+    .legendIcon{
+      width: 18px;
+      height: 18px;
+      flex: 0 0 18px;
+      display:block;
+    }
+    .legendIcon .shape{
+      fill: transparent;
+      stroke: var(--muted);
+      stroke-width: 1.6;
+      vector-effect: non-scaling-stroke;
+    }
+    .legendLabel{
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  </style>
+</head>
+
+<body>
+<div class="wrap">
+  <aside class="panel">
+    <h1>LLM Scheduling Demo (DAG)</h1>
+
+    <div class="control">
+      <label>Model topology</label>
+      <select id="model">
+        <option value="auto" selected>auto (infer from trace)</option>
+        <option value="llama">llama</option>
+        <option value="mpt">mpt</option>
+        <option value="palm">palm</option>
+      </select>
+    </div>
+
+    <div class="controlRow">
+      <div class="control">
+        <label>Batch</label>
+        <select id="batch">
+          <option selected>1</option>
+          <option>2</option>
+          <option>4</option>
+          <option>8</option>
+          <option>16</option>
+          <option>32</option>
+        </select>
+      </div>
+
+      <div class="control">
+        <label>Prefill length</label>
+        <select id="prefillLen">
+          <option>128</option>
+          <option>256</option>
+          <option>512</option>
+          <option selected>1024</option>
+          <option>2048</option>
+          <option>4096</option>
+          <option>8192</option>
+        </select>
+      </div>
+
+      <div class="control">
+        <label>Decode length</label>
+        <select id="decodeLen">
+          <option>128</option>
+          <option>256</option>
+          <option>512</option>
+          <option selected>1024</option>
+          <option>2048</option>
+          <option>4096</option>
+          <option>8192</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="control">
+      <label>DType</label>
+      <select id="dtype">
+        <option selected>int8</option>
+        <option>fp16</option>
+        <option>fp8</option>
+      </select>
+    </div>
+
+    <div class="legend" aria-label="Operator shape legend">
+      <div class="legendTitle"></div>
+      <div class="legendGrid">
+        <div class="legendItem">
+          <svg class="legendIcon" viewBox="0 0 24 24" aria-hidden="true">
+            <rect class="shape" x="5" y="5" width="14" height="14"></rect>
+          </svg>
+          <div class="legendLabel">MatMul</div>
+        </div>
+
+        <div class="legendItem">
+          <svg class="legendIcon" viewBox="0 0 24 24" aria-hidden="true">
+            <polygon class="shape" points="12,3 21,12 12,21 3,12"></polygon>
+          </svg>
+          <div class="legendLabel">Attention</div>
+        </div>
+
+        <div class="legendItem">
+          <svg class="legendIcon" viewBox="0 0 24 24" aria-hidden="true">
+            <ellipse class="shape" cx="12" cy="12" rx="8" ry="6"></ellipse>
+          </svg>
+          <div class="legendLabel">Norm/Activation</div>
+        </div>
+
+        <div class="legendItem">
+          <svg class="legendIcon" viewBox="0 0 24 24" aria-hidden="true">
+            <polygon class="shape" points="4,7 17,7 20,12 17,17 4,17"></polygon>
+          </svg>
+          <div class="legendLabel">Softmax</div>
+        </div>
+
+        <div class="legendItem">
+          <svg class="legendIcon" viewBox="0 0 24 24" aria-hidden="true">
+            <polygon class="shape" points="8,3 16,3 21,12 16,21 8,21 3,12"></polygon>
+          </svg>
+          <div class="legendLabel">Elementwise</div>
+        </div>
+
+        <div class="legendItem">
+          <svg class="legendIcon" viewBox="0 0 24 24" aria-hidden="true">
+            <polygon class="shape" points="12,4 20,20 4,20"></polygon>
+          </svg>
+          <div class="legendLabel">KV R/W</div>
+        </div>
+
+        <div class="legendItem">
+          <svg class="legendIcon" viewBox="0 0 24 24" aria-hidden="true">
+            <polygon class="shape" points="4,6 12,18 20,6 16.8,6 12,13 7.2,6"></polygon>
+          </svg>
+          <div class="legendLabel">MoE Router</div>
+        </div>
+
+        <div class="legendItem">
+          <svg class="legendIcon" viewBox="0 0 24 24" aria-hidden="true">
+            <rect class="shape" x="4" y="7" width="16" height="10" rx="4" ry="4"></rect>
+          </svg>
+          <div class="legendLabel">Other</div>
+        </div>
+      </div>
+    </div>
+
+    <hr />
+
+    <div class="control">
+      <label>Baseline trace (CSV)</label>
+      <input id="fileBase" type="file" accept=".csv,text/csv" />
+      <div class="filetag" id="baseName">Auto-load: 128x1024_ops_trace.csv</div>
+    </div>
+
+    <div class="control">
+      <label>Heuristic trace (CSV)</label>
+      <input id="fileHeu" type="file" accept=".csv,text/csv" />
+      <div class="filetag" id="heuName">Auto-load: hefthint_128x1024_ops_trace.csv</div>
+    </div>
+
+    <hr />
+
+    <div class="controlRow">
+      <div class="control">
+        <label>Phase</label>
+        <select id="phase" title="Select what to play. Use 'prefill → decode' to chain phases in one run.">
+          <option value="prefill">prefill</option>
+          <option value="decode" selected>decode</option>
+          <option value="prefill_decode">prefill → decode</option>
+        </select>
+      </div>
+      <div class="control">
+        <label>Layer</label>
+        <select id="layer"></select>
+      </div>
+    </div>
+
+    <div class="controlRow">
+      <div class="control">
+        <label>Layer mode</label>
+        <select id="layerMode" title="Single: only the selected layer. Range: play a contiguous set of layers starting from the selected layer. All: play all layers starting from the selected layer.">
+          <option value="single" selected>single</option>
+          <option value="range">range</option>
+          <option value="all">all</option>
+        </select>
+      </div>
+      <div class="control" id="layerCountWrap" style="display:none;">
+        <label>Layers to play</label>
+        <input id="layerCount" type="number" min="1" step="1" value="4" title="Number of layers to play when Layer mode = range." />
+      </div>
+    </div>
+
+    <div class="controlRow" id="tokRow">
+      <div class="control">
+        <label>Decode sample start</label>
+        <input id="tokStart" type="number" min="0" step="1" value="0" title="0-based decode sample index to start from." />
+      </div>
+      <div class="control">
+        <label>Samples to play</label>
+        <input id="tokCount" type="number" min="1" step="1" value="4" title="Number of sampled decode steps to play." />
+      </div>
+    </div>
+
+    <div class="controlRow" id="strideRow">
+      <div class="control">
+        <label>Stride label</label>
+        <select id="strideLabel" title="Show a stride badge (×Stride) when jumping between sampled decode steps.">
+          <option value="on" selected>on</option>
+          <option value="off">off</option>
+        </select>
+      </div>
+      <div class="control">
+        <label>Stride</label>
+        <input id="stride" type="number" min="1" step="1" value="64" title="Sampling stride used only for labeling (e.g. 64 means one sample represents ~64 tokens).">
+      </div>
+    </div>
+
+    <hr />
+
+    <div class="buttonRow">
+      <button id="restart" class="secondary" title="Restart playback from the first segment.">Restart</button>
+      <button id="play" class="good" title="Play / pause.">Play</button>
+      <button id="step" class="secondary" title="Advance to the next operator start within the current segment.">Step</button>
+    </div>
+
+    <div class="control">
+      <label>Speed</label>
+      <input id="speed" type="range" min="0.25" max="20" step="0.25" value="4" />
+      <div class="filetag" id="speedVal">4.00×</div>
+    </div>
+
+    <div class="control">
+      <label>Speedup chart metric</label>
+      <select id="spdMetric">
+        <option value="cum_total">Cumulative speedup (prefill + decode)</option>
+        <option value="cum_decode">Cumulative speedup (decode only)</option>
+        <option value="per_step">Per-step speedup</option>
+        <option value="saved" selected>Saved time (cumulative)</option>
+        <option value="saved_step">Saved time (per-step)</option>
+      </select>
+    </div>
+<div class="buttonRow">
+      <button id="fit" class="secondary" title="Fit both DAG views to the viewport.">Fit</button>
+      <button id="export" class="secondary" title="Export the heuristic DAG view as PNG.">Export PNG</button>
+    </div>
+
+    <div class="smallNote" id="dataStatus">Waiting for CSV traces…</div>
+  </aside>
+
+  <main class="main">
+    <header class="infobar">
+      <div class="infoLeft">
+        <div class="infoTitle" id="infoTitle">Model: —</div>
+        <div class="infoSub" id="infoSub">Phase: — • Layer: — • Token: —</div>
+      </div>
+      <div class="infoRight">
+        <div class="pill" id="pillProg">Progress <b id="pProg">—</b></div>
+        <div class="pill good" id="pillSpd">Speedup <b id="pSpeedup">—</b></div>
+        <div class="pill warn" id="pillSave">Saved <b id="pSaved">—</b></div>
+        <div class="pill" id="pillBase">Baseline <b id="pBaseT">—</b></div>
+        <div class="pill" id="pillHeu">Heuristic <b id="pHeuT">—</b></div>
+      </div>
+    </header>
+
+    <div class="graphs">
+      <section class="graphCard">
+        <div class="graphHeader">
+          <span class="tag"><span class="dot"></span> Baseline</span>
+          <span class="smallNote" id="baseMode">—</span>
+        </div>
+        <div class="graphWrap">
+          <div id="cyBase" class="cy"></div>
+          <div id="ovBase" class="overlay"></div>
+          <div id="jumpBase" class="jumpBadge">×64</div>
+        </div>
+      </section>
+
+      <section class="graphCard">
+        <div class="graphHeader">
+          <span class="tag"><span class="dot good"></span> Heuristic</span>
+          <span class="smallNote" id="heuMode">—</span>
+        </div>
+        <div class="graphWrap">
+          <div id="cyHeu" class="cy"></div>
+          <div id="ovHeu" class="overlay"></div>
+          <div id="jumpHeu" class="jumpBadge">×64</div>
+        </div>
+      </section>
+    </div>
+
+
+    <div class="chartCard">
+      <div class="chartWrap">
+        <canvas id="speedChart"></canvas>
+        <div class="chartOverlay">
+          <div class="chartTitle" id="chartTitle">Speedup vs decode length</div>
+          <div class="chartSub" id="chartSub">X-axis uses the stride when decode is sampled.</div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+'use strict';
+
+/* =========================
+   Small utilities
+========================= */
+function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
+function fmtX(v){
+  if (!Number.isFinite(v) || v <= 0) return '—';
+  return v.toFixed(v < 10 ? 3 : 2) + '×';
+}
+function fmtSec(s){
+  if (!Number.isFinite(s)) return '—';
+  const sign = s < 0 ? '-' : '';
+  s = Math.abs(s);
+  const hh = Math.floor(s / 3600);
+  const mm = Math.floor((s % 3600) / 60);
+  const ss = s % 60;
+  const ss2 = ss.toFixed(2);
+  if (hh > 0) return `${sign}${hh}:${String(mm).padStart(2,'0')}:${String(Math.floor(ss)).padStart(2,'0')}`;
+  return `${sign}${mm}:${String(Math.floor(ss)).padStart(2,'0')}.${String(Math.floor((ss - Math.floor(ss)) * 100)).padStart(2,'0')}`;
+}
+function fmtInt(v){
+  if (!Number.isFinite(v)) return '—';
+  return String(Math.trunc(v));
+}
+function normalizeDevice(d){
+  const s = String(d ?? '').trim();
+  return s || 'UNKNOWN';
+}
+function hashStr(s){
+  s = String(s);
+  let h = 2166136261;
+  for (let i=0;i<s.length;i++){
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0);
+}
+
+/* =========================
+   CSV parsing (no external deps)
+   Assumes no commas inside fields (true for the provided traces).
+========================= */
+function parseCsvText(text){
+  const lines = String(text || '').split(/\r?\n/).filter(l => l.trim().length > 0);
+  if (!lines.length) return [];
+  const header = lines[0].split(',').map(x => x.trim());
+  const out = [];
+  for (let i=1;i<lines.length;i++){
+    const parts = lines[i].split(',');
+    if (parts.length < header.length) continue;
+    const row = {};
+    for (let c=0;c<header.length;c++){
+      row[header[c]] = (parts[c] ?? '').trim();
+    }
+    out.push(row);
+  }
+  return out;
+}
+
+/* =========================
+   Trace indexing
+========================= */
+function parseLayerOp(nodeId){
+  const m = /^L_?(\d+)_([^/]+)$/i.exec(nodeId || '');
+  const layer = m ? Number(m[1]) : null;
+
+  let opFull = m ? m[2] : (nodeId || '');
+  let shard = null;
+
+  const sm = /^(.*)_S(\d+)$/i.exec(opFull);
+  if (sm){
+    opFull = sm[1];
+    shard = 'S' + sm[2];
+  }
+  return { layer, op: opFull, shard };
+}
+
+function opType(label){
+  const L = (label || '').toUpperCase();
+
+  if (L.startsWith('K_READ') || L === 'V_READ' || L === 'K_WRITE' || L === 'V_WRITE' ||
+      L.includes('K_READ') || L.includes('V_READ') || L.includes('K_WRITE') || L.includes('V_WRITE')){
+    return 'io';
+  }
+
+  if (L === 'LN' || L === 'LN1' || L === 'LN2' ||
+      L.includes('LAYERNORM') || L.includes('RMSNORM') || L.includes('RMS_NORM') || L === 'X'){
+    return 'norm';
+  }
+
+  if (L.includes('ROUTER')) return 'moe';
+
+  if (L === 'Q' || L === 'K' || L === 'V' || L === 'O' ||
+      L.startsWith('FFN_W') || L.endsWith('_UP') || L.endsWith('_DOWN') ||
+      L === 'GEMM' || L === 'MATMUL' || L === 'PROJ' || L.includes('MLP')){
+    return 'matmul';
+  }
+
+  if (L.includes('QK') || L === 'SV' || L === 'ATTN' || L === 'ATTENTION'){
+    return 'attention';
+  }
+
+  if (L.includes('SOFTMAX')) return 'softmax';
+
+  if (L === 'ACT' || L.startsWith('ACT_') || L.endsWith('_ACT') ||
+      L.includes('GELU') || L.includes('SILU') || L.includes('RELU') ||
+      L.includes('SWIGLU') || L.includes('GLU')){
+    return 'activation';
+  }
+
+  if (L.endsWith('_MERGE') || L.includes('MERGE')) return 'elementwise';
+  if (L.startsWith('ADD') || L.includes('RES') || L.includes('BIAS') || L === 'MUL') return 'elementwise';
+
+  return 'other';
+}
+
+const HYBRID_DEVICE = 'HYBRID';
+const UNKNOWN_DEVICE = 'UNKNOWN';
+const HYBRID_COLOR = '#9ca3af';
+const UNKNOWN_COLOR = '#7f7f7f';
+const npuPalette = ['#0092FE', '#60A5FA', '#3B82F6', '#93C5FD', '#1D4ED8'];
+const pimPalette = ['#FFBF02', '#F59E0B', '#F97316', '#FDBA74', '#EA580C'];
+const otherPalette = ['#8B5CF6', '#22C55E', '#06B6D4', '#EF4444', '#EC4899', '#A3E635', '#14B8A6'];
+
+function deviceFamily(name){
+  const u = String(name || '').toUpperCase();
+  if (u.includes('NPU')) return 'NPU';
+  if (u.includes('PIM')) return 'PIM';
+  return 'OTHER';
+}
+function buildDeviceColorMap(devices){
+  const map = { [HYBRID_DEVICE]: HYBRID_COLOR, [UNKNOWN_DEVICE]: UNKNOWN_COLOR };
+  const famIdx = { NPU: 0, PIM: 0, OTHER: 0 };
+  (devices || []).forEach(d => {
+    const fam = deviceFamily(d);
+    const pal = (fam === 'NPU') ? npuPalette : (fam === 'PIM') ? pimPalette : otherPalette;
+    const i = famIdx[fam] || 0;
+    famIdx[fam] = i + 1;
+    map[d] = pal[i % pal.length];
+  });
+  return map;
+}
+
+function mergeShardNodes(nodesByIdRaw, layer){
+  // Merge *_S{n} shard nodes into a single visual node per op.
+  // Important: "HYBRID" should mean mixed *device types* (e.g. NPU + PIM),
+  // NOT merely different device names (e.g. PIMA0 + PIMA1).
+  const groups = {};
+  for (const [id, n] of Object.entries(nodesByIdRaw || {})){
+    const op = String(n.op || '');
+    groups[op] ||= [];
+    groups[op].push({ id, n });
+  }
+
+  const merged = {};
+  const origToMerged = {};
+
+  const normType = (t, devName) => {
+    const s = String(t || '').trim().toLowerCase();
+    if (s) return s;
+    const fam = deviceFamily(devName);
+    if (fam === 'NPU') return 'npu';
+    if (fam === 'PIM') return 'pim';
+    return 'other';
+  };
+
+  const typeRank = (t) => {
+    const u = String(t || '').toLowerCase();
+    if (u.includes('npu')) return 0;
+    if (u.includes('pim')) return 1;
+    return 2; // cpu / gpu / other / etc.
+  };
+
+  for (const [op, arr] of Object.entries(groups)){
+    if (arr.length === 1 && !arr[0].n.shard){
+      const only = arr[0];
+      merged[only.id] = {
+        ...only.n,
+        node_id: only.id,
+        mergedFrom: [only.id],
+        shardCount: 1,
+        hybridTypes: [],
+        hybridReps: [],
+        hybridSizes: []
+      };
+      origToMerged[only.id] = only.id;
+      continue;
+    }
+
+    const newId = `L${layer}_${op}`;
+    let start = Infinity, finish = -Infinity, durSum = 0;
+
+    const devNameSet = new Set();
+    const devTypeSet = new Set();
+    const shardSet = new Set();
+
+    // For HYBRID pie rendering: keep duration breakdown per device type, and
+    // choose a representative device name per type (to pick its assigned color).
+    const devDur = {};          // device name -> total duration
+    const devTypeOfDev = {};    // device name -> normalized type
+    const typeDur = {};         // type -> total duration
+
+    for (const it of arr){
+      const n = it.n || {};
+      const s = Number(n.start);
+      const f = Number(n.end);
+      const d = Number.isFinite(+n.duration) ? Number(n.duration) : (Number.isFinite(f - s) ? (f - s) : 0);
+
+      if (Number.isFinite(s)) start = Math.min(start, s);
+      if (Number.isFinite(f)) finish = Math.max(finish, f);
+      durSum += Number.isFinite(d) ? d : 0;
+
+      const devName = normalizeDevice(n.device);
+      const devType = normType(n.device_type, devName);
+
+      devNameSet.add(devName);
+      devTypeSet.add(devType);
+
+      devDur[devName] = (devDur[devName] || 0) + (Number.isFinite(d) ? d : 0);
+      devTypeOfDev[devName] = devType;
+      typeDur[devType] = (typeDur[devType] || 0) + (Number.isFinite(d) ? d : 0);
+
+      if (n.shard) shardSet.add(n.shard);
+
+      origToMerged[it.id] = newId;
+    }
+
+    // Decide the merged node "device":
+    // - HYBRID only when device types differ
+    // - otherwise pick a stable representative device name (lexicographically smallest)
+    let dev = HYBRID_DEVICE;
+    let mergedDeviceType = 'hybrid';
+
+    let hybridTypes = [];
+    let hybridReps = [];
+    let hybridSizes = [];
+
+    if (devTypeSet.size <= 1){
+      mergedDeviceType = [...devTypeSet][0] || 'other';
+      const names = [...devNameSet].filter(Boolean).sort();
+      dev = names.length ? names[0] : UNKNOWN_DEVICE;
+    } else {
+      // Build a stable (and interpretable) type ordering: NPU -> PIM -> others,
+      // tie-broken by total duration then lexicographic.
+      hybridTypes = [...devTypeSet].sort((a,b) => {
+        const ra = typeRank(a), rb = typeRank(b);
+        if (ra !== rb) return ra - rb;
+        const da = Number(typeDur[a] || 0);
+        const db = Number(typeDur[b] || 0);
+        if (db !== da) return db - da;
+        return String(a).localeCompare(String(b));
+      });
+
+      const total = Object.values(typeDur).reduce((s,v) => s + Number(v || 0), 0);
+
+      // Percent sizes for Cytoscape pie slices; ensure they sum to 100.
+      let sum = 0;
+      for (let i=0;i<hybridTypes.length;i++){
+        const t = hybridTypes[i];
+
+        let pct = 0;
+        if (total > 1e-12){
+          pct = (Number(typeDur[t] || 0) / total) * 100;
+          pct = Math.round(pct * 10) / 10;
+        } else {
+          pct = 100 / Math.max(1, hybridTypes.length);
+          pct = Math.round(pct * 10) / 10;
+        }
+
+        if (i === hybridTypes.length - 1){
+          pct = clamp(100 - sum, 0, 100);
+        } else {
+          pct = clamp(pct, 0, 100);
+          sum += pct;
+        }
+        hybridSizes.push(pct);
+
+        // Representative device for this type: pick the device with max total duration.
+        let bestDev = null;
+        let bestDur = -Infinity;
+        for (const [dn, dd] of Object.entries(devDur)){
+          if (devTypeOfDev[dn] !== t) continue;
+          const v = Number(dd || 0);
+          if (v > bestDur){
+            bestDur = v;
+            bestDev = dn;
+          }
+        }
+        hybridReps.push(bestDev || UNKNOWN_DEVICE);
+      }
+    }
+
+    merged[newId] = {
+      ...arr[0].n,
+      node_id: newId,
+      op,
+      device: dev,
+      device_type: mergedDeviceType,
+      start: Number.isFinite(start) ? start : arr[0].n.start,
+      end: Number.isFinite(finish) ? finish : arr[0].n.end,
+      duration: durSum,
+      mergedFrom: arr.map(x => x.id),
+      shardCount: arr.length,
+      shardList: [...shardSet],
+
+      // For HYBRID nodes: which types/devices contributed and their slice sizes.
+      hybridTypes,
+      hybridReps,
+      hybridSizes
+    };
+  }
+  return { mergedNodesById: merged, origToMerged };
+}
+
+/* =========================
+   Layer topology (copied and simplified from the uploaded DAG viewer)
+========================= */
+function _isLayerId(x){ return /^L\d+_/.test(String(x || '')); }
+
+function layerHelpers(nodesById, L){
+  const N = (name) => `L${L}_${name}`;
+  const exists = (id) => !!nodesById[id];
+
+  function pick(names){
+    if (!Array.isArray(names)) names = [names];
+
+    for (const name of names){
+      const id = _isLayerId(name) ? String(name) : N(String(name));
+      if (exists(id)) return id;
+    }
+
+    const ups = names.map(x => String(x).toUpperCase());
+    for (const id of Object.keys(nodesById)){
+      const up = id.toUpperCase();
+      for (const u of ups){
+        if (up === u) return id;
+        if (up.endsWith('_' + u)) return id;
+        if (up.includes('_' + u + '_')) return id;
+      }
+    }
+    return null;
+  }
+
+  function add(E, u, v){
+    const uid = pick(u);
+    const vid = pick(v);
+    if (uid && vid && exists(uid) && exists(vid)) E.push([uid, vid]);
+  }
+
+  return { N, exists, pick, add };
+}
+
+function buildLayerEdgesLlamaLike(nodesById, L){
+  const { N, exists, pick, add } = layerHelpers(nodesById, L);
+  const E = [];
+
+  const ln1 = pick(['LN1', 'LN']);
+  const x = pick('X');
+  if (x && ln1) E.push([x, ln1]);
+
+  if (ln1){
+    add(E, ln1, 'Q');
+    add(E, ln1, 'K');
+    add(E, ln1, 'V');
+  }
+
+  const qk = pick('QK');
+  if (qk){
+    add(E, 'Q', qk);
+    if (exists(N('K_read'))){ add(E, 'K', 'K_read'); add(E, 'K_read', qk); }
+    else { add(E, 'K', qk); }
+  }
+
+  add(E, 'QK', 'Softmax');
+  add(E, 'Softmax', 'SV');
+
+  if (exists(N('V_read'))){ add(E, 'V', 'V_read'); add(E, 'V_read', 'SV'); }
+  else { add(E, 'V', 'SV'); }
+
+  add(E, 'SV', 'O');
+
+  if (exists(N('O_merge'))){
+    add(E, 'O', 'O_merge');
+    add(E, 'O_merge', 'Add1');
+  } else {
+    add(E, 'O', 'Add1');
+  }
+
+  add(E, 'X', 'Add1');
+  add(E, 'Add1', 'LN2');
+
+  add(E, 'LN2', 'FFN_W1');
+  add(E, 'LN2', 'FFN_W3');
+
+  add(E, 'FFN_W1', 'Act');
+  add(E, 'FFN_W3', 'Act');
+  add(E, 'Act', 'FFN_W2');
+
+  add(E, 'Add1', 'Add2');
+
+  if (exists(N('FFN_merge'))){
+    add(E, 'FFN_W2', 'FFN_merge');
+    add(E, 'FFN_merge', 'Add2');
+  } else {
+    add(E, 'FFN_W2', 'Add2');
+  }
+
+  add(E, 'K', 'K_write');
+  add(E, 'V', 'V_write');
+
+  return E;
+}
+
+function buildLayerEdgesMpt(nodesById, L){
+  const { N, exists, pick, add } = layerHelpers(nodesById, L);
+  const E = [];
+
+  const ln1 = pick(['LN1', 'LN']);
+  const x = pick('X');
+  if (x && ln1) E.push([x, ln1]);
+
+  if (ln1){
+    add(E, ln1, 'Q');
+    add(E, ln1, 'K');
+    add(E, ln1, 'V');
+  }
+
+  add(E, 'Q', 'QK');
+  if (exists(N('K_read'))){ add(E, 'K', 'K_read'); add(E, 'K_read', 'QK'); }
+  else { add(E, 'K', 'QK'); }
+
+  add(E, 'QK', 'Softmax');
+  add(E, 'Softmax', 'SV');
+
+  if (exists(N('V_read'))){ add(E, 'V', 'V_read'); add(E, 'V_read', 'SV'); }
+  else { add(E, 'V', 'SV'); }
+
+  add(E, 'SV', 'O');
+
+  if (exists(N('O_merge'))){
+    add(E, 'O', 'O_merge');
+    add(E, 'O_merge', 'Add1');
+  } else {
+    add(E, 'O', 'Add1');
+  }
+
+  add(E, 'X', 'Add1');
+  add(E, 'Add1', 'LN2');
+
+  add(E, 'LN2', 'FFN_W1');
+  add(E, 'FFN_W1', 'GELU');
+  add(E, 'GELU', 'FFN_W2');
+
+  add(E, 'Add1', 'Add2');
+
+  if (exists(N('FFN_merge'))){
+    add(E, 'FFN_W2', 'FFN_merge');
+    add(E, 'FFN_merge', 'Add2');
+  } else {
+    add(E, 'FFN_W2', 'Add2');
+  }
+
+  add(E, 'K', 'K_write');
+  add(E, 'V', 'V_write');
+
+  return E;
+}
+
+function buildLayerEdgesPalm(nodesById, L){
+  const { N, exists, pick, add } = layerHelpers(nodesById, L);
+  const E = [];
+
+  const ln = pick(['LN', 'LN1']);
+  const x = pick('X');
+  if (x && ln) E.push([x, ln]);
+
+  if (ln){
+    add(E, ln, 'Q');
+    add(E, ln, 'K');
+    add(E, ln, 'V');
+    add(E, ln, 'FFN_W1');
+  }
+
+  add(E, 'Q', 'QK');
+  if (exists(N('K_read'))){ add(E, 'K', 'K_read'); add(E, 'K_read', 'QK'); }
+  else { add(E, 'K', 'QK'); }
+
+  add(E, 'QK', 'Softmax');
+  add(E, 'Softmax', 'SV');
+
+  if (exists(N('V_read'))){ add(E, 'V', 'V_read'); add(E, 'V_read', 'SV'); }
+  else { add(E, 'V', 'SV'); }
+
+  add(E, 'SV', 'O');
+
+  add(E, 'FFN_W1', 'GELU');
+  add(E, 'GELU', 'FFN_W2');
+
+  add(E, 'X', 'Add2');
+
+  if (exists(N('O_merge'))){
+    add(E, 'O', 'O_merge');
+    add(E, 'O_merge', 'Add2');
+  } else {
+    add(E, 'O', 'Add2');
+  }
+
+  if (exists(N('FFN_merge'))){
+    add(E, 'FFN_W2', 'FFN_merge');
+    add(E, 'FFN_merge', 'Add2');
+  } else {
+    add(E, 'FFN_W2', 'Add2');
+  }
+
+  add(E, 'K', 'K_write');
+  add(E, 'V', 'V_write');
+
+  return E;
+}
+
+function buildLayerEdgesMixtral(nodesById, L){
+  const { N, exists, pick, add } = layerHelpers(nodesById, L);
+  const E = [];
+
+  const ln1 = pick(['LN1', 'LN']);
+  const x = pick('X');
+  if (x && ln1) E.push([x, ln1]);
+
+  if (ln1){
+    add(E, ln1, 'Q');
+    add(E, ln1, 'K');
+    add(E, ln1, 'V');
+  }
+
+  add(E, 'Q', 'QK');
+  if (exists(N('K_read'))){ add(E, 'K', 'K_read'); add(E, 'K_read', 'QK'); }
+  else { add(E, 'K', 'QK'); }
+
+  add(E, 'QK', 'Softmax');
+  add(E, 'Softmax', 'SV');
+
+  if (exists(N('V_read'))){ add(E, 'V', 'V_read'); add(E, 'V_read', 'SV'); }
+  else { add(E, 'V', 'SV'); }
+
+  add(E, 'SV', 'O');
+
+  if (exists(N('O_merge'))){
+    add(E, 'O', 'O_merge');
+    add(E, 'O_merge', 'Add1');
+  } else {
+    add(E, 'O', 'Add1');
+  }
+  add(E, 'X', 'Add1');
+
+  add(E, 'Add1', 'LN2');
+
+  const ln2 = pick('LN2');
+  const routerId = pick(['Router', 'MOE_ROUTER', 'MoE_Router']);
+
+  const expertMap = {};
+  for (const [id, n] of Object.entries(nodesById || {})){
+    const op = String(n?.op || '');
+    const U = op.toUpperCase();
+    let m;
+    if ((m = /^FFN_W1_E(\d+)/i.exec(U))){
+      const e = m[1]; expertMap[e] ||= {}; expertMap[e].w1 = id;
+    } else if ((m = /^FFN_W3_E(\d+)/i.exec(U))){
+      const e = m[1]; expertMap[e] ||= {}; expertMap[e].w3 = id;
+    } else if ((m = /^ACT_E(\d+)/i.exec(U))){
+      const e = m[1]; expertMap[e] ||= {}; expertMap[e].act = id;
+    } else if ((m = /^FFN_W2_E(\d+)/i.exec(U))){
+      const e = m[1]; expertMap[e] ||= {}; expertMap[e].w2 = id;
+    }
+  }
+
+  for (const e of Object.keys(expertMap)){
+    const ex = expertMap[e];
+    if (ln2){
+      if (ex.w1) E.push([ln2, ex.w1]);
+      if (ex.w3) E.push([ln2, ex.w3]);
+    }
+    if (ex.w1 && ex.act) E.push([ex.w1, ex.act]);
+    if (ex.w3 && ex.act) E.push([ex.w3, ex.act]);
+    if (ex.act && ex.w2) E.push([ex.act, ex.w2]);
+    if (routerId && ex.w2) E.push([ex.w2, routerId]);
+  }
+
+  if (ln2 && routerId) E.push([ln2, routerId]);
+
+  add(E, 'Add1', 'Add2');
+  if (routerId) add(E, routerId, 'Add2');
+
+  add(E, 'K', 'K_write');
+  add(E, 'V', 'V_write');
+
+  return E;
+}
+
+function buildLayerEdgesByModel(nodesById, L, modelFamily){
+  const m = String(modelFamily || '').toLowerCase();
+  if (m === 'palm') return buildLayerEdgesPalm(nodesById, L);
+  if (m === 'mpt') return buildLayerEdgesMpt(nodesById, L);
+  // default: llama-like
+  return buildLayerEdgesLlamaLike(nodesById, L);
+}
+
+/* =========================
+   Cytoscape view
+========================= */
+function makeCy(container){
+  const cy = cytoscape({
+    container,
+    layout: { name: 'dagre', rankDir: 'LR', nodeSep: 28, rankSep: 64, edgeSep: 14 },
+    style: [
+      {
+        selector: 'node',
+        style: {
+          'shape': ele => {
+            const t = ele.data('type');
+            return ({
+              attention: 'diamond',
+              matmul: 'square',
+              norm: 'ellipse',
+              softmax: 'tag',
+              activation: 'ellipse',
+              elementwise: 'hexagon',
+              io: 'triangle',
+              moe: 'vee',
+              other: 'round-rectangle'
+            })[t] || 'round-rectangle';
+          },
+          'background-color': ele => ele.data('color') || UNKNOWN_COLOR,
+          'label': ele => ele.data('labelShort') || ele.data('label') || ele.id(),
+          'color': '#ffffff',
+          'font-size': 12,
+          'min-zoomed-font-size': 8,
+          'text-wrap': 'wrap',
+          'text-max-width': 140,
+          'padding': 10,
+          'border-width': 1.5,
+          'border-color': 'rgba(255,255,255,0.18)',
+          'text-outline-width': 3,
+          'text-outline-color': 'rgba(0,0,0,0.35)',
+          'opacity': 1
+        }
+      },
+
+      {
+        selector: 'node[dev = "HYBRID"]',
+        style: {
+          'background-color': 'rgba(17,24,39,0.9)',
+          'pie-size': '100%',
+          'pie-1-background-color': 'data(pie1Color)',
+          'pie-1-background-size': 'data(pie1Size)',
+          'pie-2-background-color': 'data(pie2Color)',
+          'pie-2-background-size': 'data(pie2Size)',
+          'pie-3-background-color': 'data(pie3Color)',
+          'pie-3-background-size': 'data(pie3Size)'
+        }
+      },
+      {
+        selector: 'node.notStarted',
+        style: {
+          'opacity': 0.18
+        }
+      },
+      {
+        selector: 'node.running',
+        style: {
+          'opacity': 1,
+          'border-width': 5,
+          'border-color': 'rgba(255,255,255,0.85)'
+        }
+      },
+      {
+        selector: 'node.done',
+        style: {
+          'opacity': 1
+        }
+      },
+      {
+        selector: 'edge',
+        style: {
+          'width': 2.2,
+          'line-color': 'rgba(148,163,184,0.75)',
+          'target-arrow-shape': 'triangle',
+          'target-arrow-color': 'rgba(148,163,184,0.75)',
+          'curve-style': 'bezier'
+        }
+      },
+      { selector: 'node:selected', style: { 'border-width': 4, 'border-color': '#60a5fa' } },
+      { selector: 'edge:selected', style: { 'line-color': '#60a5fa', 'target-arrow-color': '#60a5fa', 'width': 3 } }
+    ]
+  });
+  return cy;
+}
+
+function applyElements(cy, elements, posMap){
+  cy.elements().remove();
+
+  const els = elements.map(el => {
+    if (el.data && el.data.id && posMap && posMap[el.data.id]){
+      return { ...el, position: posMap[el.data.id] };
+    }
+    return el;
+  });
+
+  cy.add(els);
+}
+
+function runLayoutAndCapture(cy){
+  return new Promise((resolve) => {
+    const layout = cy.layout({ name:'dagre', rankDir:'LR', nodeSep: 28, rankSep: 64, edgeSep: 14 });
+    layout.run();
+    setTimeout(() => {
+      const pos = {};
+      cy.nodes().forEach(n => { pos[n.id()] = { x: n.position('x'), y: n.position('y') }; });
+      resolve(pos);
+    }, 0);
+  });
+}
+
+/* =========================
+   Device overlay
+========================= */
+function createDeviceOverlay(overlayEl, deviceList, deviceTypeMap, colorMap){
+  overlayEl.innerHTML = '';
+  const icons = new Map();
+
+  const dockX = 10;
+  const dockY0 = 10;
+  const dockGap = 22;
+
+  deviceList.forEach((dev, i) => {
+    const icon = document.createElement('div');
+    icon.className = 'devIcon idle ' + (deviceTypeMap[dev] || 'other');
+
+    const bg = colorMap[dev] || UNKNOWN_COLOR;
+    icon.style.background = bg;
+
+    const lbl = document.createElement('div');
+    lbl.className = 'lbl';
+    lbl.textContent = dev;
+    icon.appendChild(lbl);
+
+    icon.style.left = dockX + 'px';
+    icon.style.top = (dockY0 + i * dockGap) + 'px';
+
+    overlayEl.appendChild(icon);
+    icons.set(dev, { el: icon, dock: { x: dockX, y: dockY0 + i * dockGap }, jitter: (hashStr(dev) % 9) - 4 });
+  });
+
+  return icons;
+}
+
+function positionIconNearNode(icon, node, jitter){
+  if (!node) return;
+  const rp = node.renderedPosition();
+  const x = rp.x + 14 + (jitter || 0);
+  const y = rp.y - 10 + (jitter || 0);
+  icon.style.left = x + 'px';
+  icon.style.top = y + 'px';
+}
+
+function dockIcon(icon, dock){
+  icon.style.left = dock.x + 'px';
+  icon.style.top = dock.y + 'px';
+}
+
+/* =========================
+   Build a view (DAG + segment) for a given trace/layer/token
+========================= */
+
+/* =========================
+   Operator filtering for display
+   Rules:
+   1) Except Identity ops, nodes with duration == 0 are hidden.
+   2) If an op is not part of the model definition, hide it (even if present in trace).
+========================= */
+const ZERO_DUR_EPS = 1e-15;
+
+function isIdentityOpNode(opKey, opDisp){
+  const k = String(opKey || '').trim().toUpperCase();
+  const d = String(opDisp || '').trim().toUpperCase();
+  // In most traces, Identity is represented by the structural op "X".
+  return k === 'X' || k === 'IDENTITY' || d === 'IDENTITY';
+}
+
+// Ops that are part of the built-in model definitions (edge builders).
+// This is used only for filtering display; metrics still use the full trace.
+const MODEL_DEF_OPS_COMMON = new Set([
+  'X', 'LN', 'LN1', 'LN2',
+  'Q', 'K', 'V',
+  'QK', 'SOFTMAX', 'SV',
+  'O',
+  'ADD1', 'ADD2',
+  'K_READ', 'V_READ',
+  'K_WRITE', 'V_WRITE',
+  'O_MERGE', 'FFN_MERGE',
+  'ROUTER', 'MOE_ROUTER'
+]);
+
+const MODEL_DEF_OPS = {
+  llama: new Set([
+    ...MODEL_DEF_OPS_COMMON,
+    'FFN_W1', 'FFN_W2', 'FFN_W3', 'ACT'
+  ]),
+  mpt: new Set([
+    ...MODEL_DEF_OPS_COMMON,
+    'FFN_W1', 'FFN_W2', 'GELU'
+  ]),
+  palm: new Set([
+    ...MODEL_DEF_OPS_COMMON,
+    'FFN_W1', 'FFN_W2', 'GELU'
+  ]),
+  mixtral: new Set([
+    ...MODEL_DEF_OPS_COMMON,
+    'FFN_W1', 'FFN_W2', 'FFN_W3', 'ACT'
+  ])
+};
+
+function opInModelDefinition(opKey, modelFamily){
+  const k = String(opKey || '').trim().toUpperCase();
+  const m = String(modelFamily || 'llama').trim().toLowerCase();
+  const set = MODEL_DEF_OPS[m] || MODEL_DEF_OPS.llama;
+  if (set.has(k)) return true;
+
+  // Mixtral expert patterns (if used).
+  if (m === 'mixtral'){
+    if (/^FFN_W[123]_E\d+$/i.test(k)) return true;
+    if (/^ACT_E\d+$/i.test(k)) return true;
+    if (/^FFN_W2_E\d+$/i.test(k)) return true;
+  }
+  return false;
+}
+
+function shouldShowMergedNode(n, modelFamily, keepOpsByDuration){
+  if (!n) return false;
+
+  const opKey  = String(n.op || '').trim();
+  const opDisp = String(n.op_display || opKey).trim();
+
+  const isId = isIdentityOpNode(opKey, opDisp);
+
+  // Always hide ops that are not part of the selected model definition,
+  // except Identity (which is usually represented as X).
+  if (!isId && !opInModelDefinition(opKey, modelFamily)) return false;
+
+  // Duration-based filtering:
+  // Hide a non-Identity op only if its duration is ~0 AND it is ~0 in BOTH traces.
+  // `keepOpsByDuration` is the set of opKeys that have non-zero duration in *either* CSV.
+  const dur = Number(n.duration);
+  const keepByDur = keepOpsByDuration && keepOpsByDuration.has(String(opKey).trim().toUpperCase());
+
+  if (!isId && !keepByDur && Number.isFinite(dur) && Math.abs(dur) <= ZERO_DUR_EPS) return false;
+
+  return true;
+}
+
+function computeKeepOpsByDuration(phase, layer, tokenIdx){
+  // Returns a set of opKeys (uppercased) that should be kept even if one side has duration=0,
+  // as long as the other trace has non-zero duration for that op.
+  const keep = new Set();
+  if (!traceBase || !traceHeu) return keep;
+
+  const mergedFor = (tr) => {
+    const rows = tr.getRows(phase, layer, tokenIdx);
+    const nodesByIdRaw = {};
+    for (const r of rows){
+      nodesByIdRaw[r.node_id] = r;
+    }
+    const { mergedNodesById } = mergeShardNodes(nodesByIdRaw, layer);
+    return mergedNodesById || {};
+  };
+
+  const mB = mergedFor(traceBase);
+  const mH = mergedFor(traceHeu);
+
+  const durB = {};
+  const durH = {};
+
+  for (const n of Object.values(mB)){
+    const k = String(n?.op || '').trim().toUpperCase();
+    if (!k) continue;
+    const d = Number(n?.duration);
+    durB[k] = Number.isFinite(d) ? d : 0;
+  }
+  for (const n of Object.values(mH)){
+    const k = String(n?.op || '').trim().toUpperCase();
+    if (!k) continue;
+    const d = Number(n?.duration);
+    durH[k] = Number.isFinite(d) ? d : 0;
+  }
+
+  const keys = new Set([...Object.keys(durB), ...Object.keys(durH)]);
+  for (const k of keys){
+    const b = Number(durB[k] || 0);
+    const h = Number(durH[k] || 0);
+    if (Math.abs(b) > ZERO_DUR_EPS || Math.abs(h) > ZERO_DUR_EPS){
+      keep.add(k);
+    }
+  }
+  return keep;
+}
+
+function buildLayerGraph(trace, phase, layer, tokenIdx, modelFamily, deviceColorMap, keepOpsByDuration){
+  const rows = trace.getRows(phase, layer, tokenIdx);
+  const nodesByIdRaw = {};
+  for (const r of rows){
+    nodesByIdRaw[r.node_id] = r;
+  }
+
+  const { mergedNodesById, origToMerged } = mergeShardNodes(nodesByIdRaw, layer);
+
+  // Filter nodes for display (see shouldShowMergedNode() above).
+  const filteredNodesById = {};
+  const keepMergedIds = new Set();
+
+  for (const [id, n] of Object.entries(mergedNodesById || {})){
+    if (shouldShowMergedNode(n, modelFamily, keepOpsByDuration)){
+      filteredNodesById[id] = n;
+      keepMergedIds.add(id);
+    }
+  }
+
+  const elements = [];
+  for (const id of Object.keys(filteredNodesById)){
+    const n = filteredNodesById[id];
+
+    const opKey = String(n.op || '');
+    const opDisp = String(n.op_display || opKey);
+
+    // Use both the structural op name and the original op label for type inference.
+    const typ = opType(opKey + ' ' + opDisp);
+
+    const dev = normalizeDevice(n.device);
+    const color = deviceColorMap[dev] || UNKNOWN_COLOR;
+
+    let labelBase = opKey;
+    // Make activations readable when the trace uses a real activation name (e.g., SwiGLU).
+    if (opKey.toUpperCase() === 'ACT' && opDisp && opDisp.toUpperCase() !== 'ACT'){
+      labelBase = opDisp;
+    }
+
+    const labelShort = (n.shardCount && n.shardCount > 1) ? `${labelBase}×${n.shardCount}` : labelBase;
+
+    const pie = {};
+    if (dev === HYBRID_DEVICE){
+      const reps = Array.isArray(n.hybridReps) ? n.hybridReps : [];
+      const sizes = Array.isArray(n.hybridSizes) ? n.hybridSizes : [];
+
+      const getC = (i) => {
+        const dn = normalizeDevice(reps[i]);
+        return deviceColorMap[dn] || UNKNOWN_COLOR;
+      };
+
+      pie.pie1Color = getC(0);
+      pie.pie1Size  = Number.isFinite(+sizes[0]) ? (+sizes[0]) : 50;
+
+      pie.pie2Color = getC(1);
+      pie.pie2Size  = Number.isFinite(+sizes[1]) ? (+sizes[1]) : (reps.length > 1 ? 50 : 0);
+
+      pie.pie3Color = getC(2);
+      pie.pie3Size  = Number.isFinite(+sizes[2]) ? (+sizes[2]) : 0;
+    }
+
+    elements.push({
+      data: {
+        id,
+        label: id,
+        labelShort,
+        op: opKey,
+        op_display: opDisp,
+        type: typ,
+        dev,
+        color,
+        ...pie
+      }
+    });
+  }
+
+  const edges = buildLayerEdgesByModel(filteredNodesById, layer, modelFamily);
+  for (const [u,v] of edges){
+    if (filteredNodesById[u] && filteredNodesById[v]){
+      elements.push({ data: { id: `${u}->${v}`, source: u, target: v } });
+    }
+  }
+
+  return { elements, mergedNodesById: filteredNodesById, origToMerged, rows, keepMergedIds };
+}
+
+
+function buildLayerSegment(rows, origToMerged, keepMergedIds){
+  let t0 = Infinity, t1 = -Infinity;
+
+  const events = [];
+  const byDevice = {};
+  const nodeStarts = {};
+  const nodeEnds = {};
+
+  const keep = (keepMergedIds && keepMergedIds.size) ? (id => keepMergedIds.has(id)) : (() => true);
+
+  for (const r of rows){
+    const s = Number(r.start);
+    const e = Number(r.end);
+    if (!Number.isFinite(s) || !Number.isFinite(e)) continue;
+    t0 = Math.min(t0, s);
+    t1 = Math.max(t1, e);
+
+    const mergedId = origToMerged[r.node_id] || r.node_id;
+    if (!keep(mergedId)) continue;
+    const ev = {
+      mergedId,
+      originalId: r.node_id,
+      op: r.op,
+      device: normalizeDevice(r.device),
+      deviceType: r.device_type || 'other',
+      startRel: s,
+      endRel: e
+    };
+    events.push(ev);
+
+    (byDevice[ev.device] ||= []).push(ev);
+
+    (nodeStarts[mergedId] ||= []).push(s);
+    (nodeEnds[mergedId] ||= []).push(e);
+  }
+
+  if (!Number.isFinite(t0)) t0 = 0;
+  if (!Number.isFinite(t1)) t1 = t0;
+
+  // Convert to relative times
+  events.forEach(ev => { ev.startRel -= t0; ev.endRel -= t0; });
+
+  for (const dev of Object.keys(byDevice)){
+    byDevice[dev].forEach(ev => { ev.startRel -= 0; ev.endRel -= 0; });
+    byDevice[dev].sort((a,b) => a.startRel - b.startRel);
+  }
+
+  const nodeState = {};
+  for (const nid of Object.keys(nodeStarts)){
+    const st = nodeStarts[nid].map(x => x - t0).sort((a,b)=>a-b);
+    const en = nodeEnds[nid].map(x => x - t0).sort((a,b)=>a-b);
+    nodeState[nid] = { total: st.length, starts: st, ends: en, si: 0, ei: 0, state: 'notStarted' };
+  }
+
+  return {
+    duration: Math.max(1e-9, (t1 - t0)),
+    t0Abs: t0,
+    t1Abs: t1,
+    events,
+    byDevice,
+    nodeState
+  };
+}
+
+/* =========================
+   Trace object from CSV
+========================= */
+function buildTrace(rowsRaw){
+  const rows = [];
+  const layers = new Set();
+  const devices = new Set();
+  const deviceType = {};
+
+  // Normalize
+  for (const rr of rowsRaw){
+    const phase = String(rr.phase || rr.Phase || '').trim().toLowerCase();
+    const node_id = String(rr.node_id || rr.nodeId || rr.id || '').trim();
+    if (!phase || !node_id) continue;
+
+    const parsed = parseLayerOp(node_id);
+    const layer = parsed.layer;
+    const op_key = parsed.op;
+    const shard = parsed.shard;
+    if (layer == null) continue;
+
+    const start = Number(rr.start);
+    const end = Number(rr.end);
+    const duration = Number(rr.duration);
+
+    const op_display = String(rr.op || '').trim() || op_key;
+
+    const device = normalizeDevice(rr.device);
+    const device_type = String(rr.device_type || '').trim().toLowerCase() || (deviceFamily(device) === 'NPU' ? 'npu' : (deviceFamily(device) === 'PIM' ? 'pim' : 'other'));
+    const mode = String(rr.mode || '').trim();
+
+    layers.add(layer);
+    devices.add(device);
+    if (!deviceType[device]) deviceType[device] = device_type;
+
+    rows.push({
+      phase,
+      node_id,
+      op: op_key,
+      op_display,
+      layer,
+      shard,
+      device,
+      device_type,
+      mode,
+      start, end, duration
+    });
+  }
+
+  const layerList = [...layers].sort((a,b)=>a-b);
+
+  // Prefill / decode split
+  const prefill = rows.filter(r => r.phase === 'prefill');
+  const decode = rows.filter(r => r.phase === 'decode');
+
+  const prefillEnd = prefill.reduce((m,r)=>Math.max(m, Number(r.end)||0), 0);
+
+  // Token indexing for decode
+  const nodesPerToken = prefill.length;
+  const decodeSorted = decode.slice().sort((a,b)=>(a.start-b.start));
+  const tokenCount = (nodesPerToken > 0) ? Math.floor(decodeSorted.length / nodesPerToken) : 0;
+
+  // Assign token_idx
+  for (let i=0;i<decodeSorted.length;i++){
+    const t = (nodesPerToken > 0) ? Math.floor(i / nodesPerToken) : 0;
+    decodeSorted[i].token_idx = t;
+  }
+
+  // Build per-token start/end using the full decode (all layers)
+  const decodeTokenStarts = [];
+  const decodeTokenEnds = [];
+  for (let t=0;t<tokenCount;t++){
+    let sMin = Infinity, eMax = -Infinity;
+    const a = t * nodesPerToken;
+    const b = (t+1) * nodesPerToken;
+    for (let i=a;i<b;i++){
+      const r = decodeSorted[i];
+      const s = Number(r.start), e = Number(r.end);
+      if (Number.isFinite(s)) sMin = Math.min(sMin, s);
+      if (Number.isFinite(e)) eMax = Math.max(eMax, e);
+    }
+    decodeTokenStarts.push(Number.isFinite(sMin) ? sMin : 0);
+    decodeTokenEnds.push(Number.isFinite(eMax) ? eMax : 0);
+  }
+
+  // Build row index for quick retrieval: phase -> layer -> token(optional) -> rows
+  const idxPrefill = {};
+  for (const r of prefill){
+    (idxPrefill[r.layer] ||= []).push(r);
+  }
+
+  const idxDecode = {};
+  for (const r of decodeSorted){
+    const t = r.token_idx || 0;
+    idxDecode[t] ||= {};
+    (idxDecode[t][r.layer] ||= []).push(r);
+  }
+
+  const modes = [...new Set(rows.map(r => r.mode).filter(Boolean))].sort();
+
+  return {
+    rows,
+    layerList,
+    devices: [...devices].filter(d => d !== UNKNOWN_DEVICE).sort(),
+    deviceType,
+    modes,
+
+    prefillEnd,
+    nodesPerToken,
+    tokenCount,
+    decodeTokenStarts,
+    decodeTokenEnds,
+
+    getRows: (phase, layer, tokenIdx) => {
+      const ph = String(phase || '').toLowerCase();
+      if (ph === 'prefill') return (idxPrefill[layer] || []).slice();
+      if (ph === 'decode'){
+        const t = Number.isFinite(+tokenIdx) ? Number(tokenIdx) : 0;
+        return (idxDecode?.[t]?.[layer] || []).slice();
+      }
+      return [];
+    }
+  };
+}
+
+/* =========================
+   Global app state
+========================= */
+let traceBase = null;
+let traceHeu = null;
+
+let cyBase = null;
+let cyHeu = null;
+
+let posMapByLayer = {}; // layer -> positions
+
+let overlayIconsBase = null;
+let overlayIconsHeu = null;
+
+const UI = {
+  model: document.getElementById('model'),
+  batch: document.getElementById('batch'),
+  prefillLen: document.getElementById('prefillLen'),
+  decodeLen: document.getElementById('decodeLen'),
+  dtype: document.getElementById('dtype'),
+  fileBase: document.getElementById('fileBase'),
+  fileHeu: document.getElementById('fileHeu'),
+  baseName: document.getElementById('baseName'),
+  heuName: document.getElementById('heuName'),
+  phase: document.getElementById('phase'),
+  layer: document.getElementById('layer'),
+  layerMode: document.getElementById('layerMode'),
+  layerCountWrap: document.getElementById('layerCountWrap'),
+  layerCount: document.getElementById('layerCount'),
+  tokStart: document.getElementById('tokStart'),
+  tokCount: document.getElementById('tokCount'),
+  tokRow: document.getElementById('tokRow'),
+  strideRow: document.getElementById('strideRow'),
+  strideLabel: document.getElementById('strideLabel'),
+  stride: document.getElementById('stride'),
+  restart: document.getElementById('restart'),
+  play: document.getElementById('play'),
+  step: document.getElementById('step'),
+  speed: document.getElementById('speed'),
+  speedVal: document.getElementById('speedVal'),
+  fit: document.getElementById('fit'),
+  export: document.getElementById('export'),
+  dataStatus: document.getElementById('dataStatus'),
+
+  infoTitle: document.getElementById('infoTitle'),
+  infoSub: document.getElementById('infoSub'),
+  pProg: document.getElementById('pProg'),
+  pSpeedup: document.getElementById('pSpeedup'),
+  pSaved: document.getElementById('pSaved'),
+  pBaseT: document.getElementById('pBaseT'),
+  pHeuT: document.getElementById('pHeuT'),
+  baseMode: document.getElementById('baseMode'),
+  heuMode: document.getElementById('heuMode'),
+
+  jumpBase: document.getElementById('jumpBase'),
+  jumpHeu: document.getElementById('jumpHeu'),
+
+  spdMetric: document.getElementById('spdMetric'),
+  speedChart: document.getElementById('speedChart'),
+  chartTitle: document.getElementById('chartTitle'),
+  chartSub: document.getElementById('chartSub')
+};
+
+
+
+/* =========================
+   Infer prefill/decode lengths from trace filename
+   Example: "...4096x2048..." -> prefill=4096, decode=2048
+========================= */
+function inferSeqLensFromFilename(name){
+  const s = String(name || '');
+  const m = /(\d+)\s*x\s*(\d+)/i.exec(s);
+  if (!m) return null;
+
+  const prefill = Number(m[1]);
+  const decode  = Number(m[2]);
+  if (!Number.isFinite(prefill) || !Number.isFinite(decode)) return null;
+
+  return { prefill: Math.trunc(prefill), decode: Math.trunc(decode) };
+}
+
+function ensureSelectHasValue(sel, v){
+  if (!sel) return;
+  const val = String(v);
+
+  // If already present, just select it.
+  for (const opt of Array.from(sel.options || [])){
+    if (String(opt.value) === val || String(opt.textContent) === val){
+      sel.value = String(opt.value || opt.textContent);
+      return;
+    }
+  }
+
+  // Otherwise append and select.
+  const opt = document.createElement('option');
+  opt.value = val;
+  opt.textContent = val;
+  sel.appendChild(opt);
+  sel.value = val;
+}
+
+function maybeApplySeqLensFromFilename(name){
+  const got = inferSeqLensFromFilename(name);
+  if (!got) return false;
+
+  ensureSelectHasValue(UI.prefillLen, got.prefill);
+  ensureSelectHasValue(UI.decodeLen, got.decode);
+  return true;
+}
+const player = {
+  playing: false,
+  segIdx: 0,
+  segList: [],     // [{ phase, layer, tok }]
+  p: 0,            // normalized progress [0,1]
+  lastTS: 0,
+  speed: 4.0,
+
+  segBase: null,
+  segHeu: null,
+
+  model: 'llama',
+  layersToPlay: [],
+
+  // control how long a segment takes in wall time at speed = 1
+  segmentSecondsAt1x: 2.4
+};
+
+function curSeg(){
+  return player.segList[player.segIdx] || null;
+}
+
+function phaseIncludesDecode(sel){
+  const v = String(sel || '').toLowerCase();
+  return v === 'decode' || v === 'prefill_decode';
+}
+
+function phasesToPlay(sel){
+  const v = String(sel || '').toLowerCase();
+  if (v === 'prefill') return ['prefill'];
+  if (v === 'decode') return ['decode'];
+  return ['prefill', 'decode'];
+}
+
+function setStatus(msg){
+  if (UI.dataStatus) UI.dataStatus.textContent = msg;
+}
+
+function canRun(){
+  return !!(traceBase && traceHeu);
+}
+
+
+let inferredModel = null;
+
+function inferModelFromTraces(){
+  const ids = [];
+  const take = (tr) => {
+    if (!tr || !tr.rows) return;
+    // Only sample a subset for speed.
+    for (let i=0;i<tr.rows.length && ids.length < 1200;i++){
+      const r = tr.rows[i];
+      if (r && r.phase === 'prefill') ids.push(String(r.node_id || ''));
+    }
+  };
+  take(traceBase);
+  take(traceHeu);
+
+  const has = (re) => ids.some(id => re.test(id));
+
+  const hasAdd1 = has(/_Add1\b/i);
+  const hasLN1  = has(/_LN1\b/i);
+  const hasLN2  = has(/_LN2\b/i);
+  const hasFFNW3 = has(/_FFN_W3\b/i);
+  const hasAct  = has(/_Act(\b|_)/i);
+  const hasGELU = has(/_GELU\b/i);
+  const hasPalmLN = has(/_LN\b/i) && !hasLN1;
+
+  // PaLM-style blocks: a single LN feeding both attn + MLP, no Add1/LN2.
+  if (!hasAdd1 && !hasLN1 && hasPalmLN) return 'palm';
+
+  // LLaMA-like blocks: SwiGLU path (FFN_W3) / Act node naming.
+  if (hasFFNW3 || hasAct) return 'llama';
+
+  // MPT-style blocks: GELU MLP with Add1/LN2 residual structure.
+  if (hasGELU || (hasAdd1 && hasLN2)) return 'mpt';
+
+  return 'llama';
+}
+
+function resolveModelFamily(){
+  const sel = String(UI.model.value || 'auto').toLowerCase();
+  if (sel !== 'auto') return sel;
+
+  if (!inferredModel){
+    inferredModel = inferModelFromTraces();
+  }
+  return inferredModel || 'llama';
+}
+
+function modelLabel(){
+  const sel = String(UI.model.value || 'auto').toLowerCase();
+  const resolved = resolveModelFamily();
+  return (sel === 'auto') ? `auto→${resolved}` : resolved;
+}
+
+/* =========================
+   Rendering
+========================= */
+function populateLayerSelector(){
+  const layers = (traceBase?.layerList || []);
+  UI.layer.innerHTML = '';
+  for (const L of layers){
+    const opt = document.createElement('option');
+    opt.value = String(L);
+    opt.textContent = `L${L}`;
+    UI.layer.appendChild(opt);
+  }
+  if (layers.length){
+    UI.layer.value = String(layers[0]);
+  }
+}
+
+function updatePhaseUI(){
+  const showTok = phaseIncludesDecode(UI.phase.value);
+  UI.tokRow.style.display = showTok ? '' : 'none';
+  UI.strideRow.style.display = showTok ? '' : 'none';
+}
+
+function updateLayerModeUI(){
+  const mode = String(UI.layerMode?.value || 'single').toLowerCase();
+  if (UI.layerCountWrap) UI.layerCountWrap.style.display = (mode === 'range') ? '' : 'none';
+}
+
+function ensureCys(){
+  if (!cyBase) cyBase = makeCy(document.getElementById('cyBase'));
+  if (!cyHeu) cyHeu = makeCy(document.getElementById('cyHeu'));
+}
+
+function computeDeviceUniverse(phase, layer, tokenIdx){
+  const rowsB = traceBase.getRows(phase, layer, tokenIdx);
+  const rowsH = traceHeu.getRows(phase, layer, tokenIdx);
+
+  const devSet = new Set();
+  for (const r of rowsB) devSet.add(normalizeDevice(r.device));
+  for (const r of rowsH) devSet.add(normalizeDevice(r.device));
+
+  const devices = [...devSet].filter(d => d !== UNKNOWN_DEVICE).sort();
+  const deviceType = {};
+  devices.forEach(d => {
+    deviceType[d] = traceBase.deviceType[d] || traceHeu.deviceType[d] || (deviceFamily(d) === 'NPU' ? 'npu' : (deviceFamily(d) === 'PIM' ? 'pim' : 'other'));
+  });
+
+  return { devices, deviceType };
+}
+
+async function renderFor(phase, layer, tokenIdx){
+  ensureCys();
+
+  const { devices, deviceType } = computeDeviceUniverse(phase, layer, tokenIdx);
+  const colorMap = buildDeviceColorMap(devices);
+
+  const modelFamily = player.model;
+
+  const keepOpsByDuration = computeKeepOpsByDuration(phase, layer, tokenIdx);
+
+  const gB = buildLayerGraph(traceBase, phase, layer, tokenIdx, modelFamily, colorMap, keepOpsByDuration);
+  const gH = buildLayerGraph(traceHeu, phase, layer, tokenIdx, modelFamily, colorMap, keepOpsByDuration);
+
+  // Capture positions per layer once
+  const layerKey = String(layer);
+  const posMap = posMapByLayer[layerKey] || null;
+
+  applyElements(cyBase, gB.elements, posMap);
+  applyElements(cyHeu, gH.elements, posMap);
+
+  if (!posMap){
+    const captured = await runLayoutAndCapture(cyBase);
+    posMapByLayer[layerKey] = captured;
+    applyElements(cyHeu, gH.elements, captured);
+  } else {
+    cyBase.layout({ name: 'preset' }).run();
+    cyHeu.layout({ name: 'preset' }).run();
+  }
+
+  cyBase.fit(cyBase.elements(), 30);
+  cyHeu.fit(cyHeu.elements(), 30);
+
+  // Rebuild overlays
+  overlayIconsBase = createDeviceOverlay(document.getElementById('ovBase'), devices, deviceType, colorMap);
+  overlayIconsHeu = createDeviceOverlay(document.getElementById('ovHeu'), devices, deviceType, colorMap);
+
+  // Build animation segments for this view
+  player.segBase = buildLayerSegment(gB.rows, gB.origToMerged, gB.keepMergedIds);
+  player.segHeu = buildLayerSegment(gH.rows, gH.origToMerged, gH.keepMergedIds);
+
+  // Reset node states
+  resetNodeClasses(cyBase);
+  resetNodeClasses(cyHeu);
+
+  // Update modes
+  UI.baseMode.textContent = (traceBase?.modes?.length ? traceBase.modes.join(', ') : '—');
+  UI.heuMode.textContent = (traceHeu?.modes?.length ? traceHeu.modes.join(', ') : '—');
+
+  // Keep overlays aligned during pan/zoom
+  const sync = () => {
+    renderFrame(); // re-position icons
+  };
+  cyBase.off('pan zoom render'); cyHeu.off('pan zoom render');
+  cyBase.on('pan zoom render', sync);
+  cyHeu.on('pan zoom render', sync);
+
+  renderFrame();
+}
+
+function resetNodeClasses(cy){
+  cy.nodes().forEach(n => {
+    n.removeClass('running');
+    n.removeClass('done');
+    n.addClass('notStarted');
+  });
+}
+
+function updateNodeClasses(cy, nodeState, tRel){
+  for (const [nid, st] of Object.entries(nodeState || {})){
+    const node = cy.getElementById(nid);
+    if (!node || node.empty()) continue;
+
+    while (st.si < st.total && st.starts[st.si] <= tRel) st.si++;
+    while (st.ei < st.total && st.ends[st.ei] <= tRel) st.ei++;
+
+    let state = 'notStarted';
+    if (st.ei >= st.total) state = 'done';
+    else if (st.si > 0) state = 'running';
+
+    if (state !== st.state){
+      st.state = state;
+      node.removeClass('notStarted'); node.removeClass('running'); node.removeClass('done');
+      node.addClass(state);
+    }
+  }
+}
+
+function activeEventForDevice(byDevice, device, tRel, ptr){
+  const list = byDevice[device] || [];
+  let i = ptr.i || 0;
+
+  while (i < list.length && list[i].endRel <= tRel) i++;
+  ptr.i = i;
+
+  if (i < list.length){
+    const ev = list[i];
+    if (ev.startRel <= tRel && tRel < ev.endRel) return ev;
+  }
+  return null;
+}
+
+const devicePtrsBase = new Map();
+const devicePtrsHeu = new Map();
+
+function resetDevicePtrs(){
+  devicePtrsBase.clear();
+  devicePtrsHeu.clear();
+  if (overlayIconsBase) for (const d of overlayIconsBase.keys()) devicePtrsBase.set(d, { i: 0 });
+  if (overlayIconsHeu) for (const d of overlayIconsHeu.keys()) devicePtrsHeu.set(d, { i: 0 });
+}
+
+function updateDeviceIcons(cy, icons, seg, tRel, ptrs){
+  if (!icons || !seg) return;
+  for (const [dev, iconObj] of icons.entries()){
+    const ptr = ptrs.get(dev) || { i: 0 };
+    ptrs.set(dev, ptr);
+    const ev = activeEventForDevice(seg.byDevice, dev, tRel, ptr);
+
+    const el = iconObj.el;
+    if (!el) continue;
+
+    if (ev){
+      el.classList.remove('idle');
+      const node = cy.getElementById(ev.mergedId);
+      if (node && !node.empty()){
+        positionIconNearNode(el, node, iconObj.jitter);
+      } else {
+        dockIcon(el, iconObj.dock);
+      }
+    } else {
+      el.classList.add('idle');
+      dockIcon(el, iconObj.dock);
+    }
+  }
+}
+
+/* =========================
+   Speed / saved-time metrics
+========================= */
+/* =========================
+   Speed / saved-time metrics
+   The metric display is aligned to *completed* work to avoid oscillations when playback is split per-layer.
+   - Prefill: updates after each completed prefill layer segment.
+   - Decode: updates after the last played layer of a sampled decode step.
+========================= */
+const METRIC_EPS = 1e-9;
+
+function safeDivGlobal(a,b){
+  if (!Number.isFinite(a) || !Number.isFinite(b) || Math.abs(b) < 1e-12) return NaN;
+  return a / b;
+}
+
+function layerDoneIdxForPrefill(seg){
+  if (!seg) return -1;
+  const done = (player.p >= 1 - METRIC_EPS) ? seg.layerPlayIdx : (seg.layerPlayIdx - 1);
+  return Number.isFinite(done) ? done : -1;
+}
+
+function tokenDoneIdxForDecode(seg){
+  if (!seg) return -1;
+  const isLastLayer = (seg.tokLayerIdx === seg.tokLayerCount - 1);
+  const doneTok = (isLastLayer && player.p >= 1 - METRIC_EPS) ? seg.tok : (seg.tok - 1);
+  return Number.isFinite(doneTok) ? doneTok : -1;
+}
+
+function alignedTimes(){
+  const seg = curSeg();
+  if (!seg || !traceBase || !traceHeu) return { baseT:NaN, heuT:NaN, speedup:NaN, saved:NaN, doneTok:-1, doneLayer:null };
+
+  if (seg.phase === 'prefill'){
+    const idx = layerDoneIdxForPrefill(seg);
+    if (idx < 0){
+      return { baseT:0, heuT:0, speedup:NaN, saved:0, doneTok:-1, doneLayer:null };
+    }
+
+    const layerId = (player.layersToPlay && idx < player.layersToPlay.length) ? player.layersToPlay[idx] : seg.layer;
+    const baseT = Number(traceBase.prefillLayerEnds?.[layerId] ?? traceBase.prefillEnd ?? 0);
+    const heuT  = Number(traceHeu.prefillLayerEnds?.[layerId] ?? traceHeu.prefillEnd ?? 0);
+
+    return { baseT, heuT, speedup: safeDivGlobal(baseT, heuT), saved: baseT - heuT, doneTok:-1, doneLayer: layerId };
+  }
+
+  if (seg.phase === 'decode'){
+    const doneTok = tokenDoneIdxForDecode(seg);
+    if (doneTok < 0){
+      const baseT = Number(traceBase.prefillEnd || 0);
+      const heuT  = Number(traceHeu.prefillEnd || 0);
+      return { baseT, heuT, speedup: safeDivGlobal(baseT, heuT), saved: baseT - heuT, doneTok:-1, doneLayer:null };
+    }
+
+    const baseT = Number(traceBase.decodeTokenEnds?.[doneTok]);
+    const heuT  = Number(traceHeu.decodeTokenEnds?.[doneTok]);
+
+    return { baseT, heuT, speedup: safeDivGlobal(baseT, heuT), saved: baseT - heuT, doneTok, doneLayer:null };
+  }
+
+  return { baseT:NaN, heuT:NaN, speedup:NaN, saved:NaN, doneTok:-1, doneLayer:null };
+}
+
+function alignedMetricY(metric){
+  const { baseT, heuT, speedup, saved, doneTok } = alignedTimes();
+  const b0 = Number(traceBase?.prefillEnd || 0);
+  const h0 = Number(traceHeu?.prefillEnd || 0);
+
+  if (metric === 'cum_total') return speedup;
+  if (metric === 'saved') return saved;
+
+  if (metric === 'cum_decode'){
+    if (doneTok < 0) return NaN;
+    return safeDivGlobal(baseT - b0, heuT - h0);
+  }
+
+  if (metric === 'per_step' || metric === 'saved_step'){
+    if (doneTok < 0) return NaN;
+
+    const bs0 = Number(traceBase.decodeTokenStarts?.[doneTok] ?? b0);
+    const be0 = Number(traceBase.decodeTokenEnds?.[doneTok] ?? bs0);
+    const hs0 = Number(traceHeu.decodeTokenStarts?.[doneTok] ?? h0);
+    const he0 = Number(traceHeu.decodeTokenEnds?.[doneTok] ?? hs0);
+
+    const bd = be0 - bs0;
+    const hd = he0 - hs0;
+
+    return (metric === 'per_step') ? safeDivGlobal(bd, hd) : (bd - hd);
+  }
+
+  // Default fall-back: show cumulative total speedup.
+  return speedup;
+}
+
+function updateInfoBar(){
+  const model = modelLabel();
+  const batch = UI.batch.value;
+    const prefillLen = UI.prefillLen?.value;
+  const decodeLen  = UI.decodeLen?.value;
+  const dtype = UI.dtype.value;
+
+  const seg = curSeg();
+  if (!seg) return;
+
+  const phase = seg.phase;
+  const layer = seg.layer;
+  const tok = seg.tok;
+
+  const tokenLabel = (phase === 'prefill') ? 'prefill' : `decode#${tok}`;
+
+  UI.infoTitle.textContent = `Model: ${model} • B=${batch} • prefill=${prefillLen} • decode=${decodeLen} • ${dtype}`;
+  UI.infoSub.textContent = `Phase: ${phase} • Layer: L${layer} • Token: ${tokenLabel}`;
+
+  const { baseT, heuT, speedup, saved } = alignedTimes();
+
+  const stride = Math.max(1, Number(UI.stride.value || 1));
+  const totalSamples = Math.min(traceBase?.tokenCount || 0, traceHeu?.tokenCount || 0);
+
+  let progText = `seg ${player.segIdx + 1}/${player.segList.length}`;
+
+  if (phase === 'prefill'){
+    const li = Number.isFinite(+seg.layerPlayIdx) ? (+seg.layerPlayIdx) : 0;
+    const lc = Number.isFinite(+seg.layerPlayCount) ? (+seg.layerPlayCount) : 1;
+    progText += ` • layer ${li + 1}/${lc} • ${Math.round(player.p * 100)}%`;
+  } else {
+    const sIdx = Number.isFinite(+tok) ? (+tok) : 0;
+    const li = Number.isFinite(+seg.tokLayerIdx) ? (+seg.tokLayerIdx) : 0;
+    const lc = Number.isFinite(+seg.tokLayerCount) ? (+seg.tokLayerCount) : 1;
+
+    const denom = totalSamples ? `/${totalSamples}` : '';
+    const approxTokens = (sIdx + clamp(player.p, 0, 1) + 1) * stride;
+
+    progText += ` • sample ${sIdx + 1}${denom}`;
+    progText += ` • layer ${li + 1}/${lc} • ${Math.round(player.p * 100)}%`;
+    progText += ` • ≈ tokens ${Math.floor(approxTokens)}`;
+  }
+
+  UI.pProg.textContent = progText;
+  UI.pSpeedup.textContent = fmtX(speedup);
+  UI.pSaved.textContent = fmtSec(saved);
+  UI.pBaseT.textContent = fmtSec(baseT);
+  UI.pHeuT.textContent = fmtSec(heuT);
+
+  updateSpeedChart();
+}
+
+
+/* =========================
+   Speedup chart (canvas)
+========================= */
+const chartState = { cacheKey: null, series: null };
+
+function chartCss(name, fallback){
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name);
+  return (v && v.trim()) ? v.trim() : (fallback || '#ffffff');
+}
+
+function computeSpeedSeries(metric, stride){
+  const n = Math.min(traceBase?.tokenCount || 0, traceHeu?.tokenCount || 0);
+  const xs = [];
+  const ys = [];
+
+  const b0 = Number(traceBase?.prefillEnd || 0);
+  const h0 = Number(traceHeu?.prefillEnd || 0);
+
+  function safeDiv(a,b){
+    if (!Number.isFinite(a) || !Number.isFinite(b) || Math.abs(b) < 1e-12) return NaN;
+    return a / b;
+  }
+
+  // Prefill point (x=0)
+  if (metric === 'saved'){
+    xs.push(0); ys.push((Number.isFinite(b0) && Number.isFinite(h0)) ? (b0 - h0) : NaN);
+  } else if (metric === 'saved_step'){
+    xs.push(0); ys.push(0);
+  } else if (metric === 'cum_decode' || metric === 'per_step'){
+    xs.push(0); ys.push(NaN);
+  } else {
+    xs.push(0); ys.push(safeDiv(b0, h0));
+  }
+
+  for (let t=0;t<n;t++){
+    const bs = Number(traceBase.decodeTokenStarts[t]);
+    const be = Number(traceBase.decodeTokenEnds[t]);
+    const hs = Number(traceHeu.decodeTokenStarts[t]);
+    const he = Number(traceHeu.decodeTokenEnds[t]);
+
+    const x = (t + 1) * stride;
+
+    let y = NaN;
+    if (metric === 'cum_total'){
+      y = safeDiv(be, he);
+    } else if (metric === 'cum_decode'){
+      y = safeDiv(be - b0, he - h0);
+    } else if (metric === 'per_step'){
+      y = safeDiv(be - bs, he - hs);
+    } else if (metric === 'saved'){
+      y = (Number.isFinite(be) && Number.isFinite(he)) ? (be - he) : NaN;
+    } else if (metric === 'saved_step'){
+      const bd = (Number.isFinite(be) && Number.isFinite(bs)) ? (be - bs) : NaN;
+      const hd = (Number.isFinite(he) && Number.isFinite(hs)) ? (he - hs) : NaN;
+      y = (Number.isFinite(bd) && Number.isFinite(hd)) ? (bd - hd) : NaN;
+    }
+
+    xs.push(x);
+    ys.push(y);
+  }
+
+  let yLabel = 'speedup (×)';
+  if (metric === 'saved' || metric === 'saved_step') yLabel = 'saved time (s)';
+
+  return { xs, ys, yLabel };
+}
+
+function currentChartPoint(metric, stride){
+  const seg = curSeg();
+  if (!seg || !traceBase || !traceHeu) return { x: 0, y: NaN };
+
+  const b0 = Number(traceBase?.prefillEnd || 0);
+  const h0 = Number(traceHeu?.prefillEnd || 0);
+
+  const at = alignedTimes();
+  const doneTok = Number.isFinite(+at.doneTok) ? (+at.doneTok) : -1;
+
+  // X-axis: decode length in (approx) tokens. While in prefill, stay at x=0.
+  const x = (seg.phase === 'decode' && doneTok >= 0) ? ((doneTok + 1) * stride) : 0;
+
+  // Y-axis depends on selected metric.
+  if (metric === 'saved'){
+    return { x, y: at.saved };
+  }
+
+  if (metric === 'saved_step'){
+    if (doneTok < 0) return { x, y: 0 };
+    const bs0 = Number(traceBase.decodeTokenStarts?.[doneTok] ?? b0);
+    const be0 = Number(traceBase.decodeTokenEnds?.[doneTok] ?? bs0);
+    const hs0 = Number(traceHeu.decodeTokenStarts?.[doneTok] ?? h0);
+    const he0 = Number(traceHeu.decodeTokenEnds?.[doneTok] ?? hs0);
+    return { x, y: (be0 - bs0) - (he0 - hs0) };
+  }
+
+  if (metric === 'per_step'){
+    if (doneTok < 0) return { x, y: NaN };
+    const bs0 = Number(traceBase.decodeTokenStarts?.[doneTok] ?? b0);
+    const be0 = Number(traceBase.decodeTokenEnds?.[doneTok] ?? bs0);
+    const hs0 = Number(traceHeu.decodeTokenStarts?.[doneTok] ?? h0);
+    const he0 = Number(traceHeu.decodeTokenEnds?.[doneTok] ?? hs0);
+    return { x, y: safeDivGlobal(be0 - bs0, he0 - hs0) };
+  }
+
+  if (metric === 'cum_decode'){
+    if (doneTok < 0) return { x, y: NaN };
+    return { x, y: safeDivGlobal(at.baseT - b0, at.heuT - h0) };
+  }
+
+  // Default: cumulative total speedup.
+  return { x, y: at.speedup };
+}
+
+function updateSpeedChart(){
+  if (!UI.speedChart || !traceBase || !traceHeu) return;
+
+  const metric = String(UI.spdMetric?.value || 'cum_total');
+  const stride = Math.max(1, Number(UI.stride?.value || 1));
+
+  const key = [metric, stride, traceBase.tokenCount, traceHeu.tokenCount, traceBase.prefillEnd, traceHeu.prefillEnd].join('|');
+  if (chartState.cacheKey !== key){
+    chartState.cacheKey = key;
+    chartState.series = computeSpeedSeries(metric, stride);
+  }
+
+  const canvas = UI.speedChart;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  const W = Math.max(1, Math.floor(rect.width * dpr));
+  const H = Math.max(1, Math.floor(rect.height * dpr));
+  if (canvas.width !== W || canvas.height !== H){
+    canvas.width = W; canvas.height = H;
+  }
+
+  ctx.clearRect(0,0,W,H);
+
+  const fg = chartCss('--fg', '#e5e7eb');
+  const muted = chartCss('--muted', '#9aa4af');
+  const border = chartCss('--border', '#1f2937');
+  const accent = chartCss('--accent2', '#22c55e');
+  const accent2 = chartCss('--accent', '#3b82f6');
+
+  const padL = 54 * dpr;
+  const padR = 14 * dpr;
+  const padT = 16 * dpr;
+  const padB = 30 * dpr;
+
+  const innerW = Math.max(1, W - padL - padR);
+  const innerH = Math.max(1, H - padT - padB);
+
+  const { xs, ys, yLabel } = chartState.series || { xs:[], ys:[], yLabel:'speedup (×)' };
+
+  const finiteY = ys.filter(v => Number.isFinite(v));
+  let yMin = finiteY.length ? Math.min(...finiteY) : 0;
+  let yMax = finiteY.length ? Math.max(...finiteY) : 1;
+
+  if (yMax === yMin){
+    yMax = yMin + 1;
+  }
+  const yPad = 0.08 * (yMax - yMin);
+  yMin -= yPad;
+  yMax += yPad;
+
+  const xMax = xs.length ? Math.max(...xs) : 1;
+  const xMin = 0;
+
+  const xToPx = (x) => padL + ( (x - xMin) / Math.max(1e-9, (xMax - xMin)) ) * innerW;
+  const yToPx = (y) => padT + (1 - ( (y - yMin) / Math.max(1e-9, (yMax - yMin)) )) * innerH;
+
+  // Background grid
+  ctx.lineWidth = 1 * dpr;
+  ctx.strokeStyle = border;
+  ctx.globalAlpha = 0.7;
+  const gridN = 4;
+  for (let i=0;i<=gridN;i++){
+    const y = padT + (i/gridN) * innerH;
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL+innerW, y); ctx.stroke();
+  }
+  for (let i=0;i<=gridN;i++){
+    const x = padL + (i/gridN) * innerW;
+    ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT+innerH); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  // Axes labels
+  ctx.fillStyle = muted;
+  ctx.font = `${11*dpr}px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial`;
+  ctx.textBaseline = 'alphabetic';
+
+  ctx.save();
+  ctx.translate(12*dpr, padT + innerH/2);
+  ctx.rotate(-Math.PI/2);
+  ctx.fillText(yLabel, 0, 0);
+  ctx.restore();
+
+  ctx.fillText('tokens (approx)', padL + innerW - 86*dpr, padT + innerH + 22*dpr);
+
+  // Y ticks
+  const tickN = 4;
+  ctx.fillStyle = muted;
+  for (let i=0;i<=tickN;i++){
+    const yv = yMin + (i/tickN)*(yMax-yMin);
+    const yp = yToPx(yv);
+    const txt = (metric === 'saved' || metric === 'saved_step') ? yv.toFixed(2) : yv.toFixed(2) + '×';
+    ctx.fillText(txt, 8*dpr, yp + 4*dpr);
+  }
+
+  // X ticks
+  for (let i=0;i<=tickN;i++){
+    const xv = xMin + (i/tickN)*(xMax-xMin);
+    const xp = xToPx(xv);
+    ctx.fillText(String(Math.round(xv)), xp - 10*dpr, padT + innerH + 18*dpr);
+  }
+
+  // Series line
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = 2.2 * dpr;
+  ctx.beginPath();
+  let moved = false;
+  for (let i=0;i<xs.length;i++){
+    const y = ys[i];
+    if (!Number.isFinite(y)) continue;
+    const x = xs[i];
+    const xp = xToPx(x);
+    const yp = yToPx(y);
+    if (!moved){ ctx.moveTo(xp, yp); moved = true; }
+    else ctx.lineTo(xp, yp);
+  }
+  ctx.stroke();
+
+  // Current point
+  const cur = currentChartPoint(metric, stride);
+  if (Number.isFinite(cur?.y)){
+    const cx = xToPx(cur.x);
+    const cy = yToPx(cur.y);
+    ctx.fillStyle = accent2;
+    ctx.beginPath(); ctx.arc(cx, cy, 4.2*dpr, 0, Math.PI*2); ctx.fill();
+  }
+
+  // Update overlay text
+  if (UI.chartTitle){
+    UI.chartTitle.textContent = (metric === 'saved' || metric === 'saved_step')
+      ? 'Saved time vs decode length'
+      : 'Speedup vs decode length';
+  }
+  if (UI.chartSub){
+    UI.chartSub.textContent = (stride > 1)
+      ? `Decode stride = ${stride} (sampled)`
+      : 'Decode stride = 1';
+  }
+}
+
+
+/* =========================
+   Playback
+========================= */
+function renderFrame(){
+  if (!canRun() || !player.segBase || !player.segHeu) return;
+
+  // normalized progress -> trace-relative time
+  const tB = player.p * player.segBase.duration;
+  const tH = player.p * player.segHeu.duration;
+
+  updateNodeClasses(cyBase, player.segBase.nodeState, tB);
+  updateNodeClasses(cyHeu, player.segHeu.nodeState, tH);
+
+  updateDeviceIcons(cyBase, overlayIconsBase, player.segBase, tB, devicePtrsBase);
+  updateDeviceIcons(cyHeu, overlayIconsHeu, player.segHeu, tH, devicePtrsHeu);
+
+  updateInfoBar();
+}
+
+function showJumpBadge(prevSeg, nextSeg){
+  const on = (UI.strideLabel.value === 'on');
+  const stride = Math.max(1, Number(UI.stride.value || 1));
+
+  UI.jumpBase.textContent = '×' + stride;
+  UI.jumpHeu.textContent = '×' + stride;
+
+  if (!on || stride <= 1) return;
+
+  const p = prevSeg || {};
+  const n = nextSeg || {};
+
+  if (String(p.phase) !== 'decode' || String(n.phase) !== 'decode') return;
+  if (!Number.isFinite(+p.tok) || !Number.isFinite(+n.tok)) return;
+  if (+p.tok === +n.tok) return;
+
+  // Show the badge only when the original trace contains a noticeable gap
+  // between consecutive sampled decode steps (common with stride sampling).
+  if (traceBase){
+    const prevTok = +p.tok;
+    const nextTok = +n.tok;
+
+    const pe = traceBase.decodeTokenEnds[prevTok] ?? 0;
+    const ns = traceBase.decodeTokenStarts[nextTok] ?? pe;
+    const ps = traceBase.decodeTokenStarts[prevTok] ?? pe;
+    const prevDur = Math.max(1e-9, pe - ps);
+    const gap = ns - pe;
+
+    // Heuristic: treat >0.5× token duration or >50ms as a sampling gap.
+    if (!(gap > Math.max(0.5 * prevDur, 0.05))){
+      return;
+    }
+  }
+
+  UI.jumpBase.style.display = 'block';
+  UI.jumpHeu.style.display = 'block';
+  setTimeout(() => {
+    UI.jumpBase.style.display = 'none';
+    UI.jumpHeu.style.display = 'none';
+  }, 700);
+}
+
+
+async function gotoSegment(segIdx){
+  player.segIdx = clamp(segIdx, 0, player.segList.length - 1);
+  player.p = 0;
+
+  const seg = curSeg();
+  if (!seg) return;
+
+  await renderFor(seg.phase, seg.layer, seg.tok);
+  resetDevicePtrs();
+  renderFrame();
+}
+
+async function nextSegment(){
+  if (player.segIdx + 1 >= player.segList.length){
+    player.playing = false;
+    UI.play.textContent = 'Play';
+    return;
+  }
+
+  const prevSeg = curSeg();
+  player.segIdx++;
+  player.p = 0;
+  const nextSeg = curSeg();
+
+  if (prevSeg && nextSeg) showJumpBadge(prevSeg, nextSeg);
+  if (!nextSeg) return;
+
+  await renderFor(nextSeg.phase, nextSeg.layer, nextSeg.tok);
+  resetDevicePtrs();
+  renderFrame();
+}
+
+function rafLoop(ts){
+  if (!player.playing) return;
+
+  if (!player.lastTS) player.lastTS = ts;
+  const dt = (ts - player.lastTS) / 1000;
+  player.lastTS = ts;
+
+  const speed = player.speed;
+  const baseSeconds = player.segmentSecondsAt1x;
+  const dp = (dt * speed) / baseSeconds;
+
+  player.p = clamp(player.p + dp, 0, 1);
+  renderFrame();
+
+  if (player.p >= 1){
+    player.lastTS = 0;
+    nextSegment().then(() => {
+      if (player.playing) requestAnimationFrame(rafLoop);
+    });
+    return;
+  }
+
+  requestAnimationFrame(rafLoop);
+}
+
+function playToggle(){
+  if (!canRun()) return;
+
+  player.playing = !player.playing;
+  UI.play.textContent = player.playing ? 'Pause' : 'Play';
+
+  player.lastTS = 0;
+  if (player.playing) requestAnimationFrame(rafLoop);
+}
+
+async function stepOnce(){
+  if (!canRun()) return;
+
+  // Advance to the next op start (heuristic segment), or finish segment.
+  const seg = player.segHeu;
+  if (!seg) return;
+
+  const tCur = player.p * seg.duration;
+  const starts = [];
+  for (const st of Object.values(seg.nodeState || {})){
+    for (const s of st.starts) starts.push(s);
+  }
+  starts.sort((a,b)=>a-b);
+
+  let next = null;
+  for (const s of starts){
+    if (s > tCur + 1e-9){ next = s; break; }
+  }
+
+  if (next == null){
+    player.p = 1;
+    renderFrame();
+    await nextSegment();
+    return;
+  }
+
+  player.p = clamp(next / seg.duration, 0, 1);
+  renderFrame();
+}
+
+/* =========================
+   Rebuild from UI
+========================= */
+function rebuildSegmentList(){
+  player.model = resolveModelFamily();
+
+  updatePhaseUI();
+  updateLayerModeUI();
+
+  const phases = phasesToPlay(UI.phase.value);
+
+  const allLayers = (traceBase?.layerList || []);
+  let startLayer = Number(UI.layer.value || (allLayers[0] || 0));
+  if (!allLayers.includes(startLayer) && allLayers.length) startLayer = allLayers[0];
+
+  const mode = String(UI.layerMode?.value || 'single').toLowerCase();
+
+  let layersToPlay = [startLayer];
+  if (mode === 'all'){
+    layersToPlay = allLayers.filter(L => L >= startLayer);
+    if (!layersToPlay.length) layersToPlay = allLayers.slice();
+  } else if (mode === 'range'){
+    const remaining = allLayers.filter(L => L >= startLayer);
+    const maxCnt = Math.max(1, remaining.length);
+    const cnt = clamp(Number(UI.layerCount.value || 1), 1, maxCnt);
+    UI.layerCount.value = String(cnt);
+    layersToPlay = remaining.slice(0, cnt);
+  }
+
+  // Persist the played layer set for metric alignment.
+  player.layersToPlay = layersToPlay.slice();
+
+  const segs = [];
+
+  if (phases.includes('prefill')){
+    for (let li=0; li<layersToPlay.length; li++){
+      const L = layersToPlay[li];
+      segs.push({ phase: 'prefill', layer: L, tok: -1, layerPlayIdx: li, layerPlayCount: layersToPlay.length });
+    }
+  }
+
+  if (phases.includes('decode')){
+    const maxTok = Math.max(0, (traceBase?.tokenCount || 0) - 1);
+    const startTok = clamp(Number(UI.tokStart.value || 0), 0, maxTok);
+    const countTok = clamp(Number(UI.tokCount.value || 1), 1, Math.max(1, (traceBase?.tokenCount || 1) - startTok));
+    UI.tokStart.value = String(startTok);
+    UI.tokCount.value = String(countTok);
+
+    for (let i = 0; i < countTok; i++){
+      const tok = startTok + i;
+      for (let li=0; li<layersToPlay.length; li++){
+        const L = layersToPlay[li];
+        segs.push({
+          phase: 'decode',
+          layer: L,
+          tok,
+          layerPlayIdx: li,
+          layerPlayCount: layersToPlay.length,
+          tokLayerIdx: li,
+          tokLayerCount: layersToPlay.length
+        });
+      }
+    }
+  }
+
+  player.segList = segs;
+  player.segIdx = 0;
+  player.p = 0;
+  resetDevicePtrs();
+}
+
+async function rebuildAndRender(){
+  if (!canRun()) return;
+  rebuildSegmentList();
+  await gotoSegment(0);
+}
+
+/* =========================
+   Events
+========================= */
+UI.speed.addEventListener('input', () => {
+  player.speed = Number(UI.speed.value || 1);
+  UI.speedVal.textContent = player.speed.toFixed(2) + '×';
+});
+
+UI.spdMetric.onchange = () => { updateSpeedChart(); };
+
+UI.play.onclick = playToggle;
+UI.restart.onclick = () => { player.playing = false; UI.play.textContent = 'Play'; player.lastTS = 0; gotoSegment(0); };
+UI.step.onclick = async () => { player.playing = false; UI.play.textContent = 'Play'; player.lastTS = 0; await stepOnce(); };
+
+UI.phase.onchange = () => { player.playing = false; UI.play.textContent = 'Play'; rebuildAndRender(); };
+UI.layer.onchange = () => { player.playing = false; UI.play.textContent = 'Play'; rebuildAndRender(); };
+UI.layerMode.onchange = () => { player.playing = false; UI.play.textContent = 'Play'; rebuildAndRender(); };
+UI.layerCount.onchange = () => { player.playing = false; UI.play.textContent = 'Play'; rebuildAndRender(); };
+UI.model.onchange = () => { player.playing = false; UI.play.textContent = 'Play'; inferredModel = null; posMapByLayer = {}; rebuildAndRender(); };
+
+UI.tokStart.onchange = () => { player.playing = false; UI.play.textContent = 'Play'; rebuildAndRender(); };
+UI.tokCount.onchange = () => { player.playing = false; UI.play.textContent = 'Play'; rebuildAndRender(); };
+UI.stride.onchange = () => { renderFrame(); updateSpeedChart(); };
+UI.strideLabel.onchange = () => { updateSpeedChart(); };
+
+UI.fit.onclick = () => { if (cyBase) cyBase.fit(undefined, 30); if (cyHeu) cyHeu.fit(undefined, 30); };
+UI.export.onclick = () => {
+  if (!cyHeu) return;
+  const png = cyHeu.png({ full: true, scale: 2 });
+  const a = document.createElement('a');
+  a.href = png; a.download = 'dag_schedule.png'; a.click();
+};
+
+/* =========================
+   File loading
+========================= */
+async function loadTraceFromFileInput(inputEl, labelEl){
+  const f = inputEl.files?.[0];
+  if (!f) return null;
+  const text = await f.text();
+  const parsed = parseCsvText(text);
+  const trace = buildTrace(parsed);
+  labelEl.textContent = `Loaded: ${f.name}`;
+  maybeApplySeqLensFromFilename(f.name);
+  return trace;
+}
+
+async function tryAutoLoad(url){
+  try{
+    const r = await fetch(url, { cache: 'no-store' });
+    if (!r.ok) return null;
+    const text = await r.text();
+    const parsed = parseCsvText(text);
+    const tr = buildTrace(parsed);
+    maybeApplySeqLensFromFilename(url);
+    return tr;
+  }catch(e){
+    return null;
+  }
+}
+
+UI.fileBase.addEventListener('change', async () => {
+  try{
+    traceBase = await loadTraceFromFileInput(UI.fileBase, UI.baseName);
+    inferredModel = null;
+    posMapByLayer = {};
+    setStatus('Baseline trace loaded. Load heuristic trace…');
+    if (traceBase && traceHeu){
+      populateLayerSelector();
+      setStatus(`Ready. Decode samples: ${traceBase.tokenCount}`);
+      rebuildAndRender();
+    }
+  }catch(e){
+    setStatus('Failed to load baseline trace.');
+    console.error(e);
+  }
+});
+
+UI.fileHeu.addEventListener('change', async () => {
+  try{
+    traceHeu = await loadTraceFromFileInput(UI.fileHeu, UI.heuName);
+    inferredModel = null;
+    posMapByLayer = {};
+    setStatus('Heuristic trace loaded. Load baseline trace…');
+    if (traceBase && traceHeu){
+      populateLayerSelector();
+      setStatus(`Ready. Decode samples: ${traceBase.tokenCount}`);
+      rebuildAndRender();
+    }
+  }catch(e){
+    setStatus('Failed to load heuristic trace.');
+    console.error(e);
+  }
+});
+
+async function boot(){
+  updatePhaseUI();
+  updateLayerModeUI();
+  window.addEventListener('resize', () => { updateSpeedChart(); });
+  UI.speedVal.textContent = Number(UI.speed.value).toFixed(2) + '×';
+  player.speed = Number(UI.speed.value);
+
+  setStatus('Auto-loading default traces…');
+
+  // Try default file names (same folder as this HTML)
+  const base = await tryAutoLoad('./128x1024_ops_trace.csv');
+  const heu = await tryAutoLoad('./hefthint_128x1024_ops_trace.csv');
+
+  if (base) { traceBase = base; UI.baseName.textContent = 'Auto: 128x1024_ops_trace.csv'; }
+  if (heu) { traceHeu = heu; UI.heuName.textContent = 'Auto: hefthint_128x1024_ops_trace.csv'; }
+
+  inferredModel = null;
+  posMapByLayer = {};
+
+  if (traceBase && traceHeu){
+    populateLayerSelector();
+    setStatus(`Ready. Decode samples: ${traceBase.tokenCount}`);
+    await rebuildAndRender();
+  } else {
+    setStatus('Please load both baseline and heuristic CSV traces.');
+  }
+}
+
+boot();
+</script>
+</body>
+</html>

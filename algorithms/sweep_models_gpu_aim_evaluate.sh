@@ -6,16 +6,19 @@ shopt -s nullglob
 # Single source of truth
 # =========================
 CONFIG_FILE="${CONFIG_FILE:-./examples/evaluate_len_sweep_config_gpu.json}"
-OUTPUT_ROOT="${OUTPUT_ROOT:-./output/exp2}"
+OUTPUT_ROOT="${OUTPUT_ROOT:-./output/exp1}"
 
 # Sweep dims
 MODEL_FAMILY_VARIANTS=(
   # "mixtral:8x7b"
+  # "palm:8b"
   # "palm:62b"
   # "qwen:1.8b"
-  "llama:7b"
-  "llama:13b"
-  "llama:70b"
+  "qwen:7b"
+  "qwen:14b"
+  # "llama:7b"
+  # "llama:13b"
+  # "llama:70b"
 )
 
 PREFILLS=(128 256 512 1024 2048 4096)
@@ -23,24 +26,23 @@ DECODES=(64 128 256 512 1024)
 
 # Hardware sweep (edit here, or use --hardware_glob)
 HARDWARE_CONFIGS=(
-  # ./examples/hardware_1gpu_2aim.json
+  ./examples/hardware_1gpu_2aim.json
   # ./examples/hardware_1gpu_2aim_star.json
   # ./examples/hardware_1gpu_4aim.json
   # ./examples/hardware_1gpu_4aim_star.json
-  ./examples/hardware_1gpu_8aim.json
+  # ./examples/hardware_1gpu_8aim.json
   # ./examples/hardware_1gpu_16aim.json
-
 )
 
 # Run knobs
-STRIDE="${STRIDE:-64}"
-DTYPE="${DTYPE:-bf16}"
+DECODE_SAMPLE_STRIDE="${DECODE_SAMPLE_STRIDE:-${SAMPLE_STRIDE:-${STRIDE:-64}}}"
+DECODE_PLAN_REFRESH_STRIDE="${DECODE_PLAN_REFRESH_STRIDE:-${PLAN_REFRESH_STRIDE:-${STRIDE:-64}}}"
+DTYPE="${DTYPE:-fp16}"
 BATCHES_STR="${BATCHES:-${BATCH:-"1 4 8 16 32"}}"
 
 declare -a BATCHES
 
-NPU_FAST=1
-PIM_FAST=1
+PIM_FAST=0
 DEBUG=0
 HARDWARE_GLOB=""
 JOBS="${JOBS:-}"
@@ -93,27 +95,27 @@ wait_for_all() {
 }
 
 usage() {
-  cat <<EOF
+  cat <<EOF2
 Usage:
-  bash sweep_models_lens_evaluate.sh [options]
+  bash $(basename "$0") [options]
 
 Options:
-  --config <path>         JSON config path (default: ${CONFIG_FILE})
-  --output_root <dir>     Output root (default: ${OUTPUT_ROOT})
-  --stride <int>          decode_sample_stride (default: ${STRIDE})
-  --dtype <str>           dtype (default: ${DTYPE})
-  --batch <int>           batch (default: first of BATCHES or 1)
-  --batches "a b c"       override batch list (space separated)
-  --jobs <int>            Parallel runs (default: auto-detect cores)
-  --hardware_glob <glob>  Override HARDWARE_CONFIGS by glob, e.g. "./examples/hardware_*.json"
-  --npu_fast              Enable NPU fast mode (default: ${NPU_FAST})
-  --pim_fast              Enable PIM fast mode (default: ${PIM_FAST})
-  --debug                 Enable --debug
-  -h, --help              Show help
-
-Notes:
-  - FAST MODE is controlled ONLY by presence of --fast (store_true).
-EOF
+  --config <path>                     JSON config path (default: ${CONFIG_FILE})
+  --output_root <dir>                 Output root (default: ${OUTPUT_ROOT})
+  --sample_stride <int>               decode_sample_stride (default: ${DECODE_SAMPLE_STRIDE})
+  --decode_sample_stride <int>        Same as --sample_stride
+  --plan_refresh_stride <int>         decode_plan_refresh_stride (default: ${DECODE_PLAN_REFRESH_STRIDE})
+  --decode_plan_refresh_stride <int>  Same as --plan_refresh_stride
+  --stride <int>                      Backward-compatible alias: set BOTH strides to the same value
+  --dtype <str>                       dtype (default: ${DTYPE})
+  --batch <int>                       single batch, or quoted list if you want to reuse old behavior
+  --batches "a b c"                   override batch list (space separated)
+  --jobs <int>                        Parallel runs (default: auto-detect cores)
+  --hardware_glob <glob>              Override HARDWARE_CONFIGS by glob, e.g. "./examples/hardware_*.json"
+  --pim_fast                          Enable PIM fast mode (default: ${PIM_FAST})
+  --debug                             Enable --debug
+  -h, --help                          Show help
+EOF2
 }
 
 # =========================
@@ -121,18 +123,22 @@ EOF
 # =========================
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --config)       CONFIG_FILE="$2"; shift 2 ;;
-    --output_root)  OUTPUT_ROOT="$2"; shift 2 ;;
-    --stride)       STRIDE="$2"; shift 2 ;;
-    --dtype)        DTYPE="$2"; shift 2 ;;
-    --batch)        BATCHES_STR="$2"; shift 2 ;;
-    --batches)      BATCHES_STR="$2"; shift 2 ;;
-    --jobs)         JOBS="$2"; shift 2 ;;
-    --hardware_glob) HARDWARE_GLOB="$2"; shift 2 ;;
-    --npu_fast)     NPU_FAST=1; shift ;;
-    --pim_fast)     PIM_FAST=1; shift ;;
-    --debug)        DEBUG=1; shift ;;
-    -h|--help)      usage; exit 0 ;;
+    --config)                        CONFIG_FILE="$2"; shift 2 ;;
+    --output_root)                   OUTPUT_ROOT="$2"; shift 2 ;;
+    --sample_stride|--decode_sample_stride)
+                                     DECODE_SAMPLE_STRIDE="$2"; shift 2 ;;
+    --plan_refresh_stride|--decode_plan_refresh_stride)
+                                     DECODE_PLAN_REFRESH_STRIDE="$2"; shift 2 ;;
+    --stride)
+                                     DECODE_SAMPLE_STRIDE="$2"; DECODE_PLAN_REFRESH_STRIDE="$2"; shift 2 ;;
+    --dtype)                         DTYPE="$2"; shift 2 ;;
+    --batch)                         BATCHES_STR="$2"; shift 2 ;;
+    --batches)                       BATCHES_STR="$2"; shift 2 ;;
+    --jobs)                          JOBS="$2"; shift 2 ;;
+    --hardware_glob)                 HARDWARE_GLOB="$2"; shift 2 ;;
+    --pim_fast)                      PIM_FAST=1; shift ;;
+    --debug)                         DEBUG=1; shift ;;
+    -h|--help)                       usage; exit 0 ;;
     *) echo "Unknown arg: $1"; usage; exit 2 ;;
   esac
 done
@@ -156,6 +162,16 @@ if (( ${#HARDWARE_CONFIGS[@]} == 0 )); then
   exit 2
 fi
 
+if ! [[ "$DECODE_SAMPLE_STRIDE" =~ ^[0-9]+$ ]] || (( DECODE_SAMPLE_STRIDE < 1 )); then
+  echo "[FATAL] invalid decode_sample_stride: $DECODE_SAMPLE_STRIDE" >&2
+  exit 2
+fi
+
+if ! [[ "$DECODE_PLAN_REFRESH_STRIDE" =~ ^[0-9]+$ ]] || (( DECODE_PLAN_REFRESH_STRIDE < 0 )); then
+  echo "[FATAL] invalid decode_plan_refresh_stride: $DECODE_PLAN_REFRESH_STRIDE" >&2
+  exit 2
+fi
+
 if [[ -z "$JOBS" ]]; then
   JOBS="$(detect_cpu_count)"
 fi
@@ -175,24 +191,20 @@ GREEN=$'\033[1;32m'
 YELLOW=$'\033[1;33m'
 CYAN=$'\033[1;36m'
 
-if (( NPU_FAST )); then
-  printf "%s\n" "${YELLOW}${BOLD}███████  NPU FAST MODE: ON  ███████${RESET}"
-else
-  printf "%s\n" "${GREEN}${BOLD}███████  NPU FAST MODE: OFF ███████${RESET}"
-fi
 
 if (( PIM_FAST )); then
   printf "%s\n" "${YELLOW}${BOLD}███████  PIM FAST MODE: ON  ███████${RESET}"
 else
   printf "%s\n" "${GREEN}${BOLD}███████  PIM FAST MODE: OFF ███████${RESET}"
 fi
-echo "Config      : ${CONFIG_FILE}"
-echo "Output root : ${OUTPUT_ROOT}"
-echo "Stride      : ${STRIDE}"
-echo "DType/Batch : ${DTYPE} / ${BATCHES[*]}"
-echo "Parallel jobs : ${JOBS}"
-echo "Hardwares   : ${#HARDWARE_CONFIGS[@]} file(s)"
-echo "Models      : ${#MODEL_FAMILY_VARIANTS[@]} family entry(s)"
+echo "Config                : ${CONFIG_FILE}"
+echo "Output root           : ${OUTPUT_ROOT}"
+echo "Sample stride         : ${DECODE_SAMPLE_STRIDE}"
+echo "Plan refresh stride   : ${DECODE_PLAN_REFRESH_STRIDE}"
+echo "DType/Batch           : ${DTYPE} / ${BATCHES[*]}"
+echo "Parallel jobs         : ${JOBS}"
+echo "Hardwares             : ${#HARDWARE_CONFIGS[@]} file(s)"
+echo "Models                : ${#MODEL_FAMILY_VARIANTS[@]} family entry(s)"
 echo "===================================="
 
 run_one() {
@@ -209,16 +221,13 @@ run_one() {
   hw_stem="$(basename "$hw_json" .json)"
   hw_stem="${hw_stem#hardware_config_}"
 
+  local base_out="${OUTPUT_ROOT}/hw_${hw_stem}/sst${DECODE_SAMPLE_STRIDE}_rst${DECODE_PLAN_REFRESH_STRIDE}"
+  local expected_dir="${base_out}/${family}_${variant}_${DTYPE}_b${batch}_s${DECODE_SAMPLE_STRIDE}"
 
-  # IMPORTANT: keep output separated by hardware + stride to avoid overwrites
-  local base_out="${OUTPUT_ROOT}/hw_${hw_stem}/st${STRIDE}"
-  local expected_dir="${base_out}/${family}_${variant}_${DTYPE}_b${batch}"
+  printf "\n%s\n" "${CYAN}${BOLD}--- HW=${hw_stem} | ${family}:${variant} | S=${S} T=${T} | sample_stride=${DECODE_SAMPLE_STRIDE} | refresh_stride=${DECODE_PLAN_REFRESH_STRIDE} | dtype=${DTYPE} b=${batch} ---${RESET}"
 
-  printf "\n%s\n" "${CYAN}${BOLD}--- HW=${hw_stem} | ${family}:${variant} | S=${S} T=${T} | stride=${STRIDE} | dtype=${DTYPE} b=${batch} ---${RESET}"
-  
-  if (( NPU_FAST )); then printf "%s\n" "${YELLOW}${BOLD}[NPU FAST MODE ACTIVE]${RESET}"; else printf "%s\n" "${GREEN}${BOLD}[NPU FAST MODE INACTIVE]${RESET}"; fi
   if (( PIM_FAST )); then printf "%s\n" "${YELLOW}${BOLD}[PIM FAST MODE ACTIVE]${RESET}"; else printf "%s\n" "${GREEN}${BOLD}[PIM FAST MODE INACTIVE]${RESET}"; fi
-  echo "Expected result_dir: ${expected_dir}"
+  echo "Expected result_dir   : ${expected_dir}"
 
   cmd=(
     python main.py evaluate
@@ -231,11 +240,11 @@ run_one() {
     --batch "${batch}"
     --prefill_len "${S}"
     --decode_len "${T}"
-    --decode_sample_stride "${STRIDE}"
+    --decode_sample_stride "${DECODE_SAMPLE_STRIDE}"
+    --decode_plan_refresh_stride "${DECODE_PLAN_REFRESH_STRIDE}"
   )
 
   if (( DEBUG )); then cmd+=(--debug); fi
-  if (( NPU_FAST )); then cmd+=(--npu_fast_mode); fi
   if (( PIM_FAST )); then cmd+=(--pim_fast_mode); fi
 
   (
@@ -244,7 +253,7 @@ run_one() {
 
   local pid=$!
   RUN_PIDS+=("$pid")
-  RUN_LABELS+=("HW=${hw_stem} ${family}:${variant} S=${S} T=${T} b=${batch}")
+  RUN_LABELS+=("HW=${hw_stem} ${family}:${variant} S=${S} T=${T} b=${batch} sst=${DECODE_SAMPLE_STRIDE} rst=${DECODE_PLAN_REFRESH_STRIDE}")
 }
 
 for hw_json in "${HARDWARE_CONFIGS[@]}"; do

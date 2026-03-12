@@ -1,0 +1,205 @@
+diff --git a/0312_algo/model_parser.py b/0312_algo/model_parser.py
+--- a/0312_algo/model_parser.py
++++ b/0312_algo/model_parser.py
+@@ -242,6 +242,111 @@
+         setattr(shape, "moe_imbalance_factor", moe_imbalance_factor)
+     return shape
+ 
++def _normalize_mini_batch_parts(cfg: Optional[Dict[str, Any]], total_batch: int) -> int:
++    """Return the effective number of mini-batch partitions for prefill."""
++    if total_batch <= 1:
++        return 1
++
++    raw = None
++    for key in ("mini_batch_parts", "micro_batch_parts"):
++        if key in (cfg or {}):
++            raw = (cfg or {}).get(key)
++            break
++
++    try:
++        parts = int(raw or 1)
++    except Exception:
++        parts = 1
++
++    if parts <= 1:
++        return 1
++    return max(1, min(int(total_batch), int(parts)))
++
++
++def _balanced_mini_batch_sizes(total_batch: int, parts: int) -> List[int]:
++    total = max(1, int(total_batch or 1))
++    eff_parts = max(1, min(int(parts or 1), total))
++    base = total // eff_parts
++    rem = total % eff_parts
++    return [int(base + (1 if i < rem else 0)) for i in range(eff_parts)]
++
++
++def expand_graph_for_mini_batch(g: TaskGraph, *, total_batch: int, parts: int) -> TaskGraph:
++    """Clone the whole DAG per mini-batch so the scheduler can overlap them."""
++    splits = _balanced_mini_batch_sizes(int(total_batch), int(parts))
++    if len(splits) <= 1:
++        return g
++
++    out = TaskGraph()
++    try:
++        topo = list(g.topological())
++    except Exception:
++        topo = list(g.nodes.keys())
++
++    for mb_idx, mb_size in enumerate(splits):
++        prefix = f"MB{mb_idx}::"
++        for nid in topo:
++            n = g.nodes[nid]
++            attrs = dict(getattr(n, "attrs", {}) or {})
++            attrs["batch_total"] = int(total_batch)
++            attrs["batch"] = int(mb_size)
++            attrs["micro_batch_enabled"] = True
++            attrs["micro_batch_idx"] = int(mb_idx)
++            attrs["micro_batch_count"] = int(len(splits))
++            attrs["micro_batch_size"] = int(mb_size)
++            attrs["base_node_id"] = str(getattr(n, "id", nid))
++
++            out.add_node(
++                TaskNode(
++                    id=f"{prefix}{n.id}",
++                    name=n.name,
++                    flops=n.flops,
++                    bytes_read=n.bytes_read,
++                    bytes_write=n.bytes_write,
++                    weight_id=n.weight_id,
++                    weight_size=n.weight_size,
++                    allowed=dict(n.allowed) if isinstance(n.allowed, dict) else {},
++                    attrs=attrs,
++                )
++            )
++
++        for u in topo:
++            for v in g.successors(u):
++                out.add_edge(f"{prefix}{u}", f"{prefix}{v}")
++
++    setattr(out, "micro_batch_enabled", True)
++    setattr(out, "micro_batch_parts", int(len(splits)))
++    setattr(out, "micro_batch_sizes", tuple(int(x) for x in splits))
++    setattr(out, "logical_batch", int(total_batch))
++    return out
++
++
++def maybe_expand_prefill_graph(g: TaskGraph, cfg: Optional[Dict[str, Any]]) -> TaskGraph:
++    """Expand only the prefill graph into mini-batches when configured."""
++    total_batch = max(1, int((cfg or {}).get("batch", 1) or 1))
++    parts = _normalize_mini_batch_parts(cfg, total_batch)
++
++    if parts <= 1:
++        if isinstance(cfg, dict):
++            cfg["mini_batch_parts_effective"] = 1
++            cfg["mini_batch_sizes_effective"] = [int(total_batch)]
++            cfg["mini_batch_scope"] = "prefill"
++        return g
++
++    if bool(getattr(g, "micro_batch_enabled", False)):
++        if isinstance(cfg, dict):
++            cfg["mini_batch_parts_effective"] = int(getattr(g, "micro_batch_parts", parts))
++            cfg["mini_batch_sizes_effective"] = list(getattr(g, "micro_batch_sizes", (int(total_batch),)))
++            cfg["mini_batch_scope"] = "prefill"
++        return g
++
++    out = expand_graph_for_mini_batch(g, total_batch=int(total_batch), parts=int(parts))
++    if isinstance(cfg, dict):
++        cfg["mini_batch_parts_effective"] = int(getattr(out, "micro_batch_parts", parts))
++        cfg["mini_batch_sizes_effective"] = list(getattr(out, "micro_batch_sizes", (int(total_batch),)))
++        cfg["mini_batch_scope"] = "prefill"
++    return out
++
+ def build_graph(cfg: Dict[str, Any]):
+     """
+     Build a unified task graph that works for both prefill and decode.
+
+diff --git a/0312_algo/scheduler.py b/0312_algo/scheduler.py
+--- a/0312_algo/scheduler.py
++++ b/0312_algo/scheduler.py
+@@ -488,7 +488,25 @@
+         return str(default_phase)
+     
+     def _node_batch(self, g: Any, nid: str, phase: str) -> int:
+-        """Effective batch for a node."""
++        """Effective batch for a node. Prefer per-node attrs, then fall back to scheduler batch."""
++        try:
++            nodes = getattr(g, "nodes", None)
++            if isinstance(nodes, Mapping):
++                node = nodes.get(nid)
++                attrs = getattr(node, "attrs", None)
++                if isinstance(attrs, Mapping):
++                    for key in ("batch", "micro_batch_size", "mini_batch_size"):
++                        val = attrs.get(key, None)
++                        if val is None:
++                            continue
++                        try:
++                            batch_v = int(val)
++                        except Exception:
++                            continue
++                        if batch_v > 0:
++                            return int(batch_v)
++        except Exception:
++            pass
+         return int(getattr(self, "batch", 1) or 1)
+ 
+     def _node_seq_len(self, g: Any, nid: str, phase: str) -> int:
+@@ -1085,7 +1103,7 @@
+             self._node_finish_time[nid] = finish
+             self._node_placement[nid] = dev.name
+             self._node_out_fmt[nid] = self.cost.device_preferred_fmt(dev)
+-            out_read_nd, out_write_nd = self.cost.estimate_activation_bytes(node, self.batch, self.seq_len, phase)
++            out_read_nd, out_write_nd = self.cost.estimate_activation_bytes(node, batch, seq_len, phase_eff)
+             out_nd = max(int(out_write_nd), int(out_read_nd))
+ 
+             # ---- Activation residency / spill policy ----
+
+diff --git a/0312_algo/main.py b/0312_algo/main.py
+--- a/0312_algo/main.py
++++ b/0312_algo/main.py
+@@ -12,7 +12,7 @@
+ from cost_model import CostModel, DTYPE_BYTES
+ from cost_model_pim_backend import _make_shared_model_dict
+ from buffer_manager import GlobalMemoryManager
+-from model_parser import build_graph
++from model_parser import build_graph, maybe_expand_prefill_graph
+ from config import (
+     PIM_STATIC_ALLOC_RATIO,
+     ENABLE_PIM_WEIGHT_PRELOAD,
+@@ -609,8 +609,9 @@
+     current_length = prefill_len
+     """
+     prefill_len = int(cfg.get('prefill_len', 128))
++    graph_prefill = maybe_expand_prefill_graph(graph, cfg)
+     sched.set_seq_len(prefill_len)
+-    prefill_sched = sched.schedule(graph, phase='prefill')
++    prefill_sched = sched.schedule(graph_prefill, phase='prefill')
+     prefill_time = sched.makespan(prefill_sched)
+     return (prefill_time, _serialize_schedule(prefill_sched, phase='prefill', token_idx=None))
+ 
+@@ -2102,6 +2103,8 @@
+                          help='Tensor-parallel shard size for Q/K/V generation and attention head sharding (column split).')
+     sp_eval.add_argument('--tp_ffn', type=int,
+                          help='Tensor-parallel shard size for FFN intermediate dimension (ffn_dim split).')
++    sp_eval.add_argument('--mini_batch_parts', type=int,
++                         help='Split one logical batch into N mini-batches for prefill only; 1 disables it.')
+     # weight-suggest mode: multi-pass SA to suggest weight formats
+     sp_ws = sub.add_parser('weight-suggest', help='Run multi-pass SA to suggest weight formats; no baselines.')
+     sp_ws.add_argument('--config', required=True, type=str, help='Path to a JSON config with run parameters.')
+@@ -2131,6 +2134,8 @@
+                         help='Tensor-parallel shard size for Q/K/V generation and attention head sharding (column split).')
+     sp_ws.add_argument('--tp_ffn', type=int,
+                         help='Tensor-parallel shard size for FFN intermediate dimension (ffn_dim split).')
++    sp_ws.add_argument('--mini_batch_parts', type=int,
++                        help='Split one logical batch into N mini-batches for prefill only; 1 disables it.')
+     # Graph/tensor-parallel controls
+     # Weight-format optimization controls
+     sp_ws.add_argument('--format_opt_method', type=str,
+@@ -2199,6 +2204,7 @@
+             'decode_plan_refresh_stride',
+             'tp_qkv',
+             'tp_ffn',
++            'mini_batch_parts',
+             'result_dir',
+             'hardware_json',
+             'algo',

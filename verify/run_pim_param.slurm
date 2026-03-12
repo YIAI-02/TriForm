@@ -115,6 +115,11 @@ cmd=(python "$PY_SCRIPT" run-pim \
   --pim-ramulator-bin "$PIM_RAMULATOR_BIN" \
   --pim-num-devices "$PIM_NUM_DEVICES")
 
+
+if [[ -n "${BATCH}" ]]; then
+  cmd+=(--batch "$BATCH")
+fi
+
 if [[ -n "${CENT_SIM_ROOT}" ]]; then
   cmd+=(--cent-sim-root "$CENT_SIM_ROOT")
 fi
