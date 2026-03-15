@@ -11,15 +11,18 @@
 实心点透明度：--point-alpha 0.95
 
 Typical usage:
-    python plot_exp1_static.py ../../algorithms/output/exp1/hw_hardware_1npu_2aim/sst64_rst64 \
-        --include-models llama_7b qwen_1.8b qwen_14b \
+    python plot_static.py ../../algorithms/output/exp1/hw_hardware_1npu_2aim/sst64_rst64 \
+        --include-models qwen_14b\
         --mode static \
         --metric total_time_s \
-        --point-size 42 \
-        --point-edge-width 1\
+        --point-size 32 \
+        --point-edge-width 0.3\
         --surface-mode convex_hull \
-        --point-alpha 0.4 \
-        --output ../../figs/exp1/fig_static_brittleness_3d.pdf
+        --point-alpha 0.8 \
+        --surface-alpha 0.3\
+        --inner-grid-mode z_planes \
+        --inner-grid-alpha 1 \
+        --output ../../figs/fig_static_brittleness_3d_qwen_14b.pdf
 
 """
 
@@ -131,6 +134,13 @@ def safe_log2(values: Sequence[float]) -> np.ndarray:
     if np.any(arr <= 0):
         raise ValueError(f"All axis values must be positive for log2 transform, got {arr}")
     return np.log2(arr)
+
+
+def unique_log2_ticks(values: Sequence[int]) -> np.ndarray:
+    uniq = sorted(set(int(v) for v in values))
+    if not uniq:
+        return np.asarray([], dtype=float)
+    return safe_log2(uniq)
 
 
 def numeric_rank(points: np.ndarray) -> int:
@@ -426,6 +436,50 @@ def add_convex_hull(
     ax.add_collection3d(poly)
 
 
+def add_inner_reference_grid(
+    ax,
+    xs: Sequence[int],
+    ys: Sequence[int],
+    zs: Sequence[int],
+    mode: str = "z_planes",
+    color: Tuple[float, float, float, float] = (0.48, 0.48, 0.48, 0.22),
+    linewidth: float = 0.65,
+    linestyle: str = "--",
+) -> None:
+    """
+    Add faint guide lines inside the 3D volume so intermediate z levels are easier to read.
+
+    mode='z_planes': draw a full x-y grid on every z tick slice.
+    mode='lattice' : also add vertical z guide lines for every (x, y) intersection.
+    """
+    if mode == "none":
+        return
+
+    xt = unique_log2_ticks(xs)
+    yt = unique_log2_ticks(ys)
+    zt = unique_log2_ticks(zs)
+    if len(xt) == 0 or len(yt) == 0 or len(zt) == 0:
+        return
+
+    xmin, xmax = float(np.min(xt)), float(np.max(xt))
+    ymin, ymax = float(np.min(yt)), float(np.max(yt))
+    zmin, zmax = float(np.min(zt)), float(np.max(zt))
+
+    line_kwargs = dict(color=color, linewidth=linewidth, linestyle=linestyle, zorder=0)
+
+    if mode in {"z_planes", "lattice"}:
+        for z in zt:
+            for y in yt:
+                ax.plot([xmin, xmax], [y, y], [z, z], **line_kwargs)
+            for x in xt:
+                ax.plot([x, x], [ymin, ymax], [z, z], **line_kwargs)
+
+    if mode == "lattice":
+        for x in xt:
+            for y in yt:
+                ax.plot([x, x], [y, y], [zmin, zmax], **line_kwargs)
+
+
 def apply_ticks(ax, xs: Sequence[int], ys: Sequence[int], zs: Sequence[int]) -> None:
     ux = sorted(set(int(v) for v in xs))
     uy = sorted(set(int(v) for v in ys))
@@ -441,16 +495,31 @@ def apply_ticks(ax, xs: Sequence[int], ys: Sequence[int], zs: Sequence[int]) -> 
     ax.set_zticklabels([str(v) for v in uz], fontsize=9)
 
 
-def style_3d_axes(ax, elev: float, azim: float) -> None:
+def style_3d_axes(ax, elev: float, azim: float, pane_alpha: float = 0.18) -> None:
     ax.view_init(elev=elev, azim=azim)
-    ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.5)
+    ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.40)
 
-    # slightly transparent white panes
     for axis in [ax.xaxis, ax.yaxis, ax.zaxis]:
         try:
-            axis.set_pane_color((1.0, 1.0, 1.0, 0.92))
+            axis.set_pane_color((1.0, 1.0, 1.0, pane_alpha))
         except Exception:
             pass
+
+        try:
+            axis._axinfo["grid"].update(
+                {
+                    "linewidth": 0.60,
+                    "linestyle": "--",
+                    "color": (0.55, 0.55, 0.55, 0.42),
+                }
+            )
+        except Exception:
+            pass
+
+    try:
+        ax.set_box_aspect((1.0, 1.0, 1.0))
+    except Exception:
+        pass
 
 
 def scatter_policy_points(
@@ -554,6 +623,9 @@ def make_figure(
     point_size: float = 42.0,
     point_alpha: float = 0.96,
     point_edge_width: float = 0.35,
+    inner_grid_mode: str = "z_planes",
+    inner_grid_alpha: float = 0.22,
+    inner_grid_linewidth: float = 0.65,
     elev: float = 24.0,
     azim: float = -58.0,
     title: Optional[str] = None,
@@ -570,7 +642,7 @@ def make_figure(
         raise ValueError("No models left to plot after filtering.")
 
     n = len(model_order)
-    fig = plt.figure(figsize=(5.6 * n, 5.7), constrained_layout=False)
+    fig = plt.figure(figsize=(3.6 * n, 3.6), constrained_layout=False)
 
     winners = winners.copy()
     winners["x"] = safe_log2(winners["batch"])
@@ -584,6 +656,16 @@ def make_figure(
         sub = winners[winners["model_key"] == model].copy()
         if sub.empty:
             continue
+
+        add_inner_reference_grid(
+            ax,
+            sub["batch"],
+            sub["decode"],
+            sub["prefill"],
+            mode=inner_grid_mode,
+            color=(0.48, 0.48, 0.48, inner_grid_alpha),
+            linewidth=inner_grid_linewidth,
+        )
 
         ordered_policies = POLICY_ORDER + sorted(set(sub["winner"]) - set(POLICY_ORDER))
         ordered_policies = unique_keep_order(ordered_policies)
@@ -749,6 +831,30 @@ def build_parser() -> argparse.ArgumentParser:
         help="Edge width for points.",
     )
 
+    parser.add_argument(
+        "--inner-grid-mode",
+        default="z_planes",
+        choices=["none", "z_planes", "lattice"],
+        help=(
+            "Internal guide grid inside the 3D box: "
+            "'z_planes' draws a grid on every z slice; "
+            "'lattice' adds full vertical guide columns; "
+            "'none' disables it."
+        ),
+    )
+    parser.add_argument(
+        "--inner-grid-alpha",
+        type=float,
+        default=0.22,
+        help="Transparency of the internal guide grid.",
+    )
+    parser.add_argument(
+        "--inner-grid-linewidth",
+        type=float,
+        default=0.65,
+        help="Line width of the internal guide grid.",
+    )
+
     parser.add_argument("--elev", type=float, default=24.0, help="3D camera elevation.")
     parser.add_argument("--azim", type=float, default=-58.0, help="3D camera azimuth.")
     parser.add_argument("--title", type=str, default=None)
@@ -791,6 +897,9 @@ def main() -> None:
         point_size=args.point_size,
         point_alpha=args.point_alpha,
         point_edge_width=args.point_edge_width,
+        inner_grid_mode=args.inner_grid_mode,
+        inner_grid_alpha=args.inner_grid_alpha,
+        inner_grid_linewidth=args.inner_grid_linewidth,
         elev=args.elev,
         azim=args.azim,
         title=args.title,

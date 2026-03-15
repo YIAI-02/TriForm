@@ -15,8 +15,9 @@ MODEL_FAMILY_VARIANTS=(
   # "qwen:1.8b"
   # "qwen:14b"
   # "llama:7b"
-  "llama:13b"
-  "llama:70b"
+  # "llama:13b"
+  # "llama:70b"
+  "llama:405b"
 )
 
 PREFILLS=(128 256 512 1024 2048 4096)

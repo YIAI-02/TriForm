@@ -41,8 +41,8 @@ import seaborn as sns
 # ============================================================================
 MANUAL_EXCLUDE: List[str] = []
 HEFT_VARIANTS: List[str] = ["heft", "hefthint"]
-POSITIVE_COLOR = "#39a937"
-NEGATIVE_COLOR = "#3760a9"
+POSITIVE_COLOR = "#aee4ad"
+NEGATIVE_COLOR = "#add9e4"
 DEFAULT_FIG_WIDTH = 5.0   # interpreted as per-panel width
 DEFAULT_FIG_HEIGHT = 1.6
 DEFAULT_WSPACE = 0.12
@@ -544,8 +544,8 @@ def plot_gap_histograms(
     axes = axes[0]
 
     legend_handles = [
-        Patch(facecolor=NEGATIVE_COLOR, edgecolor="white", linewidth=0.5, alpha=0.60, label="Negative gap"),
-        Patch(facecolor=POSITIVE_COLOR, edgecolor="white", linewidth=0.5, alpha=0.60, label="Positive gap"),
+        Patch(facecolor=NEGATIVE_COLOR, edgecolor="black", linewidth=1, alpha=1, label="Negative gap"),
+        Patch(facecolor=POSITIVE_COLOR, edgecolor="black", linewidth=1, alpha=1, label="Positive gap"),
     ]
 
     for i, (ax, panel) in enumerate(zip(axes, panels)):
@@ -561,18 +561,18 @@ def plot_gap_histograms(
                 neg,
                 bins=bin_edges,
                 color=NEGATIVE_COLOR,
-                alpha=0.60,
-                edgecolor="white",
-                linewidth=0.5,
+                alpha=1,
+                edgecolor="black",
+                linewidth=1,
             )
         if pos.size:
             ax.hist(
                 pos,
                 bins=bin_edges,
                 color=POSITIVE_COLOR,
-                alpha=0.60,
-                edgecolor="white",
-                linewidth=0.5,
+                alpha=1,
+                edgecolor="black",
+                linewidth=1,
             )
 
         # ax.axvline(0.0, color="k", linestyle="--", linewidth=1.0)

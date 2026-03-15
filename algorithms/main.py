@@ -1005,8 +1005,9 @@ def run(cfg: Dict):
         sched = SchedCls(cluster, cost, label, batch=batch, seq_len=prefill_len, buffer=buffer_mgr)
         sched.reset_state()
         sched.set_storage_format_map(fmt_map_eval)
-        prefill_time, prefill_ser = simulate_prefill(sched, cfg, graph)
-        decode_time, decode_ser = simulate_decode_progressive(sched, cfg, graph, prefill_end=prefill_time)
+        graph_eval = graph_kv
+        prefill_time, prefill_ser = simulate_prefill(sched, cfg, graph_eval)
+        decode_time, decode_ser = simulate_decode_progressive(sched, cfg, graph_eval, prefill_end=prefill_time)
         total_time = float(prefill_time + decode_time)
         wstats = sched.export_weight_stats()
         return (total_time, float(prefill_time), float(decode_time), prefill_ser, decode_ser, wstats)
@@ -2125,16 +2126,12 @@ def parse_args():
     sp_ws.add_argument('--npu_backend', type=str, default=None,
                         choices=['fast_mode', 'ascend_310b_json', 'llmcompass'],
                         help='NPU operator-latency backend: fast/ascend_310b_json/llmcompass. Must be explicitly specified (in config JSON or CLI).')
-    sp_ws.add_argument('--pim_fast_mode', action='store_true')   
+    sp_ws.add_argument('--pim_fast_mode', action='store_true', default=None)   
     # Tensor-parallel shard controls (graph splitting)
     sp_ws.add_argument('--tp_qkv', type=int,
                         help='Tensor-parallel shard size for Q/K/V generation and attention head sharding (column split).')
     sp_ws.add_argument('--tp_ffn', type=int,
                         help='Tensor-parallel shard size for FFN intermediate dimension (ffn_dim split).')
-    # Graph/tensor-parallel controls
-    # Weight-format optimization controls
-    sp_ws.add_argument('--format_opt_method', type=str,
-                       help='Weight-format optimizer: al_bcd_beam (default) | bcd (legacy).')
     sp_ws.add_argument('--format_outer_max_iters', type=int,
                        help='AL outer iterations (default: 8).')
     sp_ws.add_argument('--format_inner_max_blocks', type=int,
@@ -2208,8 +2205,6 @@ def main():
             'weight_format_json',
             'npu_backend',
             'pim_fast_mode',
-            # weight-format optimizer knobs (optional CLI overrides)
-            'format_opt_method',
             'format_outer_max_iters',
             'format_inner_max_blocks',
             'format_nd_margin_init',
