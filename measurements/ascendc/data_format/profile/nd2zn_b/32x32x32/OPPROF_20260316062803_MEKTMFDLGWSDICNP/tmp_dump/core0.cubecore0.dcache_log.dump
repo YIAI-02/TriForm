@@ -1,0 +1,1773 @@
+[info] 22529: calc_req_addr. req pc :0x10d11030,idx_addr: 0x38,tag_addr:0x106bb, aligned_addr_:0x106bbe00,ofst_addr_:0x0 
+[info] 22529: create_dc_req. req_pc:0x10d11030, req_mem:1,req_size:8,req_addr:0x106bbe00, req_data0:0x0,req_data1:0x0.
+[info] 22530: lookup_tag is MISS. req pc :0x10d11030.
+[info] 22530: calc_req_addr. req pc :0x10d11034,idx_addr: 0x38,tag_addr:0x106bb, aligned_addr_:0x106bbe00,ofst_addr_:0x18 
+[info] 22530: create_dc_req. req_pc:0x10d11034, req_mem:1,req_size:4,req_addr:0x106bbe18, req_data0:0x0,req_data1:0x0.
+[info] 22531: lookup_tag is MISS. req pc :0x10d11034.
+[info] 22531: calc_req_addr. req pc :0x10d11038,idx_addr: 0x38,tag_addr:0x106bb, aligned_addr_:0x106bbe00,ofst_addr_:0x10 
+[info] 22531: create_dc_req. req_pc:0x10d11038, req_mem:1,req_size:4,req_addr:0x106bbe10, req_data0:0x0,req_data1:0x0.
+[info] 22532: lookup_tag is MISS. req pc :0x10d11038.
+[info] 22532: create_rd_biu_req. ll_req_id:11387,rd_req_addr_: 0x106bbe00
+[info] 22533: send_rd_biu_req. req_id:11387,req_rd_addr:0x106bbe00.
+[info] 22537: calc_req_addr. req pc :0x10d11058,idx_addr: 0x3c,tag_addr:0x2107, aligned_addr_:0x2107f00,ofst_addr_:0x8 
+[info] 22537: create_dc_req. req_pc:0x10d11058, req_mem:1,req_size:4,req_addr:0x2107f08, req_data0:0x7ff80,req_data1:0x0.
+[info] 22538: lookup_tag is MISS. req pc :0x10d11058.
+[info] 22539: calc_req_addr. req pc :0x10d11064,idx_addr: 0x3c,tag_addr:0x2107, aligned_addr_:0x2107f00,ofst_addr_:0xc 
+[info] 22539: create_dc_req. req_pc:0x10d11064, req_mem:1,req_size:1,req_addr:0x2107f0c, req_data0:0x0,req_data1:0x0.
+[info] 22540: lookup_tag is MISS. req pc :0x10d11064.
+[info] 22540: calc_req_addr. req pc :0x10d11068,idx_addr: 0x2b,tag_addr:0x2107, aligned_addr_:0x2107ac0,ofst_addr_:0x0 
+[info] 22540: create_dc_req. req_pc:0x10d11068, req_mem:1,req_size:8,req_addr:0x2107ac0, req_data0:0x0,req_data1:0x0.
+[info] 22540: push req to stb. req_pc:0x10d11058,stb_main_entry_id:0,aligned_addr_:0x2107f00,mem: 1,stb_sub_entry_size:1,store_data0:0x7ff80, store_data1:0x0, strb size:4
+[info] 22541: lookup_tag is MISS. req pc :0x10d11068.
+[debug] 22541: stb not empty. size:0x1
+[info] 22541: calc_req_addr. req pc :0x10d1106c,idx_addr: 0x2b,tag_addr:0x2107, aligned_addr_:0x2107ac0,ofst_addr_:0x10 
+[info] 22541: create_dc_req. req_pc:0x10d1106c, req_mem:1,req_size:8,req_addr:0x2107ad0, req_data0:0x0,req_data1:0x0.
+[debug] 22542: stb not empty. size:0x1
+[info] 22542: lookup_tag is MISS. req pc :0x10d1106c.
+[info] 22542: push req to stb. req_pc:0x10d11064,stb_main_entry_id:0,aligned_addr_:0x2107f00,mem: 1,stb_sub_entry_size:2,store_data0:0x0, store_data1:0x0, strb size:5
+[debug] 22543: stb not empty. size:0x1
+[info] 22543: calc_req_addr. req pc :0x10d11078,idx_addr: 0x28,tag_addr:0x2107, aligned_addr_:0x2107a00,ofst_addr_:0x0 
+[info] 22543: create_dc_req. req_pc:0x10d11078, req_mem:1,req_size:8,req_addr:0x2107a00, req_data0:0x0,req_data1:0x0.
+[info] 22543: push req to stb. req_pc:0x10d11068,stb_main_entry_id:1,aligned_addr_:0x2107ac0,mem: 1,stb_sub_entry_size:1,store_data0:0x0, store_data1:0x0, strb size:16
+[debug] 22544: stb not empty. size:0x2
+[info] 22544: lookup_tag is MISS. req pc :0x10d11078.
+[info] 22544: calc_req_addr. req pc :0x10d1107c,idx_addr: 0x28,tag_addr:0x2107, aligned_addr_:0x2107a00,ofst_addr_:0x8 
+[info] 22544: create_dc_req. req_pc:0x10d1107c, req_mem:1,req_size:8,req_addr:0x2107a08, req_data0:0x0,req_data1:0x0.
+[info] 22544: push req to stb. req_pc:0x10d1106c,stb_main_entry_id:1,aligned_addr_:0x2107ac0,mem: 1,stb_sub_entry_size:2,store_data0:0x0, store_data1:0x0, strb size:32
+[debug] 22545: stb not empty. size:0x2
+[info] 22545: lookup_tag is MISS. req pc :0x10d1107c.
+[info] 22545: calc_req_addr. req pc :0x10d11080,idx_addr: 0x28,tag_addr:0x2107, aligned_addr_:0x2107a00,ofst_addr_:0x20 
+[info] 22545: create_dc_req. req_pc:0x10d11080, req_mem:1,req_size:8,req_addr:0x2107a20, req_data0:0x0,req_data1:0x0.
+[debug] 22546: stb not empty. size:0x2
+[info] 22546: lookup_tag is MISS. req pc :0x10d11080.
+[info] 22546: calc_req_addr. req pc :0x10d11084,idx_addr: 0x28,tag_addr:0x2107, aligned_addr_:0x2107a00,ofst_addr_:0x30 
+[info] 22546: create_dc_req. req_pc:0x10d11084, req_mem:1,req_size:8,req_addr:0x2107a30, req_data0:0x0,req_data1:0x0.
+[info] 22546: push req to stb. req_pc:0x10d11078,stb_main_entry_id:2,aligned_addr_:0x2107a00,mem: 1,stb_sub_entry_size:1,store_data0:0x0, store_data1:0x0, strb size:8
+[debug] 22547: stb not empty. size:0x3
+[info] 22547: lookup_tag is MISS. req pc :0x10d11084.
+[info] 22547: push req to stb. req_pc:0x10d1107c,stb_main_entry_id:2,aligned_addr_:0x2107a00,mem: 1,stb_sub_entry_size:2,store_data0:0x0, store_data1:0x0, strb size:24
+[debug] 22548: stb not empty. size:0x3
+[info] 22548: calc_req_addr. req pc :0x10d11090,idx_addr: 0x29,tag_addr:0x2107, aligned_addr_:0x2107a40,ofst_addr_:0x0 
+[info] 22548: create_dc_req. req_pc:0x10d11090, req_mem:1,req_size:8,req_addr:0x2107a40, req_data0:0x0,req_data1:0x0.
+[info] 22548: push req to stb. req_pc:0x10d11080,stb_main_entry_id:2,aligned_addr_:0x2107a00,mem: 1,stb_sub_entry_size:3,store_data0:0x0, store_data1:0x0, strb size:40
+[debug] 22549: stb not empty. size:0x3
+[info] 22549: lookup_tag is MISS. req pc :0x10d11090.
+[info] 22549: calc_req_addr. req pc :0x10d11094,idx_addr: 0x29,tag_addr:0x2107, aligned_addr_:0x2107a40,ofst_addr_:0x10 
+[info] 22549: create_dc_req. req_pc:0x10d11094, req_mem:1,req_size:8,req_addr:0x2107a50, req_data0:0x0,req_data1:0x0.
+[info] 22549: push req to stb. req_pc:0x10d11084,stb_main_entry_id:2,aligned_addr_:0x2107a00,mem: 1,stb_sub_entry_size:4,store_data0:0x0, store_data1:0x0, strb size:56
+[debug] 22550: stb not empty. size:0x3
+[info] 22550: lookup_tag is MISS. req pc :0x10d11094.
+[info] 22550: calc_req_addr. req pc :0x10d11098,idx_addr: 0x29,tag_addr:0x2107, aligned_addr_:0x2107a40,ofst_addr_:0x20 
+[info] 22550: create_dc_req. req_pc:0x10d11098, req_mem:1,req_size:8,req_addr:0x2107a60, req_data0:0x0,req_data1:0x0.
+[debug] 22551: stb not empty. size:0x3
+[info] 22551: lookup_tag is MISS. req pc :0x10d11098.
+[info] 22551: calc_req_addr. req pc :0x10d1109c,idx_addr: 0x29,tag_addr:0x2107, aligned_addr_:0x2107a40,ofst_addr_:0x30 
+[info] 22551: create_dc_req. req_pc:0x10d1109c, req_mem:1,req_size:8,req_addr:0x2107a70, req_data0:0x0,req_data1:0x0.
+[info] 22551: push req to stb. req_pc:0x10d11090,stb_main_entry_id:3,aligned_addr_:0x2107a40,mem: 1,stb_sub_entry_size:1,store_data0:0x0, store_data1:0x0, strb size:16
+[debug] 22552: stb not empty. size:0x4
+[info] 22552: lookup_tag is MISS. req pc :0x10d1109c.
+[info] 22552: push req to stb. req_pc:0x10d11094,stb_main_entry_id:3,aligned_addr_:0x2107a40,mem: 1,stb_sub_entry_size:2,store_data0:0x0, store_data1:0x0, strb size:32
+[debug] 22553: stb not empty. size:0x4
+[info] 22553: calc_req_addr. req pc :0x10d110a8,idx_addr: 0x2a,tag_addr:0x2107, aligned_addr_:0x2107a80,ofst_addr_:0x0 
+[info] 22553: create_dc_req. req_pc:0x10d110a8, req_mem:1,req_size:8,req_addr:0x2107a80, req_data0:0x0,req_data1:0x0.
+[info] 22553: push req to stb. req_pc:0x10d11098,stb_main_entry_id:3,aligned_addr_:0x2107a40,mem: 1,stb_sub_entry_size:3,store_data0:0x0, store_data1:0x0, strb size:48
+[debug] 22554: stb not empty. size:0x4
+[info] 22554: lookup_tag is MISS. req pc :0x10d110a8.
+[info] 22554: calc_req_addr. req pc :0x10d110ac,idx_addr: 0x2a,tag_addr:0x2107, aligned_addr_:0x2107a80,ofst_addr_:0x10 
+[info] 22554: create_dc_req. req_pc:0x10d110ac, req_mem:1,req_size:8,req_addr:0x2107a90, req_data0:0x0,req_data1:0x0.
+[info] 22554: push req to stb. req_pc:0x10d1109c,stb_main_entry_id:3,aligned_addr_:0x2107a40,mem: 1,stb_sub_entry_size:4,store_data0:0x0, store_data1:0x0, strb size:64
+[info] 22555: create_rd_biu_req. ll_req_id:11395,rd_req_addr_: 0x2107a40
+[info] 22555: stb_create_rd_req. req_pc:0x10d11090,aligned_addr_:0x2107a40,mem: 1 
+[debug] 22555: stb not empty. size:0x4
+[info] 22555: lookup_tag is MISS. req pc :0x10d110ac.
+[info] 22555: calc_req_addr. req pc :0x10d110b4,idx_addr: 0x2a,tag_addr:0x2107, aligned_addr_:0x2107a80,ofst_addr_:0x20 
+[info] 22555: create_dc_req. req_pc:0x10d110b4, req_mem:1,req_size:8,req_addr:0x2107aa0, req_data0:0x0,req_data1:0x0.
+[debug] 22556: stb not empty. size:0x4
+[info] 22556: lookup_tag is MISS. req pc :0x10d110b4.
+[info] 22556: calc_req_addr. req pc :0x10d110b8,idx_addr: 0x2a,tag_addr:0x2107, aligned_addr_:0x2107a80,ofst_addr_:0x30 
+[info] 22556: create_dc_req. req_pc:0x10d110b8, req_mem:1,req_size:8,req_addr:0x2107ab0, req_data0:0x0,req_data1:0x0.
+[info] 22556: push req to stb. req_pc:0x10d110a8,stb_main_entry_id:4,aligned_addr_:0x2107a80,mem: 1,stb_sub_entry_size:1,store_data0:0x0, store_data1:0x0, strb size:16
+[info] 22556: send_rd_biu_req. req_id:11395,req_rd_addr:0x2107a40.
+[debug] 22557: stb not empty. size:0x5
+[info] 22557: lookup_tag is MISS. req pc :0x10d110b8.
+[info] 22557: push req to stb. req_pc:0x10d110ac,stb_main_entry_id:4,aligned_addr_:0x2107a80,mem: 1,stb_sub_entry_size:2,store_data0:0x0, store_data1:0x0, strb size:32
+[debug] 22558: stb not empty. size:0x5
+[info] 22558: calc_req_addr. req pc :0x10d110c4,idx_addr: 0x3b,tag_addr:0x2107, aligned_addr_:0x2107ec0,ofst_addr_:0x20 
+[info] 22558: create_dc_req. req_pc:0x10d110c4, req_mem:1,req_size:4,req_addr:0x2107ee0, req_data0:0xffffffff,req_data1:0x0.
+[info] 22558: push req to stb. req_pc:0x10d110b4,stb_main_entry_id:4,aligned_addr_:0x2107a80,mem: 1,stb_sub_entry_size:3,store_data0:0x0, store_data1:0x0, strb size:48
+[debug] 22559: stb not empty. size:0x5
+[info] 22559: lookup_tag is MISS. req pc :0x10d110c4.
+[info] 22559: calc_req_addr. req pc :0x10d110c8,idx_addr: 0x3b,tag_addr:0x2107, aligned_addr_:0x2107ec0,ofst_addr_:0x28 
+[info] 22559: create_dc_req. req_pc:0x10d110c8, req_mem:1,req_size:4,req_addr:0x2107ee8, req_data0:0xffffffff,req_data1:0x0.
+[info] 22559: push req to stb. req_pc:0x10d110b8,stb_main_entry_id:4,aligned_addr_:0x2107a80,mem: 1,stb_sub_entry_size:4,store_data0:0x0, store_data1:0x0, strb size:64
+[info] 22560: create_rd_biu_req. ll_req_id:11398,rd_req_addr_: 0x2107a80
+[info] 22560: stb_create_rd_req. req_pc:0x10d110a8,aligned_addr_:0x2107a80,mem: 1 
+[debug] 22560: stb not empty. size:0x5
+[info] 22560: lookup_tag is MISS. req pc :0x10d110c8.
+[info] 22560: calc_req_addr. req pc :0x10d110cc,idx_addr: 0x3b,tag_addr:0x2107, aligned_addr_:0x2107ec0,ofst_addr_:0x24 
+[info] 22560: create_dc_req. req_pc:0x10d110cc, req_mem:1,req_size:4,req_addr:0x2107ee4, req_data0:0xffffffff,req_data1:0x0.
+[debug] 22561: stb not empty. size:0x5
+[info] 22561: lookup_tag is MISS. req pc :0x10d110cc.
+[info] 22561: push req to stb. req_pc:0x10d110c4,stb_main_entry_id:5,aligned_addr_:0x2107ec0,mem: 1,stb_sub_entry_size:1,store_data0:0xffffffff, store_data1:0x0, strb size:4
+[info] 22561: send_rd_biu_req. req_id:11398,req_rd_addr:0x2107a80.
+[debug] 22562: stb not empty. size:0x6
+[info] 22562: push req to stb. req_pc:0x10d110c8,stb_main_entry_id:5,aligned_addr_:0x2107ec0,mem: 1,stb_sub_entry_size:2,store_data0:0xffffffff, store_data1:0x0, strb size:8
+[debug] 22563: stb not empty. size:0x6
+[info] 22563: push req to stb. req_pc:0x10d110cc,stb_main_entry_id:5,aligned_addr_:0x2107ec0,mem: 1,stb_sub_entry_size:3,store_data0:0xffffffff, store_data1:0x0, strb size:12
+[debug] 22564: stb not empty. size:0x6
+[debug] 22565: stb not empty. size:0x6
+[debug] 22566: stb not empty. size:0x6
+[debug] 22567: stb not empty. size:0x6
+[debug] 22568: stb not empty. size:0x6
+[debug] 22569: stb not empty. size:0x6
+[debug] 22570: stb not empty. size:0x6
+[debug] 22571: stb not empty. size:0x6
+[info] 22572: create_rd_biu_req. ll_req_id:11400,rd_req_addr_: 0x2107f00
+[info] 22572: stb_create_rd_req. req_pc:0x10d11058,aligned_addr_:0x2107f00,mem: 1 
+[debug] 22572: stb not empty. size:0x6
+[debug] 22573: stb not empty. size:0x6
+[info] 22573: send_rd_biu_req. req_id:11400,req_rd_addr:0x2107f00.
+[debug] 22574: stb not empty. size:0x6
+[info] 22575: create_rd_biu_req. ll_req_id:11401,rd_req_addr_: 0x2107ac0
+[info] 22575: stb_create_rd_req. req_pc:0x10d11068,aligned_addr_:0x2107ac0,mem: 1 
+[debug] 22575: stb not empty. size:0x6
+[debug] 22576: stb not empty. size:0x6
+[info] 22576: send_rd_biu_req. req_id:11401,req_rd_addr:0x2107ac0.
+[debug] 22577: stb not empty. size:0x6
+[info] 22578: create_rd_biu_req. ll_req_id:11402,rd_req_addr_: 0x2107a00
+[info] 22578: stb_create_rd_req. req_pc:0x10d11078,aligned_addr_:0x2107a00,mem: 1 
+[debug] 22578: stb not empty. size:0x6
+[debug] 22579: stb not empty. size:0x6
+[info] 22579: send_rd_biu_req. req_id:11402,req_rd_addr:0x2107a00.
+[debug] 22580: stb not empty. size:0x6
+[debug] 22581: stb not empty. size:0x6
+[debug] 22582: stb not empty. size:0x6
+[debug] 22583: stb not empty. size:0x6
+[debug] 22584: stb not empty. size:0x6
+[debug] 22585: stb not empty. size:0x6
+[debug] 22586: stb not empty. size:0x6
+[debug] 22587: stb not empty. size:0x6
+[debug] 22588: stb not empty. size:0x6
+[debug] 22589: stb not empty. size:0x6
+[debug] 22590: stb not empty. size:0x6
+[debug] 22591: stb not empty. size:0x6
+[debug] 22592: stb not empty. size:0x6
+[info] 22593: create_rd_biu_req. ll_req_id:11403,rd_req_addr_: 0x2107ec0
+[info] 22593: stb_create_rd_req. req_pc:0x10d110c4,aligned_addr_:0x2107ec0,mem: 1 
+[debug] 22593: stb not empty. size:0x6
+[debug] 22594: stb not empty. size:0x6
+[info] 22594: send_rd_biu_req. req_id:11403,req_rd_addr:0x2107ec0.
+[debug] 22595: stb not empty. size:0x6
+[debug] 22596: stb not empty. size:0x6
+[debug] 22597: stb not empty. size:0x6
+[debug] 22598: stb not empty. size:0x6
+[debug] 22599: stb not empty. size:0x6
+[debug] 22600: stb not empty. size:0x6
+[debug] 22601: stb not empty. size:0x6
+[debug] 22602: stb not empty. size:0x6
+[debug] 22603: stb not empty. size:0x6
+[debug] 22604: stb not empty. size:0x6
+[debug] 22605: stb not empty. size:0x6
+[debug] 22606: stb not empty. size:0x6
+[debug] 22607: stb not empty. size:0x6
+[debug] 22608: stb not empty. size:0x6
+[debug] 22609: stb not empty. size:0x6
+[debug] 22610: stb not empty. size:0x6
+[debug] 22611: stb not empty. size:0x6
+[debug] 22612: stb not empty. size:0x6
+[debug] 22613: stb not empty. size:0x6
+[debug] 22614: stb not empty. size:0x6
+[debug] 22615: stb not empty. size:0x6
+[debug] 22616: stb not empty. size:0x6
+[debug] 22617: stb not empty. size:0x6
+[debug] 22618: stb not empty. size:0x6
+[debug] 22619: stb not empty. size:0x6
+[debug] 22620: stb not empty. size:0x6
+[debug] 22621: stb not empty. size:0x6
+[debug] 22622: stb not empty. size:0x6
+[debug] 22623: stb not empty. size:0x6
+[debug] 22624: stb not empty. size:0x6
+[debug] 22625: stb not empty. size:0x6
+[debug] 22626: stb not empty. size:0x6
+[debug] 22627: stb not empty. size:0x6
+[debug] 22628: stb not empty. size:0x6
+[debug] 22629: stb not empty. size:0x6
+[debug] 22630: stb not empty. size:0x6
+[debug] 22631: stb not empty. size:0x6
+[debug] 22632: stb not empty. size:0x6
+[debug] 22633: stb not empty. size:0x6
+[debug] 22634: stb not empty. size:0x6
+[debug] 22635: stb not empty. size:0x6
+[debug] 22636: stb not empty. size:0x6
+[debug] 22637: stb not empty. size:0x6
+[debug] 22638: stb not empty. size:0x6
+[debug] 22639: stb not empty. size:0x6
+[debug] 22640: stb not empty. size:0x6
+[debug] 22641: stb not empty. size:0x6
+[debug] 22642: stb not empty. size:0x6
+[debug] 22643: stb not empty. size:0x6
+[debug] 22644: stb not empty. size:0x6
+[debug] 22645: stb not empty. size:0x6
+[debug] 22646: stb not empty. size:0x6
+[debug] 22647: stb not empty. size:0x6
+[debug] 22648: stb not empty. size:0x6
+[debug] 22649: stb not empty. size:0x6
+[debug] 22650: stb not empty. size:0x6
+[debug] 22651: stb not empty. size:0x6
+[debug] 22652: stb not empty. size:0x6
+[debug] 22653: stb not empty. size:0x6
+[debug] 22654: stb not empty. size:0x6
+[debug] 22655: stb not empty. size:0x6
+[debug] 22656: stb not empty. size:0x6
+[debug] 22657: stb not empty. size:0x6
+[debug] 22658: stb not empty. size:0x6
+[debug] 22659: stb not empty. size:0x6
+[debug] 22660: stb not empty. size:0x6
+[debug] 22661: stb not empty. size:0x6
+[debug] 22662: stb not empty. size:0x6
+[debug] 22663: stb not empty. size:0x6
+[debug] 22664: stb not empty. size:0x6
+[debug] 22665: stb not empty. size:0x6
+[debug] 22666: stb not empty. size:0x6
+[debug] 22667: stb not empty. size:0x6
+[debug] 22668: stb not empty. size:0x6
+[debug] 22669: stb not empty. size:0x6
+[debug] 22670: stb not empty. size:0x6
+[debug] 22671: stb not empty. size:0x6
+[debug] 22672: stb not empty. size:0x6
+[debug] 22673: stb not empty. size:0x6
+[debug] 22674: stb not empty. size:0x6
+[debug] 22675: stb not empty. size:0x6
+[debug] 22676: stb not empty. size:0x6
+[debug] 22677: stb not empty. size:0x6
+[debug] 22678: stb not empty. size:0x6
+[debug] 22679: stb not empty. size:0x6
+[debug] 22680: stb not empty. size:0x6
+[debug] 22681: stb not empty. size:0x6
+[debug] 22682: stb not empty. size:0x6
+[debug] 22683: stb not empty. size:0x6
+[debug] 22684: stb not empty. size:0x6
+[debug] 22685: stb not empty. size:0x6
+[debug] 22686: stb not empty. size:0x6
+[debug] 22687: stb not empty. size:0x6
+[debug] 22688: stb not empty. size:0x6
+[debug] 22689: stb not empty. size:0x6
+[debug] 22690: stb not empty. size:0x6
+[debug] 22691: stb not empty. size:0x6
+[debug] 22692: stb not empty. size:0x6
+[debug] 22693: stb not empty. size:0x6
+[debug] 22694: stb not empty. size:0x6
+[debug] 22695: stb not empty. size:0x6
+[debug] 22696: stb not empty. size:0x6
+[debug] 22697: stb not empty. size:0x6
+[debug] 22698: stb not empty. size:0x6
+[debug] 22699: stb not empty. size:0x6
+[debug] 22700: stb not empty. size:0x6
+[debug] 22701: stb not empty. size:0x6
+[debug] 22702: stb not empty. size:0x6
+[debug] 22703: stb not empty. size:0x6
+[debug] 22704: stb not empty. size:0x6
+[debug] 22705: stb not empty. size:0x6
+[debug] 22706: stb not empty. size:0x6
+[debug] 22707: stb not empty. size:0x6
+[debug] 22708: stb not empty. size:0x6
+[debug] 22709: stb not empty. size:0x6
+[debug] 22710: stb not empty. size:0x6
+[debug] 22711: stb not empty. size:0x6
+[debug] 22712: stb not empty. size:0x6
+[debug] 22713: stb not empty. size:0x6
+[debug] 22714: stb not empty. size:0x6
+[debug] 22715: stb not empty. size:0x6
+[debug] 22716: stb not empty. size:0x6
+[debug] 22717: stb not empty. size:0x6
+[debug] 22718: stb not empty. size:0x6
+[debug] 22719: stb not empty. size:0x6
+[debug] 22720: stb not empty. size:0x6
+[debug] 22721: stb not empty. size:0x6
+[debug] 22722: stb not empty. size:0x6
+[debug] 22723: stb not empty. size:0x6
+[debug] 22724: stb not empty. size:0x6
+[debug] 22725: stb not empty. size:0x6
+[debug] 22726: stb not empty. size:0x6
+[debug] 22727: stb not empty. size:0x6
+[debug] 22728: stb not empty. size:0x6
+[debug] 22729: stb not empty. size:0x6
+[debug] 22730: stb not empty. size:0x6
+[debug] 22731: stb not empty. size:0x6
+[debug] 22732: stb not empty. size:0x6
+[debug] 22733: stb not empty. size:0x6
+[debug] 22734: stb not empty. size:0x6
+[debug] 22735: stb not empty. size:0x6
+[debug] 22736: stb not empty. size:0x6
+[debug] 22737: stb not empty. size:0x6
+[debug] 22738: stb not empty. size:0x6
+[debug] 22739: stb not empty. size:0x6
+[debug] 22740: stb not empty. size:0x6
+[debug] 22741: stb not empty. size:0x6
+[debug] 22742: stb not empty. size:0x6
+[debug] 22743: stb not empty. size:0x6
+[debug] 22744: stb not empty. size:0x6
+[debug] 22745: stb not empty. size:0x6
+[debug] 22746: stb not empty. size:0x6
+[debug] 22747: stb not empty. size:0x6
+[debug] 22748: stb not empty. size:0x6
+[debug] 22749: stb not empty. size:0x6
+[debug] 22750: stb not empty. size:0x6
+[debug] 22751: stb not empty. size:0x6
+[debug] 22752: stb not empty. size:0x6
+[debug] 22753: stb not empty. size:0x6
+[debug] 22754: stb not empty. size:0x6
+[debug] 22755: stb not empty. size:0x6
+[debug] 22756: stb not empty. size:0x6
+[debug] 22757: stb not empty. size:0x6
+[debug] 22758: stb not empty. size:0x6
+[debug] 22759: stb not empty. size:0x6
+[debug] 22760: stb not empty. size:0x6
+[debug] 22761: stb not empty. size:0x6
+[debug] 22762: stb not empty. size:0x6
+[debug] 22763: stb not empty. size:0x6
+[debug] 22764: stb not empty. size:0x6
+[debug] 22765: stb not empty. size:0x6
+[debug] 22766: stb not empty. size:0x6
+[debug] 22767: stb not empty. size:0x6
+[debug] 22768: stb not empty. size:0x6
+[debug] 22769: stb not empty. size:0x6
+[debug] 22770: stb not empty. size:0x6
+[debug] 22771: stb not empty. size:0x6
+[debug] 22772: stb not empty. size:0x6
+[debug] 22773: stb not empty. size:0x6
+[debug] 22774: stb not empty. size:0x6
+[debug] 22775: stb not empty. size:0x6
+[debug] 22776: stb not empty. size:0x6
+[debug] 22777: stb not empty. size:0x6
+[debug] 22778: stb not empty. size:0x6
+[debug] 22779: stb not empty. size:0x6
+[debug] 22780: stb not empty. size:0x6
+[debug] 22781: stb not empty. size:0x6
+[debug] 22782: stb not empty. size:0x6
+[debug] 22783: stb not empty. size:0x6
+[debug] 22784: stb not empty. size:0x6
+[debug] 22785: stb not empty. size:0x6
+[debug] 22786: stb not empty. size:0x6
+[debug] 22787: stb not empty. size:0x6
+[debug] 22788: stb not empty. size:0x6
+[debug] 22789: stb not empty. size:0x6
+[debug] 22790: stb not empty. size:0x6
+[debug] 22791: stb not empty. size:0x6
+[debug] 22792: stb not empty. size:0x6
+[debug] 22793: stb not empty. size:0x6
+[debug] 22794: stb not empty. size:0x6
+[debug] 22795: stb not empty. size:0x6
+[debug] 22796: stb not empty. size:0x6
+[debug] 22797: stb not empty. size:0x6
+[debug] 22798: stb not empty. size:0x6
+[debug] 22799: stb not empty. size:0x6
+[debug] 22800: stb not empty. size:0x6
+[debug] 22801: stb not empty. size:0x6
+[debug] 22802: stb not empty. size:0x6
+[debug] 22803: stb not empty. size:0x6
+[debug] 22804: stb not empty. size:0x6
+[debug] 22805: stb not empty. size:0x6
+[debug] 22806: stb not empty. size:0x6
+[info] 22806: recv_rd_biu_rsp(stb). rsp_id:11395,aligned_addr_: 0x2107a40, entry_id:3
+[info] 22806: get_victim invalid. way_id:1,idx_addr: 0x29,mem:1, is_dirty:0.
+[info] 22806: refill data to cache_ram. way_id:1,tag_addr:0x2107,idx_addr: 0x29,mem:1, is_dirty:1.
+[info] 22806: retire_stb_instr. isa_pc:0x10d11090
+[info] 22806: retire_stb_instr. isa_pc:0x10d11094
+[info] 22806: retire_stb_instr. isa_pc:0x10d11098
+[info] 22806: retire_stb_instr. isa_pc:0x10d1109c
+[debug] 22807: stb not empty. size:0x5
+[debug] 22808: stb not empty. size:0x5
+[debug] 22809: stb not empty. size:0x5
+[debug] 22810: stb not empty. size:0x5
+[info] 22810: recv_rd_biu_rsp(stb). rsp_id:11398,aligned_addr_: 0x2107a80, entry_id:3
+[info] 22810: get_victim invalid. way_id:1,idx_addr: 0x2a,mem:1, is_dirty:0.
+[info] 22810: refill data to cache_ram. way_id:1,tag_addr:0x2107,idx_addr: 0x2a,mem:1, is_dirty:1.
+[info] 22810: retire_stb_instr. isa_pc:0x10d110a8
+[info] 22810: retire_stb_instr. isa_pc:0x10d110ac
+[info] 22810: retire_stb_instr. isa_pc:0x10d110b4
+[info] 22810: retire_stb_instr. isa_pc:0x10d110b8
+[debug] 22811: stb not empty. size:0x4
+[debug] 22812: stb not empty. size:0x4
+[debug] 22813: stb not empty. size:0x4
+[debug] 22814: stb not empty. size:0x4
+[debug] 22815: stb not empty. size:0x4
+[debug] 22816: stb not empty. size:0x4
+[debug] 22817: stb not empty. size:0x4
+[debug] 22818: stb not empty. size:0x4
+[debug] 22819: stb not empty. size:0x4
+[debug] 22820: stb not empty. size:0x4
+[debug] 22821: stb not empty. size:0x4
+[debug] 22822: stb not empty. size:0x4
+[debug] 22823: stb not empty. size:0x4
+[debug] 22824: stb not empty. size:0x4
+[debug] 22825: stb not empty. size:0x4
+[info] 22825: recv_rd_biu_rsp(stb). rsp_id:11400,aligned_addr_: 0x2107f00, entry_id:0
+[info] 22825: get_victim invalid. way_id:1,idx_addr: 0x3c,mem:1, is_dirty:0.
+[info] 22825: refill data to cache_ram. way_id:1,tag_addr:0x2107,idx_addr: 0x3c,mem:1, is_dirty:1.
+[info] 22825: retire_stb_instr. isa_pc:0x10d11058
+[info] 22825: retire_stb_instr. isa_pc:0x10d11064
+[debug] 22826: stb not empty. size:0x3
+[debug] 22827: stb not empty. size:0x3
+[info] 22827: recv_rd_biu_rsp(stb). rsp_id:11401,aligned_addr_: 0x2107ac0, entry_id:0
+[info] 22827: get_victim invalid. way_id:1,idx_addr: 0x2b,mem:1, is_dirty:0.
+[info] 22827: refill data to cache_ram. way_id:1,tag_addr:0x2107,idx_addr: 0x2b,mem:1, is_dirty:1.
+[info] 22827: retire_stb_instr. isa_pc:0x10d11068
+[info] 22827: retire_stb_instr. isa_pc:0x10d1106c
+[debug] 22828: stb not empty. size:0x2
+[debug] 22829: stb not empty. size:0x2
+[info] 22829: recv_rd_biu_rsp(stb). rsp_id:11402,aligned_addr_: 0x2107a00, entry_id:0
+[info] 22829: get_victim invalid. way_id:1,idx_addr: 0x28,mem:1, is_dirty:0.
+[info] 22829: refill data to cache_ram. way_id:1,tag_addr:0x2107,idx_addr: 0x28,mem:1, is_dirty:1.
+[info] 22829: retire_stb_instr. isa_pc:0x10d11078
+[info] 22829: retire_stb_instr. isa_pc:0x10d1107c
+[info] 22829: retire_stb_instr. isa_pc:0x10d11080
+[info] 22829: retire_stb_instr. isa_pc:0x10d11084
+[debug] 22830: stb not empty. size:0x1
+[debug] 22831: stb not empty. size:0x1
+[debug] 22832: stb not empty. size:0x1
+[debug] 22833: stb not empty. size:0x1
+[debug] 22834: stb not empty. size:0x1
+[debug] 22835: stb not empty. size:0x1
+[debug] 22836: stb not empty. size:0x1
+[debug] 22837: stb not empty. size:0x1
+[debug] 22838: stb not empty. size:0x1
+[debug] 22839: stb not empty. size:0x1
+[debug] 22840: stb not empty. size:0x1
+[debug] 22841: stb not empty. size:0x1
+[debug] 22842: stb not empty. size:0x1
+[debug] 22843: stb not empty. size:0x1
+[debug] 22844: stb not empty. size:0x1
+[debug] 22845: stb not empty. size:0x1
+[info] 22845: recv_rd_biu_rsp(stb). rsp_id:11403,aligned_addr_: 0x2107ec0, entry_id:0
+[info] 22845: get_victim invalid. way_id:1,idx_addr: 0x3b,mem:1, is_dirty:0.
+[info] 22845: refill data to cache_ram. way_id:1,tag_addr:0x2107,idx_addr: 0x3b,mem:1, is_dirty:1.
+[info] 22845: retire_stb_instr. isa_pc:0x10d110c4
+[info] 22845: retire_stb_instr. isa_pc:0x10d110c8
+[info] 22845: retire_stb_instr. isa_pc:0x10d110cc
+[info] 22889: recv_rd_biu_rsp(mshr). rsp_id:11387,aligned_addr_: 0x106bbe00
+[info] 22889: get_victim invalid. way_id:0,idx_addr: 0x38,mem:1, is_dirty:0.
+[info] 22889: refill data to cache_ram. way_id:0,tag_addr:0x106bb,idx_addr: 0x38,mem:1, is_dirty:0.
+[info] 22889: retire_mshr_instr. isa_pc:0x10d11030
+[info] 22889: retire_mshr_instr. isa_pc:0x10d11034
+[info] 22889: retire_mshr_instr. isa_pc:0x10d11038
+[info] 22897: calc_req_addr. req pc :0x10d11104,idx_addr: 0x28,tag_addr:0x2107, aligned_addr_:0x2107a00,ofst_addr_:0x18 
+[info] 22897: create_dc_req. req_pc:0x10d11104, req_mem:1,req_size:8,req_addr:0x2107a18, req_data0:0x7,req_data1:0x0.
+[info] 22898: lookup_tag is HIT. req pc :0x10d11104, idx_addr: 0x28, tag_addr: 0x2107, aligned_addr_: 0x2107a00,hit_pos: 1 
+[info] 22898: calc_req_addr. req pc :0x10d11108,idx_addr: 0x3c,tag_addr:0x2107, aligned_addr_:0x2107f00,ofst_addr_:0xd 
+[info] 22898: create_dc_req. req_pc:0x10d11108, req_mem:1,req_size:1,req_addr:0x2107f0d, req_data0:0x0,req_data1:0x0.
+[info] 22899: lookup_tag is HIT. req pc :0x10d11108, idx_addr: 0x3c, tag_addr: 0x2107, aligned_addr_: 0x2107f00,hit_pos: 1 
+[info] 22900: calc_req_addr. req pc :0x10d11114,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x0 
+[info] 22900: create_dc_req. req_pc:0x10d11114, req_mem:1,req_size:4,req_addr:0x2107f80, req_data0:0x20,req_data1:0x20.
+[info] 22900: push req to stb. req_pc:0x10d11104,stb_main_entry_id:0,aligned_addr_:0x2107a00,mem: 1,stb_sub_entry_size:1,store_data0:0x7, store_data1:0x0, strb size:8
+[info] 22901: lookup_tag is MISS. req pc :0x10d11114.
+[debug] 22901: stb not empty. size:0x1
+[info] 22901: push req to stb. req_pc:0x10d11108,stb_main_entry_id:1,aligned_addr_:0x2107f00,mem: 1,stb_sub_entry_size:1,store_data0:0x0, store_data1:0x0, strb size:1
+[debug] 22902: stb not empty. size:0x2
+[debug] 22903: stb not empty. size:0x2
+[info] 22903: calc_req_addr. req pc :0x10d11128,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x8 
+[info] 22903: create_dc_req. req_pc:0x10d11128, req_mem:1,req_size:4,req_addr:0x2107f88, req_data0:0x5,req_data1:0x20.
+[info] 22903: push req to stb. req_pc:0x10d11114,stb_main_entry_id:2,aligned_addr_:0x2107f80,mem: 1,stb_sub_entry_size:1,store_data0:0x20, store_data1:0x20, strb size:8
+[debug] 22904: stb not empty. size:0x3
+[info] 22904: lookup_tag is MISS. req pc :0x10d11128.
+[debug] 22905: stb not empty. size:0x3
+[info] 22905: calc_req_addr. req pc :0x10d11138,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x10 
+[info] 22905: create_dc_req. req_pc:0x10d11138, req_mem:1,req_size:4,req_addr:0x2107f90, req_data0:0x2,req_data1:0x2.
+[debug] 22906: stb not empty. size:0x3
+[info] 22906: lookup_tag is MISS. req pc :0x10d11138.
+[info] 22906: calc_req_addr. req pc :0x10d1113c,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x18 
+[info] 22906: create_dc_req. req_pc:0x10d1113c, req_mem:1,req_size:4,req_addr:0x2107f98, req_data0:0x4,req_data1:0x0.
+[info] 22906: push req to stb. req_pc:0x10d11128,stb_main_entry_id:2,aligned_addr_:0x2107f80,mem: 1,stb_sub_entry_size:2,store_data0:0x5, store_data1:0x20, strb size:16
+[debug] 22907: stb not empty. size:0x3
+[info] 22907: lookup_tag is MISS. req pc :0x10d1113c.
+[info] 22907: calc_req_addr. req pc :0x10d11140,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x30 
+[info] 22907: create_dc_req. req_pc:0x10d11140, req_mem:1,req_size:8,req_addr:0x2107f70, req_data0:0x1154d400,req_data1:0x1154de00.
+[debug] 22908: stb not empty. size:0x3
+[info] 22908: lookup_tag is MISS. req pc :0x10d11140.
+[info] 22908: calc_req_addr. req pc :0x10d11144,idx_addr: 0x3c,tag_addr:0x2107, aligned_addr_:0x2107f00,ofst_addr_:0xc 
+[info] 22908: create_dc_req. req_pc:0x10d11144, req_mem:1,req_size:1,req_addr:0x2107f0c, req_data0:0x0,req_data1:0x0.
+[info] 22908: push req to stb. req_pc:0x10d11138,stb_main_entry_id:2,aligned_addr_:0x2107f80,mem: 1,stb_sub_entry_size:3,store_data0:0x2, store_data1:0x2, strb size:24
+[debug] 22909: stb not empty. size:0x3
+[info] 22909: lookup_tag is HIT. req pc :0x10d11144, idx_addr: 0x3c, tag_addr: 0x2107, aligned_addr_: 0x2107f00,hit_pos: 1 
+[info] 22909: push req to stb. req_pc:0x10d1113c,stb_main_entry_id:2,aligned_addr_:0x2107f80,mem: 1,stb_sub_entry_size:4,store_data0:0x4, store_data1:0x0, strb size:28
+[debug] 22910: stb not empty. size:0x3
+[info] 22910: push req to stb. req_pc:0x10d11140,stb_main_entry_id:3,aligned_addr_:0x2107f40,mem: 1,stb_sub_entry_size:1,store_data0:0x1154d400, store_data1:0x1154de00, strb size:16
+[debug] 22911: stb not empty. size:0x4
+[info] 22911: read_instr_hit. isa_pc:0x10d11144.
+[debug] 22912: stb not empty. size:0x4
+[debug] 22913: stb not empty. size:0x4
+[debug] 22914: stb not empty. size:0x4
+[debug] 22915: stb not empty. size:0x4
+[info] 22915: calc_req_addr. req pc :0x10d11168,idx_addr: 0x0,tag_addr:0x2100, aligned_addr_:0x2100000,ofst_addr_:0x0 
+[info] 22915: create_dc_req. req_pc:0x10d11168, req_mem:1,req_size:8,req_addr:0x2100000, req_data0:0x107a00,req_data1:0x0.
+[debug] 22916: stb not empty. size:0x4
+[info] 22916: lookup_tag is MISS. req pc :0x10d11168.
+[info] 22916: calc_req_addr. req pc :0x10d11170,idx_addr: 0x2b,tag_addr:0x2107, aligned_addr_:0x2107ac0,ofst_addr_:0x8 
+[info] 22916: create_dc_req. req_pc:0x10d11170, req_mem:1,req_size:4,req_addr:0x2107ac8, req_data0:0x0,req_data1:0x0.
+[debug] 22917: stb not empty. size:0x4
+[info] 22917: lookup_tag is HIT. req pc :0x10d11170, idx_addr: 0x2b, tag_addr: 0x2107, aligned_addr_: 0x2107ac0,hit_pos: 1 
+[debug] 22918: stb not empty. size:0x4
+[info] 22918: push req to stb. req_pc:0x10d11168,stb_main_entry_id:4,aligned_addr_:0x2100000,mem: 1,stb_sub_entry_size:1,store_data0:0x107a00, store_data1:0x0, strb size:8
+[debug] 22919: stb not empty. size:0x5
+[info] 22919: read_instr_hit. isa_pc:0x10d11170.
+[debug] 22920: stb not empty. size:0x5
+[debug] 22921: stb not empty. size:0x5
+[info] 22921: calc_req_addr. req pc :0x10d11190,idx_addr: 0x3c,tag_addr:0x2107, aligned_addr_:0x2107f00,ofst_addr_:0x10 
+[info] 22921: create_dc_req. req_pc:0x10d11190, req_mem:1,req_size:8,req_addr:0x2107f10, req_data0:0x1,req_data1:0x0.
+[debug] 22922: stb not empty. size:0x5
+[info] 22922: lookup_tag is HIT. req pc :0x10d11190, idx_addr: 0x3c, tag_addr: 0x2107, aligned_addr_: 0x2107f00,hit_pos: 1 
+[info] 22922: calc_req_addr. req pc :0x10d11194,idx_addr: 0x3c,tag_addr:0x2107, aligned_addr_:0x2107f00,ofst_addr_:0x20 
+[info] 22922: create_dc_req. req_pc:0x10d11194, req_mem:1,req_size:8,req_addr:0x2107f20, req_data0:0x107ae0,req_data1:0x0.
+[debug] 22923: stb not empty. size:0x5
+[info] 22923: lookup_tag is HIT. req pc :0x10d11194, idx_addr: 0x3c, tag_addr: 0x2107, aligned_addr_: 0x2107f00,hit_pos: 1 
+[info] 22923: calc_req_addr. req pc :0x10d11198,idx_addr: 0x2b,tag_addr:0x2107, aligned_addr_:0x2107ac0,ofst_addr_:0x20 
+[info] 22923: create_dc_req. req_pc:0x10d11198, req_mem:1,req_size:4,req_addr:0x2107ae0, req_data0:0xffff0100,req_data1:0x0.
+[debug] 22924: stb not empty. size:0x5
+[info] 22924: lookup_tag is HIT. req pc :0x10d11198, idx_addr: 0x2b, tag_addr: 0x2107, aligned_addr_: 0x2107ac0,hit_pos: 1 
+[info] 22924: calc_req_addr. req pc :0x10d111a0,idx_addr: 0x2b,tag_addr:0x2107, aligned_addr_:0x2107ac0,ofst_addr_:0x24 
+[info] 22924: create_dc_req. req_pc:0x10d111a0, req_mem:1,req_size:4,req_addr:0x2107ae4, req_data0:0x0,req_data1:0x0.
+[info] 22924: push req to stb. req_pc:0x10d11190,stb_main_entry_id:1,aligned_addr_:0x2107f00,mem: 1,stb_sub_entry_size:2,store_data0:0x1, store_data1:0x0, strb size:9
+[debug] 22925: stb not empty. size:0x5
+[info] 22925: lookup_tag is HIT. req pc :0x10d111a0, idx_addr: 0x2b, tag_addr: 0x2107, aligned_addr_: 0x2107ac0,hit_pos: 1 
+[info] 22925: push req to stb. req_pc:0x10d11194,stb_main_entry_id:1,aligned_addr_:0x2107f00,mem: 1,stb_sub_entry_size:3,store_data0:0x107ae0, store_data1:0x0, strb size:17
+[debug] 22926: stb not empty. size:0x5
+[info] 22926: calc_req_addr. req pc :0x10d111ac,idx_addr: 0x2b,tag_addr:0x2107, aligned_addr_:0x2107ac0,ofst_addr_:0x28 
+[info] 22926: create_dc_req. req_pc:0x10d111ac, req_mem:1,req_size:8,req_addr:0x2107ae8, req_data0:0xffffffff00000200,req_data1:0x0.
+[info] 22926: push req to stb. req_pc:0x10d11198,stb_main_entry_id:5,aligned_addr_:0x2107ac0,mem: 1,stb_sub_entry_size:1,store_data0:0xffff0100, store_data1:0x0, strb size:4
+[debug] 22927: stb not empty. size:0x6
+[info] 22927: lookup_tag is HIT. req pc :0x10d111ac, idx_addr: 0x2b, tag_addr: 0x2107, aligned_addr_: 0x2107ac0,hit_pos: 1 
+[info] 22927: push req to stb. req_pc:0x10d111a0,stb_main_entry_id:5,aligned_addr_:0x2107ac0,mem: 1,stb_sub_entry_size:2,store_data0:0x0, store_data1:0x0, strb size:8
+[debug] 22928: stb not empty. size:0x6
+[info] 22928: calc_req_addr. req pc :0x10d111b8,idx_addr: 0x2b,tag_addr:0x2107, aligned_addr_:0x2107ac0,ofst_addr_:0xc 
+[info] 22928: create_dc_req. req_pc:0x10d111b8, req_mem:1,req_size:4,req_addr:0x2107acc, req_data0:0x0,req_data1:0x0.
+[debug] 22929: stb not empty. size:0x6
+[info] 22929: lookup_tag is HIT. req pc :0x10d111b8, idx_addr: 0x2b, tag_addr: 0x2107, aligned_addr_: 0x2107ac0,hit_pos: 1 
+[info] 22929: push req to stb. req_pc:0x10d111ac,stb_main_entry_id:5,aligned_addr_:0x2107ac0,mem: 1,stb_sub_entry_size:3,store_data0:0xffffffff00000200, store_data1:0x0, strb size:16
+[debug] 22930: stb not empty. size:0x6
+[debug] 22931: stb not empty. size:0x6
+[info] 22931: calc_req_addr. req pc :0x10d111cc,idx_addr: 0x3c,tag_addr:0x2107, aligned_addr_:0x2107f00,ofst_addr_:0x28 
+[info] 22931: create_dc_req. req_pc:0x10d111cc, req_mem:1,req_size:8,req_addr:0x2107f28, req_data0:0x1,req_data1:0x0.
+[info] 22931: read_instr_hit. isa_pc:0x10d111b8.
+[debug] 22932: stb_sub_entry id:0, sub_entry_size:1,req_pc:0x10d11104.
+[debug] 22932: st_hit_write_cache stb_sub_entry id:0, sub_entry_size:1,req_pc:0x10d11104.
+[info] 22932: find_cache_way_id:1,tag_addr:0x2107,idx_addr:40.
+[info] 22932: stb_write_dcache. isa_pc:0x10d11104, tag_addr:0x2107,idx_addr:0x28,write_dcache_way:1, stb_entry_id:0.
+[info] 22932: retire_stb_instr. isa_pc:0x10d11104
+[info] 22932: rm_entry. way_id:0,addr:0x2107a00
+[debug] 22932: stb not empty. size:0x5
+[info] 22932: lookup_tag is HIT. req pc :0x10d111cc, idx_addr: 0x3c, tag_addr: 0x2107, aligned_addr_: 0x2107f00,hit_pos: 1 
+[info] 22932: calc_req_addr. req pc :0x10d111d0,idx_addr: 0x3c,tag_addr:0x2107, aligned_addr_:0x2107f00,ofst_addr_:0x38 
+[info] 22932: create_dc_req. req_pc:0x10d111d0, req_mem:1,req_size:8,req_addr:0x2107f38, req_data0:0x107af0,req_data1:0x0.
+[debug] 22933: stb_sub_entry id:0, sub_entry_size:3,req_pc:0x10d11108.
+[debug] 22933: st_hit_write_cache stb_sub_entry id:0, sub_entry_size:3,req_pc:0x10d11108.
+[info] 22933: find_cache_way_id:1,tag_addr:0x2107,idx_addr:60.
+[info] 22933: stb_write_dcache. isa_pc:0x10d11108, tag_addr:0x2107,idx_addr:0x3c,write_dcache_way:1, stb_entry_id:0.
+[info] 22933: retire_stb_instr. isa_pc:0x10d11108
+[info] 22933: retire_stb_instr. isa_pc:0x10d11190
+[info] 22933: retire_stb_instr. isa_pc:0x10d11194
+[info] 22933: rm_entry. way_id:0,addr:0x2107f00
+[debug] 22933: stb not empty. size:0x4
+[info] 22933: lookup_tag is HIT. req pc :0x10d111d0, idx_addr: 0x3c, tag_addr: 0x2107, aligned_addr_: 0x2107f00,hit_pos: 1 
+[info] 22933: calc_req_addr. req pc :0x10d111d4,idx_addr: 0x2b,tag_addr:0x2107, aligned_addr_:0x2107ac0,ofst_addr_:0x30 
+[info] 22933: create_dc_req. req_pc:0x10d111d4, req_mem:1,req_size:4,req_addr:0x2107af0, req_data0:0xffff0300,req_data1:0x0.
+[debug] 22934: stb not empty. size:0x4
+[info] 22934: lookup_tag is HIT. req pc :0x10d111d4, idx_addr: 0x2b, tag_addr: 0x2107, aligned_addr_: 0x2107ac0,hit_pos: 1 
+[info] 22934: calc_req_addr. req pc :0x10d111d8,idx_addr: 0x2b,tag_addr:0x2107, aligned_addr_:0x2107ac0,ofst_addr_:0x34 
+[info] 22934: create_dc_req. req_pc:0x10d111d8, req_mem:1,req_size:4,req_addr:0x2107af4, req_data0:0x0,req_data1:0x0.
+[info] 22934: push req to stb. req_pc:0x10d111cc,stb_main_entry_id:4,aligned_addr_:0x2107f00,mem: 1,stb_sub_entry_size:1,store_data0:0x1, store_data1:0x0, strb size:8
+[info] 22935: create_rd_biu_req. ll_req_id:11421,rd_req_addr_: 0x2107f80
+[info] 22935: stb_create_rd_req. req_pc:0x10d11114,aligned_addr_:0x2107f80,mem: 1 
+[debug] 22935: stb not empty. size:0x5
+[info] 22935: lookup_tag is HIT. req pc :0x10d111d8, idx_addr: 0x2b, tag_addr: 0x2107, aligned_addr_: 0x2107ac0,hit_pos: 1 
+[info] 22935: calc_req_addr. req pc :0x10d111e0,idx_addr: 0x2b,tag_addr:0x2107, aligned_addr_:0x2107ac0,ofst_addr_:0x38 
+[info] 22935: create_dc_req. req_pc:0x10d111e0, req_mem:1,req_size:8,req_addr:0x2107af8, req_data0:0xffffffff00000200,req_data1:0x0.
+[info] 22935: push req to stb. req_pc:0x10d111d0,stb_main_entry_id:4,aligned_addr_:0x2107f00,mem: 1,stb_sub_entry_size:2,store_data0:0x107af0, store_data1:0x0, strb size:16
+[debug] 22936: stb not empty. size:0x5
+[info] 22936: lookup_tag is HIT. req pc :0x10d111e0, idx_addr: 0x2b, tag_addr: 0x2107, aligned_addr_: 0x2107ac0,hit_pos: 1 
+[info] 22936: calc_req_addr. req pc :0x10d111e4,idx_addr: 0x2b,tag_addr:0x2107, aligned_addr_:0x2107ac0,ofst_addr_:0xc 
+[info] 22936: create_dc_req. req_pc:0x10d111e4, req_mem:1,req_size:4,req_addr:0x2107acc, req_data0:0x200,req_data1:0x0.
+[info] 22936: push req to stb. req_pc:0x10d111d4,stb_main_entry_id:3,aligned_addr_:0x2107ac0,mem: 1,stb_sub_entry_size:4,store_data0:0xffff0300, store_data1:0x0, strb size:20
+[info] 22936: send_rd_biu_req. req_id:11421,req_rd_addr:0x2107f80.
+[debug] 22937: stb not empty. size:0x5
+[info] 22937: lookup_tag is HIT. req pc :0x10d111e4, idx_addr: 0x2b, tag_addr: 0x2107, aligned_addr_: 0x2107ac0,hit_pos: 1 
+[info] 22937: push req to stb. req_pc:0x10d111d8,stb_main_entry_id:3,aligned_addr_:0x2107ac0,mem: 1,stb_sub_entry_size:5,store_data0:0x0, store_data1:0x0, strb size:24
+[debug] 22938: stb not empty. size:0x5
+[info] 22938: push req to stb. req_pc:0x10d111e0,stb_main_entry_id:3,aligned_addr_:0x2107ac0,mem: 1,stb_sub_entry_size:6,store_data0:0xffffffff00000200, store_data1:0x0, strb size:32
+[debug] 22939: stb not empty. size:0x5
+[info] 22939: push req to stb. req_pc:0x10d111e4,stb_main_entry_id:3,aligned_addr_:0x2107ac0,mem: 1,stb_sub_entry_size:7,store_data0:0x200, store_data1:0x0, strb size:36
+[debug] 22940: stb not empty. size:0x5
+[debug] 22941: stb not empty. size:0x5
+[info] 22942: create_rd_biu_req. ll_req_id:11422,rd_req_addr_: 0x2107f40
+[info] 22942: stb_create_rd_req. req_pc:0x10d11140,aligned_addr_:0x2107f40,mem: 1 
+[debug] 22942: stb not empty. size:0x5
+[info] 22942: calc_req_addr. req pc :0x10d11200,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x0 
+[info] 22942: create_dc_req. req_pc:0x10d11200, req_mem:1,req_size:8,req_addr:0x2107f40, req_data0:0x1,req_data1:0x0.
+[debug] 22943: stb not empty. size:0x5
+[info] 22943: lookup_tag is MISS. req pc :0x10d11200.
+[info] 22943: calc_req_addr. req pc :0x10d11204,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x10 
+[info] 22943: create_dc_req. req_pc:0x10d11204, req_mem:1,req_size:8,req_addr:0x2107f50, req_data0:0x107b00,req_data1:0x0.
+[info] 22943: send_rd_biu_req. req_id:11422,req_rd_addr:0x2107f40.
+[debug] 22944: stb not empty. size:0x5
+[info] 22944: lookup_tag is MISS. req pc :0x10d11204.
+[info] 22944: calc_req_addr. req pc :0x10d1120c,idx_addr: 0x2c,tag_addr:0x2107, aligned_addr_:0x2107b00,ofst_addr_:0x0 
+[info] 22944: create_dc_req. req_pc:0x10d1120c, req_mem:1,req_size:4,req_addr:0x2107b00, req_data0:0xffff0100,req_data1:0x0.
+[debug] 22945: stb not empty. size:0x5
+[info] 22945: lookup_tag is MISS. req pc :0x10d1120c.
+[info] 22945: calc_req_addr. req pc :0x10d11214,idx_addr: 0x2c,tag_addr:0x2107, aligned_addr_:0x2107b00,ofst_addr_:0x4 
+[info] 22945: create_dc_req. req_pc:0x10d11214, req_mem:1,req_size:4,req_addr:0x2107b04, req_data0:0x200,req_data1:0x0.
+[info] 22945: push req to stb. req_pc:0x10d11200,stb_main_entry_id:1,aligned_addr_:0x2107f40,mem: 1,stb_sub_entry_size:2,store_data0:0x1, store_data1:0x0, strb size:24
+[debug] 22946: stb not empty. size:0x5
+[info] 22946: lookup_tag is MISS. req pc :0x10d11214.
+[info] 22946: calc_req_addr. req pc :0x10d11218,idx_addr: 0x2c,tag_addr:0x2107, aligned_addr_:0x2107b00,ofst_addr_:0x8 
+[info] 22946: create_dc_req. req_pc:0x10d11218, req_mem:1,req_size:8,req_addr:0x2107b08, req_data0:0xffffffff00000200,req_data1:0x0.
+[info] 22946: push req to stb. req_pc:0x10d11204,stb_main_entry_id:1,aligned_addr_:0x2107f40,mem: 1,stb_sub_entry_size:3,store_data0:0x107b00, store_data1:0x0, strb size:32
+[debug] 22947: stb not empty. size:0x5
+[info] 22947: lookup_tag is MISS. req pc :0x10d11218.
+[info] 22947: calc_req_addr. req pc :0x10d1121c,idx_addr: 0x2b,tag_addr:0x2107, aligned_addr_:0x2107ac0,ofst_addr_:0x8 
+[info] 22947: create_dc_req. req_pc:0x10d1121c, req_mem:1,req_size:4,req_addr:0x2107ac8, req_data0:0x400,req_data1:0x0.
+[info] 22947: push req to stb. req_pc:0x10d1120c,stb_main_entry_id:5,aligned_addr_:0x2107b00,mem: 1,stb_sub_entry_size:1,store_data0:0xffff0100, store_data1:0x0, strb size:4
+[debug] 22948: stb not empty. size:0x6
+[info] 22948: lookup_tag is HIT. req pc :0x10d1121c, idx_addr: 0x2b, tag_addr: 0x2107, aligned_addr_: 0x2107ac0,hit_pos: 1 
+[info] 22948: push req to stb. req_pc:0x10d11214,stb_main_entry_id:5,aligned_addr_:0x2107b00,mem: 1,stb_sub_entry_size:2,store_data0:0x200, store_data1:0x0, strb size:8
+[debug] 22949: stb not empty. size:0x6
+[info] 22949: push req to stb. req_pc:0x10d11218,stb_main_entry_id:5,aligned_addr_:0x2107b00,mem: 1,stb_sub_entry_size:3,store_data0:0xffffffff00000200, store_data1:0x0, strb size:16
+[info] 22950: create_rd_biu_req. ll_req_id:11427,rd_req_addr_: 0x2100000
+[info] 22950: stb_create_rd_req. req_pc:0x10d11168,aligned_addr_:0x2100000,mem: 1 
+[debug] 22950: stb not empty. size:0x6
+[info] 22950: push req to stb. req_pc:0x10d1121c,stb_main_entry_id:3,aligned_addr_:0x2107ac0,mem: 1,stb_sub_entry_size:8,store_data0:0x400, store_data1:0x0, strb size:40
+[debug] 22951: stb_sub_entry id:3, sub_entry_size:8,req_pc:0x10d11198.
+[debug] 22951: st_hit_write_cache stb_sub_entry id:3, sub_entry_size:8,req_pc:0x10d11198.
+[info] 22951: find_cache_way_id:1,tag_addr:0x2107,idx_addr:43.
+[info] 22951: stb_write_dcache. isa_pc:0x10d11198, tag_addr:0x2107,idx_addr:0x2b,write_dcache_way:1, stb_entry_id:3.
+[info] 22951: retire_stb_instr. isa_pc:0x10d11198
+[info] 22951: retire_stb_instr. isa_pc:0x10d111a0
+[info] 22951: retire_stb_instr. isa_pc:0x10d111ac
+[info] 22951: retire_stb_instr. isa_pc:0x10d111d4
+[info] 22951: retire_stb_instr. isa_pc:0x10d111d8
+[info] 22951: retire_stb_instr. isa_pc:0x10d111e0
+[info] 22951: retire_stb_instr. isa_pc:0x10d111e4
+[info] 22951: retire_stb_instr. isa_pc:0x10d1121c
+[info] 22951: rm_entry. way_id:3,addr:0x2107ac0
+[debug] 22951: stb not empty. size:0x5
+[info] 22951: calc_req_addr. req pc :0x10d11230,idx_addr: 0x2b,tag_addr:0x2107, aligned_addr_:0x2107ac0,ofst_addr_:0x10 
+[info] 22951: create_dc_req. req_pc:0x10d11230, req_mem:1,req_size:4,req_addr:0x2107ad0, req_data0:0x0,req_data1:0x0.
+[info] 22951: send_rd_biu_req. req_id:11427,req_rd_addr:0x2100000.
+[debug] 22952: stb not empty. size:0x5
+[info] 22952: lookup_tag is HIT. req pc :0x10d11230, idx_addr: 0x2b, tag_addr: 0x2107, aligned_addr_: 0x2107ac0,hit_pos: 1 
+[debug] 22953: stb not empty. size:0x5
+[info] 22953: calc_req_addr. req pc :0x10d1123c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x18 
+[info] 22953: create_dc_req. req_pc:0x10d1123c, req_mem:1,req_size:8,req_addr:0x2107f58, req_data0:0x1,req_data1:0x0.
+[debug] 22954: stb not empty. size:0x5
+[info] 22954: lookup_tag is MISS. req pc :0x10d1123c.
+[info] 22954: calc_req_addr. req pc :0x10d11240,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x28 
+[info] 22954: create_dc_req. req_pc:0x10d11240, req_mem:1,req_size:8,req_addr:0x2107f68, req_data0:0x107b10,req_data1:0x0.
+[info] 22954: read_instr_hit. isa_pc:0x10d11230.
+[debug] 22955: stb not empty. size:0x5
+[info] 22955: lookup_tag is MISS. req pc :0x10d11240.
+[info] 22955: calc_req_addr. req pc :0x10d11244,idx_addr: 0x2c,tag_addr:0x2107, aligned_addr_:0x2107b00,ofst_addr_:0x10 
+[info] 22955: create_dc_req. req_pc:0x10d11244, req_mem:1,req_size:4,req_addr:0x2107b10, req_data0:0xffff0300,req_data1:0x0.
+[debug] 22956: stb not empty. size:0x5
+[info] 22956: lookup_tag is MISS. req pc :0x10d11244.
+[info] 22956: push req to stb. req_pc:0x10d1123c,stb_main_entry_id:1,aligned_addr_:0x2107f40,mem: 1,stb_sub_entry_size:4,store_data0:0x1, store_data1:0x0, strb size:40
+[debug] 22957: stb not empty. size:0x5
+[info] 22957: push req to stb. req_pc:0x10d11240,stb_main_entry_id:1,aligned_addr_:0x2107f40,mem: 1,stb_sub_entry_size:5,store_data0:0x107b10, store_data1:0x0, strb size:48
+[debug] 22958: stb not empty. size:0x5
+[info] 22958: push req to stb. req_pc:0x10d11244,stb_main_entry_id:4,aligned_addr_:0x2107b00,mem: 1,stb_sub_entry_size:4,store_data0:0xffff0300, store_data1:0x0, strb size:20
+[debug] 22959: stb not empty. size:0x5
+[debug] 22960: stb not empty. size:0x5
+[debug] 22961: stb not empty. size:0x5
+[debug] 22962: stb not empty. size:0x5
+[info] 22962: calc_req_addr. req pc :0x10d11248,idx_addr: 0x2c,tag_addr:0x2107, aligned_addr_:0x2107b00,ofst_addr_:0x14 
+[info] 22962: create_dc_req. req_pc:0x10d11248, req_mem:1,req_size:4,req_addr:0x2107b14, req_data0:0x0,req_data1:0x0.
+[debug] 22963: stb not empty. size:0x5
+[info] 22963: lookup_tag is MISS. req pc :0x10d11248.
+[debug] 22964: stb not empty. size:0x5
+[info] 22964: calc_req_addr. req pc :0x10d11258,idx_addr: 0x2c,tag_addr:0x2107, aligned_addr_:0x2107b00,ofst_addr_:0x18 
+[info] 22964: create_dc_req. req_pc:0x10d11258, req_mem:1,req_size:8,req_addr:0x2107b18, req_data0:0xffffffff00000200,req_data1:0x0.
+[debug] 22965: stb not empty. size:0x5
+[info] 22965: lookup_tag is MISS. req pc :0x10d11258.
+[info] 22965: calc_req_addr. req pc :0x10d1125c,idx_addr: 0x2b,tag_addr:0x2107, aligned_addr_:0x2107ac0,ofst_addr_:0x10 
+[info] 22965: create_dc_req. req_pc:0x10d1125c, req_mem:1,req_size:4,req_addr:0x2107ad0, req_data0:0x200,req_data1:0x0.
+[info] 22965: push req to stb. req_pc:0x10d11248,stb_main_entry_id:4,aligned_addr_:0x2107b00,mem: 1,stb_sub_entry_size:5,store_data0:0x0, store_data1:0x0, strb size:24
+[debug] 22966: stb_sub_entry id:3, sub_entry_size:2,req_pc:0x10d111cc.
+[debug] 22966: st_hit_write_cache stb_sub_entry id:3, sub_entry_size:2,req_pc:0x10d111cc.
+[info] 22966: find_cache_way_id:1,tag_addr:0x2107,idx_addr:60.
+[info] 22966: stb_write_dcache. isa_pc:0x10d111cc, tag_addr:0x2107,idx_addr:0x3c,write_dcache_way:1, stb_entry_id:3.
+[info] 22966: retire_stb_instr. isa_pc:0x10d111cc
+[info] 22966: retire_stb_instr. isa_pc:0x10d111d0
+[info] 22966: rm_entry. way_id:3,addr:0x2107f00
+[debug] 22966: stb not empty. size:0x4
+[info] 22966: lookup_tag is HIT. req pc :0x10d1125c, idx_addr: 0x2b, tag_addr: 0x2107, aligned_addr_: 0x2107ac0,hit_pos: 1 
+[info] 22966: calc_req_addr. req pc :0x10d11260,idx_addr: 0x3c,tag_addr:0x2107, aligned_addr_:0x2107f00,ofst_addr_:0xc 
+[info] 22966: create_dc_req. req_pc:0x10d11260, req_mem:1,req_size:1,req_addr:0x2107f0c, req_data0:0x4,req_data1:0x0.
+[debug] 22967: stb not empty. size:0x4
+[info] 22967: lookup_tag is HIT. req pc :0x10d11260, idx_addr: 0x3c, tag_addr: 0x2107, aligned_addr_: 0x2107f00,hit_pos: 1 
+[info] 22967: push req to stb. req_pc:0x10d11258,stb_main_entry_id:3,aligned_addr_:0x2107b00,mem: 1,stb_sub_entry_size:6,store_data0:0xffffffff00000200, store_data1:0x0, strb size:32
+[debug] 22968: stb not empty. size:0x4
+[info] 22968: push req to stb. req_pc:0x10d1125c,stb_main_entry_id:4,aligned_addr_:0x2107ac0,mem: 1,stb_sub_entry_size:1,store_data0:0x200, store_data1:0x0, strb size:4
+[debug] 22969: stb not empty. size:0x5
+[info] 22969: push req to stb. req_pc:0x10d11260,stb_main_entry_id:5,aligned_addr_:0x2107f00,mem: 1,stb_sub_entry_size:1,store_data0:0x4, store_data1:0x0, strb size:1
+[debug] 22970: stb not empty. size:0x6
+[debug] 22971: stb not empty. size:0x6
+[debug] 22972: stb not empty. size:0x6
+[debug] 22973: stb not empty. size:0x6
+[debug] 22974: stb not empty. size:0x6
+[debug] 22975: stb not empty. size:0x6
+[debug] 22976: stb not empty. size:0x6
+[debug] 22977: stb not empty. size:0x6
+[debug] 22978: stb not empty. size:0x6
+[info] 22979: create_rd_biu_req. ll_req_id:11444,rd_req_addr_: 0x2107b00
+[info] 22979: stb_create_rd_req. req_pc:0x10d1120c,aligned_addr_:0x2107b00,mem: 1 
+[debug] 22979: stb not empty. size:0x6
+[debug] 22980: stb not empty. size:0x6
+[info] 22980: send_rd_biu_req. req_id:11444,req_rd_addr:0x2107b00.
+[debug] 22981: stb not empty. size:0x6
+[info] 22981: calc_req_addr. req pc :0x10d11478,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x0 
+[info] 22981: create_dc_req. req_pc:0x10d11478, req_mem:1,req_size:1,req_addr:0x2107f40, req_data0:0x0,req_data1:0x0.
+[debug] 22982: stb not empty. size:0x6
+[info] 22982: lookup_tag is MISS. req pc :0x10d11478.
+[info] 22982: calc_req_addr. req pc :0x10d1147c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x7 
+[info] 22982: create_dc_req. req_pc:0x10d1147c, req_mem:1,req_size:1,req_addr:0x2107f47, req_data0:0x0,req_data1:0x0.
+[debug] 22983: stb not empty. size:0x6
+[info] 22983: lookup_tag is MISS. req pc :0x10d1147c.
+[debug] 22984: stb not empty. size:0x6
+[info] 22984: read_stb. req_pc:0x10d11478, req_size:1,match_stb_id:1.
+[info] 22984: retire_read_instr(match stb). isa_pc:0x10d11478.
+[debug] 22985: stb not empty. size:0x6
+[info] 22985: read_stb. req_pc:0x10d1147c, req_size:1,match_stb_id:1.
+[info] 22985: retire_read_instr(match stb). isa_pc:0x10d1147c.
+[debug] 22986: stb not empty. size:0x6
+[debug] 22987: stb not empty. size:0x6
+[debug] 22988: stb not empty. size:0x6
+[debug] 22989: stb not empty. size:0x6
+[debug] 22990: stb not empty. size:0x6
+[debug] 22991: stb not empty. size:0x6
+[info] 22991: calc_req_addr. req pc :0x10d1149c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x7 
+[info] 22991: create_dc_req. req_pc:0x10d1149c, req_mem:1,req_size:1,req_addr:0x2107f47, req_data0:0x0,req_data1:0x0.
+[debug] 22992: stb not empty. size:0x6
+[info] 22992: lookup_tag is MISS. req pc :0x10d1149c.
+[info] 22992: calc_req_addr. req pc :0x10d114a0,idx_addr: 0x2c,tag_addr:0x2107, aligned_addr_:0x2107b00,ofst_addr_:0x0 
+[info] 22992: create_dc_req. req_pc:0x10d114a0, req_mem:1,req_size:1,req_addr:0x2107b00, req_data0:0x0,req_data1:0x0.
+[debug] 22993: stb not empty. size:0x6
+[info] 22993: lookup_tag is MISS. req pc :0x10d114a0.
+[debug] 22994: stb not empty. size:0x6
+[info] 22994: push req to stb. req_pc:0x10d1149c,stb_main_entry_id:1,aligned_addr_:0x2107f40,mem: 1,stb_sub_entry_size:6,store_data0:0x0, store_data1:0x0, strb size:48
+[debug] 22995: stb not empty. size:0x6
+[info] 22995: read_stb. req_pc:0x10d114a0, req_size:1,match_stb_id:3.
+[info] 22995: retire_read_instr(match stb). isa_pc:0x10d114a0.
+[debug] 22996: stb not empty. size:0x6
+[debug] 22997: stb not empty. size:0x6
+[debug] 22998: stb not empty. size:0x6
+[debug] 22999: stb not empty. size:0x6
+[info] 22999: calc_req_addr. req pc :0x10d114ac,idx_addr: 0x2c,tag_addr:0x2107, aligned_addr_:0x2107b00,ofst_addr_:0x0 
+[info] 22999: create_dc_req. req_pc:0x10d114ac, req_mem:1,req_size:1,req_addr:0x2107b00, req_data0:0x1,req_data1:0x0.
+[debug] 23000: stb_sub_entry id:4, sub_entry_size:1,req_pc:0x10d1125c.
+[debug] 23000: st_hit_write_cache stb_sub_entry id:4, sub_entry_size:1,req_pc:0x10d1125c.
+[info] 23000: find_cache_way_id:1,tag_addr:0x2107,idx_addr:43.
+[info] 23000: stb_write_dcache. isa_pc:0x10d1125c, tag_addr:0x2107,idx_addr:0x2b,write_dcache_way:1, stb_entry_id:4.
+[info] 23000: retire_stb_instr. isa_pc:0x10d1125c
+[info] 23000: rm_entry. way_id:4,addr:0x2107ac0
+[debug] 23000: stb not empty. size:0x5
+[info] 23000: lookup_tag is MISS. req pc :0x10d114ac.
+[info] 23000: calc_req_addr. req pc :0x10d114b0,idx_addr: 0x2c,tag_addr:0x2107, aligned_addr_:0x2107b00,ofst_addr_:0x3 
+[info] 23000: create_dc_req. req_pc:0x10d114b0, req_mem:1,req_size:1,req_addr:0x2107b03, req_data0:0x0,req_data1:0x0.
+[debug] 23001: stb_sub_entry id:4, sub_entry_size:1,req_pc:0x10d11260.
+[debug] 23001: st_hit_write_cache stb_sub_entry id:4, sub_entry_size:1,req_pc:0x10d11260.
+[info] 23001: find_cache_way_id:1,tag_addr:0x2107,idx_addr:60.
+[info] 23001: stb_write_dcache. isa_pc:0x10d11260, tag_addr:0x2107,idx_addr:0x3c,write_dcache_way:1, stb_entry_id:4.
+[info] 23001: retire_stb_instr. isa_pc:0x10d11260
+[info] 23001: rm_entry. way_id:4,addr:0x2107f00
+[debug] 23001: stb not empty. size:0x4
+[info] 23001: lookup_tag is MISS. req pc :0x10d114b0.
+[debug] 23002: stb not empty. size:0x4
+[info] 23002: push req to stb. req_pc:0x10d114ac,stb_main_entry_id:3,aligned_addr_:0x2107b00,mem: 1,stb_sub_entry_size:7,store_data0:0x1, store_data1:0x0, strb size:32
+[debug] 23003: stb not empty. size:0x4
+[info] 23003: read_stb. req_pc:0x10d114b0, req_size:1,match_stb_id:3.
+[info] 23003: retire_read_instr(match stb). isa_pc:0x10d114b0.
+[debug] 23004: stb not empty. size:0x4
+[debug] 23005: stb not empty. size:0x4
+[debug] 23006: stb not empty. size:0x4
+[debug] 23007: stb not empty. size:0x4
+[debug] 23008: stb not empty. size:0x4
+[debug] 23009: stb not empty. size:0x4
+[debug] 23010: stb not empty. size:0x4
+[debug] 23011: stb not empty. size:0x4
+[debug] 23012: stb not empty. size:0x4
+[info] 23012: calc_req_addr. req pc :0x10d114f4,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x6 
+[info] 23012: create_dc_req. req_pc:0x10d114f4, req_mem:1,req_size:1,req_addr:0x2107f46, req_data0:0x0,req_data1:0x0.
+[debug] 23013: stb not empty. size:0x4
+[info] 23013: lookup_tag is MISS. req pc :0x10d114f4.
+[info] 23013: calc_req_addr. req pc :0x10d114fc,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x1f 
+[info] 23013: create_dc_req. req_pc:0x10d114fc, req_mem:1,req_size:1,req_addr:0x2107f5f, req_data0:0x0,req_data1:0x0.
+[debug] 23014: stb not empty. size:0x4
+[info] 23014: lookup_tag is MISS. req pc :0x10d114fc.
+[debug] 23015: stb not empty. size:0x4
+[info] 23015: read_stb. req_pc:0x10d114f4, req_size:1,match_stb_id:1.
+[info] 23015: retire_read_instr(match stb). isa_pc:0x10d114f4.
+[debug] 23016: stb not empty. size:0x4
+[info] 23016: read_stb. req_pc:0x10d114fc, req_size:1,match_stb_id:1.
+[info] 23016: retire_read_instr(match stb). isa_pc:0x10d114fc.
+[debug] 23017: stb not empty. size:0x4
+[debug] 23018: stb not empty. size:0x4
+[debug] 23019: stb not empty. size:0x4
+[info] 23019: calc_req_addr. req pc :0x10d11508,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x6 
+[info] 23019: create_dc_req. req_pc:0x10d11508, req_mem:1,req_size:1,req_addr:0x2107f46, req_data0:0x1,req_data1:0x0.
+[debug] 23020: stb not empty. size:0x4
+[info] 23020: lookup_tag is MISS. req pc :0x10d11508.
+[info] 23020: calc_req_addr. req pc :0x10d1150c,idx_addr: 0x2c,tag_addr:0x2107, aligned_addr_:0x2107b00,ofst_addr_:0x4 
+[info] 23020: create_dc_req. req_pc:0x10d1150c, req_mem:1,req_size:4,req_addr:0x2107b04, req_data0:0x0,req_data1:0x0.
+[debug] 23021: stb not empty. size:0x4
+[info] 23021: lookup_tag is MISS. req pc :0x10d1150c.
+[info] 23021: calc_req_addr. req pc :0x10d11510,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x18 
+[info] 23021: create_dc_req. req_pc:0x10d11510, req_mem:1,req_size:1,req_addr:0x2107f58, req_data0:0x0,req_data1:0x0.
+[debug] 23022: stb not empty. size:0x4
+[info] 23022: lookup_tag is MISS. req pc :0x10d11510.
+[info] 23022: push req to stb. req_pc:0x10d11508,stb_main_entry_id:1,aligned_addr_:0x2107f40,mem: 1,stb_sub_entry_size:7,store_data0:0x1, store_data1:0x0, strb size:48
+[debug] 23023: stb not empty. size:0x4
+[info] 23023: read_stb. req_pc:0x10d1150c, req_size:4,match_stb_id:3.
+[info] 23023: retire_read_instr(match stb). isa_pc:0x10d1150c.
+[debug] 23024: stb not empty. size:0x4
+[info] 23024: read_stb. req_pc:0x10d11510, req_size:1,match_stb_id:1.
+[info] 23024: retire_read_instr(match stb). isa_pc:0x10d11510.
+[debug] 23025: stb not empty. size:0x4
+[debug] 23026: stb not empty. size:0x4
+[debug] 23027: stb not empty. size:0x4
+[debug] 23028: stb not empty. size:0x4
+[info] 23028: calc_req_addr. req pc :0x10d1152c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x1f 
+[info] 23028: create_dc_req. req_pc:0x10d1152c, req_mem:1,req_size:1,req_addr:0x2107f5f, req_data0:0x0,req_data1:0x0.
+[debug] 23029: stb not empty. size:0x4
+[info] 23029: lookup_tag is MISS. req pc :0x10d1152c.
+[info] 23029: calc_req_addr. req pc :0x10d11530,idx_addr: 0x2c,tag_addr:0x2107, aligned_addr_:0x2107b00,ofst_addr_:0x10 
+[info] 23029: create_dc_req. req_pc:0x10d11530, req_mem:1,req_size:1,req_addr:0x2107b10, req_data0:0x0,req_data1:0x0.
+[debug] 23030: stb not empty. size:0x4
+[info] 23030: lookup_tag is MISS. req pc :0x10d11530.
+[debug] 23031: stb not empty. size:0x4
+[info] 23031: push req to stb. req_pc:0x10d1152c,stb_main_entry_id:1,aligned_addr_:0x2107f40,mem: 1,stb_sub_entry_size:8,store_data0:0x0, store_data1:0x0, strb size:48
+[debug] 23032: stb not empty. size:0x4
+[info] 23032: read_stb. req_pc:0x10d11530, req_size:1,match_stb_id:3.
+[info] 23032: retire_read_instr(match stb). isa_pc:0x10d11530.
+[debug] 23033: stb not empty. size:0x4
+[debug] 23034: stb not empty. size:0x4
+[debug] 23035: stb not empty. size:0x4
+[debug] 23036: stb not empty. size:0x4
+[info] 23036: calc_req_addr. req pc :0x10d1153c,idx_addr: 0x2c,tag_addr:0x2107, aligned_addr_:0x2107b00,ofst_addr_:0x10 
+[info] 23036: create_dc_req. req_pc:0x10d1153c, req_mem:1,req_size:1,req_addr:0x2107b10, req_data0:0x1,req_data1:0x0.
+[debug] 23037: stb not empty. size:0x4
+[info] 23037: lookup_tag is MISS. req pc :0x10d1153c.
+[info] 23037: calc_req_addr. req pc :0x10d11540,idx_addr: 0x2c,tag_addr:0x2107, aligned_addr_:0x2107b00,ofst_addr_:0x13 
+[info] 23037: create_dc_req. req_pc:0x10d11540, req_mem:1,req_size:1,req_addr:0x2107b13, req_data0:0x0,req_data1:0x0.
+[debug] 23038: stb not empty. size:0x4
+[info] 23038: lookup_tag is MISS. req pc :0x10d11540.
+[debug] 23039: stb not empty. size:0x4
+[info] 23039: push req to stb. req_pc:0x10d1153c,stb_main_entry_id:3,aligned_addr_:0x2107b00,mem: 1,stb_sub_entry_size:8,store_data0:0x1, store_data1:0x0, strb size:32
+[debug] 23040: stb not empty. size:0x4
+[info] 23040: read_stb. req_pc:0x10d11540, req_size:1,match_stb_id:3.
+[info] 23040: retire_read_instr(match stb). isa_pc:0x10d11540.
+[debug] 23041: stb not empty. size:0x4
+[debug] 23042: stb not empty. size:0x4
+[debug] 23043: stb not empty. size:0x4
+[debug] 23044: stb not empty. size:0x4
+[debug] 23045: stb not empty. size:0x4
+[debug] 23046: stb not empty. size:0x4
+[debug] 23047: stb not empty. size:0x4
+[debug] 23048: stb not empty. size:0x4
+[debug] 23049: stb not empty. size:0x4
+[info] 23049: calc_req_addr. req pc :0x10d11580,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x1e 
+[info] 23049: create_dc_req. req_pc:0x10d11580, req_mem:1,req_size:1,req_addr:0x2107f5e, req_data0:0x0,req_data1:0x0.
+[debug] 23050: stb not empty. size:0x4
+[info] 23050: lookup_tag is MISS. req pc :0x10d11580.
+[info] 23050: calc_req_addr. req pc :0x10d11584,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0xc 
+[info] 23050: create_dc_req. req_pc:0x10d11584, req_mem:1,req_size:4,req_addr:0x2107f8c, req_data0:0x0,req_data1:0x0.
+[debug] 23051: stb not empty. size:0x4
+[info] 23051: lookup_tag is MISS. req pc :0x10d11584.
+[debug] 23052: stb not empty. size:0x4
+[info] 23052: read_stb. req_pc:0x10d11580, req_size:1,match_stb_id:1.
+[info] 23052: retire_read_instr(match stb). isa_pc:0x10d11580.
+[debug] 23053: stb not empty. size:0x4
+[info] 23053: read_stb. req_pc:0x10d11584, req_size:4,match_stb_id:0.
+[info] 23053: retire_read_instr(match stb). isa_pc:0x10d11584.
+[debug] 23054: stb not empty. size:0x4
+[debug] 23055: stb not empty. size:0x4
+[debug] 23056: stb not empty. size:0x4
+[info] 23056: calc_req_addr. req pc :0x10d11590,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x1e 
+[info] 23056: create_dc_req. req_pc:0x10d11590, req_mem:1,req_size:1,req_addr:0x2107f5e, req_data0:0x1,req_data1:0x0.
+[debug] 23057: stb not empty. size:0x4
+[info] 23057: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23057: pipe_stall_M0.
+[debug] 23058: stb not empty. size:0x4
+[info] 23058: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23058: pipe_stall_M0.
+[debug] 23059: stb not empty. size:0x4
+[info] 23059: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23059: pipe_stall_M0.
+[debug] 23060: stb not empty. size:0x4
+[info] 23060: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23060: pipe_stall_M0.
+[debug] 23061: stb not empty. size:0x4
+[info] 23061: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23061: pipe_stall_M0.
+[debug] 23062: stb not empty. size:0x4
+[info] 23062: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23062: pipe_stall_M0.
+[debug] 23063: stb not empty. size:0x4
+[info] 23063: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23063: pipe_stall_M0.
+[debug] 23064: stb not empty. size:0x4
+[info] 23064: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23064: pipe_stall_M0.
+[debug] 23065: stb not empty. size:0x4
+[info] 23065: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23065: pipe_stall_M0.
+[debug] 23066: stb not empty. size:0x4
+[info] 23066: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23066: pipe_stall_M0.
+[debug] 23067: stb not empty. size:0x4
+[info] 23067: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23067: pipe_stall_M0.
+[debug] 23068: stb not empty. size:0x4
+[info] 23068: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23068: pipe_stall_M0.
+[debug] 23069: stb not empty. size:0x4
+[info] 23069: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23069: pipe_stall_M0.
+[debug] 23070: stb not empty. size:0x4
+[info] 23070: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23070: pipe_stall_M0.
+[debug] 23071: stb not empty. size:0x4
+[info] 23071: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23071: pipe_stall_M0.
+[debug] 23072: stb not empty. size:0x4
+[info] 23072: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23072: pipe_stall_M0.
+[debug] 23073: stb not empty. size:0x4
+[info] 23073: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23073: pipe_stall_M0.
+[debug] 23074: stb not empty. size:0x4
+[info] 23074: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23074: pipe_stall_M0.
+[debug] 23075: stb not empty. size:0x4
+[info] 23075: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23075: pipe_stall_M0.
+[debug] 23076: stb not empty. size:0x4
+[info] 23076: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23076: pipe_stall_M0.
+[debug] 23077: stb not empty. size:0x4
+[info] 23077: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23077: pipe_stall_M0.
+[debug] 23078: stb not empty. size:0x4
+[info] 23078: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23078: pipe_stall_M0.
+[debug] 23079: stb not empty. size:0x4
+[info] 23079: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23079: pipe_stall_M0.
+[debug] 23080: stb not empty. size:0x4
+[info] 23080: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23080: pipe_stall_M0.
+[debug] 23081: stb not empty. size:0x4
+[info] 23081: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23081: pipe_stall_M0.
+[debug] 23082: stb not empty. size:0x4
+[info] 23082: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23082: pipe_stall_M0.
+[debug] 23083: stb not empty. size:0x4
+[info] 23083: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23083: pipe_stall_M0.
+[debug] 23084: stb not empty. size:0x4
+[info] 23084: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23084: pipe_stall_M0.
+[debug] 23085: stb not empty. size:0x4
+[info] 23085: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23085: pipe_stall_M0.
+[debug] 23086: stb not empty. size:0x4
+[info] 23086: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23086: pipe_stall_M0.
+[debug] 23087: stb not empty. size:0x4
+[info] 23087: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23087: pipe_stall_M0.
+[debug] 23088: stb not empty. size:0x4
+[info] 23088: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23088: pipe_stall_M0.
+[debug] 23089: stb not empty. size:0x4
+[info] 23089: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23089: pipe_stall_M0.
+[debug] 23090: stb not empty. size:0x4
+[info] 23090: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23090: pipe_stall_M0.
+[debug] 23091: stb not empty. size:0x4
+[info] 23091: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23091: pipe_stall_M0.
+[debug] 23092: stb not empty. size:0x4
+[info] 23092: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23092: pipe_stall_M0.
+[debug] 23093: stb not empty. size:0x4
+[info] 23093: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23093: pipe_stall_M0.
+[debug] 23094: stb not empty. size:0x4
+[info] 23094: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23094: pipe_stall_M0.
+[debug] 23095: stb not empty. size:0x4
+[info] 23095: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23095: pipe_stall_M0.
+[debug] 23096: stb not empty. size:0x4
+[info] 23096: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23096: pipe_stall_M0.
+[debug] 23097: stb not empty. size:0x4
+[info] 23097: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23097: pipe_stall_M0.
+[debug] 23098: stb not empty. size:0x4
+[info] 23098: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23098: pipe_stall_M0.
+[debug] 23099: stb not empty. size:0x4
+[info] 23099: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23099: pipe_stall_M0.
+[debug] 23100: stb not empty. size:0x4
+[info] 23100: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23100: pipe_stall_M0.
+[debug] 23101: stb not empty. size:0x4
+[info] 23101: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23101: pipe_stall_M0.
+[debug] 23102: stb not empty. size:0x4
+[info] 23102: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23102: pipe_stall_M0.
+[debug] 23103: stb not empty. size:0x4
+[info] 23103: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23103: pipe_stall_M0.
+[debug] 23104: stb not empty. size:0x4
+[info] 23104: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23104: pipe_stall_M0.
+[debug] 23105: stb not empty. size:0x4
+[info] 23105: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23105: pipe_stall_M0.
+[debug] 23106: stb not empty. size:0x4
+[info] 23106: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23106: pipe_stall_M0.
+[debug] 23107: stb not empty. size:0x4
+[info] 23107: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23107: pipe_stall_M0.
+[debug] 23108: stb not empty. size:0x4
+[info] 23108: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23108: pipe_stall_M0.
+[debug] 23109: stb not empty. size:0x4
+[info] 23109: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23109: pipe_stall_M0.
+[debug] 23110: stb not empty. size:0x4
+[info] 23110: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23110: pipe_stall_M0.
+[debug] 23111: stb not empty. size:0x4
+[info] 23111: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23111: pipe_stall_M0.
+[debug] 23112: stb not empty. size:0x4
+[info] 23112: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23112: pipe_stall_M0.
+[debug] 23113: stb not empty. size:0x4
+[info] 23113: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23113: pipe_stall_M0.
+[debug] 23114: stb not empty. size:0x4
+[info] 23114: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23114: pipe_stall_M0.
+[debug] 23115: stb not empty. size:0x4
+[info] 23115: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23115: pipe_stall_M0.
+[debug] 23116: stb not empty. size:0x4
+[info] 23116: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23116: pipe_stall_M0.
+[debug] 23117: stb not empty. size:0x4
+[info] 23117: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23117: pipe_stall_M0.
+[debug] 23118: stb not empty. size:0x4
+[info] 23118: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23118: pipe_stall_M0.
+[debug] 23119: stb not empty. size:0x4
+[info] 23119: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23119: pipe_stall_M0.
+[debug] 23120: stb not empty. size:0x4
+[info] 23120: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23120: pipe_stall_M0.
+[debug] 23121: stb not empty. size:0x4
+[info] 23121: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23121: pipe_stall_M0.
+[debug] 23122: stb not empty. size:0x4
+[info] 23122: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23122: pipe_stall_M0.
+[debug] 23123: stb not empty. size:0x4
+[info] 23123: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23123: pipe_stall_M0.
+[debug] 23124: stb not empty. size:0x4
+[info] 23124: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23124: pipe_stall_M0.
+[debug] 23125: stb not empty. size:0x4
+[info] 23125: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23125: pipe_stall_M0.
+[debug] 23126: stb not empty. size:0x4
+[info] 23126: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23126: pipe_stall_M0.
+[debug] 23127: stb not empty. size:0x4
+[info] 23127: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23127: pipe_stall_M0.
+[debug] 23128: stb not empty. size:0x4
+[info] 23128: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23128: pipe_stall_M0.
+[debug] 23129: stb not empty. size:0x4
+[info] 23129: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23129: pipe_stall_M0.
+[debug] 23130: stb not empty. size:0x4
+[info] 23130: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23130: pipe_stall_M0.
+[debug] 23131: stb not empty. size:0x4
+[info] 23131: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23131: pipe_stall_M0.
+[debug] 23132: stb not empty. size:0x4
+[info] 23132: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23132: pipe_stall_M0.
+[debug] 23133: stb not empty. size:0x4
+[info] 23133: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23133: pipe_stall_M0.
+[debug] 23134: stb not empty. size:0x4
+[info] 23134: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23134: pipe_stall_M0.
+[debug] 23135: stb not empty. size:0x4
+[info] 23135: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23135: pipe_stall_M0.
+[debug] 23136: stb not empty. size:0x4
+[info] 23136: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23136: pipe_stall_M0.
+[debug] 23137: stb not empty. size:0x4
+[info] 23137: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23137: pipe_stall_M0.
+[debug] 23138: stb not empty. size:0x4
+[info] 23138: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23138: pipe_stall_M0.
+[debug] 23139: stb not empty. size:0x4
+[info] 23139: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23139: pipe_stall_M0.
+[debug] 23140: stb not empty. size:0x4
+[info] 23140: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23140: pipe_stall_M0.
+[debug] 23141: stb not empty. size:0x4
+[info] 23141: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23141: pipe_stall_M0.
+[debug] 23142: stb not empty. size:0x4
+[info] 23142: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23142: pipe_stall_M0.
+[debug] 23143: stb not empty. size:0x4
+[info] 23143: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23143: pipe_stall_M0.
+[debug] 23144: stb not empty. size:0x4
+[info] 23144: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23144: pipe_stall_M0.
+[debug] 23145: stb not empty. size:0x4
+[info] 23145: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23145: pipe_stall_M0.
+[debug] 23146: stb not empty. size:0x4
+[info] 23146: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23146: pipe_stall_M0.
+[debug] 23147: stb not empty. size:0x4
+[info] 23147: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23147: pipe_stall_M0.
+[debug] 23148: stb not empty. size:0x4
+[info] 23148: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23148: pipe_stall_M0.
+[debug] 23149: stb not empty. size:0x4
+[info] 23149: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23149: pipe_stall_M0.
+[debug] 23150: stb not empty. size:0x4
+[info] 23150: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23150: pipe_stall_M0.
+[debug] 23151: stb not empty. size:0x4
+[info] 23151: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23151: pipe_stall_M0.
+[debug] 23152: stb not empty. size:0x4
+[info] 23152: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23152: pipe_stall_M0.
+[debug] 23153: stb not empty. size:0x4
+[info] 23153: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23153: pipe_stall_M0.
+[debug] 23154: stb not empty. size:0x4
+[info] 23154: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23154: pipe_stall_M0.
+[debug] 23155: stb not empty. size:0x4
+[info] 23155: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23155: pipe_stall_M0.
+[debug] 23156: stb not empty. size:0x4
+[info] 23156: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23156: pipe_stall_M0.
+[debug] 23157: stb not empty. size:0x4
+[info] 23157: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23157: pipe_stall_M0.
+[debug] 23158: stb not empty. size:0x4
+[info] 23158: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23158: pipe_stall_M0.
+[debug] 23159: stb not empty. size:0x4
+[info] 23159: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23159: pipe_stall_M0.
+[debug] 23160: stb not empty. size:0x4
+[info] 23160: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23160: pipe_stall_M0.
+[debug] 23161: stb not empty. size:0x4
+[info] 23161: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23161: pipe_stall_M0.
+[debug] 23162: stb not empty. size:0x4
+[info] 23162: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23162: pipe_stall_M0.
+[debug] 23163: stb not empty. size:0x4
+[info] 23163: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23163: pipe_stall_M0.
+[debug] 23164: stb not empty. size:0x4
+[info] 23164: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23164: pipe_stall_M0.
+[debug] 23165: stb not empty. size:0x4
+[info] 23165: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23165: pipe_stall_M0.
+[debug] 23166: stb not empty. size:0x4
+[info] 23166: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23166: pipe_stall_M0.
+[debug] 23167: stb not empty. size:0x4
+[info] 23167: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23167: pipe_stall_M0.
+[debug] 23168: stb not empty. size:0x4
+[info] 23168: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23168: pipe_stall_M0.
+[debug] 23169: stb not empty. size:0x4
+[info] 23169: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23169: pipe_stall_M0.
+[debug] 23170: stb not empty. size:0x4
+[info] 23170: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23170: pipe_stall_M0.
+[debug] 23171: stb not empty. size:0x4
+[info] 23171: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23171: pipe_stall_M0.
+[debug] 23172: stb not empty. size:0x4
+[info] 23172: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23172: pipe_stall_M0.
+[debug] 23173: stb not empty. size:0x4
+[info] 23173: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23173: pipe_stall_M0.
+[debug] 23174: stb not empty. size:0x4
+[info] 23174: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23174: pipe_stall_M0.
+[debug] 23175: stb not empty. size:0x4
+[info] 23175: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23175: pipe_stall_M0.
+[debug] 23176: stb not empty. size:0x4
+[info] 23176: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23176: pipe_stall_M0.
+[debug] 23177: stb not empty. size:0x4
+[info] 23177: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23177: pipe_stall_M0.
+[debug] 23178: stb not empty. size:0x4
+[info] 23178: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23178: pipe_stall_M0.
+[debug] 23179: stb not empty. size:0x4
+[info] 23179: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23179: pipe_stall_M0.
+[debug] 23180: stb not empty. size:0x4
+[info] 23180: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23180: pipe_stall_M0.
+[debug] 23181: stb not empty. size:0x4
+[info] 23181: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23181: pipe_stall_M0.
+[debug] 23182: stb not empty. size:0x4
+[info] 23182: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23182: pipe_stall_M0.
+[debug] 23183: stb not empty. size:0x4
+[info] 23183: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23183: pipe_stall_M0.
+[debug] 23184: stb not empty. size:0x4
+[info] 23184: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23184: pipe_stall_M0.
+[debug] 23185: stb not empty. size:0x4
+[info] 23185: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23185: pipe_stall_M0.
+[debug] 23186: stb not empty. size:0x4
+[info] 23186: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23186: pipe_stall_M0.
+[debug] 23187: stb not empty. size:0x4
+[info] 23187: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23187: pipe_stall_M0.
+[debug] 23188: stb not empty. size:0x4
+[info] 23188: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23188: pipe_stall_M0.
+[info] 23188: recv_rd_biu_rsp(stb). rsp_id:11421,aligned_addr_: 0x2107f80, entry_id:0
+[info] 23188: get_victim invalid. way_id:1,idx_addr: 0x3e,mem:1, is_dirty:0.
+[info] 23188: refill data to cache_ram. way_id:1,tag_addr:0x2107,idx_addr: 0x3e,mem:1, is_dirty:1.
+[info] 23188: retire_stb_instr. isa_pc:0x10d11114
+[info] 23188: retire_stb_instr. isa_pc:0x10d11128
+[info] 23188: retire_stb_instr. isa_pc:0x10d11138
+[info] 23188: retire_stb_instr. isa_pc:0x10d1113c
+[debug] 23189: stb not empty. size:0x3
+[info] 23189: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23189: pipe_stall_M0.
+[debug] 23190: stb not empty. size:0x3
+[info] 23190: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23190: pipe_stall_M0.
+[debug] 23191: stb not empty. size:0x3
+[info] 23191: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23191: pipe_stall_M0.
+[debug] 23192: stb not empty. size:0x3
+[info] 23192: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23192: pipe_stall_M0.
+[debug] 23193: stb not empty. size:0x3
+[info] 23193: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23193: pipe_stall_M0.
+[debug] 23194: stb not empty. size:0x3
+[info] 23194: write_req_stall:1,stb_full:1,stb_forbid:0,evic_haz:0, req_pc:0x10d11590
+[debug] 23194: pipe_stall_M0.
+[info] 23194: recv_rd_biu_rsp(stb). rsp_id:11422,aligned_addr_: 0x2107f40, entry_id:0
+[info] 23194: get_victim invalid. way_id:1,idx_addr: 0x3d,mem:1, is_dirty:0.
+[info] 23194: refill data to cache_ram. way_id:1,tag_addr:0x2107,idx_addr: 0x3d,mem:1, is_dirty:1.
+[info] 23194: retire_stb_instr. isa_pc:0x10d11140
+[info] 23194: retire_stb_instr. isa_pc:0x10d11200
+[info] 23194: retire_stb_instr. isa_pc:0x10d11204
+[info] 23194: retire_stb_instr. isa_pc:0x10d1123c
+[info] 23194: retire_stb_instr. isa_pc:0x10d11240
+[info] 23194: retire_stb_instr. isa_pc:0x10d1149c
+[info] 23194: retire_stb_instr. isa_pc:0x10d11508
+[info] 23194: retire_stb_instr. isa_pc:0x10d1152c
+[debug] 23195: stb not empty. size:0x2
+[info] 23195: lookup_tag is HIT. req pc :0x10d11590, idx_addr: 0x3d, tag_addr: 0x2107, aligned_addr_: 0x2107f40,hit_pos: 1 
+[info] 23195: calc_req_addr. req pc :0x10d11598,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x14 
+[info] 23195: create_dc_req. req_pc:0x10d11598, req_mem:1,req_size:4,req_addr:0x2107f94, req_data0:0x0,req_data1:0x0.
+[debug] 23196: stb not empty. size:0x2
+[info] 23196: lookup_tag is HIT. req pc :0x10d11598, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[debug] 23197: stb not empty. size:0x2
+[info] 23197: push req to stb. req_pc:0x10d11590,stb_main_entry_id:2,aligned_addr_:0x2107f40,mem: 1,stb_sub_entry_size:1,store_data0:0x1, store_data1:0x0, strb size:1
+[debug] 23198: stb not empty. size:0x3
+[info] 23198: read_instr_hit. isa_pc:0x10d11598.
+[debug] 23199: stb not empty. size:0x3
+[debug] 23200: stb not empty. size:0x3
+[info] 23200: recv_rd_biu_rsp(stb). rsp_id:11427,aligned_addr_: 0x2100000, entry_id:0
+[info] 23200: get_victim invalid. way_id:1,idx_addr: 0x0,mem:1, is_dirty:0.
+[info] 23200: refill data to cache_ram. way_id:1,tag_addr:0x2100,idx_addr: 0x0,mem:1, is_dirty:1.
+[info] 23200: retire_stb_instr. isa_pc:0x10d11168
+[debug] 23201: stb not empty. size:0x2
+[debug] 23202: stb not empty. size:0x2
+[debug] 23203: stb not empty. size:0x2
+[debug] 23204: stb not empty. size:0x2
+[debug] 23205: stb not empty. size:0x2
+[debug] 23206: stb not empty. size:0x2
+[debug] 23207: stb not empty. size:0x2
+[info] 23207: calc_req_addr. req pc :0x10d115ac,idx_addr: 0x2c,tag_addr:0x2107, aligned_addr_:0x2107b00,ofst_addr_:0x14 
+[info] 23207: create_dc_req. req_pc:0x10d115ac, req_mem:1,req_size:4,req_addr:0x2107b14, req_data0:0x0,req_data1:0x0.
+[debug] 23208: stb not empty. size:0x2
+[info] 23208: lookup_tag is MISS. req pc :0x10d115ac.
+[debug] 23209: stb not empty. size:0x2
+[debug] 23210: stb not empty. size:0x2
+[info] 23210: read_stb. req_pc:0x10d115ac, req_size:4,match_stb_id:0.
+[info] 23210: retire_read_instr(match stb). isa_pc:0x10d115ac.
+[debug] 23211: stb not empty. size:0x2
+[debug] 23212: stb not empty. size:0x2
+[debug] 23213: stb not empty. size:0x2
+[debug] 23214: stb not empty. size:0x2
+[debug] 23215: stb not empty. size:0x2
+[info] 23215: calc_req_addr. req pc :0x10d115fc,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x10 
+[info] 23215: create_dc_req. req_pc:0x10d115fc, req_mem:1,req_size:4,req_addr:0x2107f90, req_data0:0x0,req_data1:0x0.
+[debug] 23216: stb not empty. size:0x2
+[info] 23216: lookup_tag is HIT. req pc :0x10d115fc, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[debug] 23217: stb not empty. size:0x2
+[debug] 23218: stb not empty. size:0x2
+[info] 23218: read_instr_hit. isa_pc:0x10d115fc.
+[debug] 23219: stb not empty. size:0x2
+[debug] 23220: stb not empty. size:0x2
+[debug] 23221: stb not empty. size:0x2
+[debug] 23222: stb not empty. size:0x2
+[debug] 23223: stb not empty. size:0x2
+[debug] 23224: stb not empty. size:0x2
+[debug] 23225: stb not empty. size:0x2
+[debug] 23226: stb not empty. size:0x2
+[debug] 23227: stb not empty. size:0x2
+[debug] 23228: stb not empty. size:0x2
+[debug] 23229: stb_sub_entry id:1, sub_entry_size:1,req_pc:0x10d11590.
+[debug] 23229: st_hit_write_cache stb_sub_entry id:1, sub_entry_size:1,req_pc:0x10d11590.
+[info] 23229: find_cache_way_id:1,tag_addr:0x2107,idx_addr:61.
+[info] 23229: stb_write_dcache. isa_pc:0x10d11590, tag_addr:0x2107,idx_addr:0x3d,write_dcache_way:1, stb_entry_id:1.
+[info] 23229: retire_stb_instr. isa_pc:0x10d11590
+[info] 23229: rm_entry. way_id:1,addr:0x2107f40
+[debug] 23229: stb not empty. size:0x1
+[debug] 23230: stb not empty. size:0x1
+[debug] 23231: stb not empty. size:0x1
+[debug] 23232: stb not empty. size:0x1
+[info] 23232: calc_req_addr. req pc :0x10d11638,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x0 
+[info] 23232: create_dc_req. req_pc:0x10d11638, req_mem:1,req_size:4,req_addr:0x2107f80, req_data0:0x0,req_data1:0x0.
+[info] 23232: recv_rd_biu_rsp(stb). rsp_id:11444,aligned_addr_: 0x2107b00, entry_id:0
+[info] 23232: get_victim invalid. way_id:1,idx_addr: 0x2c,mem:1, is_dirty:0.
+[info] 23232: refill data to cache_ram. way_id:1,tag_addr:0x2107,idx_addr: 0x2c,mem:1, is_dirty:1.
+[info] 23232: retire_stb_instr. isa_pc:0x10d1120c
+[info] 23232: retire_stb_instr. isa_pc:0x10d11214
+[info] 23232: retire_stb_instr. isa_pc:0x10d11218
+[info] 23232: retire_stb_instr. isa_pc:0x10d11244
+[info] 23232: retire_stb_instr. isa_pc:0x10d11248
+[info] 23232: retire_stb_instr. isa_pc:0x10d11258
+[info] 23232: retire_stb_instr. isa_pc:0x10d114ac
+[info] 23232: retire_stb_instr. isa_pc:0x10d1153c
+[info] 23233: lookup_tag is HIT. req pc :0x10d11638, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 23233: calc_req_addr. req pc :0x10d1163c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x30 
+[info] 23233: create_dc_req. req_pc:0x10d1163c, req_mem:1,req_size:8,req_addr:0x2107f70, req_data0:0x0,req_data1:0x0.
+[info] 23234: lookup_tag is HIT. req pc :0x10d1163c, idx_addr: 0x3d, tag_addr: 0x2107, aligned_addr_: 0x2107f40,hit_pos: 1 
+[info] 23235: read_instr_hit. isa_pc:0x10d11638.
+[info] 23236: read_instr_hit. isa_pc:0x10d1163c.
+[info] 23298: calc_req_addr. req pc :0x10d11638,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x0 
+[info] 23298: create_dc_req. req_pc:0x10d11638, req_mem:1,req_size:4,req_addr:0x2107f80, req_data0:0x0,req_data1:0x0.
+[info] 23299: lookup_tag is HIT. req pc :0x10d11638, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 23299: calc_req_addr. req pc :0x10d1163c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x30 
+[info] 23299: create_dc_req. req_pc:0x10d1163c, req_mem:1,req_size:8,req_addr:0x2107f70, req_data0:0x0,req_data1:0x0.
+[info] 23300: lookup_tag is HIT. req pc :0x10d1163c, idx_addr: 0x3d, tag_addr: 0x2107, aligned_addr_: 0x2107f40,hit_pos: 1 
+[info] 23301: read_instr_hit. isa_pc:0x10d11638.
+[info] 23302: read_instr_hit. isa_pc:0x10d1163c.
+[info] 23367: calc_req_addr. req pc :0x10d115fc,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x10 
+[info] 23367: create_dc_req. req_pc:0x10d115fc, req_mem:1,req_size:4,req_addr:0x2107f90, req_data0:0x0,req_data1:0x0.
+[info] 23368: lookup_tag is HIT. req pc :0x10d115fc, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 23370: read_instr_hit. isa_pc:0x10d115fc.
+[info] 23384: calc_req_addr. req pc :0x10d11638,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x0 
+[info] 23384: create_dc_req. req_pc:0x10d11638, req_mem:1,req_size:4,req_addr:0x2107f80, req_data0:0x0,req_data1:0x0.
+[info] 23385: lookup_tag is HIT. req pc :0x10d11638, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 23385: calc_req_addr. req pc :0x10d1163c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x30 
+[info] 23385: create_dc_req. req_pc:0x10d1163c, req_mem:1,req_size:8,req_addr:0x2107f70, req_data0:0x0,req_data1:0x0.
+[info] 23386: lookup_tag is HIT. req pc :0x10d1163c, idx_addr: 0x3d, tag_addr: 0x2107, aligned_addr_: 0x2107f40,hit_pos: 1 
+[info] 23387: read_instr_hit. isa_pc:0x10d11638.
+[info] 23388: read_instr_hit. isa_pc:0x10d1163c.
+[info] 23445: calc_req_addr. req pc :0x10d11638,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x0 
+[info] 23445: create_dc_req. req_pc:0x10d11638, req_mem:1,req_size:4,req_addr:0x2107f80, req_data0:0x0,req_data1:0x0.
+[info] 23446: lookup_tag is HIT. req pc :0x10d11638, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 23446: calc_req_addr. req pc :0x10d1163c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x30 
+[info] 23446: create_dc_req. req_pc:0x10d1163c, req_mem:1,req_size:8,req_addr:0x2107f70, req_data0:0x0,req_data1:0x0.
+[info] 23447: lookup_tag is HIT. req pc :0x10d1163c, idx_addr: 0x3d, tag_addr: 0x2107, aligned_addr_: 0x2107f40,hit_pos: 1 
+[info] 23448: read_instr_hit. isa_pc:0x10d11638.
+[info] 23449: read_instr_hit. isa_pc:0x10d1163c.
+[info] 23514: calc_req_addr. req pc :0x10d115fc,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x10 
+[info] 23514: create_dc_req. req_pc:0x10d115fc, req_mem:1,req_size:4,req_addr:0x2107f90, req_data0:0x0,req_data1:0x0.
+[info] 23515: lookup_tag is HIT. req pc :0x10d115fc, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 23517: read_instr_hit. isa_pc:0x10d115fc.
+[info] 23531: calc_req_addr. req pc :0x10d11638,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x0 
+[info] 23531: create_dc_req. req_pc:0x10d11638, req_mem:1,req_size:4,req_addr:0x2107f80, req_data0:0x0,req_data1:0x0.
+[info] 23532: lookup_tag is HIT. req pc :0x10d11638, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 23532: calc_req_addr. req pc :0x10d1163c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x30 
+[info] 23532: create_dc_req. req_pc:0x10d1163c, req_mem:1,req_size:8,req_addr:0x2107f70, req_data0:0x0,req_data1:0x0.
+[info] 23533: lookup_tag is HIT. req pc :0x10d1163c, idx_addr: 0x3d, tag_addr: 0x2107, aligned_addr_: 0x2107f40,hit_pos: 1 
+[info] 23534: read_instr_hit. isa_pc:0x10d11638.
+[info] 23535: read_instr_hit. isa_pc:0x10d1163c.
+[info] 23592: calc_req_addr. req pc :0x10d11638,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x0 
+[info] 23592: create_dc_req. req_pc:0x10d11638, req_mem:1,req_size:4,req_addr:0x2107f80, req_data0:0x0,req_data1:0x0.
+[info] 23593: lookup_tag is HIT. req pc :0x10d11638, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 23593: calc_req_addr. req pc :0x10d1163c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x30 
+[info] 23593: create_dc_req. req_pc:0x10d1163c, req_mem:1,req_size:8,req_addr:0x2107f70, req_data0:0x0,req_data1:0x0.
+[info] 23594: lookup_tag is HIT. req pc :0x10d1163c, idx_addr: 0x3d, tag_addr: 0x2107, aligned_addr_: 0x2107f40,hit_pos: 1 
+[info] 23595: read_instr_hit. isa_pc:0x10d11638.
+[info] 23596: read_instr_hit. isa_pc:0x10d1163c.
+[info] 23661: calc_req_addr. req pc :0x10d115fc,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x10 
+[info] 23661: create_dc_req. req_pc:0x10d115fc, req_mem:1,req_size:4,req_addr:0x2107f90, req_data0:0x0,req_data1:0x0.
+[info] 23662: lookup_tag is HIT. req pc :0x10d115fc, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 23664: read_instr_hit. isa_pc:0x10d115fc.
+[info] 23678: calc_req_addr. req pc :0x10d11638,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x0 
+[info] 23678: create_dc_req. req_pc:0x10d11638, req_mem:1,req_size:4,req_addr:0x2107f80, req_data0:0x0,req_data1:0x0.
+[info] 23679: lookup_tag is HIT. req pc :0x10d11638, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 23679: calc_req_addr. req pc :0x10d1163c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x30 
+[info] 23679: create_dc_req. req_pc:0x10d1163c, req_mem:1,req_size:8,req_addr:0x2107f70, req_data0:0x0,req_data1:0x0.
+[info] 23680: lookup_tag is HIT. req pc :0x10d1163c, idx_addr: 0x3d, tag_addr: 0x2107, aligned_addr_: 0x2107f40,hit_pos: 1 
+[info] 23681: read_instr_hit. isa_pc:0x10d11638.
+[info] 23682: read_instr_hit. isa_pc:0x10d1163c.
+[info] 23739: calc_req_addr. req pc :0x10d11638,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x0 
+[info] 23739: create_dc_req. req_pc:0x10d11638, req_mem:1,req_size:4,req_addr:0x2107f80, req_data0:0x0,req_data1:0x0.
+[info] 23740: lookup_tag is HIT. req pc :0x10d11638, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 23740: calc_req_addr. req pc :0x10d1163c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x30 
+[info] 23740: create_dc_req. req_pc:0x10d1163c, req_mem:1,req_size:8,req_addr:0x2107f70, req_data0:0x0,req_data1:0x0.
+[info] 23741: lookup_tag is HIT. req pc :0x10d1163c, idx_addr: 0x3d, tag_addr: 0x2107, aligned_addr_: 0x2107f40,hit_pos: 1 
+[info] 23742: read_instr_hit. isa_pc:0x10d11638.
+[info] 23743: read_instr_hit. isa_pc:0x10d1163c.
+[info] 23808: calc_req_addr. req pc :0x10d115fc,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x10 
+[info] 23808: create_dc_req. req_pc:0x10d115fc, req_mem:1,req_size:4,req_addr:0x2107f90, req_data0:0x0,req_data1:0x0.
+[info] 23809: lookup_tag is HIT. req pc :0x10d115fc, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 23811: read_instr_hit. isa_pc:0x10d115fc.
+[info] 23825: calc_req_addr. req pc :0x10d11638,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x0 
+[info] 23825: create_dc_req. req_pc:0x10d11638, req_mem:1,req_size:4,req_addr:0x2107f80, req_data0:0x0,req_data1:0x0.
+[info] 23826: lookup_tag is HIT. req pc :0x10d11638, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 23826: calc_req_addr. req pc :0x10d1163c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x30 
+[info] 23826: create_dc_req. req_pc:0x10d1163c, req_mem:1,req_size:8,req_addr:0x2107f70, req_data0:0x0,req_data1:0x0.
+[info] 23827: lookup_tag is HIT. req pc :0x10d1163c, idx_addr: 0x3d, tag_addr: 0x2107, aligned_addr_: 0x2107f40,hit_pos: 1 
+[info] 23828: read_instr_hit. isa_pc:0x10d11638.
+[info] 23829: read_instr_hit. isa_pc:0x10d1163c.
+[info] 23886: calc_req_addr. req pc :0x10d11638,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x0 
+[info] 23886: create_dc_req. req_pc:0x10d11638, req_mem:1,req_size:4,req_addr:0x2107f80, req_data0:0x0,req_data1:0x0.
+[info] 23887: lookup_tag is HIT. req pc :0x10d11638, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 23887: calc_req_addr. req pc :0x10d1163c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x30 
+[info] 23887: create_dc_req. req_pc:0x10d1163c, req_mem:1,req_size:8,req_addr:0x2107f70, req_data0:0x0,req_data1:0x0.
+[info] 23888: lookup_tag is HIT. req pc :0x10d1163c, idx_addr: 0x3d, tag_addr: 0x2107, aligned_addr_: 0x2107f40,hit_pos: 1 
+[info] 23889: read_instr_hit. isa_pc:0x10d11638.
+[info] 23890: read_instr_hit. isa_pc:0x10d1163c.
+[info] 23955: calc_req_addr. req pc :0x10d115fc,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x10 
+[info] 23955: create_dc_req. req_pc:0x10d115fc, req_mem:1,req_size:4,req_addr:0x2107f90, req_data0:0x0,req_data1:0x0.
+[info] 23956: lookup_tag is HIT. req pc :0x10d115fc, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 23958: read_instr_hit. isa_pc:0x10d115fc.
+[info] 23972: calc_req_addr. req pc :0x10d11638,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x0 
+[info] 23972: create_dc_req. req_pc:0x10d11638, req_mem:1,req_size:4,req_addr:0x2107f80, req_data0:0x0,req_data1:0x0.
+[info] 23973: lookup_tag is HIT. req pc :0x10d11638, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 23973: calc_req_addr. req pc :0x10d1163c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x30 
+[info] 23973: create_dc_req. req_pc:0x10d1163c, req_mem:1,req_size:8,req_addr:0x2107f70, req_data0:0x0,req_data1:0x0.
+[info] 23974: lookup_tag is HIT. req pc :0x10d1163c, idx_addr: 0x3d, tag_addr: 0x2107, aligned_addr_: 0x2107f40,hit_pos: 1 
+[info] 23975: read_instr_hit. isa_pc:0x10d11638.
+[info] 23976: read_instr_hit. isa_pc:0x10d1163c.
+[info] 24033: calc_req_addr. req pc :0x10d11638,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x0 
+[info] 24033: create_dc_req. req_pc:0x10d11638, req_mem:1,req_size:4,req_addr:0x2107f80, req_data0:0x0,req_data1:0x0.
+[info] 24034: lookup_tag is HIT. req pc :0x10d11638, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 24034: calc_req_addr. req pc :0x10d1163c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x30 
+[info] 24034: create_dc_req. req_pc:0x10d1163c, req_mem:1,req_size:8,req_addr:0x2107f70, req_data0:0x0,req_data1:0x0.
+[info] 24035: lookup_tag is HIT. req pc :0x10d1163c, idx_addr: 0x3d, tag_addr: 0x2107, aligned_addr_: 0x2107f40,hit_pos: 1 
+[info] 24036: read_instr_hit. isa_pc:0x10d11638.
+[info] 24037: read_instr_hit. isa_pc:0x10d1163c.
+[info] 24102: calc_req_addr. req pc :0x10d115fc,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x10 
+[info] 24102: create_dc_req. req_pc:0x10d115fc, req_mem:1,req_size:4,req_addr:0x2107f90, req_data0:0x0,req_data1:0x0.
+[info] 24103: lookup_tag is HIT. req pc :0x10d115fc, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 24105: read_instr_hit. isa_pc:0x10d115fc.
+[info] 24119: calc_req_addr. req pc :0x10d11638,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x0 
+[info] 24119: create_dc_req. req_pc:0x10d11638, req_mem:1,req_size:4,req_addr:0x2107f80, req_data0:0x0,req_data1:0x0.
+[info] 24120: lookup_tag is HIT. req pc :0x10d11638, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 24120: calc_req_addr. req pc :0x10d1163c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x30 
+[info] 24120: create_dc_req. req_pc:0x10d1163c, req_mem:1,req_size:8,req_addr:0x2107f70, req_data0:0x0,req_data1:0x0.
+[info] 24121: lookup_tag is HIT. req pc :0x10d1163c, idx_addr: 0x3d, tag_addr: 0x2107, aligned_addr_: 0x2107f40,hit_pos: 1 
+[info] 24122: read_instr_hit. isa_pc:0x10d11638.
+[info] 24123: read_instr_hit. isa_pc:0x10d1163c.
+[info] 24180: calc_req_addr. req pc :0x10d11638,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x0 
+[info] 24180: create_dc_req. req_pc:0x10d11638, req_mem:1,req_size:4,req_addr:0x2107f80, req_data0:0x0,req_data1:0x0.
+[info] 24181: lookup_tag is HIT. req pc :0x10d11638, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 24181: calc_req_addr. req pc :0x10d1163c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x30 
+[info] 24181: create_dc_req. req_pc:0x10d1163c, req_mem:1,req_size:8,req_addr:0x2107f70, req_data0:0x0,req_data1:0x0.
+[info] 24182: lookup_tag is HIT. req pc :0x10d1163c, idx_addr: 0x3d, tag_addr: 0x2107, aligned_addr_: 0x2107f40,hit_pos: 1 
+[info] 24183: read_instr_hit. isa_pc:0x10d11638.
+[info] 24184: read_instr_hit. isa_pc:0x10d1163c.
+[info] 24249: calc_req_addr. req pc :0x10d115fc,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x10 
+[info] 24249: create_dc_req. req_pc:0x10d115fc, req_mem:1,req_size:4,req_addr:0x2107f90, req_data0:0x0,req_data1:0x0.
+[info] 24250: lookup_tag is HIT. req pc :0x10d115fc, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 24252: read_instr_hit. isa_pc:0x10d115fc.
+[info] 24266: calc_req_addr. req pc :0x10d11638,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x0 
+[info] 24266: create_dc_req. req_pc:0x10d11638, req_mem:1,req_size:4,req_addr:0x2107f80, req_data0:0x0,req_data1:0x0.
+[info] 24267: lookup_tag is HIT. req pc :0x10d11638, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 24267: calc_req_addr. req pc :0x10d1163c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x30 
+[info] 24267: create_dc_req. req_pc:0x10d1163c, req_mem:1,req_size:8,req_addr:0x2107f70, req_data0:0x0,req_data1:0x0.
+[info] 24268: lookup_tag is HIT. req pc :0x10d1163c, idx_addr: 0x3d, tag_addr: 0x2107, aligned_addr_: 0x2107f40,hit_pos: 1 
+[info] 24269: read_instr_hit. isa_pc:0x10d11638.
+[info] 24270: read_instr_hit. isa_pc:0x10d1163c.
+[info] 24327: calc_req_addr. req pc :0x10d11638,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x0 
+[info] 24327: create_dc_req. req_pc:0x10d11638, req_mem:1,req_size:4,req_addr:0x2107f80, req_data0:0x0,req_data1:0x0.
+[info] 24328: lookup_tag is HIT. req pc :0x10d11638, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 24328: calc_req_addr. req pc :0x10d1163c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x30 
+[info] 24328: create_dc_req. req_pc:0x10d1163c, req_mem:1,req_size:8,req_addr:0x2107f70, req_data0:0x0,req_data1:0x0.
+[info] 24329: lookup_tag is HIT. req pc :0x10d1163c, idx_addr: 0x3d, tag_addr: 0x2107, aligned_addr_: 0x2107f40,hit_pos: 1 
+[info] 24330: read_instr_hit. isa_pc:0x10d11638.
+[info] 24331: read_instr_hit. isa_pc:0x10d1163c.
+[info] 24396: calc_req_addr. req pc :0x10d115fc,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x10 
+[info] 24396: create_dc_req. req_pc:0x10d115fc, req_mem:1,req_size:4,req_addr:0x2107f90, req_data0:0x0,req_data1:0x0.
+[info] 24397: lookup_tag is HIT. req pc :0x10d115fc, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 24399: read_instr_hit. isa_pc:0x10d115fc.
+[info] 24413: calc_req_addr. req pc :0x10d11638,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x0 
+[info] 24413: create_dc_req. req_pc:0x10d11638, req_mem:1,req_size:4,req_addr:0x2107f80, req_data0:0x0,req_data1:0x0.
+[info] 24414: lookup_tag is HIT. req pc :0x10d11638, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 24414: calc_req_addr. req pc :0x10d1163c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x30 
+[info] 24414: create_dc_req. req_pc:0x10d1163c, req_mem:1,req_size:8,req_addr:0x2107f70, req_data0:0x0,req_data1:0x0.
+[info] 24415: lookup_tag is HIT. req pc :0x10d1163c, idx_addr: 0x3d, tag_addr: 0x2107, aligned_addr_: 0x2107f40,hit_pos: 1 
+[info] 24416: read_instr_hit. isa_pc:0x10d11638.
+[info] 24417: read_instr_hit. isa_pc:0x10d1163c.
+[info] 24474: calc_req_addr. req pc :0x10d11638,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x0 
+[info] 24474: create_dc_req. req_pc:0x10d11638, req_mem:1,req_size:4,req_addr:0x2107f80, req_data0:0x0,req_data1:0x0.
+[info] 24475: lookup_tag is HIT. req pc :0x10d11638, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 24475: calc_req_addr. req pc :0x10d1163c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x30 
+[info] 24475: create_dc_req. req_pc:0x10d1163c, req_mem:1,req_size:8,req_addr:0x2107f70, req_data0:0x0,req_data1:0x0.
+[info] 24476: lookup_tag is HIT. req pc :0x10d1163c, idx_addr: 0x3d, tag_addr: 0x2107, aligned_addr_: 0x2107f40,hit_pos: 1 
+[info] 24477: read_instr_hit. isa_pc:0x10d11638.
+[info] 24478: read_instr_hit. isa_pc:0x10d1163c.
+[info] 24543: calc_req_addr. req pc :0x10d115fc,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x10 
+[info] 24543: create_dc_req. req_pc:0x10d115fc, req_mem:1,req_size:4,req_addr:0x2107f90, req_data0:0x0,req_data1:0x0.
+[info] 24544: lookup_tag is HIT. req pc :0x10d115fc, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 24546: read_instr_hit. isa_pc:0x10d115fc.
+[info] 24560: calc_req_addr. req pc :0x10d11638,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x0 
+[info] 24560: create_dc_req. req_pc:0x10d11638, req_mem:1,req_size:4,req_addr:0x2107f80, req_data0:0x0,req_data1:0x0.
+[info] 24561: lookup_tag is HIT. req pc :0x10d11638, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 24561: calc_req_addr. req pc :0x10d1163c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x30 
+[info] 24561: create_dc_req. req_pc:0x10d1163c, req_mem:1,req_size:8,req_addr:0x2107f70, req_data0:0x0,req_data1:0x0.
+[info] 24562: lookup_tag is HIT. req pc :0x10d1163c, idx_addr: 0x3d, tag_addr: 0x2107, aligned_addr_: 0x2107f40,hit_pos: 1 
+[info] 24563: read_instr_hit. isa_pc:0x10d11638.
+[info] 24564: read_instr_hit. isa_pc:0x10d1163c.
+[info] 24621: calc_req_addr. req pc :0x10d11638,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x0 
+[info] 24621: create_dc_req. req_pc:0x10d11638, req_mem:1,req_size:4,req_addr:0x2107f80, req_data0:0x0,req_data1:0x0.
+[info] 24622: lookup_tag is HIT. req pc :0x10d11638, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 24622: calc_req_addr. req pc :0x10d1163c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x30 
+[info] 24622: create_dc_req. req_pc:0x10d1163c, req_mem:1,req_size:8,req_addr:0x2107f70, req_data0:0x0,req_data1:0x0.
+[info] 24623: lookup_tag is HIT. req pc :0x10d1163c, idx_addr: 0x3d, tag_addr: 0x2107, aligned_addr_: 0x2107f40,hit_pos: 1 
+[info] 24624: read_instr_hit. isa_pc:0x10d11638.
+[info] 24625: read_instr_hit. isa_pc:0x10d1163c.
+[info] 24690: calc_req_addr. req pc :0x10d115fc,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x10 
+[info] 24690: create_dc_req. req_pc:0x10d115fc, req_mem:1,req_size:4,req_addr:0x2107f90, req_data0:0x0,req_data1:0x0.
+[info] 24691: lookup_tag is HIT. req pc :0x10d115fc, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 24693: read_instr_hit. isa_pc:0x10d115fc.
+[info] 24707: calc_req_addr. req pc :0x10d11638,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x0 
+[info] 24707: create_dc_req. req_pc:0x10d11638, req_mem:1,req_size:4,req_addr:0x2107f80, req_data0:0x0,req_data1:0x0.
+[info] 24708: lookup_tag is HIT. req pc :0x10d11638, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 24708: calc_req_addr. req pc :0x10d1163c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x30 
+[info] 24708: create_dc_req. req_pc:0x10d1163c, req_mem:1,req_size:8,req_addr:0x2107f70, req_data0:0x0,req_data1:0x0.
+[info] 24709: lookup_tag is HIT. req pc :0x10d1163c, idx_addr: 0x3d, tag_addr: 0x2107, aligned_addr_: 0x2107f40,hit_pos: 1 
+[info] 24710: read_instr_hit. isa_pc:0x10d11638.
+[info] 24711: read_instr_hit. isa_pc:0x10d1163c.
+[info] 24768: calc_req_addr. req pc :0x10d11638,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x0 
+[info] 24768: create_dc_req. req_pc:0x10d11638, req_mem:1,req_size:4,req_addr:0x2107f80, req_data0:0x0,req_data1:0x0.
+[info] 24769: lookup_tag is HIT. req pc :0x10d11638, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 24769: calc_req_addr. req pc :0x10d1163c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x30 
+[info] 24769: create_dc_req. req_pc:0x10d1163c, req_mem:1,req_size:8,req_addr:0x2107f70, req_data0:0x0,req_data1:0x0.
+[info] 24770: lookup_tag is HIT. req pc :0x10d1163c, idx_addr: 0x3d, tag_addr: 0x2107, aligned_addr_: 0x2107f40,hit_pos: 1 
+[info] 24771: read_instr_hit. isa_pc:0x10d11638.
+[info] 24772: read_instr_hit. isa_pc:0x10d1163c.
+[info] 24837: calc_req_addr. req pc :0x10d115fc,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x10 
+[info] 24837: create_dc_req. req_pc:0x10d115fc, req_mem:1,req_size:4,req_addr:0x2107f90, req_data0:0x0,req_data1:0x0.
+[info] 24838: lookup_tag is HIT. req pc :0x10d115fc, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 24840: read_instr_hit. isa_pc:0x10d115fc.
+[info] 24854: calc_req_addr. req pc :0x10d11638,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x0 
+[info] 24854: create_dc_req. req_pc:0x10d11638, req_mem:1,req_size:4,req_addr:0x2107f80, req_data0:0x0,req_data1:0x0.
+[info] 24855: lookup_tag is HIT. req pc :0x10d11638, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 24855: calc_req_addr. req pc :0x10d1163c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x30 
+[info] 24855: create_dc_req. req_pc:0x10d1163c, req_mem:1,req_size:8,req_addr:0x2107f70, req_data0:0x0,req_data1:0x0.
+[info] 24856: lookup_tag is HIT. req pc :0x10d1163c, idx_addr: 0x3d, tag_addr: 0x2107, aligned_addr_: 0x2107f40,hit_pos: 1 
+[info] 24857: read_instr_hit. isa_pc:0x10d11638.
+[info] 24858: read_instr_hit. isa_pc:0x10d1163c.
+[info] 24915: calc_req_addr. req pc :0x10d11638,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x0 
+[info] 24915: create_dc_req. req_pc:0x10d11638, req_mem:1,req_size:4,req_addr:0x2107f80, req_data0:0x0,req_data1:0x0.
+[info] 24916: lookup_tag is HIT. req pc :0x10d11638, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 24916: calc_req_addr. req pc :0x10d1163c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x30 
+[info] 24916: create_dc_req. req_pc:0x10d1163c, req_mem:1,req_size:8,req_addr:0x2107f70, req_data0:0x0,req_data1:0x0.
+[info] 24917: lookup_tag is HIT. req pc :0x10d1163c, idx_addr: 0x3d, tag_addr: 0x2107, aligned_addr_: 0x2107f40,hit_pos: 1 
+[info] 24918: read_instr_hit. isa_pc:0x10d11638.
+[info] 24919: read_instr_hit. isa_pc:0x10d1163c.
+[info] 25072: calc_req_addr. req pc :0x10d115fc,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x10 
+[info] 25072: create_dc_req. req_pc:0x10d115fc, req_mem:1,req_size:4,req_addr:0x2107f90, req_data0:0x0,req_data1:0x0.
+[info] 25073: lookup_tag is HIT. req pc :0x10d115fc, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 25075: read_instr_hit. isa_pc:0x10d115fc.
+[info] 25089: calc_req_addr. req pc :0x10d11638,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x0 
+[info] 25089: create_dc_req. req_pc:0x10d11638, req_mem:1,req_size:4,req_addr:0x2107f80, req_data0:0x0,req_data1:0x0.
+[info] 25090: lookup_tag is HIT. req pc :0x10d11638, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 25090: calc_req_addr. req pc :0x10d1163c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x30 
+[info] 25090: create_dc_req. req_pc:0x10d1163c, req_mem:1,req_size:8,req_addr:0x2107f70, req_data0:0x0,req_data1:0x0.
+[info] 25091: lookup_tag is HIT. req pc :0x10d1163c, idx_addr: 0x3d, tag_addr: 0x2107, aligned_addr_: 0x2107f40,hit_pos: 1 
+[info] 25092: read_instr_hit. isa_pc:0x10d11638.
+[info] 25093: read_instr_hit. isa_pc:0x10d1163c.
+[info] 25361: calc_req_addr. req pc :0x10d11638,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x0 
+[info] 25361: create_dc_req. req_pc:0x10d11638, req_mem:1,req_size:4,req_addr:0x2107f80, req_data0:0x0,req_data1:0x0.
+[info] 25362: lookup_tag is HIT. req pc :0x10d11638, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 25362: calc_req_addr. req pc :0x10d1163c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x30 
+[info] 25362: create_dc_req. req_pc:0x10d1163c, req_mem:1,req_size:8,req_addr:0x2107f70, req_data0:0x0,req_data1:0x0.
+[info] 25363: lookup_tag is HIT. req pc :0x10d1163c, idx_addr: 0x3d, tag_addr: 0x2107, aligned_addr_: 0x2107f40,hit_pos: 1 
+[info] 25364: read_instr_hit. isa_pc:0x10d11638.
+[info] 25365: read_instr_hit. isa_pc:0x10d1163c.
+[info] 25666: calc_req_addr. req pc :0x10d115fc,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x10 
+[info] 25666: create_dc_req. req_pc:0x10d115fc, req_mem:1,req_size:4,req_addr:0x2107f90, req_data0:0x0,req_data1:0x0.
+[info] 25667: lookup_tag is HIT. req pc :0x10d115fc, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 25669: read_instr_hit. isa_pc:0x10d115fc.
+[info] 25683: calc_req_addr. req pc :0x10d11638,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x0 
+[info] 25683: create_dc_req. req_pc:0x10d11638, req_mem:1,req_size:4,req_addr:0x2107f80, req_data0:0x0,req_data1:0x0.
+[info] 25684: lookup_tag is HIT. req pc :0x10d11638, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 25684: calc_req_addr. req pc :0x10d1163c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x30 
+[info] 25684: create_dc_req. req_pc:0x10d1163c, req_mem:1,req_size:8,req_addr:0x2107f70, req_data0:0x0,req_data1:0x0.
+[info] 25685: lookup_tag is HIT. req pc :0x10d1163c, idx_addr: 0x3d, tag_addr: 0x2107, aligned_addr_: 0x2107f40,hit_pos: 1 
+[info] 25686: read_instr_hit. isa_pc:0x10d11638.
+[info] 25687: read_instr_hit. isa_pc:0x10d1163c.
+[info] 25955: calc_req_addr. req pc :0x10d11638,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x0 
+[info] 25955: create_dc_req. req_pc:0x10d11638, req_mem:1,req_size:4,req_addr:0x2107f80, req_data0:0x0,req_data1:0x0.
+[info] 25956: lookup_tag is HIT. req pc :0x10d11638, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 25956: calc_req_addr. req pc :0x10d1163c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x30 
+[info] 25956: create_dc_req. req_pc:0x10d1163c, req_mem:1,req_size:8,req_addr:0x2107f70, req_data0:0x0,req_data1:0x0.
+[info] 25957: lookup_tag is HIT. req pc :0x10d1163c, idx_addr: 0x3d, tag_addr: 0x2107, aligned_addr_: 0x2107f40,hit_pos: 1 
+[info] 25958: read_instr_hit. isa_pc:0x10d11638.
+[info] 25959: read_instr_hit. isa_pc:0x10d1163c.
+[info] 26260: calc_req_addr. req pc :0x10d115fc,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x10 
+[info] 26260: create_dc_req. req_pc:0x10d115fc, req_mem:1,req_size:4,req_addr:0x2107f90, req_data0:0x0,req_data1:0x0.
+[info] 26261: lookup_tag is HIT. req pc :0x10d115fc, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 26263: read_instr_hit. isa_pc:0x10d115fc.
+[info] 26277: calc_req_addr. req pc :0x10d11638,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x0 
+[info] 26277: create_dc_req. req_pc:0x10d11638, req_mem:1,req_size:4,req_addr:0x2107f80, req_data0:0x0,req_data1:0x0.
+[info] 26278: lookup_tag is HIT. req pc :0x10d11638, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 26278: calc_req_addr. req pc :0x10d1163c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x30 
+[info] 26278: create_dc_req. req_pc:0x10d1163c, req_mem:1,req_size:8,req_addr:0x2107f70, req_data0:0x0,req_data1:0x0.
+[info] 26279: lookup_tag is HIT. req pc :0x10d1163c, idx_addr: 0x3d, tag_addr: 0x2107, aligned_addr_: 0x2107f40,hit_pos: 1 
+[info] 26280: read_instr_hit. isa_pc:0x10d11638.
+[info] 26281: read_instr_hit. isa_pc:0x10d1163c.
+[info] 26549: calc_req_addr. req pc :0x10d11638,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x0 
+[info] 26549: create_dc_req. req_pc:0x10d11638, req_mem:1,req_size:4,req_addr:0x2107f80, req_data0:0x0,req_data1:0x0.
+[info] 26550: lookup_tag is HIT. req pc :0x10d11638, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 26550: calc_req_addr. req pc :0x10d1163c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x30 
+[info] 26550: create_dc_req. req_pc:0x10d1163c, req_mem:1,req_size:8,req_addr:0x2107f70, req_data0:0x0,req_data1:0x0.
+[info] 26551: lookup_tag is HIT. req pc :0x10d1163c, idx_addr: 0x3d, tag_addr: 0x2107, aligned_addr_: 0x2107f40,hit_pos: 1 
+[info] 26552: read_instr_hit. isa_pc:0x10d11638.
+[info] 26553: read_instr_hit. isa_pc:0x10d1163c.
+[info] 26854: calc_req_addr. req pc :0x10d115fc,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x10 
+[info] 26854: create_dc_req. req_pc:0x10d115fc, req_mem:1,req_size:4,req_addr:0x2107f90, req_data0:0x0,req_data1:0x0.
+[info] 26855: lookup_tag is HIT. req pc :0x10d115fc, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 26857: read_instr_hit. isa_pc:0x10d115fc.
+[info] 26871: calc_req_addr. req pc :0x10d11638,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x0 
+[info] 26871: create_dc_req. req_pc:0x10d11638, req_mem:1,req_size:4,req_addr:0x2107f80, req_data0:0x0,req_data1:0x0.
+[info] 26872: lookup_tag is HIT. req pc :0x10d11638, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 26872: calc_req_addr. req pc :0x10d1163c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x30 
+[info] 26872: create_dc_req. req_pc:0x10d1163c, req_mem:1,req_size:8,req_addr:0x2107f70, req_data0:0x0,req_data1:0x0.
+[info] 26873: lookup_tag is HIT. req pc :0x10d1163c, idx_addr: 0x3d, tag_addr: 0x2107, aligned_addr_: 0x2107f40,hit_pos: 1 
+[info] 26874: read_instr_hit. isa_pc:0x10d11638.
+[info] 26875: read_instr_hit. isa_pc:0x10d1163c.
+[info] 27143: calc_req_addr. req pc :0x10d11638,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x0 
+[info] 27143: create_dc_req. req_pc:0x10d11638, req_mem:1,req_size:4,req_addr:0x2107f80, req_data0:0x0,req_data1:0x0.
+[info] 27144: lookup_tag is HIT. req pc :0x10d11638, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 27144: calc_req_addr. req pc :0x10d1163c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x30 
+[info] 27144: create_dc_req. req_pc:0x10d1163c, req_mem:1,req_size:8,req_addr:0x2107f70, req_data0:0x0,req_data1:0x0.
+[info] 27145: lookup_tag is HIT. req pc :0x10d1163c, idx_addr: 0x3d, tag_addr: 0x2107, aligned_addr_: 0x2107f40,hit_pos: 1 
+[info] 27146: read_instr_hit. isa_pc:0x10d11638.
+[info] 27147: read_instr_hit. isa_pc:0x10d1163c.
+[info] 27448: calc_req_addr. req pc :0x10d115fc,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x10 
+[info] 27448: create_dc_req. req_pc:0x10d115fc, req_mem:1,req_size:4,req_addr:0x2107f90, req_data0:0x0,req_data1:0x0.
+[info] 27449: lookup_tag is HIT. req pc :0x10d115fc, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 27451: read_instr_hit. isa_pc:0x10d115fc.
+[info] 27465: calc_req_addr. req pc :0x10d11638,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x0 
+[info] 27465: create_dc_req. req_pc:0x10d11638, req_mem:1,req_size:4,req_addr:0x2107f80, req_data0:0x0,req_data1:0x0.
+[info] 27466: lookup_tag is HIT. req pc :0x10d11638, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 27466: calc_req_addr. req pc :0x10d1163c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x30 
+[info] 27466: create_dc_req. req_pc:0x10d1163c, req_mem:1,req_size:8,req_addr:0x2107f70, req_data0:0x0,req_data1:0x0.
+[info] 27467: lookup_tag is HIT. req pc :0x10d1163c, idx_addr: 0x3d, tag_addr: 0x2107, aligned_addr_: 0x2107f40,hit_pos: 1 
+[info] 27468: read_instr_hit. isa_pc:0x10d11638.
+[info] 27469: read_instr_hit. isa_pc:0x10d1163c.
+[info] 27737: calc_req_addr. req pc :0x10d11638,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x0 
+[info] 27737: create_dc_req. req_pc:0x10d11638, req_mem:1,req_size:4,req_addr:0x2107f80, req_data0:0x0,req_data1:0x0.
+[info] 27738: lookup_tag is HIT. req pc :0x10d11638, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 27738: calc_req_addr. req pc :0x10d1163c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x30 
+[info] 27738: create_dc_req. req_pc:0x10d1163c, req_mem:1,req_size:8,req_addr:0x2107f70, req_data0:0x0,req_data1:0x0.
+[info] 27739: lookup_tag is HIT. req pc :0x10d1163c, idx_addr: 0x3d, tag_addr: 0x2107, aligned_addr_: 0x2107f40,hit_pos: 1 
+[info] 27740: read_instr_hit. isa_pc:0x10d11638.
+[info] 27741: read_instr_hit. isa_pc:0x10d1163c.
+[info] 28042: calc_req_addr. req pc :0x10d115fc,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x10 
+[info] 28042: create_dc_req. req_pc:0x10d115fc, req_mem:1,req_size:4,req_addr:0x2107f90, req_data0:0x0,req_data1:0x0.
+[info] 28043: lookup_tag is HIT. req pc :0x10d115fc, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 28045: read_instr_hit. isa_pc:0x10d115fc.
+[info] 28059: calc_req_addr. req pc :0x10d11638,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x0 
+[info] 28059: create_dc_req. req_pc:0x10d11638, req_mem:1,req_size:4,req_addr:0x2107f80, req_data0:0x0,req_data1:0x0.
+[info] 28060: lookup_tag is HIT. req pc :0x10d11638, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 28060: calc_req_addr. req pc :0x10d1163c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x30 
+[info] 28060: create_dc_req. req_pc:0x10d1163c, req_mem:1,req_size:8,req_addr:0x2107f70, req_data0:0x0,req_data1:0x0.
+[info] 28061: lookup_tag is HIT. req pc :0x10d1163c, idx_addr: 0x3d, tag_addr: 0x2107, aligned_addr_: 0x2107f40,hit_pos: 1 
+[info] 28062: read_instr_hit. isa_pc:0x10d11638.
+[info] 28063: read_instr_hit. isa_pc:0x10d1163c.
+[info] 28331: calc_req_addr. req pc :0x10d11638,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x0 
+[info] 28331: create_dc_req. req_pc:0x10d11638, req_mem:1,req_size:4,req_addr:0x2107f80, req_data0:0x0,req_data1:0x0.
+[info] 28332: lookup_tag is HIT. req pc :0x10d11638, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 28332: calc_req_addr. req pc :0x10d1163c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x30 
+[info] 28332: create_dc_req. req_pc:0x10d1163c, req_mem:1,req_size:8,req_addr:0x2107f70, req_data0:0x0,req_data1:0x0.
+[info] 28333: lookup_tag is HIT. req pc :0x10d1163c, idx_addr: 0x3d, tag_addr: 0x2107, aligned_addr_: 0x2107f40,hit_pos: 1 
+[info] 28334: read_instr_hit. isa_pc:0x10d11638.
+[info] 28335: read_instr_hit. isa_pc:0x10d1163c.
+[info] 28636: calc_req_addr. req pc :0x10d115fc,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x10 
+[info] 28636: create_dc_req. req_pc:0x10d115fc, req_mem:1,req_size:4,req_addr:0x2107f90, req_data0:0x0,req_data1:0x0.
+[info] 28637: lookup_tag is HIT. req pc :0x10d115fc, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 28639: read_instr_hit. isa_pc:0x10d115fc.
+[info] 28653: calc_req_addr. req pc :0x10d11638,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x0 
+[info] 28653: create_dc_req. req_pc:0x10d11638, req_mem:1,req_size:4,req_addr:0x2107f80, req_data0:0x0,req_data1:0x0.
+[info] 28654: lookup_tag is HIT. req pc :0x10d11638, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 28654: calc_req_addr. req pc :0x10d1163c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x30 
+[info] 28654: create_dc_req. req_pc:0x10d1163c, req_mem:1,req_size:8,req_addr:0x2107f70, req_data0:0x0,req_data1:0x0.
+[info] 28655: lookup_tag is HIT. req pc :0x10d1163c, idx_addr: 0x3d, tag_addr: 0x2107, aligned_addr_: 0x2107f40,hit_pos: 1 
+[info] 28656: read_instr_hit. isa_pc:0x10d11638.
+[info] 28657: read_instr_hit. isa_pc:0x10d1163c.
+[info] 28925: calc_req_addr. req pc :0x10d11638,idx_addr: 0x3e,tag_addr:0x2107, aligned_addr_:0x2107f80,ofst_addr_:0x0 
+[info] 28925: create_dc_req. req_pc:0x10d11638, req_mem:1,req_size:4,req_addr:0x2107f80, req_data0:0x0,req_data1:0x0.
+[info] 28926: lookup_tag is HIT. req pc :0x10d11638, idx_addr: 0x3e, tag_addr: 0x2107, aligned_addr_: 0x2107f80,hit_pos: 1 
+[info] 28926: calc_req_addr. req pc :0x10d1163c,idx_addr: 0x3d,tag_addr:0x2107, aligned_addr_:0x2107f40,ofst_addr_:0x30 
+[info] 28926: create_dc_req. req_pc:0x10d1163c, req_mem:1,req_size:8,req_addr:0x2107f70, req_data0:0x0,req_data1:0x0.
+[info] 28927: lookup_tag is HIT. req pc :0x10d11

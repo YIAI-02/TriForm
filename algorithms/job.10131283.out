@@ -1,0 +1,138 @@
+[1;32m[1m███████  PIM FAST MODE: OFF ███████[0m
+Config                : ./examples/evaluate_len_sweep_config_npu_8.json
+Output root           : ./output/exp2/8shards
+Sample stride         : 64
+Plan refresh stride   : 64
+DType/Batch           : fp16 / 1 4 8
+Parallel jobs         : 32
+Hardwares             : 1 file(s)
+Models                : 1 family entry(s)
+====================================
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:70b | S=128 T=512 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_70b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:70b | S=128 T=1024 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_70b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:70b | S=256 T=512 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_70b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:70b | S=256 T=1024 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_70b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:70b | S=512 T=512 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_70b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:70b | S=512 T=1024 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_70b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:70b | S=1024 T=512 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_70b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:70b | S=1024 T=1024 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_70b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:70b | S=2048 T=512 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_70b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:70b | S=2048 T=1024 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_70b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:70b | S=4096 T=512 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_70b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:70b | S=4096 T=1024 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=1 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_70b_fp16_b1_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:70b | S=128 T=512 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_70b_fp16_b4_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:70b | S=128 T=1024 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_70b_fp16_b4_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:70b | S=256 T=512 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_70b_fp16_b4_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:70b | S=256 T=1024 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_70b_fp16_b4_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:70b | S=512 T=512 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_70b_fp16_b4_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:70b | S=512 T=1024 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_70b_fp16_b4_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:70b | S=1024 T=512 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_70b_fp16_b4_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:70b | S=1024 T=1024 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_70b_fp16_b4_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:70b | S=2048 T=512 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_70b_fp16_b4_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:70b | S=2048 T=1024 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_70b_fp16_b4_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:70b | S=4096 T=512 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_70b_fp16_b4_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:70b | S=4096 T=1024 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=4 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_70b_fp16_b4_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:70b | S=128 T=512 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=8 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_70b_fp16_b8_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:70b | S=128 T=1024 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=8 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_70b_fp16_b8_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:70b | S=256 T=512 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=8 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_70b_fp16_b8_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:70b | S=256 T=1024 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=8 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_70b_fp16_b8_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:70b | S=512 T=512 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=8 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_70b_fp16_b8_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:70b | S=512 T=1024 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=8 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_70b_fp16_b8_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:70b | S=1024 T=512 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=8 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_70b_fp16_b8_s64
+
+[1;36m[1m--- HW=hardware_1npu_8aim | llama:70b | S=1024 T=1024 | sample_stride=64 | refresh_stride=64 | dtype=fp16 b=8 ---[0m
+[1;32m[1m[PIM FAST MODE INACTIVE][0m
+Expected result_dir   : ./output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/llama_70b_fp16_b8_s64
