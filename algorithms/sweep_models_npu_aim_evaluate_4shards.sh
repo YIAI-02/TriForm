@@ -20,8 +20,8 @@ MODEL_FAMILY_VARIANTS=(
   # "llama:405b"
 )
 
-PREFILLS=(128 1024)
-DECODES=(128 512 1024)
+PREFILLS=(128)
+DECODES=(128 256 512 1024)
 # Hardware sweep (edit here, or use --hardware_glob)
 HARDWARE_CONFIGS=(
   # ./examples/hardware_1npu_2aim.json

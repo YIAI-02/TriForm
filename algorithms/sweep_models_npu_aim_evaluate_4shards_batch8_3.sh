@@ -20,7 +20,7 @@ MODEL_FAMILY_VARIANTS=(
   # "llama:405b"
 )
 
-PREFILLS=(128)
+PREFILLS=(1024)
 DECODES=(128 256 512 1024)
 
 # Hardware sweep (edit here, or use --hardware_glob)

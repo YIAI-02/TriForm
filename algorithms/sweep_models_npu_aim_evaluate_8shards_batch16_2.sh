@@ -5,30 +5,27 @@ shopt -s nullglob
 # =========================
 # Single source of truth
 # =========================
-CONFIG_FILE="${CONFIG_FILE:-./examples/evaluate_len_sweep_config_npu_4.json}"
-OUTPUT_ROOT="${OUTPUT_ROOT:-./output/exp2/4shards}"
+CONFIG_FILE="${CONFIG_FILE:-./examples/evaluate_len_sweep_config_npu_8.json}"
+OUTPUT_ROOT="${OUTPUT_ROOT:-./output/exp2/8shards}"
 
 # Sweep dims
 MODEL_FAMILY_VARIANTS=(
   # "mixtral:8x7b"
   # "palm:62b"
   # "qwen:1.8b"
-  # "qwen:14b"
   "llama:7b"
   "llama:13b"
   "llama:70b"
-  # "llama:405b"
 )
-
-PREFILLS=(128)
+PREFILLS=(512)
 DECODES=(128 256 512 1024)
 
 # Hardware sweep (edit here, or use --hardware_glob)
 HARDWARE_CONFIGS=(
   # ./examples/hardware_1npu_2aim.json
   # ./examples/hardware_1npu_2aim_star.json
-  ./examples/hardware_1npu_4aim.json
-  # ./examples/hardware_1npu_8aim.json
+  # ./examples/hardware_1npu_4aim.json
+  ./examples/hardware_1npu_8aim.json
   # ./examples/hardware_1npu_4aim_star.json
 )
 
@@ -36,7 +33,7 @@ HARDWARE_CONFIGS=(
 DECODE_SAMPLE_STRIDE="${DECODE_SAMPLE_STRIDE:-${SAMPLE_STRIDE:-${STRIDE:-64}}}"
 DECODE_PLAN_REFRESH_STRIDE="${DECODE_PLAN_REFRESH_STRIDE:-${PLAN_REFRESH_STRIDE:-${STRIDE:-64}}}"
 DTYPE="${DTYPE:-fp16}"
-BATCHES_STR="${BATCHES:-${BATCH:-"8"}}"
+BATCHES_STR="${BATCHES:-${BATCH:-"16"}}"
 
 declare -a BATCHES
 

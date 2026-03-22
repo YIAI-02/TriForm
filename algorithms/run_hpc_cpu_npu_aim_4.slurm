@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -J run_hpc_cpu_npu_aim_4
+#SBATCH -J run_hpc_cpu_npu_aim_4_batch16
 #SBATCH -p C064M0256G
 #SBATCH --qos=high
 #SBATCH -N 1
@@ -14,5 +14,5 @@ cd "$SLURM_SUBMIT_DIR"
 source ~/.bashrc
 conda activate triform310
 
-bash sweep_models_npu_aim_evaluate_4shards.sh --jobs 32
+bash sweep_models_npu_aim_evaluate_4shards_batch16.sh --jobs 16
 
