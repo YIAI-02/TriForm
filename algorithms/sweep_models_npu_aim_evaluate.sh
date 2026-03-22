@@ -13,17 +13,17 @@ MODEL_FAMILY_VARIANTS=(
   # "mixtral:8x7b"
   # "palm:8b"
   # "palm:62b"
-  # "qwen:1.8b"
-  # "qwen:7b"
+  "qwen:1.8b"
+  "qwen:7b"
   # "qwen:14b"
-  # "llama:7b"
-  # "llama:13b"
-  # "llama:70b"
-  "llama:405b"
+  "llama:7b"
+  "llama:13b"
+  "llama:70b"
+  # "llama:405b"
 )
 
-PREFILLS=(128 256 512 1024 2048 4096)
-DECODES=(64 128 256 512 1024)
+PREFILLS=(128 1024)
+DECODES=(128 512 1024)
 
 # Hardware sweep (edit here, or use --hardware_glob)
 HARDWARE_CONFIGS=(
@@ -38,7 +38,7 @@ HARDWARE_CONFIGS=(
 DECODE_SAMPLE_STRIDE="${DECODE_SAMPLE_STRIDE:-${SAMPLE_STRIDE:-${STRIDE:-64}}}"
 DECODE_PLAN_REFRESH_STRIDE="${DECODE_PLAN_REFRESH_STRIDE:-${PLAN_REFRESH_STRIDE:-${STRIDE:-64}}}"
 DTYPE="${DTYPE:-fp16}"
-BATCHES_STR="${BATCHES:-${BATCH:-"1 4 8 16 32"}}"
+BATCHES_STR="${BATCHES:-${BATCH:-"1 4"}}"
 
 declare -a BATCHES
 

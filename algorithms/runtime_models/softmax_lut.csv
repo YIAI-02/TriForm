@@ -18,7 +18,7 @@ shape,M,N,K,total_time_us,line98_us,line103_us,missing_lines,csv_path
 512x512,512,512,,0.82,0.82,0.37,,profile/512x512/OPPROF_20260226122825_KWSRCKMADFUOQZQV/simulator/core0.veccore0/core0.veccore0_code_exe.csv
 512x1024,512,1024,,1.71,1.71,0.72,,profile/512x1024/OPPROF_20260226084513_SQMZFLOJZJRAWZDH/simulator/core0.veccore0/core0.veccore0_code_exe.csv
 512x2048,512,2048,,2.44,2.44,0.53,,profile/512x2048/OPPROF_20260226090014_YPSLULCWBIOGWOLQ/simulator/core0.veccore0/core0.veccore0_code_exe.csv
-512x3072,512,3072,,2.86,2.86,0.5,,profile/512x3072/OPPROF_20260226091319_SRGVLJRNRYIPIECY/simulator/core0.veccore0/core0.veccore0_code_exe.csv
+512x3072,512,3072,,2.68,2.18,0.5,,profile/512x3072/OPPROF_20260226091319_SRGVLJRNRYIPIECY/simulator/core0.veccore0/core0.veccore0_code_exe.csv
 512x4096,512,4096,,3.6,3.6,0.0,103,profile/512x4096/OPPROF_20260226092114_DVBTLSRRMISSZZPL/simulator/core0.veccore0/core0.veccore0_code_exe.csv
 1024x256,1024,256,,0.75,0.75,0.44,,profile/1024x256/OPPROF_20260226121128_IFBOIZDZVVNKQKLS/simulator/core0.veccore0/core0.veccore0_code_exe.csv
 1024x512,1024,512,,1.94,1.94,0.54,,profile/1024x512/OPPROF_20260226123107_CJDGIEYFFWVOPWXK/simulator/core0.veccore0/core0.veccore0_code_exe.csv

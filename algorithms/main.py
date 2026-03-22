@@ -507,93 +507,24 @@ def auto_select_kv_policy(
     shape: Any,
     capture_best_schedule: bool = False,
 ) -> PlanLabel:
-    """Choose KV placement among: PIM -> NPU -> Host."""
+    """Choose KV placement by capacity only: prefer PIM, otherwise fall back to Host.
+    """
     kv_plan = _compute_kv_plan_info(cfg=cfg, cluster=cluster, graph=graph, shape=shape)
-    # Candidate H: host (always)
     label_host, _ = _make_label_from_kv_plan(cfg=cfg, kv_plan=kv_plan, kv_place='host')
-    cand: List[tuple[str, PlanLabel]] = [("host", label_host)]
-
-    # Candidate P: pim (only if feasible)
     label_pim, ok_pim = _make_label_from_kv_plan(cfg=cfg, kv_plan=kv_plan, kv_place='pim')
+
     if ok_pim and _infer_kv_place_from_label(label_pim) == 'pim':
-        cand.append(("pim", label_pim))
+        setattr(label_pim, "kv_policy_selected", "pim_by_capacity")
+        setattr(label_pim, "kv_policy_scores", {"host": None, "npu": None, "pim": None})
+        if bool(capture_best_schedule):
+            setattr(label_pim, "_kv_policy_best_sim", None)
+        return label_pim
 
-    # Candidate N: npu (only if feasible)
-    label_npu, ok_npu = _make_label_from_kv_plan(cfg=cfg, kv_plan=kv_plan, kv_place='npu')
-    if ok_npu and _infer_kv_place_from_label(label_npu) == 'npu':
-        cand.append(("npu", label_npu))
-
-    strat = (str(strategy or "").strip().lower())
-    if strat in ("naive", "naivetopo", "naivetoposcheduler", "topo"):
-        # Capacity-only priority: PIM -> NPU -> Host
-        if ok_pim and _infer_kv_place_from_label(label_pim) == 'pim':
-            setattr(label_pim, "kv_policy_selected", "pim_by_capacity")
-            setattr(label_pim, "kv_policy_scores", {"host": None, "npu": None, "pim": None})
-            return label_pim
-        if ok_npu and _infer_kv_place_from_label(label_npu) == 'npu':
-            setattr(label_npu, "kv_policy_selected", "npu_by_capacity")
-            setattr(label_npu, "kv_policy_scores", {"host": None, "npu": None, "pim": None})
-            return label_npu
-        setattr(label_host, "kv_policy_selected", "host_by_capacity")
-        setattr(label_host, "kv_policy_scores", {"host": None, "npu": None, "pim": None})
-        return label_host
-
-    def _simulate_candidate(lb: PlanLabel) -> Dict[str, Any]:
-        """Run prefill+decode once for a label, and return times + serialized schedules + scheduler."""
-        batch = int(cfg.get("batch", 1))
-        prefill_len = int(cfg.get("prefill_len", 128))
-        buffer_mgr = GlobalMemoryManager()
-        sched = _make_scheduler(strategy, cluster, cost, lb, batch=batch, seq_len=prefill_len, buffer=buffer_mgr)
-        sched.reset_state()
-
-        if hasattr(sched, "set_storage_format_map"):
-            try:
-                sched.set_storage_format_map({})
-            except Exception:
-                pass
-
-        kv_place = _infer_kv_place_from_label(lb)
-        g_prefill = _apply_kv_place_constraints(graph, kv_place)
-        base_decode = graph_decode if graph_decode is not None else graph
-        g_decode = _apply_kv_place_constraints(base_decode, kv_place)
-        t_prefill, prefill_ser = simulate_prefill(sched, cfg, g_prefill)
-        t_decode, decode_ser = simulate_decode_progressive(sched, cfg, g_decode, prefill_end=t_prefill)
-
-        return {
-            "prefill_s": float(t_prefill),
-            "decode_s": float(t_decode),
-            "total_s": float(t_prefill + t_decode),
-            "prefill_schedule": prefill_ser,
-            "decode_steps": decode_ser,
-            "sched": sched,
-        }
-
-    best_tag = "host"
-    best_label = label_host
-    best_total = float("inf")
-    best_sim: Dict[str, Any] | None = None
-
-    scores: Dict[str, Dict[str, float]] = {}
-    for tag, lb in cand:
-        sim = _simulate_candidate(lb)
-        tp = float(sim.get("prefill_s", 0.0))
-        td = float(sim.get("decode_s", 0.0))
-        tt = float(sim.get("total_s", tp + td))
-        scores[str(tag)] = {"prefill_s": tp, "decode_s": td, "total_s": tt}
-
-        if float(tt) < float(best_total):
-            best_total = float(tt)
-            best_tag = str(tag)
-            best_label = lb
-            best_sim = sim
-
-    setattr(best_label, "kv_policy_selected", str(best_tag))
-    setattr(best_label, "kv_policy_scores", dict(scores))
-
-    if bool(capture_best_schedule) and isinstance(best_sim, dict):
-        setattr(best_label, "_kv_policy_best_sim", dict(best_sim))
-
-    return best_label
+    setattr(label_host, "kv_policy_selected", "host_by_capacity")
+    setattr(label_host, "kv_policy_scores", {"host": None, "npu": None, "pim": None})
+    if bool(capture_best_schedule):
+        setattr(label_host, "_kv_policy_best_sim", None)
+    return label_host
 
 def _serialize_schedule(schedule: List[ScheduledTask], *, phase: str, token_idx: int | None=None) -> List[Dict]:
     """Convert ScheduledTask list to JSON-friendly dicts."""

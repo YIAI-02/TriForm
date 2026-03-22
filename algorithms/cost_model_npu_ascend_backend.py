@@ -283,12 +283,47 @@ def _build_index(points: List[Tuple[int, ...]]) -> Dict[Tuple[int, ...], float]:
     return idx
 
 
+def _mmad_distance(
+    query_dims: Tuple[int, ...],
+    point_dims: Tuple[int, ...],
+    *,
+    cube: int = 16,
+    residue_weight: float = 0.05,
+) -> float:
+    """Distance in MMAD tile space.
+
+    Keep MMAD interpolation closer to Ascend Cube behavior by comparing
+    shapes in tile space first, then adding a small residue penalty inside a
+    tile bucket.
+    """
+    q = tuple(int(max(1, int(x))) for x in query_dims)
+    p = tuple(int(max(1, int(x))) for x in point_dims)
+    cube_i = int(max(1, cube))
+
+    q_tiles = tuple((x + cube_i - 1) // cube_i for x in q)
+    p_tiles = tuple((x + cube_i - 1) // cube_i for x in p)
+    q_res = tuple(x % cube_i for x in q)
+    p_res = tuple(x % cube_i for x in p)
+
+    dist = 0.0
+    for qi, pi in zip(q_tiles, p_tiles):
+        dist += abs(float(qi) - float(pi)) / float(max(1, qi))
+
+    if residue_weight > 0.0:
+        norm = float(max(1, cube_i - 1))
+        for qi, pi in zip(q_res, p_res):
+            dist += float(residue_weight) * abs(float(qi) - float(pi)) / norm
+
+    return float(dist)
+
+
 def _idw_interpolate(
     points: List[Tuple[int, ...]],
     query_dims: Tuple[int, ...],
     *,
     k_neigh: int = 8,
     power: float = 1.0,
+    distance_fn: Optional[Any] = None,
 ) -> Optional[float]:
     """Inverse-distance weighted interpolation over sparse LUT points."""
     if not points:
@@ -300,10 +335,13 @@ def _idw_interpolate(
     for p in points:
         dims = tuple(int(x) for x in p[:-1])
         val = float(p[-1])
-        # relative L1 distance
-        dist = 0.0
-        for qi, pi in zip(q, dims):
-            dist += abs(float(qi) - float(pi)) / float(max(1, qi))
+        if distance_fn is None:
+            # relative L1 distance in raw shape space
+            dist = 0.0
+            for qi, pi in zip(q, dims):
+                dist += abs(float(qi) - float(pi)) / float(max(1, qi))
+        else:
+            dist = float(distance_fn(q, dims))
         if dist <= 0.0:
             return float(val)
         scored.append((dist, val))
@@ -326,6 +364,7 @@ def _idw_interpolate_with_neighbors(
     *,
     k_neigh: int = 8,
     power: float = 1.0,
+    distance_fn: Optional[Any] = None,
 ) -> Tuple[Optional[float], Tuple[Tuple[Tuple[int, ...], float, float], ...]]:
     if not points:
         return (None, tuple())
@@ -335,9 +374,12 @@ def _idw_interpolate_with_neighbors(
     for p in points:
         dims = tuple(int(x) for x in p[:-1])
         val = float(p[-1])
-        dist = 0.0
-        for qi, pi in zip(q, dims):
-            dist += abs(float(qi) - float(pi)) / float(max(1, qi))
+        if distance_fn is None:
+            dist = 0.0
+            for qi, pi in zip(q, dims):
+                dist += abs(float(qi) - float(pi)) / float(max(1, qi))
+        else:
+            dist = float(distance_fn(q, dims))
         if dist <= 0.0:
             return (float(val), ((dims, float(val), 0.0),))
         scored.append((dist, dims, val))
@@ -361,7 +403,7 @@ def _idw_interpolate_with_neighbors(
 
 @lru_cache(maxsize=4096)
 def _warn_missing_once(tag: str, key: Tuple[int, ...], path: str) -> None:
-    logger.warning(f"[{tag}-LUT] Missing key={key} in LUT='{path}'. Using nearest interpolation.")
+    logger.warning(f"[{tag}-LUT] Missing key={key} in LUT='{path}'. Using LUT interpolation.")
 
 
 @lru_cache(maxsize=32768)
@@ -414,11 +456,17 @@ def _lut_query(
         return float(us)
     if pts:
         _warn_missing_once(tag, key, path)
+        distance_fn = None
+        if str(tag).upper() == 'MMAD':
+            cube = int(lut.get('cube', 16))
+            residue_weight = float(lut.get('residue_weight', 0.05))
+            distance_fn = lambda qq, pp: _mmad_distance(qq, pp, cube=cube, residue_weight=residue_weight)
         us, neigh = _idw_interpolate_with_neighbors(
             pts,
             key,
             k_neigh=int(lut.get('k_neigh', 8)),
             power=float(lut.get('power', 1.0)),
+            distance_fn=distance_fn,
         )
         if us is not None:
             _log_lut_interp_once(tag, key, float(us), path, neigh)
@@ -498,8 +546,10 @@ def _load_mmad_lut() -> Optional[Dict[str, Any]]:
                 'path': str(p),
                 'points': points,
                 'index': _build_index(points),
-                # interpolation knobs (can be overridden by JSON wrapper)
-                'k_neigh': 8,
+                # Keep MMAD interpolation local and tile-aware for Ascend Cube.
+                'cube': 16,
+                'residue_weight': 0.05,
+                'k_neigh': 2,
                 'power': 1.0,
             }
             logger.info(f"[MMAD-LUT] Loaded {len(points)} points from '{p}'")

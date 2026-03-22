@@ -1,6 +1,7 @@
 /measurements/**/build/**
 /algorithms/debug_log.txt
 /algorithms/output/
+/algorithms/job*/
 figs/
 output/
 # Python cache
