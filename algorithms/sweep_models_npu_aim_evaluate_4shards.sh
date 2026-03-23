@@ -13,10 +13,11 @@ MODEL_FAMILY_VARIANTS=(
   # "mixtral:8x7b"
   # "palm:62b"
   # "qwen:1.8b"
-  # "qwen:14b"
-  "llama:7b"
-  "llama:13b"
-  "llama:70b"
+  "qwen:7b"
+  "qwen:14b"
+  # "llama:7b"
+  # "llama:13b"
+  # "llama:70b"
   # "llama:405b"
 )
 
