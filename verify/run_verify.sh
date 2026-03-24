@@ -9,6 +9,7 @@ PIM_LOG_DIR=/path/logs_pim \
 MERGE_LOG_DIR=/path/logs_merge \
 
 export PYTHONPATH="$PWD:$PWD/algorithm:$PWD/algorithms:${PYTHONPATH:-}"
+export LD_LIBRARY_PATH="/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/submodules/CENT/aim_simulator${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
   ./verify/run_verify.sh \
     ./verify/jobs_sweep.tsv \

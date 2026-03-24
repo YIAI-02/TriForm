@@ -11,25 +11,22 @@ Examples
 --------
 # Plot selected prefills / decodes and show signed gap = (accel - pim)
 python3 plot_exp1_utilization.py \
-  --search-dir ../../algorithms/output/exp1/hw_hardware_1npu_2aim/sst64_rst64/qwen_1.8b_fp16_b4_s64 \
+  --search-dir ../../algorithms/output/exp1/hw_hardware_1npu_2aim/sst8_rst8/qwen_1.8b_fp16_b1_s8 \
   --prefills 128,1024\
   --decodes 128,512,1024 \
   --exclude-algos weights_on_pim\
   --algo-label-map 'hefthint=Bifocal (this work)' \
   --highlight-algo 'heft'\
-  --output ../../figs/exp1/util/qwen_1_8b_fp16_b4_s64_utilization.pdf
+  --output ../../figs/exp1/util/qwen_1p8b_fp16_b1_s64_utilization.pdf
 
 python3 plot_exp1_utilization.py \
-  --search-dir ../../algorithms/output/exp1/hw_hardware_1npu_2aim/sst64_rst64/llama_7b_fp16_b16_s64 \
-  --prefills 128 \
+  --search-dir ../../algorithms/output/exp1/hw_hardware_1npu_2aim/sst8_rst8/llama_7b_fp16_b16_s8 \
+  --prefills 128,1024\
   --decodes 128,512,1024 \
-  --output ../../figs/exp1/util/llama_7b_fp16_b16_s64_s64_utilization.pdf
-
-python3 plot_exp1_utilization.py \
-  --search-dir ../../algorithms/output/exp1/hw_hardware_1npu_2aim/sst64_rst64/qwen_1.8b_fp16_b8_s64 \
-  --prefills 128,256,512,1024 \
-  --decodes 64,128,256,512,1024 \
-  --output ../../figs/exp1/util/qwen_1_8b_fp16_b8_s64_utilization.pdf
+  --exclude-algos weights_on_pim\
+  --algo-label-map 'hefthint=Bifocal (this work),pd=PD, attn_on_pim=AF, ianus=PD+FFN,facil=PD+Linear,attacc=PD+Attention,'\
+  --highlight-algo 'heft'\
+  --output ../../figs/exp1/util/llama_7b_fp16_b16_s8_utilization.pdf
 
 prefill panel的高度
 per_group_h
@@ -59,6 +56,48 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.lines import Line2D
+from matplotlib.text import Text
+
+ARIAL_FONT_FAMILY = "Arial"
+MIN_FONT_PT = 7.0
+
+# 统一控制：左侧 ylabel、x 轴算法标签、panel title、legend 全部用这个字号
+COMMON_UI_FONT_PT = 13
+
+
+def apply_global_plot_style() -> None:
+    plt.rcParams.update({
+        "font.family": [ARIAL_FONT_FAMILY],
+        "font.sans-serif": [ARIAL_FONT_FAMILY],
+        "font.size": COMMON_UI_FONT_PT,
+        "axes.titlesize": COMMON_UI_FONT_PT,
+        "axes.labelsize": COMMON_UI_FONT_PT,
+        "xtick.labelsize": COMMON_UI_FONT_PT,
+        "ytick.labelsize": COMMON_UI_FONT_PT,
+        "legend.fontsize": COMMON_UI_FONT_PT,
+        "figure.titlesize": COMMON_UI_FONT_PT,
+        "pdf.fonttype": 42,
+        "ps.fonttype": 42,
+        "svg.fonttype": "none",
+    })
+
+
+def enforce_figure_fonts(
+    fig: plt.Figure,
+    *,
+    min_font_pt: float = MIN_FONT_PT,
+    font_family: str = ARIAL_FONT_FAMILY,
+) -> None:
+    for text in fig.findobj(Text):
+        try:
+            current_size = float(text.get_fontsize())
+        except (TypeError, ValueError):
+            current_size = min_font_pt
+        text.set_fontfamily(font_family)
+        text.set_fontsize(max(min_font_pt, current_size))
+
+
+apply_global_plot_style()
 
 
 DEFAULT_COLORS: List[str] = [
@@ -1450,6 +1489,8 @@ def _speedup_for_plot(time_index: Dict[Tuple[int, int, str], TimeResult],
     if runtime is None or ref_runtime is None or runtime <= 0 or ref_runtime <= 0:
         return float("nan")
     return float(ref_runtime / runtime)
+
+
 def _nice_ceil(x: float) -> float:
     if not np.isfinite(x) or x <= 0:
         return 1.0
@@ -1497,7 +1538,8 @@ def _symmetric_ylim(values: Sequence[float],
     if min_half_span is not None:
         half = max(half, min_half_span)
     return (-half, half)
-    
+
+
 def _save_summary_csv(results: Dict[Tuple[int, int, str], UtilResult],
                       algorithms: Sequence[str],
                       prefills: Sequence[int],
@@ -1582,21 +1624,24 @@ def _save_summary_csv(results: Dict[Tuple[int, int, str], UtilResult],
     print(f"[OK] saved summary -> {output_path.resolve()}")
 
 
-
 def _drop_zero_ytick(ax, atol: float = 1e-12) -> None:
     ticks = ax.get_yticks()
     kept = [t for t in ticks if not np.isclose(t, 0.0, atol=atol)]
     ax.set_yticks(kept)
 
 
-def _set_left_ylabel(ax, text: str, x: float = -0.14) -> None:
-    ax.set_ylabel(text)
+def _set_left_ylabel(ax, text: str, x: float = -0.14, fontsize: float = COMMON_UI_FONT_PT) -> None:
+    ax.set_ylabel(text, fontsize=fontsize)
     ax.yaxis.set_label_coords(x, 0.5)
 
+def _set_right_ylabel(ax, text: str, x: float = 1.10, fontsize: float = COMMON_UI_FONT_PT) -> None:
+    ax.set_ylabel(text, fontsize=fontsize, rotation=270, va="bottom")
+    ax.yaxis.set_label_position("right")
+    ax.yaxis.set_label_coords(x, 0.5)
 
 def _boxed_legend_slot_width(labels: Sequence[str],
-                             min_w: float = 0.16,
-                             max_w: float = 0.32,
+                             min_w: float = 0.24,
+                             max_w: float = 0.36,
                              base_w: float = 0.08,
                              char_w: float = 0.018) -> float:
     if not labels:
@@ -1626,7 +1671,7 @@ def _add_boxed_item_legends(ax,
                             left: Optional[float] = None,
                             gap: float = 0.015,
                             slot_width: Optional[float] = None,
-                            fontsize: Optional[float] = None,
+                            fontsize: Optional[float] = COMMON_UI_FONT_PT,
                             handlelength: float = 0.85,
                             handletextpad: float = 0.35,
                             borderpad: float = 0.28) -> None:
@@ -1705,12 +1750,12 @@ def plot_results(results: Dict[Tuple[int, int, str], UtilResult],
     # 这几个参数就是你后面最常调的地方
     # -----------------------------
     panel_width = max(5, 0.65 * len(algorithms))   # 单个 prefill panel 的宽度
-    figure_max_width = 16.0                          # 整张图最大宽度
-    panel_height = 3.2                               # 单个 prefill panel 的高度
+    figure_max_width = 16.0                        # 整张图最大宽度
+    panel_height = 3.2                             # 单个 prefill panel 的高度
 
-    outer_wspace = 0.1                              # 左右两个 prefill panel 的横向间距
-    outer_hspace = 0.30                              # 多行 prefill panel 之间的纵向间距
-    inner_hspace = 0.00                              # 一个 panel 内三幅子图之间的空隙，设 0 表示无缝
+    outer_wspace = 0.1                             # 左右两个 prefill panel 的横向间距
+    outer_hspace = 0.30                            # 多行 prefill panel 之间的纵向间距
+    inner_hspace = 0.00                            # 一个 panel 内三幅子图之间的空隙，设 0 表示无缝
 
     fig_w = min(figure_max_width, panel_width * ncols)
     fig_h = max(panel_height * n_group_rows, 3.2)
@@ -1757,6 +1802,11 @@ def plot_results(results: Dict[Tuple[int, int, str], UtilResult],
         speed_ax = fig.add_subplot(inner[0, 0])
         abs_ax = fig.add_subplot(inner[1, 0], sharex=speed_ax)
         third_ax = fig.add_subplot(inner[2, 0], sharex=speed_ax)
+
+        # 统一 tick label 字号
+        for ax in (speed_ax, abs_ax, third_ax):
+            ax.tick_params(axis="y", labelsize=COMMON_UI_FONT_PT)
+        third_ax.tick_params(axis="x", labelsize=COMMON_UI_FONT_PT)
 
         speed_axes.append(speed_ax)
         abs_axes.append(abs_ax)
@@ -1879,12 +1929,12 @@ def plot_results(results: Dict[Tuple[int, int, str], UtilResult],
         # -----------------------------
         # speedup subplot
         # -----------------------------
-        speed_ax.set_title(f"prefill={p}")
+        speed_ax.set_title(f"prefill={p}", fontsize=COMMON_UI_FONT_PT)
         speed_ax.set_ylim(*panel_speed_y_lim)
         speed_ax.set_xlim(-0.5, len(algorithms) - 0.5)
         speed_ax.grid(axis="y", linestyle="--", linewidth=0.6, alpha=0.35)
         speed_ax.set_xticks(x)
-        speed_ax.tick_params(axis="x", which="both", bottom=False, labelbottom=False)
+        speed_ax.tick_params(axis="x", which="both", bottom=False, labelbottom=False, labelsize=COMMON_UI_FONT_PT)
 
         # 三幅图无缝时，去掉上两幅图的 0 刻度，避免边界重叠
         _drop_zero_ytick(speed_ax)
@@ -1893,12 +1943,12 @@ def plot_results(results: Dict[Tuple[int, int, str], UtilResult],
         speed_ax.spines["bottom"].set_visible(False)
 
         if col == 0:
-            _set_left_ylabel(speed_ax, "Speedup (x)")
+            _set_left_ylabel(speed_ax, "Speedup (x)", fontsize=COMMON_UI_FONT_PT)
         if not any_speed_line:
             speed_ax.text(
                 0.5, 0.5, "No data",
                 transform=speed_ax.transAxes,
-                ha="center", va="center", fontsize=12,
+                ha="center", va="center", fontsize=COMMON_UI_FONT_PT,
             )
 
         # -----------------------------
@@ -1908,18 +1958,18 @@ def plot_results(results: Dict[Tuple[int, int, str], UtilResult],
         abs_ax.set_xlim(-0.5, len(algorithms) - 0.5)
         abs_ax.grid(axis="y", linestyle="--", linewidth=0.6, alpha=0.35)
         abs_ax.set_xticks(x)
-        abs_ax.tick_params(axis="x", which="both", bottom=False, labelbottom=False)
+        abs_ax.tick_params(axis="x", which="both", bottom=False, labelbottom=False, labelsize=COMMON_UI_FONT_PT)
 
         _drop_zero_ytick(abs_ax)
         abs_ax.spines["bottom"].set_visible(False)
 
         if col == 0:
-            _set_left_ylabel(abs_ax, abs_y_label)
+            _set_right_ylabel(abs_ax, abs_y_label, fontsize=COMMON_UI_FONT_PT)
         if not any_abs_line:
             abs_ax.text(
                 0.5, 0.5, "No data",
                 transform=abs_ax.transAxes,
-                ha="center", va="center", fontsize=12,
+                ha="center", va="center", fontsize=COMMON_UI_FONT_PT,
             )
 
         # -----------------------------
@@ -1937,6 +1987,7 @@ def plot_results(results: Dict[Tuple[int, int, str], UtilResult],
             [pretty_algo_name(a, display_name_map=display_name_map) for a in algorithms],
             rotation=30,
             ha="right",
+            fontsize=COMMON_UI_FONT_PT,
         )
         highlight_norm = None if not highlight_algo else normalize_algo_token(highlight_algo)
         if highlight_norm is not None:
@@ -1953,16 +2004,17 @@ def plot_results(results: Dict[Tuple[int, int, str], UtilResult],
                     third_metric=third_metric,
                     diff_order=diff_order,
                 ),
+                fontsize=COMMON_UI_FONT_PT,
             )
         if not any_third_line:
             third_ax.text(
                 0.5, 0.5, "No data",
                 transform=third_ax.transAxes,
-                ha="center", va="center", fontsize=12,
+                ha="center", va="center", fontsize=COMMON_UI_FONT_PT,
             )
 
     if title:
-        fig.suptitle(title, y=0.99)
+        fig.suptitle(title, y=0.99, fontsize=COMMON_UI_FONT_PT)
 
     family_legend_handles: List[Line2D] = [
         Line2D(
@@ -2022,6 +2074,7 @@ def plot_results(results: Dict[Tuple[int, int, str], UtilResult],
                     right=0.995,
                     gap=0.014,
                     slot_width=decode_slot_width,
+                    fontsize=COMMON_UI_FONT_PT,
                     handlelength=0.70,
                     handletextpad=0.30,
                     borderpad=0.22,
@@ -2035,6 +2088,7 @@ def plot_results(results: Dict[Tuple[int, int, str], UtilResult],
                     left=0.015,
                     gap=0.014,
                     slot_width=decode_slot_width,
+                    fontsize=COMMON_UI_FONT_PT,
                     handlelength=0.70,
                     handletextpad=0.30,
                     borderpad=0.22,
@@ -2051,18 +2105,21 @@ def plot_results(results: Dict[Tuple[int, int, str], UtilResult],
             right=0.995,
             gap=0.016,
             slot_width=_boxed_legend_slot_width(family_labels, min_w=0.16, max_w=0.24),
+            fontsize=COMMON_UI_FONT_PT,
             handlelength=0.70,
             handletextpad=0.40,
             borderpad=0.22,
         )
 
     top_margin = 0.90 if title else 0.94
+    enforce_figure_fonts(fig)
     fig.subplots_adjust(left=0.09, right=0.99, bottom=0.08, top=top_margin)
 
     output.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output, dpi=dpi, bbox_inches="tight")
     plt.close(fig)
     print(f"[OK] saved figure -> {output.resolve()}")
+
 
 # -----------------------------
 # Main

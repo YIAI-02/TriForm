@@ -1,9 +1,11 @@
 #!/bin/bash
 #SBATCH -J verify_run_pim
+#SBATCH -p C064M1024G
+#SBATCH --qos=high
 #SBATCH -N 1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
-#SBATCH -t 04:00:00
+#SBATCH -t 24:00:00
 #SBATCH -o %x.%j.out
 #SBATCH -e %x.%j.err
 

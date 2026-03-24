@@ -159,7 +159,7 @@ SCHED_WEIGHT_BIAS_ETA: float = 1.0
 
 #AMORT
 SCHED_DECODE_AMORT_ENABLE = True
-SCHED_DECODE_AMORT_ALPHA = 2
+SCHED_DECODE_AMORT_ALPHA = 1
 SCHED_DECODE_AMORT_RMIN = 1
 # Optional reuse probability multiplier (useful later for MoE / gated subgraphs).
 # For dense decode, keep 1.0.

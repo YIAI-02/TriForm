@@ -3,9 +3,9 @@
 
 '''
 python3 ./verify/gen_job_tsv.py \
-  --input ./algorithms/output/exp1/hw_hardware_1npu_2aim/sst64_rst64\
-  --prefill-len 1024\
-  --decode-len 128,256,512,1024\
+  --input ./algorithms/output/exp1/hw_hardware_1npu_2aim/sst8_rst8\
+  --prefill-len 128,1024\
+  --decode-len 128,512,1024\
   --output ./verify/jobs_sweep.tsv
 
 '''

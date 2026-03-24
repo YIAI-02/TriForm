@@ -18,6 +18,7 @@ __pycache__/
 submodules/CENT
 submodules/LLMCompass
 verify/sst64_rst64
+verify/sst8_rst8
 /algorithms/output/
 /verify/hw_hardware_1gpu_2aim/
 /verify/hw_hardware_1npu_2aim/

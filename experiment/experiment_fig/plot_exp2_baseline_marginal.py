@@ -64,6 +64,38 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.text import Text
+
+ARIAL_FONT_FAMILY = "Arial"
+MIN_FONT_PT = 7.0
+
+
+def apply_global_plot_style() -> None:
+    plt.rcParams.update({
+        "font.family": [ARIAL_FONT_FAMILY],
+        "font.sans-serif": [ARIAL_FONT_FAMILY],
+        "pdf.fonttype": 42,
+        "ps.fonttype": 42,
+        "svg.fonttype": "none",
+    })
+
+
+def enforce_figure_fonts(
+    fig: plt.Figure,
+    *,
+    min_font_pt: float = MIN_FONT_PT,
+    font_family: str = ARIAL_FONT_FAMILY,
+) -> None:
+    for text in fig.findobj(Text):
+        try:
+            current_size = float(text.get_fontsize())
+        except (TypeError, ValueError):
+            current_size = min_font_pt
+        text.set_fontfamily(font_family)
+        text.set_fontsize(max(min_font_pt, current_size))
+
+
+apply_global_plot_style()
 
 
 DEFAULT_PALETTE = [
@@ -849,6 +881,7 @@ def plot_speedup_figure(
             frameon=False,
         )
 
+    enforce_figure_fonts(fig)
     fig.tight_layout(rect=(0.03, 0.04, 1.0, 0.88))
 
     output_path = Path(args.output).expanduser().resolve()

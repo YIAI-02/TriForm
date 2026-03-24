@@ -14,10 +14,10 @@ Changes in this version:
 
 Examples:
 python3 plot_exp1_diff.py \
-  --file-list ../../verify/sst64_rst64/llama_7b_fp16_b16_s64/files.txt ../../verify/sst64_rst64/qwen_1.8b_fp16_b4_s64/files.txt  \
-  --output ../../figs/exp1/qwen_1_8b_fp16_b4_s64_128_llama_7b_fp16_b16_s64_128_histogram.pdf \
-  --panel-titles "Llama 7b, Qwen 1.8b" \
-  --wspace 0.05
+  --file-list  ../../verify/sst8_rst8/qwen_1.8b_fp16_b8_s8/files.txt ../../verify/sst8_rst8/llama_7b_fp16_b16_s8/files.txt  \
+  --output ../../figs/exp1/histogram.pdf \
+  --panel-titles "Qwen 1.8b, Llama 7b" \
+  --wspace 0.03
 """
 
 from __future__ import annotations
@@ -44,12 +44,22 @@ HEFT_VARIANTS: List[str] = ["heft", "hefthint"]
 POSITIVE_COLOR = "#aee4ad"
 NEGATIVE_COLOR = "#add9e4"
 DEFAULT_FIG_WIDTH = 5.0   # interpreted as per-panel width
-DEFAULT_FIG_HEIGHT = 1.6
+DEFAULT_FIG_HEIGHT = 1.2
 DEFAULT_WSPACE = 0.12
 XMIN = -10.0
 XMAX = 10.0
 XTICK_STEP = 2.0
 MIN_SIDE_SPAN = 2.0
+
+SPINE_COLOR = "#222222"
+SPINE_WIDTH = 1.3
+LABEL_COLOR = "#111111"
+TICK_COLOR = "#222222"
+
+AXIS_LABEL_FONTSIZE = 14
+TITLE_FONTSIZE = 14
+TICK_FONTSIZE = 12
+LEGEND_FONTSIZE = 12
 # ============================================================================
 
 
@@ -531,7 +541,16 @@ def plot_gap_histograms(
     if not panels:
         raise RuntimeError("No panels to plot.")
 
-    sns.set_theme(style="whitegrid")
+    sns.set_theme(
+        style="whitegrid",
+        rc={
+            "axes.edgecolor": SPINE_COLOR,
+            "axes.labelcolor": LABEL_COLOR,
+            "xtick.color": TICK_COLOR,
+            "ytick.color": TICK_COLOR,
+            "text.color": LABEL_COLOR,
+        },
+    )
 
     n_panels = len(panels)
     fig, axes = plt.subplots(
@@ -575,16 +594,31 @@ def plot_gap_histograms(
                 linewidth=1,
             )
 
-        # ax.axvline(0.0, color="k", linestyle="--", linewidth=1.0)
         ax.set_xlim(x_left, x_right)
         ax.xaxis.set_major_locator(MultipleLocator(XTICK_STEP))
-        ax.set_xlabel("Signed gap (%)", fontsize=11)
-        ax.set_title(panel.label, fontsize=12)
+
+        ax.set_xlabel("Signed gap (%)", fontsize=AXIS_LABEL_FONTSIZE, color=LABEL_COLOR, fontweight="bold")
+        ax.set_title(panel.label, fontsize=TITLE_FONTSIZE, color=LABEL_COLOR, fontweight="bold")
 
         if i == 0:
-            ax.set_ylabel("Count", fontsize=11)
+            ax.set_ylabel("Count", fontsize=AXIS_LABEL_FONTSIZE, color=LABEL_COLOR, fontweight="bold")
         else:
             ax.set_ylabel("")
+
+        # 边框加深
+        for spine in ax.spines.values():
+            spine.set_color(SPINE_COLOR)
+            spine.set_linewidth(SPINE_WIDTH)
+
+        # 刻度字体加大、颜色加深
+        ax.tick_params(
+            axis="both",
+            which="major",
+            labelsize=TICK_FONTSIZE,
+            colors=TICK_COLOR,
+            width=1.2,
+            length=4,
+        )
 
         ax.grid(axis="y", linestyle="--", linewidth=0.6, alpha=0.35)
         ax.grid(axis="x", visible=False)
@@ -597,14 +631,16 @@ def plot_gap_histograms(
                 transform=ax.transAxes,
                 ha="center",
                 va="center",
-                fontsize=10,
+                fontsize=11,
+                color=LABEL_COLOR,
+                fontweight="bold",
             )
 
     top_margin = 0.78 if title else 0.86
     fig.subplots_adjust(wspace=wspace, top=top_margin)
 
     if title:
-        fig.suptitle(title, fontsize=13, y=0.97)
+        fig.suptitle(title, fontsize=17, y=0.97, color=LABEL_COLOR, fontweight="bold")
 
     fig.legend(
         handles=legend_handles,
@@ -614,6 +650,8 @@ def plot_gap_histograms(
         frameon=False,
         columnspacing=1.2,
         handletextpad=0.5,
+        prop={"size": LEGEND_FONTSIZE, "weight": "bold"},
+        labelcolor=LABEL_COLOR,
     )
 
     output.parent.mkdir(parents=True, exist_ok=True)

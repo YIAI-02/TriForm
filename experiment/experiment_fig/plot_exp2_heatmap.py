@@ -1,53 +1,20 @@
 #!/usr/bin/env python3
 """
 python plot_exp2_heatmap.py \
-  --panel "1 NPU 0 PIM=../../algorithms/output/exp2/npu_only/npu/hw_hardware_1npu/sst64_rst64" \
-  --panel "1 NPU 2 PIM=../../algorithms/output/exp1/hw_hardware_1npu_2aim/sst64_rst64" \
-  --panel "1 NPU 4 PIM=../../algorithms/output/exp2/4shards/hw_hardware_1npu_4aim/sst64_rst64" \
-  --panel "1 NPU 8 PIM=../../algorithms/output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64" \
-  --model "llama_7b" \
-  --batches 1 4 8 16 \
-  --prefills 128 256 512 1024 2048 4096 \
-  --decodes 64 128 256 512 1024 \
-  --baseline pd \
-  --reference-panel "1 NPU 0 PIM" \
-  --vmin 1 \
-  --vmax 6 \
-  --compact-outer-label-fontsize 8\
-  --output ../../figs/exp2/llama_7b_heatmap.pdf
-
-python plot_exp2_heatmap.py \
-  --panel "1 NPU 0 PIM=../../algorithms/output/exp2/npu_only/npu/hw_hardware_1npu/sst64_rst64" \
-  --panel "1 NPU 2 PIM=../../algorithms/output/exp1/hw_hardware_1npu_2aim/sst64_rst64" \
-  --panel "1 NPU 4 PIM=../../algorithms/output/exp2/4shards/hw_hardware_1npu_4aim/sst64_rst64" \
-  --panel "1 NPU 8 PIM=../../algorithms/output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64" \
-  --model "llama_13b" \
-  --batches 1 4 8 16 \
-  --prefills 128 256 512 1024 2048 4096 \
-  --decodes 64 128 256 512 1024 \
-  --baseline pd \
-  --reference-panel "1 NPU 0 PIM" \
-  --vmin 1 \
-  --vmax 6 \
-  --compact-outer-label-fontsize 8\
-  --output ../../figs/exp2/llama_13b_heatmap.pdf
-
-
-python plot_exp2_heatmap.py \
-  --panel "1 NPU 0 PIM=../../algorithms/output/exp2/npu_only/npu/hw_hardware_1npu/sst64_rst64" \
-  --panel "1 NPU 2 PIM=../../algorithms/output/exp1/hw_hardware_1npu_2aim/sst64_rst64" \
-  --panel "1 NPU 4 PIM=../../algorithms/output/exp2/4shards/hw_hardware_1npu_4aim/sst64_rst64" \
-  --panel "1 NPU 8 PIM=../../algorithms/output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64" \
+  --panel "1 NPU 0 PIM=../../algorithms/output/exp2/npu_only/npu/hw_hardware_1npu/sst8_rst8" \
+  --panel "1 NPU 2 PIM=../../algorithms/output/exp1/hw_hardware_1npu_2aim/sst8_rst8" \
+  --panel "1 NPU 4 PIM=../../algorithms/output/exp2/4shards/hw_hardware_1npu_4aim/sst8_rst8" \
+  --panel "1 NPU 8 PIM=../../algorithms/output/exp2/8shards/hw_hardware_1npu_8aim/sst8_rst8" \
   --model llama_7b \
   --model llama_13b \
   --model llama_70b \
   --batches 1 4 8 16 \
-  --prefills 128 256 512 1024 2048 4096 \
-  --decodes 64 128 256 512 1024 \
+  --prefills 128 512 1024 2048 \
+  --decodes 128 256 512 1024 \
   --baseline pd \
   --reference-panel "1 NPU 0 PIM" \
   --vmin 1 \
-  --vmax 6 \
+  --vmax 10 \
   --compact-outer-label-fontsize 8\
   --output ../../figs/exp2/llama_heatmap.pdf
 
@@ -66,6 +33,38 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.text import Text
+
+ARIAL_FONT_FAMILY = "Arial"
+MIN_FONT_PT = 7.0
+
+
+def apply_global_plot_style() -> None:
+    plt.rcParams.update({
+        "font.family": [ARIAL_FONT_FAMILY],
+        "font.sans-serif": [ARIAL_FONT_FAMILY],
+        "pdf.fonttype": 42,
+        "ps.fonttype": 42,
+        "svg.fonttype": "none",
+    })
+
+
+def enforce_figure_fonts(
+    fig: plt.Figure,
+    *,
+    min_font_pt: float = MIN_FONT_PT,
+    font_family: str = ARIAL_FONT_FAMILY,
+) -> None:
+    for text in fig.findobj(Text):
+        try:
+            current_size = float(text.get_fontsize())
+        except (TypeError, ValueError):
+            current_size = min_font_pt
+        text.set_fontfamily(font_family)
+        text.set_fontsize(max(min_font_pt, current_size))
+
+
+apply_global_plot_style()
 
 
 DEFAULT_COLORS = [
@@ -627,7 +626,7 @@ def draw_compact_heatmap(
     x_tick_rotation: float = 90,
     annotate: bool = False,
     annotation_fmt: str = "{:.2f}",
-    annotation_fontsize: float = 6,
+    annotation_fontsize: float = 7,
 ):
     im = ax.imshow(data, cmap=cmap, norm=norm, aspect="equal", origin="lower")
 
@@ -910,7 +909,7 @@ def merge_settings(args, cfg: dict) -> dict:
         "compact_annotation_fontsize": (
             args.compact_annotation_fontsize
             if args.compact_annotation_fontsize is not None
-            else cfg.get("compact_annotation_fontsize", 6)
+            else cfg.get("compact_annotation_fontsize", 7)
         ),
         "compact_annotation_fmt": (
             args.compact_annotation_fmt
@@ -1111,6 +1110,7 @@ def render_annotated_figure(
     )
     cbar.set_label(annotated_cbar_label, rotation=270, labelpad=16, fontsize=11)
 
+    enforce_figure_fonts(fig)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=220, bbox_inches="tight")
     plt.close(fig)
@@ -1256,6 +1256,7 @@ def render_compact_figure(
         cbar.set_label(settings["compact_cbar_label"], fontsize=tick_fontsize)
     cbar.ax.tick_params(labelsize=cbar_tick_fontsize, length=0, pad=1)
 
+    enforce_figure_fonts(fig)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=260, bbox_inches="tight")
     plt.close(fig)
@@ -1416,6 +1417,7 @@ def render_multi_model_annotated_figure(
     )
     cbar.set_label(annotated_cbar_label, rotation=270, labelpad=16, fontsize=11)
 
+    enforce_figure_fonts(fig)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=220, bbox_inches="tight")
     plt.close(fig)
@@ -1581,6 +1583,7 @@ def render_multi_model_compact_figure(
         cbar.set_label(settings["compact_cbar_label"], fontsize=tick_fontsize)
     cbar.ax.tick_params(labelsize=cbar_tick_fontsize, length=0, pad=1)
 
+    enforce_figure_fonts(fig)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=260, bbox_inches="tight")
     plt.close(fig)

@@ -4,22 +4,24 @@
 """
 Plot latency comparison from *merge_all.csv files.
 
-Example:
+find . -type f -name "*.merge_all.csv" | sort > files.txt
 python3 plot_exp1_verify.py \
-  --file-list ../../verify/sst64_rst64/llama_7b_fp16_b16_s64/files.txt \
+  --file-list ../../verify/sst8_rst8/llama_7b_fp16_b16_s8/files.txt \
   --algo-order "pd,attn_on_pim, ianus,facil,attacc,hefthint" \
   --exclude "weights_on_pim"\
   --dims "128x128,128x512,128x1024,1024x128,1024x512,1024x1024"\
-  --name-map "pd=PD,ianus=IANUS,facil=Facil,attacc=AttAcc,attn_on_pim=AF,hefthint=Bifocal" \
-  --output ../../figs/verify/sst64_rst64/llama_7b_fp16_b16_s64.pdf 
+  --name-map "pd=PD,ianus=PD+FFN,facil=PD+Linear,attacc=PD+Attention,attn_on_pim=AF,hefthint=Bifocal" \
+  --output ../../figs/verify/sst8_rst8/llama_7b_fp16_b16_s8.pdf 
 
 python3 plot_exp1_verify.py \
-  --file-list ../../verify/sst64_rst64/qwen_1.8b_fp16_b4_s64/files.txt \
+  --file-list ../../verify/sst8_rst8/qwen_1.8b_fp16_b8_s8/files.txt \
   --algo-order "pd,attn_on_pim, ianus,facil,attacc,hefthint" \
   --exclude "weights_on_pim"\
   --dims "128x128,128x512,128x1024,1024x128,1024x512,1024x1024"\
-  --name-map "pd=PD,ianus=IANUS,facil=Facil,attacc=AttAcc,attn_on_pim=AF,hefthint=Bifocal" \
-  --output ../../figs/verify/sst64_rst64/qwen_1_8b_fp16_b4_s64.pdf 
+  --name-map "pd=PD,ianus=PD+FFN,facil=PD+Linear,attacc=PD+Attention,attn_on_pim=AF,hefthint=Bifocal" \
+  --output ../../figs/verify/sst8_rst8/qwen_1p8b_fp16_b8_s8.pdf 
+
+  
 """
 
 from __future__ import annotations
@@ -36,6 +38,38 @@ import numpy as np
 import pandas as pd
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch, Rectangle
+from matplotlib.text import Text
+
+ARIAL_FONT_FAMILY = "Arial"
+MIN_FONT_PT = 7.0
+
+
+def apply_global_plot_style() -> None:
+    plt.rcParams.update({
+        "font.family": [ARIAL_FONT_FAMILY],
+        "font.sans-serif": [ARIAL_FONT_FAMILY],
+        "pdf.fonttype": 42,
+        "ps.fonttype": 42,
+        "svg.fonttype": "none",
+    })
+
+
+def enforce_figure_fonts(
+    fig: plt.Figure,
+    *,
+    min_font_pt: float = MIN_FONT_PT,
+    font_family: str = ARIAL_FONT_FAMILY,
+) -> None:
+    for text in fig.findobj(Text):
+        try:
+            current_size = float(text.get_fontsize())
+        except (TypeError, ValueError):
+            current_size = min_font_pt
+        text.set_fontfamily(font_family)
+        text.set_fontsize(max(min_font_pt, current_size))
+
+
+apply_global_plot_style()
 
 
 # ============================================================================
@@ -492,7 +526,7 @@ def plot_results(
         ax.set_xticks(x)
         ax.set_xticklabels(
             [pretty_strategy_name(a, display_name_map) for a in order],
-            rotation=90,
+            rotation=45,
             ha="center",
             va="top",
             fontsize=11,
@@ -556,6 +590,7 @@ def plot_results(
     ]
     fig.legend(handles=handles, loc="upper center", ncol=6, frameon=False, bbox_to_anchor=(0.5, 0.94), fontsize=11, handlelength=1.6, columnspacing=1.0)
 
+    enforce_figure_fonts(fig)
     fig.subplots_adjust(left=0.055, right=0.965, bottom=0.31, top=0.80, wspace=SUBPLOT_WSPACE)
     add_dim_separators(fig, axes)
 

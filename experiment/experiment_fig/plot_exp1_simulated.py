@@ -4,8 +4,8 @@
 
 1) 批量：
 python plot_exp1_simulated.py \
-  --output-root ../../algorithms/output/exp1\
-  --out-dir ../../figs/speedup/exp1
+  --output-root ../../algorithms/output/exp2/4shards\
+  --out-dir ../../figs/speedup/exp2/4shards
 
 
 不要传hw_ 这一层目录
@@ -32,6 +32,38 @@ import numpy as np
 import matplotlib
 matplotlib.use("Agg")  # noqa: E402
 import matplotlib.pyplot as plt  # noqa: E402
+from matplotlib.text import Text  # noqa: E402
+
+ARIAL_FONT_FAMILY = "Arial"
+MIN_FONT_PT = 7.0
+
+
+def apply_global_plot_style() -> None:
+    plt.rcParams.update({
+        "font.family": [ARIAL_FONT_FAMILY],
+        "font.sans-serif": [ARIAL_FONT_FAMILY],
+        "pdf.fonttype": 42,
+        "ps.fonttype": 42,
+        "svg.fonttype": "none",
+    })
+
+
+def enforce_figure_fonts(
+    fig: plt.Figure,
+    *,
+    min_font_pt: float = MIN_FONT_PT,
+    font_family: str = ARIAL_FONT_FAMILY,
+) -> None:
+    for text in fig.findobj(Text):
+        try:
+            current_size = float(text.get_fontsize())
+        except (TypeError, ValueError):
+            current_size = min_font_pt
+        text.set_fontfamily(font_family)
+        text.set_fontsize(max(min_font_pt, current_size))
+
+
+apply_global_plot_style()
 
 COL_PREFILL = "#326568"
 COL_DECODE = "#A2D091"
@@ -443,6 +475,7 @@ def plot_compare_grid(files: Sequence[Path], *, outfile: Path, sharey: bool = Fa
             bbox_to_anchor=(0.5, 1.02),
         )
 
+    enforce_figure_fonts(fig)
     fig.subplots_adjust(right=0.99, left=0.06, bottom=0.18, top=0.88, wspace=0.2, hspace=0.3)
 
     outfile.parent.mkdir(parents=True, exist_ok=True)
