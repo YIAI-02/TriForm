@@ -23,6 +23,7 @@ class LRUCache:
     order: List[Hashable] = field(default_factory=list)
     pinned: Set[Hashable] = field(default_factory=set)
     used: int = 0
+    meta: Dict[Hashable, Dict[str, Any]] = field(default_factory=dict)
 
     # ---- basic helpers ----------------------------------------------------
     def has(self, key: Hashable) -> bool:
@@ -34,6 +35,16 @@ class LRUCache:
             return
         self.order.remove(key)
         self.order.append(key)
+
+    def get_meta(self, key: Hashable) -> Dict[str, Any]:
+        return dict(self.meta.get(key, {}) or {})
+
+    def set_meta(self, key: Hashable, **kwargs: Any) -> None:
+        if key not in self.items:
+            return
+        cur = dict(self.meta.get(key, {}) or {})
+        cur.update({k: v for k, v in kwargs.items() if v is not None})
+        self.meta[key] = cur
 
     def pin(self, key: Hashable) -> None:
         if key in self.items:
@@ -60,6 +71,7 @@ class LRUCache:
                     break
                 continue
             size = int(self.items.pop(victim, 0))
+            self.meta.pop(victim, None)
             if size > 0:
                 self.used = max(0, self.used - size)
                 return size
@@ -83,7 +95,7 @@ class LRUCache:
 
     # ---- public mutation API ----------------------------------------------
 
-    def add(self, key: Hashable, size: int, *, pinned: bool = False) -> bool:
+    def add(self, key: Hashable, size: int, *, pinned: bool = False, meta: Optional[Dict[str, Any]] = None) -> bool:
         """Insert/update an item with `size` bytes.
         
         If necessary, evict LRU *unpinned* items to respect `capacity`.
@@ -91,19 +103,23 @@ class LRUCache:
         (e.g. it is larger than total capacity and everything else is pinned).
         """
         size = max(0, int(size))
+        meta_d = dict(meta or {})
         # Fast path: update existing item
         if key in self.items:
             old = int(self.items[key])
             delta = size - old
             self.items[key] = size
             self.used = max(0, self.used + delta)
+            if meta_d:
+                self.meta[key] = meta_d
             self.touch(key)
             if pinned:
                 self.pinned.add(key)
             return True
 
         if size == 0:
-            # nothing to store
+            if meta_d and key in self.items:
+                self.meta[key] = meta_d
             return True
 
         # If the single item is larger than capacity we cannot place it.
@@ -126,6 +142,10 @@ class LRUCache:
         self.items[key] = size
         self.order.append(key)
         self.used += size
+        if meta_d:
+            self.meta[key] = meta_d
+        else:
+            self.meta.pop(key, None)
         if pinned:
             self.pinned.add(key)
         return True
@@ -206,6 +226,15 @@ class GlobalMemoryManager:
     def is_cached(self, dev_name: str, wid: str) -> bool:
         cache = self.device_cache.get(dev_name)
         return cache.has(wid) if cache else False
+
+    def get_cached_weight_format(self, dev_name: str, wid: str) -> Optional[str]:
+        cache = self.device_cache.get(dev_name)
+        if cache is None:
+            return None
+        meta = cache.get_meta(wid)
+        fmt = meta.get('format')
+        return str(fmt) if fmt not in (None, '') else None
+
 
     # ------------------------------------------------------------------
     # PIM registration / query
@@ -374,7 +403,7 @@ class GlobalMemoryManager:
     # Weight caching (all devices)
     # ------------------------------------------------------------------
 
-    def pim_cache_weight(self, dev_name: str, wid: str, size: int, *, pinned: bool, commit: bool) -> bool:
+    def pim_cache_weight(self, dev_name: str, wid: str, size: int, *, pinned: bool, commit: bool, fmt: Optional[str] = None) -> bool:
         st = self.pim_state.get(dev_name)
         if st is None:
             # Non-PIM path (or unregistered PIM): treat as a generic weight LRU.
@@ -383,7 +412,7 @@ class GlobalMemoryManager:
                 # Best-effort default: at least large enough to hold this single weight.
                 self.ensure_device_cache(dev_name, capacity_bytes=max(0, int(size)))
                 cache = self.device_cache[dev_name]
-            ok = cache.add(wid, int(size), pinned=bool(pinned))
+            ok = cache.add(wid, int(size), pinned=bool(pinned), meta=({'format': str(fmt)} if fmt not in (None, '') else None))
             if ok:
                 cache.touch(wid)
                 if pinned:
@@ -428,19 +457,19 @@ class GlobalMemoryManager:
         # At this point we know we can respect runtime limit; rely on
         # the inner LRU cache to enforce its own capacity.
         ok = cache.add(wid, size, pinned=pinned)
+        ok = cache.add(wid, size, pinned=pinned, meta=({'format': str(fmt)} if fmt not in (None, '') else None))
         if ok:
             cache.touch(wid)
             if pinned:
                 cache.pin(wid)
         return ok
 
-    def mark_cached(self, dev_name: str, wid: str, size: int, pinned: bool = False) -> None:
+    def mark_cached(self, dev_name: str, wid: str, size: int, pinned: bool = False, fmt: Optional[str] = None) -> bool:
         """Notify the buffer manager that a weight has been cached.
         """
         if dev_name in self.pim_state:
             # PIM-aware path
-            self.pim_cache_weight(dev_name, wid, int(size), pinned=bool(pinned), commit=True)
-            return
+            return bool(self.pim_cache_weight(dev_name, wid, int(size), pinned=bool(pinned), commit=True, fmt=fmt))
 
         # Non-PIM path
         cache = self.device_cache.get(dev_name)
@@ -448,9 +477,11 @@ class GlobalMemoryManager:
             # Best-effort default: at least large enough to hold this weight.
             self.ensure_device_cache(dev_name, capacity_bytes=max(0, int(size)))
             cache = self.device_cache[dev_name]
-        cache.add(wid, int(size), pinned=pinned)
-        cache.touch(wid)
+        ok = bool(cache.add(wid, int(size), pinned=pinned, meta=({'format': str(fmt)} if fmt not in (None, '') else None)))
+        if ok:
+            cache.touch(wid)
         if pinned:
             cache.pin(wid)
+        return ok
 
 

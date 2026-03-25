@@ -10,7 +10,7 @@ import logging
 from config import attach_local_debug_filter
 
 logger = logging.getLogger(__name__)
-attach_local_debug_filter(logger, lambda: True)
+attach_local_debug_filter(logger, lambda: False)
 
 _THIS_DIR = os.path.dirname(__file__)
 _RUNTIME_DIR = os.path.join(_THIS_DIR, 'runtime_models')

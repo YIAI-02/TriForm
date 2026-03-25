@@ -1,14 +1,4 @@
 from __future__ import annotations
-"""PIM backend (CENT/AiM simulator + Ramulator trace)
-
-This module is extracted from the original monolithic cost_model.py to keep
-the core CostModel logic independent from backend-specific simulators.
-
-Public entry points used by CostModel:
-- _simulate_weight_loading_latency
-- _get_pim_latency_via_trace
-"""
-
 import json
 import os
 import subprocess
@@ -20,6 +10,7 @@ import hashlib
 import pickle
 import contextlib
 from pathlib import Path
+from dataclasses import dataclass, replace
 from typing import Optional, Dict, Tuple, List, Any
 from threading import Lock
 from datetime import datetime
@@ -49,15 +40,125 @@ def _ensure_repo_root_on_syspath() -> None:
 
 
 try:
+    import config as _config  # type: ignore
     from config import attach_local_debug_filter, PIM_FREQ_GHZ, GB_FREQ_GHZ  # type: ignore
     from stats_recorder import get_simulation_logger  # type: ignore
 except ModuleNotFoundError:
     _ensure_repo_root_on_syspath()
+    import config as _config  # type: ignore
     from config import attach_local_debug_filter, PIM_FREQ_GHZ, GB_FREQ_GHZ  # type: ignore
     from stats_recorder import get_simulation_logger  # type: ignore
 
 logger = logging.getLogger(__name__)
 attach_local_debug_filter(logger, lambda: False)
+
+
+@dataclass(frozen=True)
+class PimWeightDesc:
+    weight_id: str
+    storage_fmt: str  # ND / PIM-OPT / NZ(host-side NPU layout, must be unpacked before ND-style PIM write)
+    op: str           # q_proj/k_proj/v_proj/wo_proj/ffn_gate/ffn_up/ffn_down
+    rows: int         # logical matrix rows (already shard-local)
+    cols: int         # logical matrix cols
+    row_index_attr: str
+
+
+_PIM_WEIGHT_WRITE_OPS = frozenset({
+    'q_proj', 'k_proj', 'v_proj', 'wo_proj',
+    'ffn_gate', 'ffn_up', 'ffn_down',
+})
+
+_PIM_WEIGHT_ROW_INDEX_ATTR: Dict[str, str] = {
+    'q_proj': 'wq_row_index',
+    'k_proj': 'wk_row_index',
+    'v_proj': 'wv_row_index',
+    'wo_proj': 'wo_row_index',
+    'ffn_gate': 'w1_row_index',
+    'ffn_up': 'w3_row_index',
+    'ffn_down': 'w2_row_index',
+}
+
+
+def _require_positive_int(value: Any, *, field: str, node_name: str, weight_id: str) -> int:
+    out = int(value)
+    if out <= 0:
+        raise RuntimeError(
+            f"Invalid PIM weight metadata: field='{field}' must be > 0 for node='{node_name}' weight_id='{weight_id}', got {value!r}."
+        )
+    return out
+
+
+def _require_node_attrs_dict(node: Any) -> Dict[str, Any]:
+    attrs = getattr(node, 'attrs', None)
+    if not isinstance(attrs, dict):
+        raise RuntimeError(
+            f"PIM weight descriptor requires node.attrs to be a dict, but node='{getattr(node, 'name', '?')}' got {type(attrs).__name__}."
+        )
+    return attrs
+
+
+def _node_attr_int(attrs: Dict[str, Any], key: str, *, node_name: str, weight_id: str) -> int:
+    if key not in attrs:
+        raise RuntimeError(
+            f"Missing required attrs['{key}'] for node='{node_name}' weight_id='{weight_id}' when building PimWeightDesc."
+        )
+    return _require_positive_int(attrs[key], field=key, node_name=node_name, weight_id=weight_id)
+
+
+def make_pim_weight_desc_from_node(node: Any, storage_fmt: str) -> PimWeightDesc:
+    node_name = str(getattr(node, 'name', '') or '').strip()
+    weight_id = str(getattr(node, 'weight_id', '') or '').strip()
+    if not weight_id:
+        raise RuntimeError(
+            f"PIM weight descriptor requires a non-empty weight_id, but node='{node_name}' does not have one."
+        )
+
+    fmt = str(storage_fmt or '').strip().upper()
+    if fmt not in {'ND', 'PIM-OPT', 'NZ'}:
+        raise RuntimeError(
+            f"Unsupported PIM weight storage format '{storage_fmt}' for weight_id='{weight_id}'. Allowed=['ND', 'NZ', 'PIM-OPT']."
+        )
+
+    op = _normalize_pim_op(node_name)
+    if op not in _PIM_WEIGHT_WRITE_OPS:
+        raise RuntimeError(
+            f"Unsupported PIM weight op '{node_name}' normalized='{op}' for weight_id='{weight_id}'."
+        )
+
+    attrs = _require_node_attrs_dict(node)
+    dim = _node_attr_int(attrs, 'dim', node_name=node_name, weight_id=weight_id)
+    q_dim = int(attrs.get('q_dim', 0) or 0)
+    kv_dim = int(attrs.get('kv_dim', 0) or 0)
+    o_dim = int(attrs.get('o_dim', 0) or 0)
+    ffn_dim = int(attrs.get('ffn_dim', 0) or 0)
+
+    if op == 'q_proj':
+        rows, cols = _require_positive_int(q_dim, field='q_dim', node_name=node_name, weight_id=weight_id), dim
+    elif op == 'k_proj':
+        rows, cols = _require_positive_int(kv_dim, field='kv_dim', node_name=node_name, weight_id=weight_id), dim
+    elif op == 'v_proj':
+        rows, cols = _require_positive_int(kv_dim, field='kv_dim', node_name=node_name, weight_id=weight_id), dim
+    elif op == 'wo_proj':
+        rows, cols = dim, _require_positive_int(o_dim, field='o_dim', node_name=node_name, weight_id=weight_id)
+    elif op == 'ffn_gate':
+        rows, cols = _require_positive_int(ffn_dim, field='ffn_dim', node_name=node_name, weight_id=weight_id), dim
+    elif op == 'ffn_up':
+        rows, cols = _require_positive_int(ffn_dim, field='ffn_dim', node_name=node_name, weight_id=weight_id), dim
+    elif op == 'ffn_down':
+        rows, cols = dim, _require_positive_int(ffn_dim, field='ffn_dim', node_name=node_name, weight_id=weight_id)
+    else:
+        raise RuntimeError(
+            f"Internal error: no PimWeightDesc shape rule for op='{op}' weight_id='{weight_id}'."
+        )
+
+    return PimWeightDesc(
+        weight_id=weight_id,
+        storage_fmt=fmt,
+        op=op,
+        rows=int(rows),
+        cols=int(cols),
+        row_index_attr=_PIM_WEIGHT_ROW_INDEX_ATTR[op],
+    )
 
 def _file_signature(p: Path) -> str:
     try:
@@ -535,173 +636,6 @@ def _make_shared_model_dict(dim: int, n_heads: int, n_kv_heads: int, ffn_dim: in
     TP_param = 1
     return {'TP_param': torch.tensor(TP_param), 'dim': torch.tensor(dim), 'n_heads': torch.tensor(n_heads), 'n_kv_heads': torch.tensor(n_kv_heads), 'x': torch.zeros((1, 1, dim)), 'SANorm': torch.zeros(dim), 'FFNNorm': torch.zeros(dim), 'sa': torch.zeros((1, 1, dim)), 'h': torch.zeros((1, 1, dim)), 'out': torch.zeros((1, 1, dim)), 'wq': torch.zeros((dim // TP_param, dim)), 'wk': torch.zeros(head_dim * n_kv_heads, dim), 'wv': torch.zeros(head_dim * n_kv_heads, dim), 'xq': torch.zeros((1, 1, dim)), 'xk': torch.zeros((1, 1, head_dim * n_heads)), 'xv': torch.zeros((1, 1, head_dim * n_heads)), 'start_pos': torch.tensor(max(1, seqlen) - 1), 'cache_k': torch.zeros((1, seqlen, n_kv_heads, head_dim)), 'cache_v': torch.zeros((1, seqlen, n_kv_heads, head_dim)), 'scores': torch.zeros((1, n_heads, 1, seqlen)), 'output': torch.zeros((1, 1, dim)), 'wo': torch.zeros((dim // TP_param, dim)), 'w1': torch.zeros((ffn_dim // TP_param, dim)), 'w3': torch.zeros((ffn_dim // TP_param, dim)), 'w2': torch.zeros((dim // TP_param, ffn_dim)), 'ffn': torch.zeros((1, 1, dim))}
 
-def _generate_weight_read_trace(trace_path: Path, weight_bytes: int, dtype_bytes: int=2, gb_config: Optional[Dict[str, any]]=None, model_dict: Optional[Dict]=None) -> None:
-    if gb_config is None:
-        raise ValueError('Global Buffer config (gb_config) must be provided for weight read trace generation')
-    if model_dict is None:
-        raise ValueError('Model dictionary (model_dict) must be provided for weight read trace generation')
-    num_elements = max(0, weight_bytes // max(1, dtype_bytes))
-    if num_elements == 0:
-        with trace_path.open('w', encoding='utf-8') as f:
-            f.write('AiM EOC\n')
-        return
-    TransformerBlock = _get_transformer_block()
-    cfg: Dict[str, any] = dict(gb_config)
-    temp_trace = trace_path.parent / f'temp_{trace_path.name}'
-    args = _make_tb_args_from_pim(cfg, str(temp_trace))
-    args.only_trace = True
-    block = TransformerBlock(model_dict, args)
-    if hasattr(block, 'memory_mapping'):
-        block.memory_mapping()
-    block.file = trace_path.open('w', encoding='utf-8')
-    block.trace_file = str(trace_path)
-    DRAM_column = int(getattr(block, 'DRAM_column', cfg['DRAM_column']))
-    burst_length = int(getattr(block, 'burst_length', cfg['burst_length']))
-    num_banks = int(getattr(block, 'num_banks', cfg['num_banks']))
-    num_channels = int(getattr(block, 'num_channels', cfg['num_channels']))
-    total_banks = num_channels * num_banks
-    elements_per_bank = (num_elements + total_banks - 1) // total_banks
-    rows_per_bank = (elements_per_bank + DRAM_column - 1) // DRAM_column
-    bursts_per_full_row = max(1, DRAM_column // max(1, burst_length))
-    for channel in range(num_channels):
-        for bank in range(num_banks):
-            for row in range(rows_per_bank):
-                if row < rows_per_bank - 1:
-                    bursts_in_row = bursts_per_full_row
-                else:
-                    remaining_elems = elements_per_bank - (rows_per_bank - 1) * DRAM_column
-                    bursts_in_row = (remaining_elems + burst_length - 1) // burst_length
-                    if bursts_in_row <= 0:
-                        continue
-                size_elems = int(bursts_in_row * burst_length)
-                if hasattr(block, 'R_MEM_only_trace'):
-                    block.R_MEM_only_trace(channel, bank, row, size_elems)
-                else:
-                    raise RuntimeError('R_MEM_only_trace not available on TransformerBlock/PIM')
-    if hasattr(block, 'file') and block.file:
-        block.file.write('AiM EOC\n')
-        block.file.flush()
-        block.file.close()
-
-def _generate_weight_write_trace_to_pim(trace_path: Path, weight_bytes: int, pim_config: Dict[str, any], dtype_bytes: int=2, model_dict: Optional[Dict]=None) -> None:
-    if pim_config is None:
-        raise ValueError('PIM config must be provided for weight write trace generation')
-    if model_dict is None:
-        raise ValueError('Model dictionary (model_dict) must be provided for weight write trace generation')
-    TransformerBlock = _get_transformer_block()
-    temp_trace = trace_path.parent / f'temp_{trace_path.name}'
-    args = _make_tb_args_from_pim(pim_config, str(temp_trace))
-    args.only_trace = True
-    block = TransformerBlock(model_dict, args)
-    if hasattr(block, 'memory_mapping'):
-        block.memory_mapping()
-    num_elements = weight_bytes // dtype_bytes
-    DRAM_column = int(pim_config.get('DRAM_column', 256))
-    burst_length = int(pim_config.get('burst_length', 16))
-    num_banks = int(pim_config.get('num_banks', 8))
-    num_channels = int(pim_config.get('num_channels', 4))
-    total_banks = num_banks * num_channels
-    elements_per_bank = (num_elements + total_banks - 1) // total_banks
-    rows_per_bank = (elements_per_bank + DRAM_column - 1) // DRAM_column
-    block.file = trace_path.open('w', encoding='utf-8')
-    block.trace_file = str(trace_path)
-    channel_lst = list(range(num_channels))
-    for channel in channel_lst:
-        for bank in range(num_banks):
-            row_start = 0
-            for row in range(rows_per_bank):
-                if row < rows_per_bank - 1:
-                    bursts_in_row = DRAM_column // burst_length
-                else:
-                    remaining_elems = elements_per_bank - (rows_per_bank - 1) * DRAM_column
-                    bursts_in_row = (remaining_elems + burst_length - 1) // burst_length
-                    if bursts_in_row <= 0:
-                        continue
-                size_elems = int(bursts_in_row * burst_length)
-                if hasattr(block, 'W_MEM_only_trace'):
-                    block.W_MEM_only_trace(channel, bank, row, size_elems)
-                else:
-                    raise RuntimeError('W_MEM_only_trace not available on TransformerBlock/PIM')
-    if hasattr(block, 'file') and block.file:
-        block.file.write('AiM EOC\n')
-        block.file.flush()
-        block.file.close()
-    if temp_trace.exists():
-        temp_trace.unlink()
-
-def _simulate_weight_loading_latency(weight_bytes: int, pim_config_path: Path, gb_config_path: Path, ramulator_config_path: Path, dtype_bytes: int=2, use_cache: bool=True, keep_traces: bool=False, model_dict: Optional[Dict]=None) -> Tuple[float, float]:
-    if model_dict is None:
-        raise ValueError('Model dictionary must be provided for weight loading simulation')
-    cache_key = f"weight_load|{int(weight_bytes)}|{int(dtype_bytes)}|{_file_signature(pim_config_path)}|{_file_signature(gb_config_path)}|{_file_signature(ramulator_config_path)}"
-    if use_cache:
-        cached = _pim_cache.cache.get(hashlib.md5(cache_key.encode()).hexdigest())
-        if cached is not None:
-            logger.debug(str(f'[Weight Load Cache] Hit for {weight_bytes} bytes'))
-            return cached
-
-    if keep_traces:
-        temp_dir = Path('./debug_weight_traces')
-        temp_dir.mkdir(exist_ok=True)
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        trace_dir = temp_dir / f'weight_{weight_bytes}_{timestamp}'
-        trace_dir.mkdir(exist_ok=True)
-    else:
-        temp_dir = Path(tempfile.mkdtemp(prefix='weight_trace_'))
-        trace_dir = temp_dir
-    try:
-        pim_cfg = _load_memory_config(pim_config_path)
-        gb_cfg = _load_memory_config(gb_config_path)
-        read_trace = trace_dir / 'weight_read.trace'
-        logger.debug(str(f'[Weight Load] Generating READ trace from Global Buffer: {read_trace}'))
-        _generate_weight_read_trace(read_trace, weight_bytes, dtype_bytes, gb_cfg, model_dict)
-        if not read_trace.exists():
-            raise RuntimeError(f'Failed to generate READ trace: {read_trace}')
-        trace_size = read_trace.stat().st_size
-        logger.debug(str(f'[Weight Load] READ trace size: {trace_size} bytes'))
-        if trace_size < 1000:
-            with read_trace.open('r') as f:
-                lines = f.readlines()[:10]
-                logger.debug(str(f"[Weight Load] First lines of READ trace:\n{''.join(lines)}"))
-        logger.debug(str(f'[Weight Load] Running READ simulation...'))
-        read_cycles = _run_ramulator(read_trace, ramulator_config_path)
-        f_gb = GB_FREQ_GHZ if GB_FREQ_GHZ and GB_FREQ_GHZ > 0 else PIM_FREQ_GHZ
-        read_latency = float(read_cycles) / (f_gb * 1000000000) if f_gb > 0 else 0.0 #us
-        write_trace = trace_dir / 'weight_write.trace'
-        logger.debug(str(f'[Weight Load] Generating WRITE trace to PIM: {write_trace}'))
-        _generate_weight_write_trace_to_pim(write_trace, weight_bytes, pim_cfg, dtype_bytes, model_dict)
-        if not write_trace.exists():
-            raise RuntimeError(f'Failed to generate WRITE trace: {write_trace}')
-        trace_size = write_trace.stat().st_size
-        logger.debug(str(f'[Weight Load] WRITE trace size: {trace_size} bytes'))
-        if trace_size < 1000:
-            with write_trace.open('r') as f:
-                lines = f.readlines()[:10]
-                logger.debug(str(f"[Weight Load] First lines of WRITE trace:\n{''.join(lines)}"))
-        logger.debug(str(f'[Weight Load] Running WRITE simulation...'))
-        write_cycles = _run_ramulator(write_trace, ramulator_config_path)
-        f_pim = PIM_FREQ_GHZ
-        write_latency = float(write_cycles) / (f_pim * 1000000000) if f_pim > 0 else 0.0 #us
-        total_latency = (read_latency, write_latency)
-        logger.debug(str(f'[Weight Load] Read: {read_latency:.6e}s ({read_cycles} cycles)'))
-        logger.debug(str(f'[Weight Load] Write: {write_latency:.6e}s ({write_cycles} cycles)'))
-        if keep_traces:
-            logger.debug(str(f'[Weight Load] Traces saved to: {trace_dir}'))
-        if use_cache:
-            key_hash = hashlib.md5(cache_key.encode()).hexdigest()
-            _pim_cache.cache[key_hash] = total_latency
-            _pim_cache._save_cache()
-        return total_latency
-    except Exception as e:
-        logger.debug(str(f'[Weight Load] Error: {e}'))
-        if keep_traces:
-            logger.debug(str(f'[Weight Load] Debug traces preserved at: {trace_dir}'))
-        raise
-    finally:
-        if not keep_traces:
-            try:
-                shutil.rmtree(temp_dir, ignore_errors=True)
-            except Exception as e:
-                logger.debug(str(f'[Weight Load] Warning: Failed to cleanup {temp_dir}: {e}'))
 
 def _run_ramulator(trace_path: Path, ramulator_config: Path, timeout: int = 3000) -> int:
     """Run Ramulator2 on a trace file and return cycle count."""

@@ -1,2 +1,0 @@
-[submit] ERROR: Ramulator config not found: /var/spool/slurmd/algorithms/aim_simulator/example.yaml
-  Set PIM_RAMULATOR_CONFIG to an existing example.yaml (absolute path recommended).

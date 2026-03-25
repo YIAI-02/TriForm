@@ -1,0 +1,18 @@
+[info] CONFIG=./examples/evaluate_test_config.json
+[info] SWEEP_SCRIPT=./sweep_weight_suggest_params.py
+[info] MAIN=./main.py
+[info] OUTDIR=./output/ws_hpc
+[info] MODE=grid TRIALS=128 SEED=0 OBJECTIVE=total REPEAT=1
+[info] MODELS=qwen:1.8b llama:7b
+[info] PREFILLS=128 1024
+[info] DECODES=128 512 1024
+[info] BATCHES=1 8
+[info] HARDWARES=
+[info] TP_QKV= TP_FFN=
+[info] FORMAT_OUTER_MAX_ITERS=
+[info] FORMAT_INNER_MAX_BLOCKS=
+[info] COMBO_WORKERS=8 PARALLEL_GROUP_KEYS=model,prefill_len,decode_len,batch THREADS_PER_WORKER=0
+[info] common launch: python ./sweep_weight_suggest_params.py --config ./examples/evaluate_test_config.json --main ./main.py --python python --workdir . --mode grid --trials 128 --seed 0 --objective total --repeat 1 --debug --model qwen:1.8b llama:7b --batch 1 8 --prefill-len 128 1024 --decode-len 128 512 1024 
+[info] launching 8 parallel workers under ./output/ws_hpc/shards/8w
+[ok] worker 0 finished. log=./output/ws_hpc/shards/8w/worker_0.launcher.log
+[ok] worker 1 finished. log=./output/ws_hpc/shards/8w/worker_1.launcher.log

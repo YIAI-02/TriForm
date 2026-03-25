@@ -13,6 +13,6 @@ cd "$SLURM_SUBMIT_DIR"
 
 source ~/.bashrc
 conda activate triform310
-python3 sweep_hefthint.py   --mode grid   --gamma 0 0.2 0.4 0.6 --lambda_ 0 4 8 --eta 50 100 200 --objective total   --outdir ./output/sweep_hefthint_llama7b_1gpu4aim  --resume
+python3 sweep_hefthint.py   --mode grid   --gamma 0 0.2 0.4 0.6 --lambda_ 0 4 8 --eta 50 100 200 --objective total   --outdir ./output/sweep_hefthint_llama7b  --resume
 
 echo "Sweep done."

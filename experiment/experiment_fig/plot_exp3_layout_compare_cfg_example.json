@@ -1,0 +1,32 @@
+{
+  "layout_display_names": {
+    "nd_init": "ND baseline",
+    "nz_init": "NPU-OPT baseline",
+    "pim_opt_init": "PIM-OPT baseline",
+    "nd_opt": "ND optimized"
+  },
+  "panel_label_map": {
+    "128x128": "L0",
+    "128x512": "L1",
+    "128x1024": "L2",
+    "1024x128": "L3",
+    "1024x512": "L4",
+    "1024x1024": "L5"
+  },
+  "panel_label_position": "xlabel",
+  "subplot_spacing": {
+    "panel_width": 3.05,
+    "panel_height": 3.35,
+    "wspace": 0.04,
+    "hspace": 0.12,
+    "inner_hspace": 0.02
+  },
+  "margins": {
+    "left": 0.038,
+    "right": 0.996,
+    "top": 0.845,
+    "bottom": 0.085
+  },
+  "xtick_rotation": 0,
+  "legend_ncol": 5
+}

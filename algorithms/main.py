@@ -36,6 +36,41 @@ from stats_recorder import reset_simulation_logger
 logger = logging.getLogger(__name__)
 attach_local_debug_filter(logger, lambda: True)
 
+
+def _normalize_weight_storage_fmt(value: Any, *, default: str = 'ND') -> str:
+    raw = str(default if value is None else value).strip().lower()
+    raw = raw.replace('_', '-').replace(' ', '')
+    if raw in ('', 'nd', 'dense', 'normal-dense', 'all-nd'):
+        return 'ND'
+    if raw in ('nz', 'npu-opt', 'npuopt', 'npu-optimized', 'all-nz'):
+        return 'NZ'
+    if raw in ('pim-opt', 'pimopt', 'pim-optimized', 'all-pim-opt'):
+        return 'PIM-OPT'
+    raise ValueError(
+        f"Unknown weight storage format '{value}'. Expected one of: nd, nz, pim-opt"
+    )
+
+
+
+def _weight_map_format_counts(weight_ids: List[str], fmt_map: Dict[str, str]) -> Dict[str, int]:
+    counts = {'ND': 0, 'NZ': 0, 'PIM-OPT': 0}
+    fm = dict(fmt_map or {})
+    for wid in weight_ids:
+        try:
+            fmt = _normalize_weight_storage_fmt(fm.get(str(wid), 'ND'))
+        except Exception:
+            fmt = 'ND'
+        counts[fmt] += 1
+    return counts
+
+
+def _weight_map_summary(weight_ids: List[str], fmt_map: Dict[str, str]) -> Dict[str, Any]:
+    return {
+        'total_weights': int(len(weight_ids)),
+        'explicit_weights': int(len(dict(fmt_map or {}))),
+        'counts': _weight_map_format_counts(weight_ids, fmt_map),
+    }
+
 # Default report paths (used when config/CLI doesn't override)
 ALL_PASSES_RESULT_PATH = "./output/all_passes.json"
 BEST_PASS_SUMMARY_PATH = "./output/best_summary.json"
@@ -715,52 +750,209 @@ def mapping_diff_ratio(a: Dict[str, str], b: Dict[str, str]) -> float:
     diff = sum((1 for k in keys if a.get(k) != b.get(k)))
     return diff / float(len(keys))
 
-def _strip_layer_prefix(wid: str) -> str:
-    """Map a per-layer weight_id to a cross-layer block key.
+_LAYER_PREFIX_RE = re.compile(r"^L(?P<layer>\d+)_(?P<rest>.*)$", re.IGNORECASE)
+
+def _as_bool(value: Any, *, default: bool = False) -> bool:
+    if value is None:
+        return bool(default)
+    if isinstance(value, bool):
+        return bool(value)
+    if isinstance(value, (int, float)):
+        return bool(value)
+    s = str(value).strip().lower()
+    if s in ('1', 'true', 'yes', 'y', 'on'):
+        return True
+    if s in ('0', 'false', 'no', 'n', 'off', '', 'none', 'null'):
+        return False
+    return bool(default)
+
+
+def _coerce_positive_int(value: Any, *, default: int = 0) -> int:
+    try:
+        iv = int(value)
+    except Exception:
+        try:
+            iv = int(default)
+        except Exception:
+            iv = 0
+    return iv if iv > 0 else 0
+
+
+def _normalize_block_span_overrides(raw: Any) -> Dict[str, int]:
+    """Normalize layer-span overrides such as {"W1": 8, "W2": 4}."""
+    parsed: Any = raw
+    if parsed is None:
+        return {}
+    if isinstance(parsed, str):
+        s = str(parsed).strip()
+        if not s:
+            return {}
+        try:
+            parsed = json.loads(s)
+        except Exception:
+            parsed = {}
+            for item in s.split(','):
+                token = str(item).strip()
+                if not token or ':' not in token:
+                    continue
+                k, v = token.split(':', 1)
+                parsed[str(k).strip()] = v
+    if not isinstance(parsed, dict):
+        return {}
+
+    out: Dict[str, int] = {}
+    for k, v in parsed.items():
+        key = str(k or '').strip().upper().replace(' ', '')
+        span = _coerce_positive_int(v, default=0)
+        if key and span > 0:
+            out[key] = int(span)
+    return out
+
+
+def _split_layer_prefixed_weight_id(wid: str) -> Tuple[int | None, str]:
+    """Return (layer_idx, rest_name) for layer-scoped weight ids."""
+    if not wid:
+        return (None, "")
+    s = str(wid)
+    m = _LAYER_PREFIX_RE.match(s)
+    if not m:
+        return (None, s)
+    try:
+        layer_idx = int(m.group('layer'))
+    except Exception:
+        layer_idx = None
+    return (layer_idx, m.group('rest') or "")
+
+
+def _strip_weight_shard_suffix(name: str) -> str:
+    """Strip trailing tensor-parallel shard suffix: ..._s0 / ..._S1."""
+    s = str(name or "")
+    return re.sub(r"_[sS]\d+$", "", s)
+
+
+def _base_weight_family(name: str) -> str:
+    """Return the coarse weight family name used for override lookup.
 
     Examples:
-        L12_W1_S0    -> W1_S0
-        L3_E2_W1     -> E2_W1
-        WTE          -> WTE
+        W1_s0   -> W1
+        E2_W1   -> W1
+        WQ_s1   -> WQ
     """
-    if not wid:
-        return ""
-    s = str(wid)
-    m = re.match(r"^L\d+_(.*)$", s)
-    s2 = m.group(1) if m else s
-    # Strip head shard suffix: ..._S<digits>
-    s2 = re.sub(r"_S\d+$", "", s2)
-    return s2
+    base = _strip_weight_shard_suffix(str(name or ""))
+    su = str(base).upper()
+    m = re.search(r"(WQ|WK|WV|WO|W1|W2|W3)(?:_|$)", su)
+    if m:
+        return str(m.group(1))
+    return su
 
-def _build_weight_blocks(weight_ids: List[str]) -> Dict[str, List[str]]:
-    """Return {block_key: [wid,...]} using layer-prefix stripping."""
+
+def _resolve_block_layer_span(
+    weight_name: str,
+    *,
+    default_layer_span: int,
+    layer_span_by_weight: Dict[str, int] | None,
+) -> int:
+    overrides = dict(layer_span_by_weight or {})
+    if overrides:
+        exact = str(weight_name or '').strip().upper().replace(' ', '')
+        no_shard = _strip_weight_shard_suffix(exact).upper()
+        family = _base_weight_family(weight_name)
+        for key in (exact, no_shard, family):
+            span = overrides.get(str(key), None)
+            if span is not None:
+                return _coerce_positive_int(span, default=0)
+    return _coerce_positive_int(default_layer_span, default=0)
+
+
+def _block_local_weight_name(wid: str, *, preserve_shards: bool = False) -> str:
+    _layer_idx, rest = _split_layer_prefixed_weight_id(wid)
+    base = rest if rest else str(wid or "")
+    if not preserve_shards:
+        base = _strip_weight_shard_suffix(base)
+    return str(base)
+
+
+def _weight_block_key(
+    wid: str,
+    *,
+    layer_span: int = 0,
+    layer_span_by_weight: Dict[str, int] | None = None,
+    preserve_shards: bool = False,
+) -> str:
+    """Map a per-layer weight_id to a block key. """
+    layer_idx, rest = _split_layer_prefixed_weight_id(wid)
+    local_name = _block_local_weight_name(wid, preserve_shards=bool(preserve_shards))
+    if layer_idx is None:
+        return str(local_name)
+
+    span = _resolve_block_layer_span(
+        str(rest or local_name),
+        default_layer_span=int(layer_span or 0),
+        layer_span_by_weight=layer_span_by_weight,
+    )
+    if span <= 0:
+        return str(local_name)
+
+    lo = (int(layer_idx) // int(span)) * int(span)
+    hi = int(lo) + int(span) - 1
+    if int(span) == 1:
+        return f"L{int(layer_idx):04d}_{local_name}"
+    return f"L{int(lo):04d}-{int(hi):04d}_{local_name}"
+
+
+def _build_weight_blocks(
+    weight_ids: List[str],
+    *,
+    layer_span: int = 0,
+    layer_span_by_weight: Dict[str, int] | None = None,
+    preserve_shards: bool = False,
+) -> Dict[str, List[str]]:
+    """Return {block_key: [wid,...]} using optional layer-range grouping."""
     blocks: Dict[str, List[str]] = {}
     for wid in weight_ids:
-        key = _strip_layer_prefix(wid)
-        blocks.setdefault(key, []).append(wid)
+        key = _weight_block_key(
+            wid,
+            layer_span=int(layer_span or 0),
+            layer_span_by_weight=layer_span_by_weight,
+            preserve_shards=bool(preserve_shards),
+        )
+        blocks.setdefault(str(key), []).append(str(wid))
     return blocks
 
-def _dominant_block_fmt(npu_cnt: int, pim_cnt: int, nd_margin: float) -> str:
-    """Decide block format based on reload/miss counts.
+
+def _normalize_reload_count_mode(value: Any) -> str:
+    s = str(value or 'per_device').strip().lower().replace('-', '_').replace(' ', '_')
+    if s in ('raw', 'sum', 'total'):
+        return 'raw'
+    if s in ('per_device', 'avg_per_device', 'normalized', 'normalize', 'fair'):
+        return 'per_device'
+    if s in ('soft_per_device', 'soft', 'alpha'):
+        return 'soft_per_device'
+    raise ValueError(
+        f"Unknown format_reload_count_mode='{value}'. "
+        f"Expected 'raw', 'per_device', or 'soft_per_device'."
+    )
+
+
+def _dominant_block_fmt(npu_cnt: float, pim_cnt: float, nd_margin: float) -> str:
+    """Decide block format based on normalized reload pressure.
 
     nd_margin:
         A *relative* tolerance in [0,1]. If the NPU/PIM difference is within
         this band, we keep ND.
     """
-    npu_cnt = int(npu_cnt or 0)
-    pim_cnt = int(pim_cnt or 0)
-    total = npu_cnt + pim_cnt
-    if total <= 0:
+    npu_cnt = float(npu_cnt or 0.0)
+    pim_cnt = float(pim_cnt or 0.0)
+    total = float(npu_cnt + pim_cnt)
+    if total <= 0.0:
         return "ND"
-    # "差不多" band: keep ND.
-    if abs(npu_cnt - pim_cnt) <= float(max(0.0, nd_margin)) * float(total):
+    if abs(float(npu_cnt - pim_cnt)) <= float(max(0.0, nd_margin)) * float(total):
         return "ND"
-    return "NPU_OPT" if npu_cnt > pim_cnt else "PIM_OPT"
-
+    return "NZ" if npu_cnt > pim_cnt else "PIM-OPT"
 
 def _sa_make_neighbor_map(base_map: Dict[str, str], weight_ids: List[str], flip_prob: float=0.15) -> Dict[str, str]:
 
-    CAND = ('ND', 'NPU_OPT', 'PIM_OPT')
+    CAND = ('ND', 'NZ', 'PIM-OPT')
     if not weight_ids:
         return dict(base_map)
     out = dict(base_map)
@@ -778,6 +970,7 @@ def _sa_make_neighbor_map(base_map: Dict[str, str], weight_ids: List[str], flip_
         out[wid] = random.choice(choices)
     return out
 
+
 def run(cfg: Dict):
     #--------------------------------------------
     # 0: init all hardware settings
@@ -785,6 +978,10 @@ def run(cfg: Dict):
     result_dir = Path(cfg.get('result_dir') or _build_result_dir(cfg, './output/weight_suggestions'))
     result_dir.mkdir(parents=True, exist_ok=True)
     weight_format_path = Path(cfg.get('weight_format_json') or (result_dir / 'weight_storage_suggestion.json'))
+    compare_path = Path(
+        cfg.get('weight_format_compare_json')
+        or weight_format_path.with_name(weight_format_path.stem + '_compare' + weight_format_path.suffix)
+    )
     cluster = demo_cluster(cfg)
     cfg['topology'] = getattr(cluster, 'topology', cfg.get('topology', None))
     pim_config_path = Path(cfg['pim_config_path'])
@@ -793,24 +990,43 @@ def run(cfg: Dict):
     prefill_len = int(cfg.get('prefill_len', 128))
     batch = int(cfg.get('batch', 1))
     graph, shape = build_graph(cfg)
-    model_dict = _make_shared_model_dict(dim=int(getattr(shape, 'dim', 128)), n_heads=int(getattr(shape, 'n_heads', 1)), n_kv_heads=int(getattr(shape, 'n_kv_heads', 1)), ffn_dim=int(getattr(shape, 'ffn_dim', 512)), seqlen=prefill_len)
+    model_dict = _make_shared_model_dict(
+        dim=int(getattr(shape, 'dim', 128)),
+        n_heads=int(getattr(shape, 'n_heads', 1)),
+        n_kv_heads=int(getattr(shape, 'n_kv_heads', 1)),
+        ffn_dim=int(getattr(shape, 'ffn_dim', 512)),
+        seqlen=prefill_len,
+    )
     sim_log_file = cfg.get('simulation_log_file', str(result_dir / 'pim_simulation.txt'))
     npu_backend = _normalize_npu_backend(cfg.get('npu_backend', None))
     if _cluster_type_count(cluster, 'npu') <= 0:
         npu_backend = None
     pim_fast_mode = bool(cfg.get('pim_fast_mode', False))
-    cost = CostModel(cluster, dtype=cfg.get('dtype', 'fp16'), pim_config_path=pim_config_path, gb_config_path=gb_config_path, ramulator_config_path=ramulator_config_path,  simulation_log_file=sim_log_file, debug_traces=False, model_dict=model_dict, npu_backend=npu_backend, pim_fast_mode=pim_fast_mode, tp_qkv=int(cfg.get('tp_qkv', 1) or 1), tp_ffn=int(cfg.get('tp_ffn', 1) or 1))
+    cost = CostModel(
+        cluster,
+        dtype=cfg.get('dtype', 'fp16'),
+        pim_config_path=pim_config_path,
+        gb_config_path=gb_config_path,
+        ramulator_config_path=ramulator_config_path,
+        simulation_log_file=sim_log_file,
+        debug_traces=False,
+        model_dict=model_dict,
+        npu_backend=npu_backend,
+        pim_fast_mode=pim_fast_mode,
+        tp_qkv=int(cfg.get('tp_qkv', 1) or 1),
+        tp_ffn=int(cfg.get('tp_ffn', 1) or 1),
+    )
     cost.logger.start_simulation()
+
     fmt_map: Dict[str, str] = {}
-    prev_total: float|None = None
-    prev_map: Dict[str, str] = {}
-    best_total: float|None = None
+    best_total: float | None = None
     best_map: Dict[str, str] = {}
     best_pass: int = -1
-    last_prefill = 0.0
-    last_decode = 0.0
     all_pass_records: List[Dict] = []
     buffer_mgr = GlobalMemoryManager()
+    search_start_mode = 'ND'
+    compare_only_modes = ['NZ', 'PIM-OPT']
+
     # Choose scheduler class for the tuning run (default: HEFT).
     algo_raw = cfg.get('algo', 'heft')
     if isinstance(algo_raw, list):
@@ -848,7 +1064,7 @@ def run(cfg: Dict):
 
     kv_place = _infer_kv_place_from_label(label)
     graph_kv = _apply_kv_place_constraints(graph, kv_place)
-    
+
     # ------------------------------------------------------------
     # 1: block-CD + 2-layer BFS/beam search
     # ------------------------------------------------------------
@@ -859,16 +1075,29 @@ def run(cfg: Dict):
     nd_margin_init = float(cfg.get('format_nd_margin_init', 0.60) or 0.0)
     nd_margin_decay = float(cfg.get('format_nd_margin_decay', 0.85) or 0.0)
     nd_margin_min = float(cfg.get('format_nd_margin_min', 0.05) or 0.0)
+    block_layer_span = int(cfg.get('format_block_layer_span', 8) or 0)
+    reload_count_mode_cfg = cfg.get('format_reload_count_mode', None)
+    if reload_count_mode_cfg is None and ('format_normalize_reload_by_device_count' in cfg):
+        reload_count_mode_cfg = 'per_device' if bool(cfg.get('format_normalize_reload_by_device_count')) else 'raw'
+    reload_count_alpha = float(cfg.get('format_reload_device_count_alpha', 1.0) or 1.0)
+    reload_count_mode = _normalize_reload_count_mode(reload_count_mode_cfg)
+    type_device_counts = {
+        'npu': max(1, _cluster_type_count(cluster, 'npu')),
+        'pim': max(1, _cluster_type_count(cluster, 'pim')),
+    }
 
     # Stable blocks built from model graph weight ids.
     all_wids = sorted({str(n.weight_id) for n in graph.nodes.values() if getattr(n, 'weight_id', None)})
-    blocks = _build_weight_blocks(all_wids)
+    blocks = _build_weight_blocks(all_wids, layer_span=block_layer_span)
 
     logger.debug(
         f"[AL] init: weights={len(all_wids)} blocks={len(blocks)} "
         f"outer_max={outer_max} inner_max_blocks={('inf' if not inner_max_blocks else int(inner_max_blocks))} "
         f"nd_margin_init={nd_margin_init:.3f} decay={nd_margin_decay:.3f} min={nd_margin_min:.3f} "
-        f"inner_eps={inner_improve_eps:g} outer_stop_eps={outer_stop_eps:g}"
+        f"inner_eps={inner_improve_eps:g} outer_stop_eps={outer_stop_eps:g} "
+        f"block_layer_span={block_layer_span} reload_count_mode={reload_count_mode} "
+        f"device_counts(npu={type_device_counts['npu']}, pim={type_device_counts['pim']}) "
+        f"search_start_mode={search_start_mode} compare_only_modes={compare_only_modes}"
     )
 
     def _normalize_wlc(wstats: Dict) -> Dict[str, Dict[str, int]]:
@@ -881,17 +1110,31 @@ def run(cfg: Dict):
                 out[str(wid)] = {}
         return out
 
-    def _block_reload_counts(wlc: Dict[str, Dict[str, int]]) -> Dict[str, Tuple[int, int]]:
-        """Return {block_key: (npu_reload, pim_reload)} aggregated across layers."""
-        out: Dict[str, Tuple[int, int]] = {}
+    def _normalize_reload_count(dev_type: str, raw_cnt: int | float) -> float:
+        value = float(raw_cnt or 0.0)
+
+        if reload_count_mode == 'per_device':
+            denom = float(max(1, int(type_device_counts.get(str(dev_type), 1) or 1)))
+            return value / denom
+
+        if reload_count_mode == 'soft_per_device':
+            denom = float(max(1, int(type_device_counts.get(str(dev_type), 1) or 1)))
+            alpha = max(0.0, float(reload_count_alpha))
+            return value / (denom ** alpha)
+
+        return value
+
+    def _block_reload_counts(wlc: Dict[str, Dict[str, int]]) -> Dict[str, Tuple[float, float]]:
+        """Return {block_key: (npu_pressure, pim_pressure)} aggregated across blocks."""
+        out: Dict[str, Tuple[float, float]] = {}
         for bkey, wids in blocks.items():
-            npu = 0
-            pim = 0
+            npu = 0.0
+            pim = 0.0
             for w in wids:
                 c = wlc.get(str(w), {}) or {}
-                npu += int(c.get('npu', 0) or 0)
-                pim += int(c.get('pim', 0) or 0)
-            out[str(bkey)] = (int(npu), int(pim))
+                npu += _normalize_reload_count('npu', c.get('npu', 0) or 0)
+                pim += _normalize_reload_count('pim', c.get('pim', 0) or 0)
+            out[str(bkey)] = (float(npu), float(pim))
         return out
 
     def _apply_block_fmt(map_in: Dict[str, str], bkey: str, fmt: str) -> Dict[str, str]:
@@ -912,6 +1155,9 @@ def run(cfg: Dict):
         if not wids:
             return 'ND'
         return str((map_in or {}).get(str(wids[0]), 'ND'))
+
+    def _map_stats(map_in: Dict[str, str]) -> Dict[str, Any]:
+        return _weight_map_summary(all_wids, map_in)
 
     def _assign_blocks(
         map_in: Dict[str, str],
@@ -945,11 +1191,14 @@ def run(cfg: Dict):
 
     def _record(pass_id: int, total: float, prefill_t: float, decode_t: float, prefill_ser: Any, decode_ser: Any, fm: Dict[str, str], wstats: Dict, *, note: str):
         all_pass_records.append({
+            'search_format': str(search_start_mode),
+            'role': 'search',
             'pass': int(pass_id),
             'note': str(note),
             'times': {'prefill': float(prefill_t), 'decode': float(decode_t), 'total': float(total)},
             'schedules': {'prefill': prefill_ser, 'decode_steps': decode_ser},
             'formats': dict(fm or {}),
+            'format_summary': _map_stats(fm),
             'weights': dict(wstats or {}),
             'pim_trace': list(getattr(getattr(cost, 'logger', None), 'pim_trace', []) or []),
         })
@@ -965,7 +1214,7 @@ def run(cfg: Dict):
         *,
         sweep_id: int,
     ) -> Tuple[Dict[str, str], float, float, float, Any, Any, Dict]:
-        """Inner sweep: try per-block format flips (NPU_OPT->ND->PIM_OPT)."""
+        """Inner sweep: try per-block format flips (NZ->ND->PIM-OPT)."""
         cur_map = dict(map_in or {})
         cur_total = float(base_total)
         cur_prefill = float(base_prefill)
@@ -977,14 +1226,14 @@ def run(cfg: Dict):
         wlc = _normalize_wlc(cur_wstats)
         blk_cnt = _block_reload_counts(wlc)
 
-        # Candidate blocks: stored as NPU_OPT but used mostly on PIM, or vice versa.
-        candidates: List[Tuple[int, int, str]] = []  # (severity, total_cnt, bkey)
+        # Candidate blocks: stored as NZ but used mostly on PIM, or vice versa.
+        candidates: List[Tuple[float, float, str]] = []  # (severity, total_cnt, bkey)
         for bkey, (npu, pim) in blk_cnt.items():
             fmt = _current_block_fmt(cur_map, bkey)
-            if fmt == 'NPU_OPT' and pim > npu:
-                candidates.append((int(pim - npu), int(npu + pim), str(bkey)))
-            elif fmt == 'PIM_OPT' and npu > pim:
-                candidates.append((int(npu - pim), int(npu + pim), str(bkey)))
+            if fmt == 'NZ' and pim > npu:
+                candidates.append((float(pim - npu), float(npu + pim), str(bkey)))
+            elif fmt == 'PIM-OPT' and npu > pim:
+                candidates.append((float(npu - pim), float(npu + pim), str(bkey)))
 
         # Try the most "wrong" blocks first.
         candidates.sort(key=lambda x: (-x[0], -x[1], x[2]))
@@ -1007,11 +1256,11 @@ def run(cfg: Dict):
             tried += 1
 
             fmt0 = _current_block_fmt(cur_map, bkey)
-            # Two-layer BFS along the line: NPU_OPT -> ND -> PIM_OPT (or reverse)
-            if fmt0 == 'NPU_OPT':
-                fmt_chain = ['ND', 'PIM_OPT']
-            elif fmt0 == 'PIM_OPT':
-                fmt_chain = ['ND', 'NPU_OPT']
+            # Two-layer BFS along the line: NZ -> ND -> PIM-OPT (or reverse)
+            if fmt0 == 'NZ':
+                fmt_chain = ['ND', 'PIM-OPT']
+            elif fmt0 == 'PIM-OPT':
+                fmt_chain = ['ND', 'NZ']
             else:
                 continue
 
@@ -1021,7 +1270,7 @@ def run(cfg: Dict):
                 _npu_r, _pim_r = 0, 0
             logger.debug(
                 f"[AL] inner{sweep_id}: try#{tried}/{len(candidates)} "
-                f"block={bkey} fmt0={fmt0} reload(npu={int(_npu_r)}, pim={int(_pim_r)}) "
+                f"block={bkey} fmt0={fmt0} reload(npu={float(_npu_r):.3f}, pim={float(_pim_r):.3f}) "
                 f"chain={fmt_chain} cur_total={cur_total:.6f}s"
             )
 
@@ -1073,52 +1322,55 @@ def run(cfg: Dict):
         return (cur_map, cur_total, cur_prefill, cur_decode, cur_prefill_ser, cur_decode_ser, cur_wstats)
 
     # -------------------------------
-    # outer iteration 0: all weights ND
+    # ND is the only real search start.
     # -------------------------------
     fmt_map = {}
-    logger.debug(f"[AL] outer0: start (all weights ND)")
+    logger.debug(f"[AL][{search_start_mode}] outer0: start (all weights ND)")
     total_time0, prefill_time0, decode_time0, prefill_time0_ser, decode_time0_ser, wst0 = _evaluate_map(fmt_map, tag='outer0_all_nd')
     logger.debug(
-        f"[AL] outer0: done total={float(total_time0):.6f}s prefill={float(prefill_time0):.6f}s decode={float(decode_time0):.6f}s"
+        f"[AL][{search_start_mode}] outer0: done total={float(total_time0):.6f}s prefill={float(prefill_time0):.6f}s decode={float(decode_time0):.6f}s"
     )
     _record(0, total_time0, prefill_time0, decode_time0, prefill_time0_ser, decode_time0_ser, fmt_map, wst0, note='outer0_all_nd')
+
+    best_total = float(total_time0)
+    best_map = dict(fmt_map)
+    best_pass = 0
 
     # Initial block assignment from outer0 reload statistics (wide ND band).
     wlc0 = _normalize_wlc(wst0)
     fmt_map = _assign_blocks(fmt_map, wlc0, nd_margin=nd_margin_init, only_if_current_nd=False)
-    n_npu0 = sum((1 for v in (fmt_map or {}).values() if str(v) == 'NPU_OPT'))
-    n_pim0 = sum((1 for v in (fmt_map or {}).values() if str(v) == 'PIM_OPT'))
+    n_npu0 = sum((1 for v in (fmt_map or {}).values() if _normalize_weight_storage_fmt(v) == 'NZ'))
+    n_pim0 = sum((1 for v in (fmt_map or {}).values() if _normalize_weight_storage_fmt(v) == 'PIM-OPT'))
     logger.debug(
-        f"[AL] outer0->outer1: initial assign explicit_weights={len(fmt_map)} "
-        f"(NPU_OPT={n_npu0}, PIM_OPT={n_pim0}, ND_default={max(0, len(all_wids) - len(fmt_map))})"
+        f"[AL][{search_start_mode}] outer0->outer1: initial assign explicit_weights={len(fmt_map)} "
+        f"(NZ={n_npu0}, PIM-OPT={n_pim0}, ND_default={max(0, len(all_wids) - len(fmt_map))})"
     )
 
     # -------------------------------
     # outer iteration 1: baseline + inner sweep
     # -------------------------------
     logger.debug(
-        f"[AL] outer1: start baseline (explicit_weights={len(fmt_map)} / total_weights={len(all_wids)})"
+        f"[AL][{search_start_mode}] outer1: start baseline (explicit_weights={len(fmt_map)} / total_weights={len(all_wids)})"
     )
-    total_time1, prefill_time1, deocde_time1, prefill_time1_ser, decode_time1_ser, wst1 = _evaluate_map(fmt_map, tag='outer1_baseline')
+    total_time1, prefill_time1, decode_time1, prefill_time1_ser, decode_time1_ser, wst1 = _evaluate_map(fmt_map, tag='outer1_baseline')
     logger.debug(
-        f"[AL] outer1: baseline total={float(total_time1):.6f}s prefill={float(prefill_time1):.6f}s decode={float(deocde_time1):.6f}s"
+        f"[AL][{search_start_mode}] outer1: baseline total={float(total_time1):.6f}s prefill={float(prefill_time1):.6f}s decode={float(decode_time1):.6f}s"
     )
     outer1_base_total = float(total_time1)
     outer1_base_map = dict(fmt_map)
-    (fmt_map, total_time1, prefill_time1, deocde_time1, prefill_time1_ser, decode_time1_ser, wst1) = _inner_sweep(
-        fmt_map, total_time1, prefill_time1, deocde_time1, prefill_time1_ser, decode_time1_ser, wst1, sweep_id=1,
+    (fmt_map, total_time1, prefill_time1, decode_time1, prefill_time1_ser, decode_time1_ser, wst1) = _inner_sweep(
+        fmt_map, total_time1, prefill_time1, decode_time1, prefill_time1_ser, decode_time1_ser, wst1, sweep_id=1,
     )
     logger.debug(
-        f"[AL] outer1: after inner total={float(total_time1):.6f}s "
+        f"[AL][{search_start_mode}] outer1: after inner total={float(total_time1):.6f}s "
         f"(delta={float(total_time1) - outer1_base_total:+.6f}s, map_diff={mapping_diff_ratio(outer1_base_map, fmt_map):.3f})"
     )
-    _record(1, total_time1, prefill_time1, deocde_time1, prefill_time1_ser, decode_time1_ser, fmt_map, wst1, note='outer1_after_inner')
+    _record(1, total_time1, prefill_time1, decode_time1, prefill_time1_ser, decode_time1_ser, fmt_map, wst1, note='outer1_after_inner')
 
-    best_total = float(total_time1)
-    best_map = dict(fmt_map)
-    best_pass = 1
-    last_prefill = float(prefill_time1)
-    last_decode = float(deocde_time1)
+    if best_total is None or float(total_time1) < float(best_total):
+        best_total = float(total_time1)
+        best_map = dict(fmt_map)
+        best_pass = 1
 
     prev_outer_total = float(total_time1)
     prev_outer_map = dict(fmt_map)
@@ -1141,18 +1393,18 @@ def run(cfg: Dict):
             except Exception:
                 changed = -1
             logger.debug(
-                f"[AL] outer{outer_it}: start nd_margin={nd_margin:.3f} outer_step_changed_weights={changed} "
+                f"[AL][{search_start_mode}] outer{outer_it}: start nd_margin={nd_margin:.3f} outer_step_changed_weights={changed} "
                 f"diff_ratio={diff_ratio:.3f} prev_total={float(prev_outer_total):.6f}s"
             )
 
-        # If nothing changes in the outer step, we can stop.
+        # If nothing changes in the outer step, future tighter margins may still split current ND blocks.
         if diff_ratio == 0.0:
-            logger.debug(f"[AL] outer{outer_it}: no ND blocks to split (nd_margin={nd_margin:.3f}); stop.")
-            break
+            logger.debug(f"[AL][{search_start_mode}] outer{outer_it}: no ND blocks to split (nd_margin={nd_margin:.3f}); continue.")
+            continue
 
         total_time_k, prefill_time_k, decode_time_k, prefill_time_k_ser, decode_time_k_ser, wst_k = _evaluate_map(cand_map, tag=f'outer{outer_it}_baseline')
         logger.debug(
-            f"[AL] outer{outer_it}: baseline total={float(total_time_k):.6f}s prefill={float(prefill_time_k):.6f}s decode={float(decode_time_k):.6f}s"
+            f"[AL][{search_start_mode}] outer{outer_it}: baseline total={float(total_time_k):.6f}s prefill={float(prefill_time_k):.6f}s decode={float(decode_time_k):.6f}s"
         )
         outer_k_base_total = float(total_time_k)
         outer_k_base_map = dict(cand_map)
@@ -1163,14 +1415,14 @@ def run(cfg: Dict):
         # IMPORTANT: use the post-inner-sweep total for decisions/records.
         total_time_k = float(total_k)
         logger.debug(
-            f"[AL] outer{outer_it}: after inner total={float(total_time_k):.6f}s "
+            f"[AL][{search_start_mode}] outer{outer_it}: after inner total={float(total_time_k):.6f}s "
             f"(delta={float(total_time_k) - outer_k_base_total:+.6f}s, map_diff={mapping_diff_ratio(outer_k_base_map, cand_map):.3f})"
         )
 
         # Stop if the new outer baseline is worse than the previous outer baseline.
         if float(total_time_k) > float(prev_outer_total) + float(outer_stop_eps):
             logger.debug(
-                f"[AL] outer{outer_it}: total {total_time_k:.6f}s is worse than prev {prev_outer_total:.6f}s; stop."
+                f"[AL][{search_start_mode}] outer{outer_it}: total {total_time_k:.6f}s is worse than prev {prev_outer_total:.6f}s; stop."
             )
             break
 
@@ -1178,8 +1430,6 @@ def run(cfg: Dict):
         prev_outer_total = float(total_time_k)
         prev_outer_map = dict(cand_map)
         prev_wstats = dict(wst_k)
-        last_prefill = float(prefill_time_k)
-        last_decode = float(decode_time_k)
         _record(outer_it, total_time_k, prefill_time_k, decode_time_k, prefill_time_k_ser, decode_time_k_ser, cand_map, wst_k, note=f'outer{outer_it}_after_inner')
 
         if best_total is None or float(total_time_k) < float(best_total):
@@ -1187,24 +1437,138 @@ def run(cfg: Dict):
             best_map = dict(cand_map)
             best_pass = int(outer_it)
 
-    # Persist best map and reports (same artifacts as legacy mode).
-    os.makedirs(os.path.dirname(weight_format_path), exist_ok=True)
+    best_rec: Dict[str, Any]
+    improvements: List[Dict[str, Any]] = []
+    if all_pass_records:
+        best_idx = min(range(len(all_pass_records)), key=lambda i: float(all_pass_records[i]['times']['total']))
+        best_rec = dict(all_pass_records[best_idx])
+        best_total_rec = float(best_rec['times']['total'])
+        best_map = dict(best_rec.get('formats') or {})
+        best_pass = int(best_rec.get('pass', best_pass))
+        for rec in all_pass_records:
+            total_time = float(rec['times']['total'])
+            delta = float(total_time - best_total_rec)
+            pct = delta / total_time * 100.0 if total_time > 0 else 0.0
+            improvements.append({
+                'pass': rec.get('pass', -1),
+                'total_time': float(total_time),
+                'delta_seconds_vs_best': float(delta),
+                'delta_percent_vs_that_pass': float(pct),
+            })
+    else:
+        best_total_rec = float(best_total or 0.0)
+        best_rec = {
+            'search_format': str(search_start_mode),
+            'role': 'search',
+            'pass': int(best_pass),
+            'note': 'outer0_all_nd',
+            'times': {'prefill': float(prefill_time0), 'decode': float(decode_time0), 'total': float(best_total_rec)},
+            'schedules': {'prefill': prefill_time0_ser, 'decode_steps': decode_time0_ser},
+            'formats': dict(best_map or {}),
+            'format_summary': _map_stats(best_map),
+            'weights': dict(wst0 or {}),
+            'pim_trace': list(getattr(getattr(cost, 'logger', None), 'pim_trace', []) or []),
+        }
+        improvements.append({
+            'pass': int(best_pass),
+            'total_time': float(best_total_rec),
+            'delta_seconds_vs_best': 0.0,
+            'delta_percent_vs_that_pass': 0.0,
+        })
+
+    # Persist best ND-search map and reports.
+    weight_format_path.parent.mkdir(parents=True, exist_ok=True)
     with open(weight_format_path, 'w', encoding='utf-8') as f:
         json.dump(best_map or {}, f, indent=2, sort_keys=True)
-    logger.debug(str(f'[INFO] Best weight storage map (AL) saved to: {weight_format_path}'))
+    logger.debug(str(f'[INFO] Best weight storage map (ND search) saved to: {weight_format_path}'))
 
-    # Also emit an explicit *full* map (including ND) for convenience.
-    try:
-        full_map = {str(w): str((best_map or {}).get(str(w), 'ND')) for w in all_wids}
-        full_path = weight_format_path.with_name(weight_format_path.stem + "_full" + weight_format_path.suffix)
-        with open(full_path, 'w', encoding='utf-8') as f:
-            json.dump(full_map, f, indent=2, sort_keys=True)
-        logger.debug(str(f'[INFO] Full weight storage map (AL) saved to: {full_path}'))
-    except Exception:
-        pass
+    full_map = {str(w): str((best_map or {}).get(str(w), 'ND')) for w in all_wids}
+    full_path = weight_format_path.with_name(weight_format_path.stem + "_full" + weight_format_path.suffix)
+    with open(full_path, 'w', encoding='utf-8') as f:
+        json.dump(full_map, f, indent=2, sort_keys=True)
+    logger.debug(str(f'[INFO] Full weight storage map (ND search) saved to: {full_path}'))
+
+    # ------------------------------------------------------------
+    # 2: compare-only baselines (all weights NZ / all weights PIM-OPT)
+    # ------------------------------------------------------------
+    nd_initial_rec = dict(all_pass_records[0]) if all_pass_records else dict(best_rec)
+    nd_initial_total = float((nd_initial_rec.get('times') or {}).get('total', 0.0) or 0.0)
+    compare_rows: List[Dict[str, Any]] = [
+        {
+            'format': 'ND',
+            'role': 'search',
+            'search_executed': True,
+            'comparison_only': False,
+            'initial_times': dict(nd_initial_rec.get('times') or {}),
+            'initial_total_s': float(nd_initial_total),
+            'best_total_s': float(best_total_rec),
+            'delta_vs_initial_s': float(best_total_rec - nd_initial_total),
+            'delta_vs_initial_pct': float(((best_total_rec - nd_initial_total) / nd_initial_total * 100.0) if nd_initial_total > 0 else 0.0),
+            'best_pass': int(best_rec.get('pass', best_pass)),
+            'best_format_summary': dict(best_rec.get('format_summary') or _map_stats(best_map)),
+            'best_weight_format_json': str(weight_format_path),
+            'best_weight_format_full_json': str(full_path),
+        }
+    ]
+
+    for mode in compare_only_modes:
+        uniform_map = {str(w): str(mode) for w in all_wids}
+        logger.debug(f"[AL][{mode}] compare-only: start (all weights {mode})")
+        cmp_total, cmp_prefill, cmp_decode, _cmp_prefill_ser, _cmp_decode_ser, _cmp_wstats = _evaluate_map(
+            uniform_map,
+            tag=f"compare_all_{str(mode).lower().replace('-', '_')}",
+        )
+        logger.debug(
+            f"[AL][{mode}] compare-only: total={float(cmp_total):.6f}s prefill={float(cmp_prefill):.6f}s decode={float(cmp_decode):.6f}s"
+        )
+        compare_rows.append({
+            'format': str(mode),
+            'role': 'compare',
+            'search_executed': False,
+            'comparison_only': True,
+            'initial_times': {'prefill': float(cmp_prefill), 'decode': float(cmp_decode), 'total': float(cmp_total)},
+            'initial_total_s': float(cmp_total),
+            'best_total_s': float(cmp_total),
+            'delta_vs_initial_s': 0.0,
+            'delta_vs_initial_pct': 0.0,
+            'best_pass': 0,
+            'best_format_summary': _map_stats(uniform_map),
+        })
+
+    comparison_payload = {
+        'config': {
+            'model_family': cfg.get('model_family'),
+            'model_variant': cfg.get('model_variant'),
+            'dtype': cfg.get('dtype'),
+            'batch': cfg.get('batch'),
+            'prefill_len': cfg.get('prefill_len'),
+            'decode_len': cfg.get('decode_len'),
+            'search_format': str(search_start_mode),
+            'compare_only_formats': list(compare_only_modes),
+            'format_outer_max_iters': cfg.get('format_outer_max_iters', cfg.get('outer_max_iters', 3)),
+            'format_inner_max_blocks': cfg.get('format_inner_max_blocks', 0),
+            'format_nd_margin_init': cfg.get('format_nd_margin_init', 0.60),
+            'format_nd_margin_decay': cfg.get('format_nd_margin_decay', 0.85),
+            'format_nd_margin_min': cfg.get('format_nd_margin_min', 0.05),
+            'format_inner_improve_eps': cfg.get('format_inner_improve_eps', 1e-6),
+            'format_outer_stop_eps': cfg.get('format_outer_stop_eps', 0.0),
+        },
+        'rows': compare_rows,
+        'search_format': str(search_start_mode),
+        'compare_only_formats': list(compare_only_modes),
+        'best_pass': int(best_rec.get('pass', best_pass)),
+        'best_total_s': float(best_total_rec),
+        'best_weight_format_json': str(weight_format_path),
+        'best_weight_format_full_json': str(full_path),
+    }
+    compare_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(compare_path, 'w', encoding='utf-8') as f:
+        json.dump(comparison_payload, f, ensure_ascii=False, indent=2)
+    logger.debug(str(f'[REPORT] Weight-format comparison saved to: {compare_path}'))
 
     all_path = Path(cfg.get('all_passes_json', ALL_PASSES_RESULT_PATH))
     best_path = Path(cfg.get('best_summary_json', BEST_PASS_SUMMARY_PATH))
+    all_path.parent.mkdir(parents=True, exist_ok=True)
     with open(all_path, 'w', encoding='utf-8') as f:
         json.dump(
             {
@@ -1215,46 +1579,71 @@ def run(cfg: Dict):
                     'batch': cfg.get('batch'),
                     'prefill_len': cfg.get('prefill_len'),
                     'decode_len': cfg.get('decode_len'),
+                    'search_format': str(search_start_mode),
+                    'compare_only_formats': list(compare_only_modes),
                 },
+                'weight_format_comparison': comparison_payload,
                 'passes': all_pass_records,
             },
             f,
             ensure_ascii=False,
             indent=2,
         )
-    logger.debug(str(f'[REPORT] All passes (AL) saved to: {all_path}'))
+    logger.debug(str(f'[REPORT] All passes (ND search only) saved to: {all_path}'))
 
-    if all_pass_records:
-        best_idx = min(range(len(all_pass_records)), key=lambda i: float(all_pass_records[i]['times']['total']))
-        best_rec = all_pass_records[best_idx]
-        best_total_rec = float(best_rec['times']['total'])
-        improvements = []
-        for rec in all_pass_records:
-            total_time = float(rec['times']['total'])
-            delta = float(total_time - best_total_rec)
-            pct = delta / total_time * 100.0 if total_time > 0 else 0.0
-            improvements.append({'pass': rec.get('pass', -1), 'total_time': float(total_time), 'delta_seconds_vs_best': float(delta), 'delta_percent_vs_that_pass': float(pct)})
-        with open(best_path, 'w', encoding='utf-8') as f:
-            json.dump(
-                {
-                    'best_pass': int(best_rec.get('pass', best_pass)),
-                    'best_times': best_rec.get('times', {}),
-                    'best_formats': best_rec.get('formats', {}),
-                    'best_weights': best_rec.get('weights', {}),
-                    'prefill_schedule': best_rec.get('schedules', {}).get('prefill'),
-                    'decode_steps': best_rec.get('schedules', {}).get('decode_steps'),
-                    'improvements_vs_each_pass': improvements,
-                },
-                f,
-                ensure_ascii=False,
-                indent=2,
-            )
-        logger.debug(str(f'[REPORT] Best pass summary (AL) saved to: {best_path}'))
+    best_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(best_path, 'w', encoding='utf-8') as f:
+        json.dump(
+            {
+                'search_format': str(search_start_mode),
+                'best_pass': int(best_rec.get('pass', best_pass)),
+                'best_times': best_rec.get('times', {}),
+                'best_formats': best_rec.get('formats', {}),
+                'best_format_summary': best_rec.get('format_summary', {}),
+                'best_weights': best_rec.get('weights', {}),
+                'prefill_schedule': best_rec.get('schedules', {}).get('prefill'),
+                'decode_steps': best_rec.get('schedules', {}).get('decode_steps'),
+                'improvements_vs_each_pass': improvements,
+                'weight_format_comparison': compare_rows,
+                'best_weight_format_json': str(weight_format_path),
+                'best_weight_format_full_json': str(full_path),
+                'weight_format_compare_json': str(compare_path),
+            },
+            f,
+            ensure_ascii=False,
+            indent=2,
+        )
+    logger.debug(str(f'[REPORT] Best pass summary (ND search only) saved to: {best_path}'))
+
+    print("\n=== Weight-Suggest Format Comparison ===")
+    header = f"{'Format':<10} {'Role':<10} {'Outer0(s)':>12} {'Best(s)':>12} {'Delta(s)':>12} {'BestPass':>9} {'ND':>8} {'NZ':>8} {'PIM':>8}"
+    print(header)
+    print('-' * len(header))
+    for row in compare_rows:
+        counts = dict((row.get('best_format_summary') or {}).get('counts', {}) or {})
+        print(
+            f"{str(row.get('format', '')):<10} "
+            f"{str(row.get('role', '')):<10} "
+            f"{float(row.get('initial_total_s', 0.0)):>12.4f} "
+            f"{float(row.get('best_total_s', 0.0)):>12.4f} "
+            f"{float(row.get('delta_vs_initial_s', 0.0)):>12.4f} "
+            f"{int(row.get('best_pass', -1)):>9d} "
+            f"{int(counts.get('ND', 0)):>8d} "
+            f"{int(counts.get('NZ', 0)):>8d} "
+            f"{int(counts.get('PIM-OPT', 0)):>8d}"
+        )
+    print(
+        f"[weight-suggest] search_format={str(search_start_mode)} "
+        f"best_total={float(best_total_rec):.6f}s"
+    )
 
     # AL mode terminates here (skip legacy multi-pass loop below).
-    cost.logger.end_simulation()
-    cost.logger.close()
-    
+    try:
+        cost.logger.end_simulation()
+        cost.logger.close()
+    except Exception:
+        pass
+
     return
 
 # ===== Baseline helpers (inlined) =====
@@ -2077,6 +2466,10 @@ def parse_args():
                        help='AL accept change if new_total + eps < old_total.')
     sp_ws.add_argument('--format_outer_stop_eps', type=float,
                        help='AL stop when outer_n is worse than outer_{n-1} by eps.')
+    sp_ws.add_argument('--format_block_layer_span', type=int,
+                       help='Group the same weight across every N layers into one block. 8 or 4 are typical; 0 keeps the legacy all-layer merge.')
+    sp_ws.add_argument('--format_reload_count_mode', type=str, choices=['raw', 'per_device'],
+                       help='Use raw reload totals or normalize by the number of devices of each type when comparing NPU vs PIM reload pressure.')
 
     args, unknown = parser.parse_known_args()
     if args.mode is None:
@@ -2143,6 +2536,8 @@ def main():
             'format_nd_margin_min',
             'format_inner_improve_eps',
             'format_outer_stop_eps',
+            'format_block_layer_span',
+            'format_reload_count_mode',
         ]
         for key in override_fields:
             val = getattr(args, key, None)
