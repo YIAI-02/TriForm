@@ -49,14 +49,23 @@ Useful x tick label modes:
 - wrap
 - stagger
 - wrap_stagger
+- two_line
 
 Examples
 --------
-python plot_summary_compare.py \
-    --summary /path/to/summary.csv \
+python plot_exp3_layout_compare.py \
+    --summary ../../algorithms/output/ws_hpc/shards/8w/summary.csv \
     --mode both \
-    --cfg /path/to/plot_cfg.json \
-    --outdir ./plots
+    --cfg ./plot_exp3_layout_compare_cfg_example.json \
+    --fig-format png pdf \
+    --outdir ../../figs/exp3
+
+python plot_exp3_layout_compare.py \
+    --summary ../../algorithms/output/ws_hpc_2/shards/16w/summary.csv \
+    --mode both \
+    --cfg ./plot_exp3_layout_compare_cfg_example.json \
+    --fig-format png pdf \
+    --outdir ../../figs/exp3
 """
 
 from __future__ import annotations
@@ -70,6 +79,7 @@ import textwrap
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.transforms as mtransforms
 from matplotlib.lines import Line2D
@@ -83,14 +93,28 @@ except Exception:  # pragma: no cover
     tomllib = None
 
 
+# Use Arial globally. If Arial is unavailable on the local machine, Matplotlib will fall back.
+mpl.rcParams["font.family"] = "Arial"
+mpl.rcParams["font.sans-serif"] = ["Arial"]
+mpl.rcParams["axes.unicode_minus"] = False
+mpl.rcParams["pdf.fonttype"] = 42
+mpl.rcParams["ps.fonttype"] = 42
+
+
 # Dark = prefill, light = decode for every group.
+# Requested palette:
+# - ND init/base: green
+# - ND opt/final: purple
+# - NZ/NPU baseline: red
+# - PIM baseline: blue
 COLOR_MAP = {
-    "nd_init": ("#3760a9", "#add9e4"),
-    "nz_init": ("#39a937", "#aee4ad"),
-    "pim_opt_init": ("#5837a8", "#bdade4"),
-    "nd_opt": ("#a83747", "#e4adb5"),
+    "nd_init": ("#2E8B57", "#CFEAD8"),
+    "nz_init": ("#C44E52", "#F3C7CB"),
+    "pim_opt_init": ("#3B6FB6", "#CADCF5"),
+    "nd_opt": ("#7C57B2", "#DECFF2"),
 }
 
+# These labels are the x-axis tick labels when no cfg bar_label_map is provided.
 DEFAULT_LABEL_MAP = {
     "nd_init": "ND init",
     "nz_init": "NZ init",
@@ -151,40 +175,42 @@ DEFAULT_CFG = {
     "layout_name_mode": "title",
     "panel": {
         "layout_name_fontsize": 10.2,
-        "layout_name_labelpad": 5.8,
+        "layout_name_labelpad": 6.2,
+        "layout_length_fontsize": 8.4,
         "show_title_when_no_alias": True,
     },
     "ticks": {
-        "x_tick_fontsize": 8.8,
+        "x_tick_fontsize": 8.4,
         "x_tick_rotation": 0,
-        "x_tick_label_mode": "wrap_stagger",
+        "x_tick_label_mode": "two_line",
         "x_tick_wrap_width": 11,
-        "x_tick_stagger_points": 7.0,
-        "x_tick_linespacing": 0.92,
-        "x_tick_pad": 1.4,
+        "x_tick_stagger_points": 0.0,
+        "x_tick_linespacing": 0.96,
+        "x_tick_pad": 2.4,
         "y_tick_fontsize": 8.5,
+        "y_tick_pad": 2.8,
         "bar_annotation_fontsize": 7.8,
         "speedup_fontsize": 8.5,
     },
     "figure": {
-        "panel_width": 3.08,
-        "panel_height": 3.35,
-        "header_height": 1.00,
-        "min_fig_width": 12.0,
-        "min_fig_height": 4.3,
-        "outer_wspace": 0.05,
-        "outer_hspace": 0.14,
+        "panel_width": 3.45,
+        "panel_height": 3.72,
+        "header_height": 1.08,
+        "min_fig_width": 14.2,
+        "min_fig_height": 4.8,
+        "outer_wspace": 0.34,
+        "outer_hspace": 0.30,
         "inner_hspace": 0.01,
-        "left": 0.042,
-        "right": 0.998,
-        "top": 0.842,
-        "bottom": 0.095,
-        "bottom_with_note": 0.118,
-        "legend_y": 0.942,
+        "left": 0.072,
+        "right": 0.992,
+        "top": 0.836,
+        "bottom": 0.122,
+        "bottom_with_note": 0.146,
+        "legend_y": 0.944,
         "suptitle_y": 0.988,
-        "bar_xstep": 0.92,
-        "bar_width": 0.78,
-        "save_pad_inches": 0.03,
+        "bar_xstep": 0.37,
+        "bar_width": 0.34,
+        "save_pad_inches": 0.06,
         "legend_ncol": 5,
     },
 }
@@ -195,9 +221,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--summary", required=True, help="Path to summary CSV/TSV/XLSX file.")
     parser.add_argument(
         "--mode",
-        default="both",
+        default="nd_only",
         choices=["all_compare", "nd_only", "both"],
-        help="Plot mode.",
+        help="Plot mode. Default: nd_only.",
     )
     parser.add_argument(
         "--outdir",
@@ -425,6 +451,25 @@ def get_layout_display_name(
     return None
 
 
+def format_length_value(value: object) -> str:
+    try:
+        value_f = float(value)
+        if np.isfinite(value_f) and value_f.is_integer():
+            return str(int(value_f))
+        if np.isfinite(value_f):
+            return f"{value_f:g}"
+    except Exception:
+        pass
+    return str(value)
+
+
+def format_length_text(prefill_len: object, decode_len: object) -> str:
+    return (
+        f"Prefill len={format_length_value(prefill_len)}\n"
+        f"Decode len={format_length_value(decode_len)}"
+    )
+
+
 def get_nd_opt_split(
     row: pd.Series,
     opt_prefill_col: Optional[str],
@@ -581,17 +626,16 @@ def plot_zoomed_totals_strip(
     panel_title: Optional[str],
     title_fontsize: float,
     speedup_fontsize: float,
+    length_text: Optional[str] = None,
+    length_fontsize: float = 8.4,
 ) -> None:
     ax.set_xlim(x[0] - xpad, x[-1] + xpad)
-    ax.set_ylim(*compute_top_ylim(totals))
 
     nd_init_total = float(totals[0])
     nd_opt_total = float(totals[-1])
+    endpoint_totals = np.array([nd_init_total, nd_opt_total], dtype=float)
+    ax.set_ylim(*compute_top_ylim(endpoint_totals))
 
-    ax.plot(x, totals, color="0.78", linewidth=1.0, zorder=1)
-    ax.scatter(x, totals, s=20, color="0.45", zorder=2)
-
-    ax.axhline(nd_init_total, color="0.65", linestyle="--", linewidth=0.8, zorder=0)
     ax.plot(
         [x[0], x[-1]],
         [nd_init_total, nd_opt_total],
@@ -602,28 +646,42 @@ def plot_zoomed_totals_strip(
         zorder=3,
     )
 
-    y0, y1 = ax.get_ylim()
-    offset = (y1 - y0) * 0.08
-    label_y = max(nd_init_total, nd_opt_total) + offset
     if np.isfinite(speedup):
         ax.text(
             (x[0] + x[-1]) / 2.0,
-            label_y,
+            0.34,
             f"{speedup:.2f}x",
             ha="center",
-            va="bottom",
+            va="center",
+            transform=ax.get_xaxis_transform(),
             fontsize=speedup_fontsize,
             color="black",
+            bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.88, "pad": 0.25},
         )
     else:
         ax.text(
             0.5,
-            0.60,
+            0.34,
             "speedup N/A",
             ha="center",
             va="center",
             transform=ax.transAxes,
             fontsize=speedup_fontsize,
+            bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.88, "pad": 0.25},
+        )
+
+    if length_text:
+        ax.text(
+            0.02,
+            0.98,
+            length_text,
+            ha="left",
+            va="top",
+            transform=ax.transAxes,
+            fontsize=length_fontsize,
+            color="0.18",
+            linespacing=0.98,
+            bbox={"facecolor": "white", "edgecolor": "0.85", "linewidth": 0.5, "alpha": 0.92, "pad": 0.25},
         )
 
     ax.set_xticks([])
@@ -680,6 +738,16 @@ def draw_stack_boundary(ax: plt.Axes, x: np.ndarray, width: float, prefill_vals:
         )
 
 
+def force_two_line_tick_label(text: str) -> str:
+    cleaned = re.sub(r"\s+", " ", str(text).replace("\n", " ").strip())
+    if not cleaned:
+        return ""
+    parts = cleaned.split(" ")
+    if len(parts) <= 1:
+        return cleaned
+    return f"{' '.join(parts[:-1])}\n{parts[-1]}"
+
+
 def wrap_tick_label(text: str, width: int) -> str:
     text = str(text)
     if width <= 0:
@@ -702,21 +770,24 @@ def wrap_tick_label(text: str, width: int) -> str:
 
 
 def format_tick_labels(labels: Sequence[str], tick_cfg: Dict) -> List[str]:
-    style = str(tick_cfg.get("x_tick_label_mode", "wrap_stagger")).strip().lower()
+    style = str(tick_cfg.get("x_tick_label_mode", "two_line")).strip().lower()
     wrap_width = int(tick_cfg.get("x_tick_wrap_width", 11))
+    two_line_labels = [force_two_line_tick_label(label) for label in labels]
     if style in {"wrap", "wrap_stagger", "auto"}:
-        return [wrap_tick_label(label, wrap_width) for label in labels]
-    return [str(label) for label in labels]
+        return [wrap_tick_label(label, wrap_width) for label in two_line_labels]
+    return two_line_labels
 
 
 def apply_tick_label_transforms(ax: plt.Axes, fig: plt.Figure, tick_cfg: Dict) -> None:
-    style = str(tick_cfg.get("x_tick_label_mode", "wrap_stagger")).strip().lower()
+    style = str(tick_cfg.get("x_tick_label_mode", "two_line")).strip().lower()
     if style not in {"stagger", "wrap_stagger", "auto"}:
+        return
+    labels = ax.get_xticklabels()
+    if any("\n" in label.get_text() for label in labels):
         return
     stagger_points = float(tick_cfg.get("x_tick_stagger_points", 7.0))
     if stagger_points == 0:
         return
-    labels = ax.get_xticklabels()
     for idx, label in enumerate(labels):
         if idx % 2 == 1:
             offset = mtransforms.ScaledTranslation(0, -stagger_points / 72.0, fig.dpi_scale_trans)
@@ -754,15 +825,13 @@ def plot_single_panel(
     layout_name_map: Dict[str, str],
     share_y_lim: Optional[Tuple[float, float]] = None,
     show_ylabel: bool = False,
-) -> Tuple[plt.Axes, plt.Axes]:
+) -> plt.Axes:
     fig_cfg = plot_cfg["figure"]
     panel_cfg = plot_cfg["panel"]
     tick_cfg = plot_cfg["ticks"]
     layout_mode = str(plot_cfg.get("layout_name_mode", "title")).strip().lower()
 
-    inner = outer_spec.subgridspec(2, 1, height_ratios=[1.10, 4.05], hspace=float(fig_cfg["inner_hspace"]))
-    ax_top = fig.add_subplot(inner[0])
-    ax_bar = fig.add_subplot(inner[1])
+    ax_bar = fig.add_subplot(outer_spec)
 
     payload = build_bar_payload(
         row=row,
@@ -811,10 +880,39 @@ def plot_single_panel(
     ax_bar.grid(axis="y", linestyle="--", linewidth=0.6, alpha=0.55, zorder=0)
     ax_bar.set_axisbelow(True)
     set_bar_xticklabels(ax=ax_bar, fig=fig, x=x, labels=labels, tick_cfg=tick_cfg)
-    ax_bar.tick_params(axis="y", labelsize=float(tick_cfg["y_tick_fontsize"]))
+    ax_bar.tick_params(
+        axis="y",
+        labelsize=float(tick_cfg["y_tick_fontsize"]),
+        pad=float(tick_cfg.get("y_tick_pad", 2.0)),
+    )
     ax_bar.set_xlim(x[0] - xpad, x[-1] + xpad)
     if show_ylabel:
         ax_bar.set_ylabel("Time (s)", fontsize=10)
+
+    layout_name = get_layout_display_name(
+        prefill_len=row["prefill_len"],
+        decode_len=row["decode_len"],
+        layout_name_map=layout_name_map,
+        show_title_when_no_alias=bool(panel_cfg.get("show_title_when_no_alias", True)),
+    )
+    default_layout_name = f"{format_length_value(row['prefill_len'])}×{format_length_value(row['decode_len'])}"
+    display_layout_name = layout_name if layout_name != default_layout_name else None
+    length_text = format_length_text(row["prefill_len"], row["decode_len"])
+
+    if length_text:
+        ax_bar.text(
+            0.02,
+            0.98,
+            length_text,
+            ha="left",
+            va="top",
+            transform=ax_bar.transAxes,
+            fontsize=float(panel_cfg.get("layout_length_fontsize", 8.4)),
+            color="0.18",
+            linespacing=0.98,
+            bbox={"facecolor": "white", "edgecolor": "0.85", "linewidth": 0.5, "alpha": 0.92, "pad": 0.25},
+            zorder=5,
+        )
 
     if share_y_lim is not None:
         ax_bar.set_ylim(*share_y_lim)
@@ -826,40 +924,24 @@ def plot_single_panel(
     for spine in ("top", "right"):
         ax_bar.spines[spine].set_visible(False)
 
-    layout_name = get_layout_display_name(
-        prefill_len=row["prefill_len"],
-        decode_len=row["decode_len"],
-        layout_name_map=layout_name_map,
-        show_title_when_no_alias=bool(panel_cfg.get("show_title_when_no_alias", True)),
-    )
-
-    tick_label_mode = str(tick_cfg.get("x_tick_label_mode", "wrap_stagger")).strip().lower()
+    tick_label_mode = str(tick_cfg.get("x_tick_label_mode", "two_line")).strip().lower()
     extra_labelpad = 0.0
-    if tick_label_mode in {"wrap", "wrap_stagger", "auto"}:
+    if tick_label_mode in {"wrap", "wrap_stagger", "auto", "two_line"}:
         extra_labelpad += 3.0
     if tick_label_mode in {"stagger", "wrap_stagger", "auto"}:
         extra_labelpad += 2.0
 
-    if layout_name and layout_mode in {"xlabel", "both"}:
+    if display_layout_name and layout_mode in {"xlabel", "both"}:
         ax_bar.set_xlabel(
-            layout_name,
+            display_layout_name,
             fontsize=float(panel_cfg["layout_name_fontsize"]),
-            labelpad=float(panel_cfg.get("layout_name_labelpad", 5.8)) + extra_labelpad,
+            labelpad=float(panel_cfg.get("layout_name_labelpad", 6.2)) + extra_labelpad,
         )
 
-    speedup = get_speedup(row, opt_total_col)
-    plot_zoomed_totals_strip(
-        ax=ax_top,
-        x=x,
-        totals=totals,
-        speedup=speedup,
-        xpad=xpad,
-        panel_title=layout_name if layout_mode in {"title", "both"} else None,
-        title_fontsize=float(panel_cfg["layout_name_fontsize"]),
-        speedup_fontsize=float(tick_cfg["speedup_fontsize"]),
-    )
+    if display_layout_name and layout_mode in {"title", "both"}:
+        ax_bar.set_title(display_layout_name, fontsize=float(panel_cfg["layout_name_fontsize"]), pad=4.0)
 
-    return ax_top, ax_bar
+    return ax_bar
 
 
 def compute_shared_y_lim(
@@ -1096,3 +1178,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

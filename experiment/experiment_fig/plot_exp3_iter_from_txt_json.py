@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
 python plot_exp3_iter_from_txt_json.py \
-  ../../algorithms/output/evaluate_single_test/hardware_1npu_2aim_test4/llama_7b_fp16_b1_s8/driver_debug_simple.txt \
-  ../../algorithms/output/evaluate_single_test/hardware_1npu_2aim_test4/llama_7b_fp16_b1_s8/all_passes_512x128_st8.json \
-  -o ../../figs/exp3/exp3_iter/llama_7b_fp16_b1_s8_512x128.pdf
+  ../../algorithms/output/ws_hpc/shards/8w/worker_5/runs/000002_g_13_model_llama_7b_S_128_T_512_b_1_r_1_af7b5e10bf/artifacts/llama_7b_fp16_b1_s8/driver_debug.txt \
+  ../../algorithms/output/ws_hpc/shards/8w/worker_5/runs/000002_g_13_model_llama_7b_S_128_T_512_b_1_r_1_af7b5e10bf/all_passes.json \
+  -o ../../figs/exp3/exp3_iter/llama_7b_fp16_b1_s8_128x512.pdf
 """
 from __future__ import annotations
 
@@ -12,7 +12,8 @@ import json
 import math
 import re
 import sys
-from collections import Counter, defaultdict
+import zipfile
+from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
@@ -21,27 +22,37 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import font_manager as fm
-from matplotlib.lines import Line2D
-from matplotlib.offsetbox import AnnotationBbox, OffsetImage
-from matplotlib.patches import Patch
+from matplotlib.offsetbox import AnnotationBbox, DrawingArea
+from matplotlib.patches import Circle, Patch, Wedge
+from matplotlib.ticker import AutoMinorLocator, FormatStrFormatter, MaxNLocator
 
 
 LINE_COLORS = ["#000000"]
 PIE_COLORS = {
-    "ND": "#e4adb5",
-    "NZ": "#bdade4",
-    "PIM-OPT": "#aee4ad",
+    "ND": "#d7aeb3",
+    "NZ": "#b5abd8",
+    "PIM-OPT": "#b7d9ae",
 }
-GRID_COLOR = "#d9d9e3"
+LEGEND_LABELS = {
+    "ND": "Linear",
+    "NZ": "NPU-OPT",
+    "PIM-OPT": "PIM-OPT",
+}
+GRID_COLOR = "#d7d7dc"
+PIE_OUTLINE_COLOR = "#000000"
+PIE_OUTLINE_WIDTH = 1.0
+PIE_SEPARATOR_WIDTH = 1.7
 FONT_CANDIDATES = [
-    "Noto Sans CJK SC",
-    "Noto Sans CJK JP",
-    "Noto Sans CJK TC",
-    "Microsoft YaHei",
-    "SimHei",
-    "Arial Unicode MS",
     "DejaVu Sans",
+    "Arial",
+    "Liberation Sans",
+    "Helvetica",
 ]
+
+# In driver_debug_simple.txt, lines usually start with [AL] outer...
+# In the full driver_debug.txt, they may appear as [AL][ND] outer... / [AL][NZ] ...
+# Allow an optional mode tag right after [AL].
+AL_PREFIX = r"\[AL\](?:\[[^\]]+\])?"
 
 
 @dataclass
@@ -64,38 +75,85 @@ class ALRun:
     blocks: Optional[int]
 
 
+@dataclass
+class PieSpec:
+    x: float
+    y: float
+    box: DrawingArea
+    diameter_pt: float
+    point_idx: int
+
+
 def configure_fonts() -> None:
     available = {f.name for f in fm.fontManager.ttflist}
     selected = next((n for n in FONT_CANDIDATES if n in available), "DejaVu Sans")
     matplotlib.rcParams["font.family"] = selected
+    matplotlib.rcParams["font.sans-serif"] = FONT_CANDIDATES
     matplotlib.rcParams["axes.unicode_minus"] = False
     matplotlib.rcParams["pdf.fonttype"] = 42
     matplotlib.rcParams["ps.fonttype"] = 42
 
 
+
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="根据 [AL] txt 日志 + all_passes json 重建 exp3 iter 图"
+        description="Rebuild the Experiment 3 iteration figure from an [AL] txt log and all_passes json"
     )
-    p.add_argument("txt", help="driver_debug_simple.txt 或完整 driver_debug.txt")
+    p.add_argument("txt", help="driver_debug_simple.txt or the full driver_debug.txt")
     p.add_argument("json", help="all_passes_*.json")
-    p.add_argument("-o", "--output", default="exp3_iter.pdf", help="输出图文件（pdf/png 都可）")
-    p.add_argument("--run-index", type=int, default=None, help="txt 中若有多个 [AL] run，可手动指定使用第几个（从 0 开始）")
-    p.add_argument("--lang", choices=["zh", "en"], default="en")
-    p.add_argument("--title", default=None)
-    p.add_argument("--pie-zoom", type=float, default=0.18)
+    p.add_argument("-o", "--output", default="exp3_iter.pdf", help="Output figure path (pdf/png)")
+    p.add_argument(
+        "--run-index",
+        type=int,
+        default=None,
+        help="If the txt contains multiple [AL] runs, select one manually (0-based)",
+    )
+    p.add_argument("--lang", choices=["en"], default="en")
+    p.add_argument(
+        "--title",
+        default=None,
+        help="Optional centered title. Omit it for the compact paper-style layout.",
+    )
+    p.add_argument(
+        "--panel-label",
+        default=None,
+        help="Optional panel label, for example: e  -> renders as (e)",
+    )
+    p.add_argument(
+        "--pie-zoom",
+        type=float,
+        default=0.18,
+        help="Relative pie size. 0.18 is the default reference size.",
+    )
+    p.add_argument(
+        "--show-x-step-labels",
+        action="store_true",
+        help="Show the original per-point x tick labels instead of the compact paper-style axis.",
+    )
     return p.parse_args(argv)
 
 
+
 def load_json(path: Path) -> Dict:
+    if zipfile.is_zipfile(path):
+        with zipfile.ZipFile(path) as zf:
+            json_names = [
+                n for n in zf.namelist()
+                if n.lower().endswith(".json") and not n.startswith("__MACOSX/")
+            ]
+            if not json_names:
+                raise ValueError(f"No json file found inside zip: {path}")
+            with zf.open(json_names[0]) as f:
+                return json.load(f)
     with path.open("r", encoding="utf-8") as f:
         return json.load(f)
+
 
 
 def extract_al_runs(txt: str) -> List[ALRun]:
     matches = list(re.finditer(r"\[AL\] init:", txt))
     if not matches:
-        raise ValueError("在 txt 中没有找到任何 [AL] init 段。")
+        raise ValueError("No [AL] init section was found in the txt file.")
     runs: List[ALRun] = []
     for idx, m in enumerate(matches):
         start = m.start()
@@ -106,7 +164,7 @@ def extract_al_runs(txt: str) -> List[ALRun]:
             r"\[AL\] init: .*?weights=(\d+).*?blocks=(\d+).*?block_layer_span=(\d+)",
             seg,
         )
-        outer0_m = re.search(r"\[AL\] outer0: done total=([0-9.]+)s", seg)
+        outer0_m = re.search(fr"{AL_PREFIX} outer0: done total=([0-9.]+)s", seg)
         if not outer0_m:
             continue
 
@@ -121,8 +179,9 @@ def extract_al_runs(txt: str) -> List[ALRun]:
             )
         )
     if not runs:
-        raise ValueError("找到了 [AL] init，但没有找到 outer0: done。")
+        raise ValueError("Found [AL] init, but did not find outer0: done.")
     return runs
+
 
 
 def choose_run(runs: List[ALRun], json_data: Dict, forced_run_index: Optional[int]) -> ALRun:
@@ -130,19 +189,21 @@ def choose_run(runs: List[ALRun], json_data: Dict, forced_run_index: Optional[in
         for run in runs:
             if run.run_index == forced_run_index:
                 return run
-        raise ValueError(f"--run-index={forced_run_index} 超出范围，可选 run_index 为 {[r.run_index for r in runs]}")
+        raise ValueError(
+            f"--run-index={forced_run_index} is out of range. Available run_index values: {[r.run_index for r in runs]}"
+        )
 
     passes = json_data.get("passes", [])
     if not passes:
-        raise ValueError("json 里没有 passes。")
+        raise ValueError("No passes were found in the json file.")
     json_outer0 = float(passes[0]["times"]["total"])
     json_pass_count = len(passes)
 
-    # 自动匹配：优先 outer0 total 最接近，同时 outer 层数更接近。
+    # Automatic matching: prefer the closest outer0 total, then the closest outer-pass count.
     scored: List[Tuple[float, float, int, ALRun]] = []
     for run in runs:
         max_outer_in_txt = 0
-        for m in re.finditer(r"\[AL\] outer(\d+): after inner total=", run.raw_text):
+        for m in re.finditer(fr"{AL_PREFIX} outer(\d+): after inner total=", run.raw_text):
             max_outer_in_txt = max(max_outer_in_txt, int(m.group(1)))
         pass_count_gap = abs(max_outer_in_txt + 1 - json_pass_count)
         total_gap = abs(run.outer0_total - json_outer0)
@@ -152,14 +213,15 @@ def choose_run(runs: List[ALRun], json_data: Dict, forced_run_index: Optional[in
     return scored[0][3]
 
 
+
 def parse_log_run(run_text: str) -> Dict:
     out: Dict = {}
     out0 = re.search(
-        r"\[AL\] outer0: done total=([0-9.]+)s prefill=([0-9.]+)s decode=([0-9.]+)s",
+        fr"{AL_PREFIX} outer0: done total=([0-9.]+)s prefill=([0-9.]+)s decode=([0-9.]+)s",
         run_text,
     )
     if not out0:
-        raise ValueError("选中的 [AL] run 中没有 outer0: done。")
+        raise ValueError("The selected [AL] run does not contain outer0: done.")
     out["outer0"] = {
         "total": float(out0.group(1)),
         "prefill": float(out0.group(2)),
@@ -167,7 +229,7 @@ def parse_log_run(run_text: str) -> Dict:
     }
 
     init_assign = re.search(
-        r"\[AL\] outer0->outer1: initial assign explicit_weights=(\d+) "
+        fr"{AL_PREFIX} outer0->outer1: initial assign explicit_weights=(\d+) "
         r"\(NZ=(\d+), PIM-OPT=(\d+), ND_default=(\d+)\)",
         run_text,
     )
@@ -183,7 +245,7 @@ def parse_log_run(run_text: str) -> Dict:
 
     baselines: Dict[int, Dict[str, float]] = {}
     for outer, total, prefill, decode in re.findall(
-        r"\[AL\] outer(\d+): baseline total=([0-9.]+)s prefill=([0-9.]+)s decode=([0-9.]+)s",
+        fr"{AL_PREFIX} outer(\d+): baseline total=([0-9.]+)s prefill=([0-9.]+)s decode=([0-9.]+)s",
         run_text,
     ):
         baselines[int(outer)] = {
@@ -195,7 +257,7 @@ def parse_log_run(run_text: str) -> Dict:
 
     accepts: Dict[int, List[Dict]] = defaultdict(list)
     for outer, block, src, dst, old_total, new_total in re.findall(
-        r"\[AL\] inner(\d+): ACCEPT block=([A-Z0-9\-_.]+) ([A-Z0-9\-]+)->([A-Z0-9\-]+) "
+        fr"{AL_PREFIX} inner(\d+): ACCEPT block=([A-Z0-9\-_.]+) ([A-Z0-9\-]+)->([A-Z0-9\-]+) "
         r"total ([0-9.]+)s -> ([0-9.]+)s",
         run_text,
     ):
@@ -212,19 +274,21 @@ def parse_log_run(run_text: str) -> Dict:
     return out
 
 
+
 def block_to_weight_keys(block: str, valid_weight_keys: set[str]) -> List[str]:
     m = re.fullmatch(r"L(\d{4})-(\d{4})_(W[0-9A-Z]+)", block)
     if not m:
-        raise ValueError(f"无法解析 block 名称: {block}")
+        raise ValueError(f"Unable to parse block name: {block}")
     lo, hi, kind = m.groups()
     keys: List[str] = []
     for layer in range(int(lo), int(hi) + 1):
         for shard in (0, 1):
             key = f"L{layer}_{kind}_s{shard}"
             if key not in valid_weight_keys:
-                raise KeyError(f"block={block} 映射出的 key 不在 json.weight_sizes 中: {key}")
+                raise KeyError(f"Key mapped from block={block} is not present in json.weight_sizes: {key}")
             keys.append(key)
     return keys
+
 
 
 def ratios_from_map(fmt_map: Dict[str, str], weight_sizes: Dict[str, int]) -> Dict[str, float]:
@@ -241,10 +305,11 @@ def ratios_from_map(fmt_map: Dict[str, str], weight_sizes: Dict[str, int]) -> Di
     return {k: v / total_bytes for k, v in bytes_per_fmt.items()}
 
 
+
 def reconstruct_states_from_txt_json(run_text: str, json_data: Dict) -> List[StepState]:
     passes = json_data.get("passes", [])
     if not passes:
-        raise ValueError("json 里没有 passes。")
+        raise ValueError("No passes were found in the json file.")
 
     parsed = parse_log_run(run_text)
     weight_sizes: Dict[str, int] = passes[0]["weights"]["weight_sizes"]
@@ -278,9 +343,9 @@ def reconstruct_states_from_txt_json(run_text: str, json_data: Dict) -> List[Ste
     max_outer = max(final_maps.keys()) if final_maps else 0
     for outer in range(1, max_outer + 1):
         if outer not in final_maps:
-            raise ValueError(f"json 里缺少 outer{outer} 的 final map。")
+            raise ValueError(f"Missing final map for outer{outer} in json.")
         if outer not in baselines:
-            raise ValueError(f"txt 里缺少 outer{outer} 的 baseline total。")
+            raise ValueError(f"Missing baseline total for outer{outer} in txt.")
 
         # reverse accepts: final(after_inner) -> baseline(step0)
         baseline_map = dict(final_maps[outer])
@@ -289,8 +354,8 @@ def reconstruct_states_from_txt_json(run_text: str, json_data: Dict) -> List[Ste
                 cur_fmt = baseline_map.get(key, "ND")
                 if cur_fmt != rec["dst"]:
                     raise ValueError(
-                        f"反推 outer{outer} baseline 时格式不一致: key={key}, "
-                        f"当前={cur_fmt}, 预期终态={rec['dst']}"
+                        f"Format mismatch while reconstructing outer{outer} baseline: key={key}, "
+                        f"current={cur_fmt}, expected_final={rec['dst']}"
                     )
                 if rec["src"] == "ND":
                     baseline_map.pop(key, None)
@@ -320,7 +385,8 @@ def reconstruct_states_from_txt_json(run_text: str, json_data: Dict) -> List[Ste
                     cur_map[key] = rec["dst"]
 
             total = float(rec["new_total"])
-            # 最后一个 step 用 json 的 after_inner 精确 total 覆盖，避免日志只有 6 位小数。
+            # For the last accepted step, use the exact after_inner total from json to avoid
+            # precision loss from the 6-decimal log value.
             if i == len(accepts) and outer in final_times:
                 total = float(final_times[outer])
 
@@ -335,60 +401,110 @@ def reconstruct_states_from_txt_json(run_text: str, json_data: Dict) -> List[Ste
                 )
             )
 
-        # sanity check: 回放之后应与 json 最终 map 一致
+        # Sanity check: replayed ACCEPT operations should match the final json map.
         if cur_map != final_maps[outer]:
-            raise ValueError(f"outer{outer} 回放 ACCEPT 后得到的 map 与 json 最终格式图不一致。")
+            raise ValueError(
+                f"After replaying ACCEPT operations for outer{outer}, the map does not match the final json format map."
+            )
 
     return states
 
 
-def create_pie_image(values: Sequence[float], colors: Sequence[str], size: int = 180) -> np.ndarray:
-    fig, ax = plt.subplots(figsize=(1, 1), dpi=size)
-    safe_values = [float(v) for v in values]
+
+def create_pie_box(values: Sequence[float], colors: Sequence[str], diameter_pt: float = 30.0) -> DrawingArea:
+    safe_values = [max(0.0, float(v)) for v in values]
     total = sum(safe_values)
+    safe_colors = list(colors)
     if total <= 0:
         safe_values = [1.0]
-        colors = ["#eeeeee"]
-    ax.pie(
-        safe_values,
-        colors=colors,
-        startangle=90,
-        counterclock=False,
-        wedgeprops=dict(linewidth=0.7, edgecolor="white"),
+        safe_colors = ["#eeeeee"]
+        total = 1.0
+
+    da = DrawingArea(diameter_pt, diameter_pt, clip=False)
+    center = (diameter_pt / 2.0, diameter_pt / 2.0)
+    radius = max(0.1, diameter_pt / 2.0 - 0.75)
+
+    end_angle = 90.0
+    for value, color in zip(safe_values, safe_colors):
+        if value <= 0:
+            continue
+        sweep = 360.0 * value / total
+        theta1 = end_angle - sweep
+        theta2 = end_angle
+        da.add_artist(
+            Wedge(
+                center,
+                radius,
+                theta1,
+                theta2,
+                facecolor=color,
+                edgecolor="white",
+                linewidth=PIE_SEPARATOR_WIDTH,
+                antialiased=True,
+                joinstyle="round",
+            )
+        )
+        end_angle = theta1
+
+    da.add_artist(
+        Circle(
+            center,
+            radius=radius,
+            fill=False,
+            edgecolor=PIE_OUTLINE_COLOR,
+            linewidth=PIE_OUTLINE_WIDTH,
+            antialiased=True,
+            zorder=5,
+        )
     )
-    ax.set(aspect="equal")
-    ax.axis("off")
-    fig.patch.set_alpha(0.0)
-    fig.tight_layout(pad=0)
-    fig.canvas.draw()
-    img = np.asarray(fig.canvas.buffer_rgba())
-    plt.close(fig)
-    return img
+    return da
 
-
-@dataclass
-class PieSpec:
-    x: float
-    y: float
-    img: np.ndarray
-    zoom: float
-    point_idx: int
 
 
 def _candidate_offsets(point_idx: int) -> List[Tuple[float, float]]:
-    base_angles = [30, -30, 70, -70, 110, -110, 150, -150, 0, 180, 90, -90, 45, -45, 135, -135]
-    shift = point_idx % len(base_angles)
-    angles = base_angles[shift:] + base_angles[:shift]
-    radii = [26, 38, 50, 62, 74, 86]
-    candidates: List[Tuple[float, float]] = []
-    for radius in radii:
-        for angle in angles:
-            rad = math.radians(angle)
-            candidates.append((radius * math.cos(rad), radius * math.sin(rad)))
-    return candidates
+    above = [
+        (0.0, 28.0),
+        (-18.0, 26.0),
+        (18.0, 26.0),
+        (-28.0, 20.0),
+        (28.0, 20.0),
+        (0.0, 38.0),
+        (-24.0, 36.0),
+        (24.0, 36.0),
+        (-36.0, 18.0),
+        (36.0, 18.0),
+    ]
+    below = [
+        (0.0, -28.0),
+        (-18.0, -26.0),
+        (18.0, -26.0),
+        (-28.0, -20.0),
+        (28.0, -20.0),
+        (0.0, -38.0),
+        (-24.0, -36.0),
+        (24.0, -36.0),
+        (-36.0, -18.0),
+        (36.0, -18.0),
+    ]
+    side = [(-40.0, 0.0), (40.0, 0.0), (-48.0, 12.0), (48.0, 12.0), (-48.0, -12.0), (48.0, -12.0)]
+
+    # Start with a mostly alternating top/bottom preference so the figure resembles the compact paper layout.
+    # Step 0 prefers below, later steps mostly alternate above and below.
+    if point_idx == 0:
+        preferred = below + above
+    elif point_idx % 2 == 1:
+        preferred = above + below
+    else:
+        preferred = below + above
+    return preferred + side
 
 
-def _boxes_overlap(a: Tuple[float, float, float, float], b: Tuple[float, float, float, float], margin: float = 2.0) -> Tuple[bool, float]:
+
+def _boxes_overlap(
+    a: Tuple[float, float, float, float],
+    b: Tuple[float, float, float, float],
+    margin: float = 3.0,
+) -> Tuple[bool, float]:
     ax0, ay0, ax1, ay1 = a
     bx0, by0, bx1, by1 = b
     ix0 = max(ax0 - margin, bx0 - margin)
@@ -398,6 +514,7 @@ def _boxes_overlap(a: Tuple[float, float, float, float], b: Tuple[float, float, 
     if ix1 <= ix0 or iy1 <= iy0:
         return False, 0.0
     return True, (ix1 - ix0) * (iy1 - iy0)
+
 
 
 def place_pies(ax: plt.Axes, pie_specs: Sequence[PieSpec]) -> None:
@@ -410,20 +527,22 @@ def place_pies(ax: plt.Axes, pie_specs: Sequence[PieSpec]) -> None:
 
     for spec in pie_specs:
         point_px = ax.transData.transform((spec.x, spec.y))
-        h_px = spec.img.shape[0] * spec.zoom
-        w_px = spec.img.shape[1] * spec.zoom
+        w_px = renderer.points_to_pixels(spec.diameter_pt)
+        h_px = renderer.points_to_pixels(spec.diameter_pt)
         best_offset: Optional[Tuple[float, float]] = None
         best_score = float("inf")
 
-        for off_x, off_y in _candidate_offsets(spec.point_idx):
-            cx = point_px[0] + off_x
-            cy = point_px[1] + off_y
+        for off_x_pt, off_y_pt in _candidate_offsets(spec.point_idx):
+            off_x_px = renderer.points_to_pixels(off_x_pt)
+            off_y_px = renderer.points_to_pixels(off_y_pt)
+            cx = point_px[0] + off_x_px
+            cy = point_px[1] + off_y_px
             box = (cx - w_px / 2.0, cy - h_px / 2.0, cx + w_px / 2.0, cy + h_px / 2.0)
 
             overlap_area = 0.0
             overlap_count = 0
             for other in occupied:
-                hit, area = _boxes_overlap(box, other, margin=2.0)
+                hit, area = _boxes_overlap(box, other, margin=3.0)
                 if hit:
                     overlap_area += area
                     overlap_count += 1
@@ -438,66 +557,70 @@ def place_pies(ax: plt.Axes, pie_specs: Sequence[PieSpec]) -> None:
             if box[3] > axes_box.y1:
                 overflow += box[3] - axes_box.y1
 
-            radius = math.hypot(off_x, off_y)
+            radius = math.hypot(off_x_px, off_y_px)
             score = overlap_count * 1e9 + overlap_area * 1e5 + overflow * 1e3 + radius
             if score < best_score:
                 best_score = score
-                best_offset = (off_x, off_y)
+                best_offset = (off_x_pt, off_y_pt)
 
             if overlap_count == 0 and overflow == 0:
-                best_offset = (off_x, off_y)
+                best_offset = (off_x_pt, off_y_pt)
                 break
 
         if best_offset is None:
-            best_offset = (40.0, 20.0)
+            best_offset = (0.0, 30.0)
 
-        cx = point_px[0] + best_offset[0]
-        cy = point_px[1] + best_offset[1]
+        cx = point_px[0] + renderer.points_to_pixels(best_offset[0])
+        cy = point_px[1] + renderer.points_to_pixels(best_offset[1])
         final_box = (cx - w_px / 2.0, cy - h_px / 2.0, cx + w_px / 2.0, cy + h_px / 2.0)
         occupied.append(final_box)
 
         artist = AnnotationBbox(
-            OffsetImage(spec.img, zoom=spec.zoom),
+            spec.box,
             (spec.x, spec.y),
             xybox=best_offset,
             xycoords="data",
             boxcoords="offset points",
             pad=0,
             frameon=False,
+            box_alignment=(0.5, 0.5),
             zorder=6,
         )
         ax.add_artist(artist)
 
 
+
 def choose_figsize(num_x: int) -> Tuple[float, float]:
-    width = max(6, min(20.0, 3.0 + 0.6 * num_x))
-    height = 3.8
+    width = max(10.0, min(18.0, 2.2 + 0.95 * num_x))
+    height = 2.9
     return width, height
 
 
+
 def make_text(lang: str) -> Dict[str, str]:
-    if lang == "zh":
-        return {
-            "title": "实验3：搜索优化轨迹（由 txt + json 重建）",
-            "xlabel": "Outer pass / accepted step",
-            "ylabel": "Total makespan (s)",
-            "run_legend": "轨迹",
-            "fmt_legend": "格式占比",
-            "footer": "小饼图表示该步 ND / NZ / PIM-OPT 的权重字节占比。",
-            "series_label": "reconstructed run",
-        }
     return {
-        "title": "Experiment 3: reconstructed search trajectory",
-        "xlabel": "Outer pass / accepted step",
-        "ylabel": "Total makespan (s)",
-        "run_legend": "Trajectory",
-        "fmt_legend": "Format share",
-        "footer": "Small pie charts show the ND / NZ / PIM-OPT byte ratio at each accepted step.",
-        "series_label": "reconstructed run",
+        "title": "",
+        "xlabel": "Steps",
+        "ylabel": "Total time (s)",
     }
 
 
-def plot_states(states: Sequence[StepState], output_path: Path, lang: str = "zh", pie_zoom: float = 0.16, title: Optional[str] = None) -> None:
+
+def _set_bold_ticklabels(ax: plt.Axes) -> None:
+    for tick in ax.get_xticklabels() + ax.get_yticklabels():
+        tick.set_fontweight("bold")
+
+
+
+def plot_states(
+    states: Sequence[StepState],
+    output_path: Path,
+    lang: str = "en",
+    pie_zoom: float = 0.18,
+    title: Optional[str] = None,
+    panel_label: Optional[str] = None,
+    show_x_step_labels: bool = False,
+) -> None:
     text = make_text(lang)
     width, height = choose_figsize(len(states))
     fig, ax = plt.subplots(figsize=(width, height))
@@ -511,17 +634,18 @@ def plot_states(states: Sequence[StepState], output_path: Path, lang: str = "zh"
         xs,
         ys,
         color=line_color,
-        linewidth=2.2,
+        linewidth=2.0,
         marker="o",
-        markersize=5.5,
-        markerfacecolor="white",
-        markeredgewidth=1.8,
+        markersize=6.4,
+        markerfacecolor=line_color,
+        markeredgewidth=0.0,
         markeredgecolor=line_color,
-        zorder=3,
-        label=text["series_label"],
+        zorder=4,
     )
 
     pie_specs: List[PieSpec] = []
+    base_diameter_pt = 30.0
+    diameter_pt = base_diameter_pt * (pie_zoom / 0.18)
     for i, s in enumerate(states):
         values = [s.ratios.get("ND", 0.0), s.ratios.get("NZ", 0.0), s.ratios.get("PIM-OPT", 0.0)]
         colors = [PIE_COLORS["ND"], PIE_COLORS["NZ"], PIE_COLORS["PIM-OPT"]]
@@ -529,76 +653,92 @@ def plot_states(states: Sequence[StepState], output_path: Path, lang: str = "zh"
             PieSpec(
                 x=float(i),
                 y=float(s.total_makespan_s),
-                img=create_pie_image(values, colors, size=180),
-                zoom=pie_zoom,
+                box=create_pie_box(values, colors, diameter_pt=diameter_pt),
+                diameter_pt=diameter_pt,
                 point_idx=i,
             )
         )
 
     ymin, ymax = min(ys), max(ys)
     spread = ymax - ymin
-    pad = max(0.0008, spread * 0.10)
+    pad = max(0.010, spread * 0.22)
     ax.set_ylim(ymin - pad, ymax + pad)
-    ax.set_xlim(-0.35, len(states) - 0.4)
+    ax.set_xlim(-0.15, len(states) - 0.45)
 
     ax.set_xticks(xs)
-    ax.set_xticklabels(xlabels, rotation=28, ha="right", fontsize=9.5)
-    ax.set_xlabel(text["xlabel"], fontsize=11)
-    ax.set_ylabel(text["ylabel"], fontsize=11)
-    ax.grid(axis="y", linestyle="--", linewidth=0.8, color=GRID_COLOR, alpha=0.9)
+    if show_x_step_labels:
+        ax.set_xticklabels(xlabels, rotation=26, ha="right", fontsize=11)
+        ax.tick_params(axis="x", pad=8, length=4.5, width=1.2)
+    else:
+        ax.set_xticklabels(["" for _ in xs])
+        ax.tick_params(axis="x", labelbottom=False, length=4.5, width=1.2)
+
+    ax.set_ylabel(text["ylabel"], fontsize=18, fontweight="bold")
+    ax.text(
+        0.995,
+        0.02,
+        text["xlabel"],
+        transform=ax.transAxes,
+        ha="right",
+        va="bottom",
+        fontsize=14,
+        fontweight="normal",
+    )
+
+    ax.yaxis.set_major_locator(MaxNLocator(nbins=4))
+    ax.yaxis.set_major_formatter(FormatStrFormatter("%.2f"))
+    ax.yaxis.set_minor_locator(AutoMinorLocator(2))
+    ax.tick_params(axis="y", labelsize=16, width=1.6, length=6.0)
+    _set_bold_ticklabels(ax)
+
+    ax.grid(axis="y", which="major", linestyle="--", linewidth=1.15, color=GRID_COLOR, alpha=1.0)
+    ax.grid(axis="y", which="minor", linestyle="--", linewidth=1.15, color=GRID_COLOR, alpha=1.0)
+    ax.set_axisbelow(True)
+
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
+    ax.spines["left"].set_linewidth(1.8)
+    ax.spines["bottom"].set_linewidth(1.8)
+    ax.spines["left"].set_color("black")
+    ax.spines["bottom"].set_color("black")
 
+    fig.subplots_adjust(left=0.10, right=0.995, bottom=0.18, top=0.82)
     place_pies(ax, pie_specs)
 
-    fig.suptitle(title or text["title"], fontsize=14, fontweight="bold", y=0.97)
-    fig.text(0.012, 0.02, text["footer"], fontsize=8.8, color="#555555")
-
-    line_handles = [
-        Line2D(
-            [0], [0],
-            color=line_color,
-            linewidth=2.2,
-            marker="o",
-            markersize=5.5,
-            markerfacecolor="white",
-            markeredgewidth=1.8,
-            markeredgecolor=line_color,
-            label=text["series_label"],
-        )
+    legend_handles = [
+        Patch(facecolor=PIE_COLORS["ND"], edgecolor="none", label=LEGEND_LABELS["ND"]),
+        Patch(facecolor=PIE_COLORS["NZ"], edgecolor="none", label=LEGEND_LABELS["NZ"]),
+        Patch(facecolor=PIE_COLORS["PIM-OPT"], edgecolor="none", label=LEGEND_LABELS["PIM-OPT"]),
     ]
-    legend_runs = ax.legend(
-        handles=line_handles,
-        title=text["run_legend"],
-        loc="upper left",
-        bbox_to_anchor=(1.01, 1.0),
-        frameon=True,
-        framealpha=0.95,
-        fontsize=9,
-        title_fontsize=9,
-    )
-    ax.add_artist(legend_runs)
-
-    fmt_handles = [
-        Patch(facecolor=PIE_COLORS["ND"], edgecolor="none", label="ND"),
-        Patch(facecolor=PIE_COLORS["NZ"], edgecolor="none", label="NZ"),
-        Patch(facecolor=PIE_COLORS["PIM-OPT"], edgecolor="none", label="PIM-OPT"),
-    ]
-    ax.legend(
-        handles=fmt_handles,
-        title=text["fmt_legend"],
-        loc="upper left",
-        bbox_to_anchor=(1.01, 0.58),
-        frameon=True,
-        framealpha=0.95,
-        fontsize=9,
-        title_fontsize=9,
+    fig.legend(
+        handles=legend_handles,
+        loc="upper right",
+        bbox_to_anchor=(0.93, 0.985),
+        ncol=3,
+        frameon=False,
+        prop={"weight": "bold", "size": 14},
+        handlelength=1.1,
+        handleheight=1.4,
+        handletextpad=0.45,
+        columnspacing=0.95,
+        borderaxespad=0.0,
     )
 
-    fig.tight_layout(rect=[0.0, 0.05, 0.82, 0.93])
+    normalized_panel_label = None
+    if panel_label is not None and panel_label.strip():
+        pl = panel_label.strip()
+        normalized_panel_label = pl if pl.startswith("(") else f"({pl})"
+
+    if title:
+        fig.text(0.5, 0.985, title, ha="center", va="top", fontsize=16, fontweight="bold")
+
+    if normalized_panel_label:
+        fig.text(0.995, 0.965, normalized_panel_label, ha="right", va="top", fontsize=17, fontweight="bold")
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_path, bbox_inches="tight")
+    fig.savefig(output_path, bbox_inches="tight", dpi=300)
     plt.close(fig)
+
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -610,9 +750,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     out_path = Path(args.output).expanduser().resolve()
 
     if not txt_path.is_file():
-        raise FileNotFoundError(f"txt 不存在: {txt_path}")
+        raise FileNotFoundError(f"txt file does not exist: {txt_path}")
     if not json_path.is_file():
-        raise FileNotFoundError(f"json 不存在: {json_path}")
+        raise FileNotFoundError(f"json file does not exist: {json_path}")
 
     txt = txt_path.read_text(encoding="utf-8", errors="ignore")
     json_data = load_json(json_path)
@@ -620,18 +760,26 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     runs = extract_al_runs(txt)
     chosen = choose_run(runs, json_data, args.run_index)
     states = reconstruct_states_from_txt_json(chosen.raw_text, json_data)
-    plot_states(states, out_path, lang=args.lang, pie_zoom=args.pie_zoom, title=args.title)
+    plot_states(
+        states,
+        out_path,
+        lang=args.lang,
+        pie_zoom=args.pie_zoom,
+        title=args.title,
+        panel_label=args.panel_label,
+        show_x_step_labels=args.show_x_step_labels,
+    )
 
-    print(f"[INFO] txt 中检测到 {len(runs)} 个 [AL] run，选中了 run_index={chosen.run_index}")
-    print(f"[INFO] 该 run: outer0_total={chosen.outer0_total:.6f}s block_layer_span={chosen.block_layer_span}")
-    print(f"[INFO] 重建出 {len(states)} 个点：")
+    print(f"[INFO] Detected {len(runs)} [AL] run(s) in txt, selected run_index={chosen.run_index}")
+    print(f"[INFO] Selected run: outer0_total={chosen.outer0_total:.6f}s block_layer_span={chosen.block_layer_span}")
+    print(f"[INFO] Reconstructed {len(states)} point(s):")
     for s in states:
         print(
             f"  outer={s.outer_pass} step={s.accepted_step} total={s.total_makespan_s:.9f}s "
             f"ND={s.ratios['ND']:.4f} NZ={s.ratios['NZ']:.4f} PIM={s.ratios['PIM-OPT']:.4f} "
             f"note={s.note}"
         )
-    print(f"[INFO] 输出图文件: {out_path}")
+    print(f"[INFO] Output figure: {out_path}")
     return 0
 
 

@@ -1,9 +1,9 @@
 {
   "layout_display_names": {
-    "nd_init": "ND baseline",
+    "nd_init": "Conventional Baseline",
     "nz_init": "NPU-OPT baseline",
     "pim_opt_init": "PIM-OPT baseline",
-    "nd_opt": "ND optimized"
+    "nd_opt": "Arbiter Optimized"
   },
   "panel_label_map": {
     "128x128": "L0",
