@@ -76,6 +76,7 @@ COMMON_SWEEP_FIELDS: Tuple[str, ...] = (
     "tp_ffn",
     "algo",
     "npu_backend",
+    "weight_local_load_overlap_ratio",
 )
 
 # Optional format_* knobs. These are now optional axes, not the only sweep target.
@@ -114,6 +115,7 @@ RESULT_FIELDNAMES: Tuple[str, ...] = (
     "tp_ffn",
     "algo",
     "npu_backend",
+    "weight_local_load_overlap_ratio",
     "format_outer_max_iters",
     "format_inner_max_blocks",
     "format_nd_margin_init",
@@ -140,6 +142,8 @@ RESULT_FIELDNAMES: Tuple[str, ...] = (
     "pim_opt_role",
     "pim_opt_initial",
     "pim_opt_best",
+    "iter_gain_s",
+    "iter_gain_pct",
     "returncode",
     "generated_config_json",
     "best_summary_json",
@@ -584,6 +588,7 @@ def collect_axes(args: argparse.Namespace) -> Dict[str, List[Any]]:
     add_axis("tp_ffn", args.tp_ffn)
     add_axis("algo", args.algo)
     add_axis("npu_backend", args.npu_backend)
+    add_axis("weight_local_load_overlap_ratio", args.weight_local_load_overlap_ratio)
 
     add_axis("format_outer_max_iters", args.format_outer_max_iters)
     add_axis("format_inner_max_blocks", args.format_inner_max_blocks)
@@ -669,6 +674,7 @@ def effective_summary_fields(cfg: Dict[str, Any], params_json: str) -> Dict[str,
         "tp_ffn": cfg.get("tp_ffn", ""),
         "algo": cfg.get("algo", ""),
         "npu_backend": cfg.get("npu_backend", ""),
+        "weight_local_load_overlap_ratio": cfg.get("weight_local_load_overlap_ratio", ""),
         "format_outer_max_iters": cfg.get("format_outer_max_iters", ""),
         "format_inner_max_blocks": cfg.get("format_inner_max_blocks", ""),
         "format_nd_margin_init": cfg.get("format_nd_margin_init", ""),
@@ -734,6 +740,7 @@ def make_parser() -> argparse.ArgumentParser:
     ap.add_argument("--tp-ffn", dest="tp_ffn", type=int, nargs="*", default=None, help="candidate tp_ffn values")
     ap.add_argument("--algo", nargs="*", default=None, help="candidate algo values")
     ap.add_argument("--npu-backend", dest="npu_backend", nargs="*", default=None, help="candidate npu_backend values")
+    ap.add_argument("--weight-local-load-overlap-ratio", dest="weight_local_load_overlap_ratio", type=float, nargs="*", default=None, help="candidate WEIGHT_LOCAL_LOAD_OVERLAP_RATIO values in [0,1]")
 
     # Optional format_* axes.
     ap.add_argument("--format-outer-max-iters", dest="format_outer_max_iters", type=int, nargs="*", default=None, help="candidate format_outer_max_iters values")
@@ -1060,6 +1067,8 @@ def main() -> int:
                 "search_format": "",
                 "best_pass": "",
                 **compare,
+                "iter_gain_s": "",
+                "iter_gain_pct": "",
                 "returncode": rc,
                 "generated_config_json": str(generated_config_path),
                 "best_summary_json": str(best_summary_path),
@@ -1077,6 +1086,14 @@ def main() -> int:
                 continue
 
             obj = float(summary[args.objective])
+            try:
+                nd_initial = float(compare.get("nd_initial", 0.0) or 0.0)
+                nd_best = float(compare.get("nd_best", 0.0) or 0.0)
+                iter_gain_s = float(nd_initial - nd_best)
+                iter_gain_pct = float((iter_gain_s / nd_initial) * 100.0) if nd_initial > 0.0 else 0.0
+            except Exception:
+                iter_gain_s = 0.0
+                iter_gain_pct = 0.0
             row.update(
                 {
                     "objective": obj,
@@ -1085,6 +1102,8 @@ def main() -> int:
                     "total": float(summary["total"]),
                     "search_format": str(summary.get("search_format", "")),
                     "best_pass": int(summary.get("best_pass", -1)),
+                    "iter_gain_s": float(iter_gain_s),
+                    "iter_gain_pct": float(iter_gain_pct),
                 }
             )
             append_result(results_csv, row)
@@ -1097,7 +1116,8 @@ def main() -> int:
             print(
                 f"[cmp] ND({compare.get('nd_role', '')})={compare.get('nd_best', '')} "
                 f"NZ({compare.get('nz_role', '')})={compare.get('nz_best', '')} "
-                f"PIM-OPT({compare.get('pim_opt_role', '')})={compare.get('pim_opt_best', '')}"
+                f"PIM-OPT({compare.get('pim_opt_role', '')})={compare.get('pim_opt_best', '')} "
+                f"iter_gain_s={row.get('iter_gain_s', '')} iter_gain_pct={row.get('iter_gain_pct', '')}"
             )
 
             if obj < float(best["objective"]):

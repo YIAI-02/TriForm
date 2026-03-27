@@ -1552,6 +1552,7 @@ def run(cfg: Dict):
             'format_nd_margin_min': cfg.get('format_nd_margin_min', 0.05),
             'format_inner_improve_eps': cfg.get('format_inner_improve_eps', 1e-6),
             'format_outer_stop_eps': cfg.get('format_outer_stop_eps', 0.0),
+            'weight_local_load_overlap_ratio': cfg.get('weight_local_load_overlap_ratio', None),
         },
         'rows': compare_rows,
         'search_format': str(search_start_mode),
@@ -1581,6 +1582,7 @@ def run(cfg: Dict):
                     'decode_len': cfg.get('decode_len'),
                     'search_format': str(search_start_mode),
                     'compare_only_formats': list(compare_only_modes),
+                    'weight_local_load_overlap_ratio': cfg.get('weight_local_load_overlap_ratio', None),
                 },
                 'weight_format_comparison': comparison_payload,
                 'passes': all_pass_records,
@@ -1605,6 +1607,7 @@ def run(cfg: Dict):
                 'decode_steps': best_rec.get('schedules', {}).get('decode_steps'),
                 'improvements_vs_each_pass': improvements,
                 'weight_format_comparison': compare_rows,
+                'weight_local_load_overlap_ratio': cfg.get('weight_local_load_overlap_ratio', None),
                 'best_weight_format_json': str(weight_format_path),
                 'best_weight_format_full_json': str(full_path),
                 'weight_format_compare_json': str(compare_path),
@@ -1634,6 +1637,7 @@ def run(cfg: Dict):
         )
     print(
         f"[weight-suggest] search_format={str(search_start_mode)} "
+        f"weight_local_load_overlap_ratio={cfg.get('weight_local_load_overlap_ratio', None)} "
         f"best_total={float(best_total_rec):.6f}s"
     )
 
@@ -2418,6 +2422,8 @@ def parse_args():
                          choices=['fast_mode', 'ascend_310b_json', 'llmcompass'],
                          help='NPU operator-latency backend: fast_mode/ascend_310b_json/llmcompass. Must be explicitly specified (in config JSON or CLI).')
     sp_eval.add_argument('--pim_fast_mode', action='store_true',default=None)
+    sp_eval.add_argument('--weight-local-load-overlap-ratio', dest='weight_local_load_overlap_ratio', type=float,
+                         help='Override config.WEIGHT_LOCAL_LOAD_OVERLAP_RATIO in [0,1] for this process only.')
     # Tensor-parallel shard controls (graph splitting)
     sp_eval.add_argument('--tp_qkv', type=int,
                          help='Tensor-parallel shard size for Q/K/V generation and attention head sharding (column split).')
@@ -2447,6 +2453,8 @@ def parse_args():
                         choices=['fast_mode', 'ascend_310b_json', 'llmcompass'],
                         help='NPU operator-latency backend: fast/ascend_310b_json/llmcompass. Must be explicitly specified (in config JSON or CLI).')
     sp_ws.add_argument('--pim_fast_mode', action='store_true', default=None)   
+    sp_ws.add_argument('--weight-local-load-overlap-ratio', dest='weight_local_load_overlap_ratio', type=float,
+                       help='Override config.WEIGHT_LOCAL_LOAD_OVERLAP_RATIO in [0,1] for this process only.')
     # Tensor-parallel shard controls (graph splitting)
     sp_ws.add_argument('--tp_qkv', type=int,
                         help='Tensor-parallel shard size for Q/K/V generation and attention head sharding (column split).')
@@ -2502,6 +2510,28 @@ def _load_cfg_from_json(path: str) -> Dict:
     # cfg 完全由 JSON 决定
     return dict(raw)
 
+def _apply_runtime_config_overrides(cfg: Dict) -> Dict[str, Any]:
+    """Apply per-run overrides to the imported config module without editing config.py on disk."""
+    import config as _runtime_config
+
+    applied: Dict[str, Any] = {}
+
+    if 'weight_local_load_overlap_ratio' in cfg and cfg.get('weight_local_load_overlap_ratio') is not None:
+        try:
+            ratio = float(cfg.get('weight_local_load_overlap_ratio'))
+        except Exception as exc:
+            raise ValueError(
+                f"Invalid weight_local_load_overlap_ratio={cfg.get('weight_local_load_overlap_ratio')!r}; expected a float in [0, 1]"
+            ) from exc
+        if not math.isfinite(ratio) or ratio < 0.0 or ratio > 1.0:
+            raise ValueError(
+                f"weight_local_load_overlap_ratio must be within [0, 1], got {ratio!r}"
+            )
+        setattr(_runtime_config, 'WEIGHT_LOCAL_LOAD_OVERLAP_RATIO', float(ratio))
+        applied['WEIGHT_LOCAL_LOAD_OVERLAP_RATIO'] = float(ratio)
+
+    return applied
+
 def main():
     args = parse_args()
 
@@ -2529,6 +2559,7 @@ def main():
             'weight_format_json',
             'npu_backend',
             'pim_fast_mode',
+            'weight_local_load_overlap_ratio',
             'format_outer_max_iters',
             'format_inner_max_blocks',
             'format_nd_margin_init',
@@ -2543,6 +2574,12 @@ def main():
             val = getattr(args, key, None)
             if val is not None:
                 cfg[key] = val
+
+        runtime_cfg_overrides = _apply_runtime_config_overrides(cfg)
+        if runtime_cfg_overrides:
+            print(
+                f"[runtime-config] applied {json.dumps(runtime_cfg_overrides, ensure_ascii=False, sort_keys=True)}"
+            )
 
         # npu_backend is mandatory: must be explicitly specified in config or CLI
         if cfg.get('npu_backend', None) is None:

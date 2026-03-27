@@ -17,9 +17,12 @@ conda activate "${CONDA_ENV_NAME}"
 
 # ------------------------------------------------------------------
 # Required inputs
-# sbatch \
-# --export=CONFIG=./examples/evaluate_test_config.json,OUTDIR=./output/ws_hpc_2,MODE=grid,MODELS='qwen:1.8b llama:7b',PREFILLS='128 1024',DECODES='128 512 1024',BATCHES='4 16',COMBO_WORKERS=16 \
-# run_hpc_sweep_weight_suggest.sh
+
+: <<'COMMENT'
+ sbatch \
+   --export=CONFIG=./examples/weight_suggest_overlap_ratio_base.json,OUTDIR=./output/ws_overlap_ratio,MODE=grid,OBJECTIVE=total,ALGOS='hefthint',WEIGHT_LOCAL_LOAD_OVERLAP_RATIOS='0.9 0.6 0.3 0.1',COMBO_WORKERS=4,PARALLEL_GROUP_KEYS='weight_local_load_overlap_ratio,model,prefill_len,decode_len,batch',MODELS='llama:7b',PREFILLS='128,1024',DECODES='128,1024',BATCHES='1,4',DEBUG='1' \
+   run_hpc_weight_overlap_ratio_weight_suggest.slurm
+COMMENT
 # ------------------------------------------------------------------
 CONFIG="${CONFIG:-}"
 if [[ -z "${CONFIG}" ]]; then
@@ -53,6 +56,7 @@ TP_QKV_STR="${TP_QKV:-}"
 TP_FFN_STR="${TP_FFN:-}"
 ALGOS_STR="${ALGOS:-}"
 NPU_BACKENDS_STR="${NPU_BACKENDS:-}"
+WEIGHT_LOCAL_LOAD_OVERLAP_RATIOS_STR="${WEIGHT_LOCAL_LOAD_OVERLAP_RATIOS:-}"
 FORMAT_OUTER_MAX_ITERS_STR="${FORMAT_OUTER_MAX_ITERS:-}"
 FORMAT_INNER_MAX_BLOCKS_STR="${FORMAT_INNER_MAX_BLOCKS:-}"
 FORMAT_ND_MARGIN_INIT_STR="${FORMAT_ND_MARGIN_INIT:-}"
@@ -65,7 +69,7 @@ FORMAT_RELOAD_COUNT_MODE_STR="${FORMAT_RELOAD_COUNT_MODE:-}"
 
 declare -a MODELS_ARR=() DTYPES_ARR=() BATCHES_ARR=() PREFILLS_ARR=() DECODES_ARR=()
 declare -a DECODE_SAMPLE_STRIDES_ARR=() DECODE_PLAN_REFRESH_STRIDES_ARR=() HARDWARES_ARR=()
-declare -a TP_QKV_ARR=() TP_FFN_ARR=() ALGOS_ARR=() NPU_BACKENDS_ARR=()
+declare -a TP_QKV_ARR=() TP_FFN_ARR=() ALGOS_ARR=() NPU_BACKENDS_ARR=() WEIGHT_LOCAL_LOAD_OVERLAP_RATIOS_ARR=()
 declare -a FORMAT_OUTER_MAX_ITERS_ARR=() FORMAT_INNER_MAX_BLOCKS_ARR=() FORMAT_ND_MARGIN_INIT_ARR=()
 declare -a FORMAT_ND_MARGIN_DECAY_ARR=() FORMAT_ND_MARGIN_MIN_ARR=() FORMAT_INNER_IMPROVE_EPS_ARR=()
 declare -a FORMAT_OUTER_STOP_EPS_ARR=() FORMAT_BLOCK_LAYER_SPAN_ARR=() FORMAT_RELOAD_COUNT_MODE_ARR=()
@@ -82,6 +86,7 @@ read -r -a TP_QKV_ARR <<< "${TP_QKV_STR}"
 read -r -a TP_FFN_ARR <<< "${TP_FFN_STR}"
 read -r -a ALGOS_ARR <<< "${ALGOS_STR}"
 read -r -a NPU_BACKENDS_ARR <<< "${NPU_BACKENDS_STR}"
+read -r -a WEIGHT_LOCAL_LOAD_OVERLAP_RATIOS_ARR <<< "${WEIGHT_LOCAL_LOAD_OVERLAP_RATIOS_STR}"
 read -r -a FORMAT_OUTER_MAX_ITERS_ARR <<< "${FORMAT_OUTER_MAX_ITERS_STR}"
 read -r -a FORMAT_INNER_MAX_BLOCKS_ARR <<< "${FORMAT_INNER_MAX_BLOCKS_STR}"
 read -r -a FORMAT_ND_MARGIN_INIT_ARR <<< "${FORMAT_ND_MARGIN_INIT_STR}"
@@ -134,6 +139,9 @@ if (( ${#ALGOS_ARR[@]} )); then
 fi
 if (( ${#NPU_BACKENDS_ARR[@]} )); then
   CMD_COMMON+=(--npu-backend "${NPU_BACKENDS_ARR[@]}")
+fi
+if (( ${#WEIGHT_LOCAL_LOAD_OVERLAP_RATIOS_ARR[@]} )); then
+  CMD_COMMON+=(--weight-local-load-overlap-ratio "${WEIGHT_LOCAL_LOAD_OVERLAP_RATIOS_ARR[@]}")
 fi
 if (( ${#FORMAT_OUTER_MAX_ITERS_ARR[@]} )); then
   CMD_COMMON+=(--format-outer-max-iters "${FORMAT_OUTER_MAX_ITERS_ARR[@]}")
@@ -286,6 +294,7 @@ echo "[info] DECODES=${DECODES_STR}"
 echo "[info] BATCHES=${BATCHES_STR}"
 echo "[info] HARDWARES=${HARDWARES_STR}"
 echo "[info] TP_QKV=${TP_QKV_STR} TP_FFN=${TP_FFN_STR}"
+echo "[info] WEIGHT_LOCAL_LOAD_OVERLAP_RATIOS=${WEIGHT_LOCAL_LOAD_OVERLAP_RATIOS_STR}"
 echo "[info] FORMAT_OUTER_MAX_ITERS=${FORMAT_OUTER_MAX_ITERS_STR}"
 echo "[info] FORMAT_INNER_MAX_BLOCKS=${FORMAT_INNER_MAX_BLOCKS_STR}"
 echo "[info] COMBO_WORKERS=${COMBO_WORKERS} PARALLEL_GROUP_KEYS=${PARALLEL_GROUP_KEYS} THREADS_PER_WORKER=${THREADS_PER_WORKER}"
