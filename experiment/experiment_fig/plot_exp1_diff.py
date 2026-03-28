@@ -11,6 +11,7 @@ Changes in this version:
 2. Support multiple file-list inputs and render multiple panels horizontally.
 3. Panels share a single y-axis; horizontal spacing is controlled by --wspace.
 4. When --file-list points to a directory, <dir>/files.txt is used automatically.
+5. Histograms are drawn with seaborn and a gray KDE fit curve is overlaid on each panel.
 
 Examples:
 python3 plot_exp1_diff.py \
@@ -60,6 +61,11 @@ AXIS_LABEL_FONTSIZE = 14
 TITLE_FONTSIZE = 14
 TICK_FONTSIZE = 12
 LEGEND_FONTSIZE = 12
+
+FIT_CURVE_COLOR = "#777777D5"
+FIT_CURVE_WIDTH = 1.8
+KDE_BW_ADJUST = 1.0
+MIN_KDE_SAMPLES = 2
 # ============================================================================
 
 
@@ -537,6 +543,7 @@ def plot_gap_histograms(
     fig_width: float = DEFAULT_FIG_WIDTH,
     fig_height: float = DEFAULT_FIG_HEIGHT,
     wspace: float = DEFAULT_WSPACE,
+    kde_bw_adjust: float = KDE_BW_ADJUST,
 ) -> None:
     if not panels:
         raise RuntimeError("No panels to plot.")
@@ -576,22 +583,56 @@ def plot_gap_histograms(
         pos = arr[arr >= 0.0]
 
         if neg.size:
-            ax.hist(
-                neg,
+            sns.histplot(
+                x=neg,
                 bins=bin_edges,
+                stat="count",
                 color=NEGATIVE_COLOR,
                 alpha=1,
                 edgecolor="black",
                 linewidth=1,
+                element="bars",
+                fill=True,
+                legend=False,
+                ax=ax,
             )
         if pos.size:
-            ax.hist(
-                pos,
+            sns.histplot(
+                x=pos,
                 bins=bin_edges,
+                stat="count",
                 color=POSITIVE_COLOR,
                 alpha=1,
                 edgecolor="black",
                 linewidth=1,
+                element="bars",
+                fill=True,
+                legend=False,
+                ax=ax,
+            )
+
+        if arr.size >= MIN_KDE_SAMPLES and float(np.nanstd(arr)) > 0.0:
+            sns.histplot(
+                x=arr,
+                bins=bin_edges,
+                stat="count",
+                kde=True,
+                color=FIT_CURVE_COLOR,
+                fill=False,
+                element="step",
+                linewidth=0,
+                legend=False,
+                ax=ax,
+                kde_kws={
+                    "bw_adjust": kde_bw_adjust,
+                    "cut": 0,
+                    "clip": (x_left, x_right),
+                },
+                line_kws={
+                    "color": FIT_CURVE_COLOR,
+                    "linewidth": FIT_CURVE_WIDTH,
+                    "alpha": 1.0,
+                },
             )
 
         ax.set_xlim(x_left, x_right)
@@ -636,7 +677,7 @@ def plot_gap_histograms(
                 fontweight="bold",
             )
 
-    top_margin = 0.78 if title else 0.86
+    top_margin = 0.78 if title else 0.82
     fig.subplots_adjust(wspace=wspace, top=top_margin)
 
     if title:
@@ -689,6 +730,7 @@ def main() -> None:
     ap.add_argument("--fig-width", type=float, default=DEFAULT_FIG_WIDTH, help="Per-panel width in inches.")
     ap.add_argument("--fig-height", type=float, default=DEFAULT_FIG_HEIGHT, help="Total figure height in inches.")
     ap.add_argument("--wspace", type=float, default=DEFAULT_WSPACE, help="Horizontal spacing between panels.")
+    ap.add_argument("--kde-bw-adjust", type=float, default=KDE_BW_ADJUST, help="Bandwidth multiplier for the gray KDE fit curve.")
     ap.add_argument("--show", action="store_true", help="Show interactively (in addition to saving).")
 
     args = ap.parse_args()
@@ -702,6 +744,7 @@ def main() -> None:
         fig_width=float(args.fig_width),
         fig_height=float(args.fig_height),
         wspace=float(args.wspace),
+        kde_bw_adjust=float(args.kde_bw_adjust),
     )
 
     if args.show:

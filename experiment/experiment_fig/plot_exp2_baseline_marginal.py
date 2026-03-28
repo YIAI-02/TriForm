@@ -1,52 +1,52 @@
 #!/usr/bin/env python3
 """
 python plot_exp2_baseline_marginal.py \
-  --model-folder llama_7b_fp16_b1_s64 \
-  --prefills 128 256 512 1024 2048 4096 \
+  --model-folder llama_7b_fp16_b16_s8 \
+  --prefills 128 512 1024 2048 \
   --decodes 128 256 512 1024 \
   --reference-panel 0 \
-  --panel-root 0=../../algorithms/output/exp2/npu_only/npu/hw_hardware_1npu/sst64_rst64/ \
-  --panel-root 2=../../algorithms/output/exp1/hw_hardware_1npu_2aim/sst64_rst64/ \
-  --panel-root 4=../../algorithms/output/exp2/4shards/hw_hardware_1npu_4aim/sst64_rst64/ \
-  --panel-root 8=../../algorithms/output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/ \
-  --output ../../figs/exp2/llama_7b_fp16_b1_s64_marginal.pdf
+  --panel-root 0=../../algorithms/output/exp2/npu_only/npu/hw_hardware_1npu/sst8_rst8/ \
+  --panel-root 2=../../algorithms/output/exp1/hw_hardware_1npu_2aim/sst8_rst8/ \
+  --panel-root 4=../../algorithms/output/exp2/4shards/hw_hardware_1npu_4aim/sst8_rst8/ \
+  --panel-root 8=../../algorithms/output/exp2/8shards/hw_hardware_1npu_8aim/sst8_rst8/ \
+  --output ../../figs/exp2/llama_7b_fp16_b16_s8_marginal.pdf
 
 python plot_exp2_baseline_marginal.py \
-  --model-folder llama_13b_fp16_b1_s64 \
-  --prefills 256 512 1024 4096 \
+  --model-folder llama_13b_fp16_b16_s8 \
+  --prefills 128 512 1024 2048 \
   --decodes 128 256 512 1024 \
   --reference-panel 0 \
-  --panel-root 0=../../algorithms/output/exp2/npu_only/npu/hw_hardware_1npu/sst64_rst64/ \
-  --panel-root 2=../../algorithms/output/exp1/hw_hardware_1npu_2aim/sst64_rst64/ \
-  --panel-root 4=../../algorithms/output/exp2/4shards/hw_hardware_1npu_4aim/sst64_rst64/ \
-  --panel-root 8=../../algorithms/output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/ \
-  --output ../../figs/exp2/llama_13b_fp16_b1_s64_marginal.pdf
+  --panel-root 0=../../algorithms/output/exp2/npu_only/npu/hw_hardware_1npu/sst8_rst8/ \
+  --panel-root 2=../../algorithms/output/exp1/hw_hardware_1npu_2aim/sst8_rst8/ \
+  --panel-root 4=../../algorithms/output/exp2/4shards/hw_hardware_1npu_4aim/sst8_rst8/ \
+  --panel-root 8=../../algorithms/output/exp2/8shards/hw_hardware_1npu_8aim/sst8_rst8/ \
+  --output ../../figs/exp2/llama_13b_fp16_b16_s8_marginal.pdf
 
 python plot_exp2_baseline_marginal.py \
-  --model-folder llama_70b_fp16_b4_s64 \
-  --prefills 128 256 512 1024 2048 4096 \
+  --model-folder llama_70b_fp16_b16_s8 \
+  --prefills 128 512 1024 2048 \
   --decodes 128 256 512 1024 \
   --reference-panel 0 \
-  --panel-root 0=../../algorithms/output/exp2/npu_only/npu/hw_hardware_1npu/sst64_rst64/ \
-  --panel-root 2=../../algorithms/output/exp1/hw_hardware_1npu_2aim/sst64_rst64/ \
-  --panel-root 4=../../algorithms/output/exp2/4shards/hw_hardware_1npu_4aim/sst64_rst64/ \
-  --panel-root 8=../../algorithms/output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/ \
-  --output ../../figs/exp2/llama_70b_fp16_b4_s64_marginal.pdf
+  --panel-root 0=../../algorithms/output/exp2/npu_only/npu/hw_hardware_1npu/sst8_rst8/ \
+  --panel-root 2=../../algorithms/output/exp1/hw_hardware_1npu_2aim/sst8_rst8/ \
+  --panel-root 4=../../algorithms/output/exp2/4shards/hw_hardware_1npu_4aim/sst8_rst8/ \
+  --panel-root 8=../../algorithms/output/exp2/8shards/hw_hardware_1npu_8aim/sst8_rst8/ \
+  --output ../../figs/exp2/llama_70b_fp16_b16_s8_marginal.pdf
 
 others:
 python plot_exp2_baseline_marginal.py \
-  --model-folder llama_7b_fp16_b1_s64 \
-  --prefills 128 256 512 1024 2048 4096 \
+  --model-folder llama_7b_fp16_b1_s8 \
+  --prefills 128 512 1024 2048 \
   --decodes 128 256 512 1024 \
   --reference-panel 0 \
-  --panel-root 0=../../algorithms/output/exp2/npu_only/npu/hw_hardware_1npu/sst64_rst64/ \
-  --panel-root 2=../../algorithms/output/exp1/hw_hardware_1npu_2aim/sst64_rst64/ \
-  --panel-root 4=../../algorithms/output/exp2/4shards/hw_hardware_1npu_4aim/sst64_rst64/ \
-  --panel-root 8=../../algorithms/output/exp2/8shards/hw_hardware_1npu_8aim/sst64_rst64/ \
+  --panel-root 0=../../algorithms/output/exp2/npu_only/npu/hw_hardware_1npu/sst8_rst8/ \
+  --panel-root 2=../../algorithms/output/exp1/hw_hardware_1npu_2aim/sst8_rst8/ \
+  --panel-root 4=../../algorithms/output/exp2/4shards/hw_hardware_1npu_4aim/sst8_rst8/ \
+  --panel-root 8=../../algorithms/output/exp2/8shards/hw_hardware_1npu_8aim/sst8_rst8/ \
   --panel-policy 2=heft \
   --panel-policy 4=myalgo \
   --panel-policy 8=otheralgo \
-  --output ../../figs/exp2/llama_7b_fp16_b1_s64_marginal_mixed_policy.pdf
+  --output ../../figs/exp2/llama_7b_fp16_b1_s8_marginal_mixed_policy.pdf
 
 """
 #!/usr/bin/env python3
@@ -168,7 +168,7 @@ def parse_args() -> argparse.Namespace:
         "--model-folder",
         default=None,
         help=(
-            "Exact model folder name to match in the path, e.g. llama_7b_fp16_b1_s64. "
+            "Exact model folder name to match in the path, e.g. llama_7b_fp16_b1_s8. "
             "When set, it is used as the primary path filter."
         ),
     )
@@ -303,7 +303,7 @@ def infer_model_key(config: dict) -> Optional[str]:
         return f"{family}_{variant}_{dtype}"
     result_dir = config.get("result_dir")
     if isinstance(result_dir, str):
-        # Try to recover from .../llama_7b_fp16_b1_s64
+        # Try to recover from .../llama_7b_fp16_b1_s8
         tail = Path(result_dir).name
         m = re.match(r"([a-zA-Z0-9]+_[a-zA-Z0-9]+_[a-zA-Z0-9]+)_b\d+(?:_|$)", tail)
         if m:

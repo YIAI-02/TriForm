@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
 python plot_exp2_heatmap.py \
-  --panel "1 NPU 0 PIM=../../algorithms/output/exp2/npu_only/npu/hw_hardware_1npu/sst8_rst8" \
-  --panel "1 NPU 2 PIM=../../algorithms/output/exp1/hw_hardware_1npu_2aim/sst8_rst8" \
-  --panel "1 NPU 4 PIM=../../algorithms/output/exp2/4shards/hw_hardware_1npu_4aim/sst8_rst8" \
-  --panel "1 NPU 8 PIM=../../algorithms/output/exp2/8shards/hw_hardware_1npu_8aim/sst8_rst8" \
+  --panel "HP0=../../algorithms/output/exp2/npu_only/npu/hw_hardware_1npu/sst8_rst8" \
+  --panel "HP32=../../algorithms/output/exp1/hw_hardware_1npu_2aim/sst8_rst8" \
+  --panel "HP64=../../algorithms/output/exp2/4shards/hw_hardware_1npu_4aim/sst8_rst8" \
+  --panel "HP128=../../algorithms/output/exp2/8shards/hw_hardware_1npu_8aim/sst8_rst8" \
   --model llama_7b \
   --model llama_13b \
   --model llama_70b \
@@ -12,10 +12,10 @@ python plot_exp2_heatmap.py \
   --prefills 128 512 1024 2048 \
   --decodes 128 256 512 1024 \
   --baseline pd \
-  --reference-panel "1 NPU 0 PIM" \
-  --vmin 1 \
-  --vmax 10 \
-  --compact-outer-label-fontsize 8\
+  --reference-panel "HP0" \
+  --vmin 2 \
+  --vmax 12 \
+  --compact-outer-label-fontsize 9\
   --output ../../figs/exp2/llama_heatmap.pdf
 
 """
@@ -762,6 +762,47 @@ def configure_heatmap_axis_labels(
         )
 
 
+def add_shared_axis_labels(
+    fig: plt.Figure,
+    axes,
+    *,
+    xlabel: Optional[str] = None,
+    ylabel: Optional[str] = None,
+    xlabel_pad: float = 0.035,
+    ylabel_pad: float = 0.045,
+    fontsize: float = 11,
+):
+    valid_axes = [ax for ax in axes if ax is not None]
+    if not valid_axes:
+        return
+
+    x0 = min(ax.get_position().x0 for ax in valid_axes)
+    x1 = max(ax.get_position().x1 for ax in valid_axes)
+    y0 = min(ax.get_position().y0 for ax in valid_axes)
+    y1 = max(ax.get_position().y1 for ax in valid_axes)
+
+    if xlabel:
+        fig.text(
+            (x0 + x1) / 2,
+            max(0.01, y0 - xlabel_pad),
+            xlabel,
+            ha="center",
+            va="top",
+            fontsize=fontsize,
+        )
+
+    if ylabel:
+        fig.text(
+            max(0.01, x0 - ylabel_pad),
+            (y0 + y1) / 2,
+            ylabel,
+            ha="center",
+            va="center",
+            rotation=90,
+            fontsize=fontsize,
+        )
+
+
 def add_group_title(fig, axes, text: str, dy: float = 0.02, fontsize: int = 16):
     valid_axes = [ax for ax in axes if ax is not None]
     if not valid_axes:
@@ -862,7 +903,10 @@ def merge_settings(args, cfg: dict) -> dict:
             or cfg.get("annotated_cbar_label")
             or cfg.get("cbar_label")
         ),
-        "compact_cbar_label": cfg.get("compact_cbar_label"),
+        "compact_cbar_label": (
+            cfg.get("compact_cbar_label")
+            or f"speedup vs. {args.reference_panel or cfg.get('reference_panel') or 'HP0'}"
+        ),
         "hide_reference_panel": (
             False
             if args.show_reference_panel
@@ -881,17 +925,17 @@ def merge_settings(args, cfg: dict) -> dict:
         "compact_cell_width": (
             args.compact_cell_width
             if args.compact_cell_width is not None
-            else cfg.get("compact_cell_width", 0.12)
+            else cfg.get("compact_cell_width", 0.14)
         ),
         "compact_cell_height": (
             args.compact_cell_height
             if args.compact_cell_height is not None
-            else cfg.get("compact_cell_height", 0.12)
+            else cfg.get("compact_cell_height", 0.14)
         ),
         "compact_tick_fontsize": (
             args.compact_tick_fontsize
             if args.compact_tick_fontsize is not None
-            else cfg.get("compact_tick_fontsize", 7)
+            else cfg.get("compact_tick_fontsize", 8)
         ),
         "compact_outer_label_fontsize": (
             args.compact_outer_label_fontsize
@@ -909,7 +953,7 @@ def merge_settings(args, cfg: dict) -> dict:
         "compact_annotation_fontsize": (
             args.compact_annotation_fontsize
             if args.compact_annotation_fontsize is not None
-            else cfg.get("compact_annotation_fontsize", 7)
+            else cfg.get("compact_annotation_fontsize", 8)
         ),
         "compact_annotation_fmt": (
             args.compact_annotation_fmt
@@ -1067,11 +1111,8 @@ def render_annotated_figure(
                 norm=norm,
             )
 
-            if j == 0:
-                ax.set_ylabel(settings["ylabel"], fontsize=11)
-            else:
+            if j != 0:
                 ax.set_yticklabels([])
-            ax.set_xlabel(settings["xlabel"], fontsize=11)
             group_axes.append(ax)
         batch_axes_groups.append((batch, group_axes))
 
@@ -1094,6 +1135,15 @@ def render_annotated_figure(
     plt.draw()
     for batch, group_axes in batch_axes_groups:
         add_group_title(fig, group_axes, f"Batch_size = {batch}", dy=0.025, fontsize=11)
+        add_shared_axis_labels(
+            fig,
+            group_axes,
+            xlabel=settings["xlabel"],
+            ylabel=settings["ylabel"],
+            xlabel_pad=0.055,
+            ylabel_pad=0.050,
+            fontsize=11,
+        )
 
     sm = mpl.cm.ScalarMappable(cmap=cmap, norm=norm)
     sm.set_array([])
@@ -1143,8 +1193,8 @@ def render_compact_figure(
     panel_w = max(0.01, len(decode_lengths) * cell_w)
     panel_h = max(0.01, len(prefill_lengths) * cell_h)
 
-    gap_w = 0.12
-    gap_h = 0.12
+    gap_w = 0.02
+    gap_h = 0.02
     top_pad = 0.42
     right_pad = 0.82
     left_pad = 0.82
@@ -1234,6 +1284,15 @@ def render_compact_figure(
         )
 
     all_axes = [ax for row in axes_grid for ax in row]
+    add_shared_axis_labels(
+        fig,
+        all_axes,
+        xlabel=settings["xlabel"],
+        ylabel=settings["ylabel"],
+        xlabel_pad=0.085,
+        ylabel_pad=0.075,
+        fontsize=max(outer_label_fontsize, 9),
+    )
     grid_x0 = min(ax.get_position().x0 for ax in all_axes)
     grid_x1 = max(ax.get_position().x1 for ax in all_axes)
     cbar_y = bottom_pad / fig_h
@@ -1395,6 +1454,15 @@ def render_multi_model_annotated_figure(
         )
 
     all_axes = [ax for row in axes_grid for group in row for ax in group]
+    add_shared_axis_labels(
+        fig,
+        all_axes,
+        xlabel=settings["xlabel"],
+        ylabel=settings["ylabel"],
+        xlabel_pad=0.050,
+        ylabel_pad=0.060,
+        fontsize=11,
+    )
     grid_y0 = min(ax.get_position().y0 for ax in all_axes)
     grid_y1 = max(ax.get_position().y1 for ax in all_axes)
     cax = fig.add_axes([
@@ -1561,6 +1629,15 @@ def render_multi_model_compact_figure(
         )
 
     all_axes = [ax for row in axes_grid for group in row for ax in group]
+    add_shared_axis_labels(
+        fig,
+        all_axes,
+        xlabel=settings["xlabel"],
+        ylabel=settings["ylabel"],
+        xlabel_pad=0.085,
+        ylabel_pad=0.075,
+        fontsize=max(outer_label_fontsize, 9),
+    )
     grid_x0 = min(ax.get_position().x0 for ax in all_axes)
     grid_x1 = max(ax.get_position().x1 for ax in all_axes)
     cbar_y = bottom_pad / fig_h

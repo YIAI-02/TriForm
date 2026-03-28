@@ -59,10 +59,10 @@ from matplotlib.lines import Line2D
 from matplotlib.text import Text
 
 ARIAL_FONT_FAMILY = "Arial"
-MIN_FONT_PT = 7.0
+MIN_FONT_PT = 18.0
 
 # 统一控制：左侧 ylabel、x 轴算法标签、panel title、legend 全部用这个字号
-COMMON_UI_FONT_PT = 13
+COMMON_UI_FONT_PT = 18
 
 
 def apply_global_plot_style() -> None:
@@ -142,7 +142,7 @@ BASELINE_COMPARE_RE = re.compile(
 )
 
 SPEEDUP_MARKER = "D"
-PREFERRED_ALGO_ORDER: List[str] = ["pd", "ianus", "facil"]
+PREFERRED_ALGO_ORDER: List[str] = ["pd", "attn_on_pim", "ianus", "facil", "attacc"]
 
 CACHE_VERSION = "v4"
 
@@ -1630,11 +1630,11 @@ def _drop_zero_ytick(ax, atol: float = 1e-12) -> None:
     ax.set_yticks(kept)
 
 
-def _set_left_ylabel(ax, text: str, x: float = -0.14, fontsize: float = COMMON_UI_FONT_PT) -> None:
+def _set_left_ylabel(ax, text: str, x: float = -0.16, fontsize: float = COMMON_UI_FONT_PT) -> None:
     ax.set_ylabel(text, fontsize=fontsize)
     ax.yaxis.set_label_coords(x, 0.5)
 
-def _set_right_ylabel(ax, text: str, x: float = 1.10, fontsize: float = COMMON_UI_FONT_PT) -> None:
+def _set_right_ylabel(ax, text: str, x: float = 1.14, fontsize: float = COMMON_UI_FONT_PT) -> None:
     ax.set_ylabel(text, fontsize=fontsize, rotation=270, va="bottom")
     ax.yaxis.set_label_position("right")
     ax.yaxis.set_label_coords(x, 0.5)
@@ -1696,7 +1696,7 @@ def _add_boxed_item_legends(ax,
             loc="upper left",
             bbox_to_anchor=(x, y),
             bbox_transform=ax.transAxes,
-            frameon=True,
+            frameon=False,
             fancybox=False,
             framealpha=1.0,
             fontsize=fontsize,
@@ -1711,6 +1711,81 @@ def _add_boxed_item_legends(ax,
         except Exception:
             pass
         ax.add_artist(leg)
+
+
+def _legend_bbox_width_in_figure_coords(fig: plt.Figure, legend) -> float:
+    renderer = fig.canvas.get_renderer()
+    bbox = legend.get_window_extent(renderer=renderer)
+    bbox_fig = bbox.transformed(fig.transFigure.inverted())
+    return float(bbox_fig.width)
+
+
+def _add_boxed_item_legends_to_figure(fig: plt.Figure,
+                                      handles: Sequence[Line2D],
+                                      labels: Sequence[str],
+                                      *,
+                                      y: float = 0.992,
+                                      center_x: float = 0.5,
+                                      gap: float = 0.010,
+                                      fontsize: Optional[float] = COMMON_UI_FONT_PT,
+                                      handlelength: float = 0.82,
+                                      handletextpad: float = 0.38,
+                                      borderpad: float = 0.26,
+                                      max_total_width: float = 0.985,
+                                      max_width_scale: float = 1.65) -> None:
+    items = [(h, str(lbl)) for h, lbl in zip(handles, labels)]
+    if not items:
+        return
+
+    legends = []
+    for handle, label in items:
+        leg = fig.legend(
+            handles=[handle],
+            labels=[label],
+            loc="upper left",
+            bbox_to_anchor=(0.02, y),
+            bbox_transform=fig.transFigure,
+            frameon=False,
+            fancybox=False,
+            framealpha=1.0,
+            fontsize=fontsize,
+            handlelength=handlelength,
+            handletextpad=handletextpad,
+            borderpad=borderpad,
+            borderaxespad=0.0,
+        )
+        _style_boxed_legend(leg)
+        try:
+            leg._legend_box.align = "left"
+        except Exception:
+            pass
+        legends.append(leg)
+
+    enforce_figure_fonts(fig)
+    fig.canvas.draw()
+
+    widths = [_legend_bbox_width_in_figure_coords(fig, leg) for leg in legends]
+    total_w = sum(widths) + max(0, len(widths) - 1) * gap
+
+    if total_w > max_total_width:
+        cur_w, cur_h = fig.get_size_inches()
+        scale = min(max_width_scale, total_w / max_total_width)
+        if scale > 1.001:
+            fig.set_size_inches(cur_w * scale, cur_h, forward=True)
+            fig.canvas.draw()
+            widths = [_legend_bbox_width_in_figure_coords(fig, leg) for leg in legends]
+            total_w = sum(widths) + max(0, len(widths) - 1) * gap
+
+    if total_w > max_total_width and len(widths) > 1:
+        max_gap = (max_total_width - sum(widths)) / (len(widths) - 1)
+        gap = max(0.0025, min(gap, max_gap))
+        total_w = sum(widths) + max(0, len(widths) - 1) * gap
+
+    start_x = max(0.008, center_x - total_w / 2.0)
+    x = start_x
+    for leg, width in zip(legends, widths):
+        leg.set_bbox_to_anchor((x, y), transform=fig.transFigure)
+        x += width + gap
 
 
 def plot_results(results: Dict[Tuple[int, int, str], UtilResult],
@@ -1748,17 +1823,19 @@ def plot_results(results: Dict[Tuple[int, int, str], UtilResult],
 
     # -----------------------------
     # 这几个参数就是你后面最常调的地方
+    # 字体放大到 14pt 之后，这里同步加大画布、边距和 panel 间距，避免截断
     # -----------------------------
-    panel_width = max(5, 0.65 * len(algorithms))   # 单个 prefill panel 的宽度
-    figure_max_width = 16.0                        # 整张图最大宽度
-    panel_height = 3.2                             # 单个 prefill panel 的高度
+    panel_width = max(6.8, 0.90 * len(algorithms))   # 单个 prefill panel 的宽度
+    figure_max_width = 24.0                          # 整张图最大宽度
+    panel_height = 4.0                               # 单个 prefill panel 的高度
+    legend_band_height = 0.70                        # 顶部整行 legend 预留的额外高度
 
-    outer_wspace = 0.1                             # 左右两个 prefill panel 的横向间距
-    outer_hspace = 0.30                            # 多行 prefill panel 之间的纵向间距
-    inner_hspace = 0.00                            # 一个 panel 内三幅子图之间的空隙，设 0 表示无缝
+    outer_wspace = 0.18                              # 左右两个 prefill panel 的横向间距
+    outer_hspace = 0.42                              # 多行 prefill panel 之间的纵向间距
+    inner_hspace = 0.02                              # 一个 panel 内三幅子图之间的空隙
 
-    fig_w = min(figure_max_width, panel_width * ncols)
-    fig_h = max(panel_height * n_group_rows, 3.2)
+    fig_w = min(figure_max_width, panel_width * ncols + 0.8)
+    fig_h = max(panel_height * n_group_rows + legend_band_height, 4.8)
 
     fig = plt.figure(figsize=(fig_w, fig_h))
     outer = fig.add_gridspec(
@@ -1793,6 +1870,9 @@ def plot_results(results: Dict[Tuple[int, int, str], UtilResult],
     for idx, p in enumerate(prefills):
         group = idx // ncols
         col = idx % ncols
+        panels_in_row = min(ncols, n_panels - group * ncols)
+        is_leftmost_panel = (col == 0)
+        is_rightmost_panel = (col == panels_in_row - 1)
 
         inner = outer[group, col].subgridspec(
             3, 1,
@@ -1929,7 +2009,7 @@ def plot_results(results: Dict[Tuple[int, int, str], UtilResult],
         # -----------------------------
         # speedup subplot
         # -----------------------------
-        speed_ax.set_title(f"prefill={p}", fontsize=COMMON_UI_FONT_PT)
+        speed_ax.set_title(f"prefill={p}", fontsize=COMMON_UI_FONT_PT, pad=6.0)
         speed_ax.set_ylim(*panel_speed_y_lim)
         speed_ax.set_xlim(-0.5, len(algorithms) - 0.5)
         speed_ax.grid(axis="y", linestyle="--", linewidth=0.6, alpha=0.35)
@@ -1942,7 +2022,7 @@ def plot_results(results: Dict[Tuple[int, int, str], UtilResult],
         # 只保留下一幅图的 top spine 作为分隔线，避免双线重叠
         speed_ax.spines["bottom"].set_visible(False)
 
-        if col == 0:
+        if is_leftmost_panel:
             _set_left_ylabel(speed_ax, "Speedup (x)", fontsize=COMMON_UI_FONT_PT)
         if not any_speed_line:
             speed_ax.text(
@@ -1963,7 +2043,7 @@ def plot_results(results: Dict[Tuple[int, int, str], UtilResult],
         _drop_zero_ytick(abs_ax)
         abs_ax.spines["bottom"].set_visible(False)
 
-        if col == 0:
+        if is_rightmost_panel:
             _set_right_ylabel(abs_ax, abs_y_label, fontsize=COMMON_UI_FONT_PT)
         if not any_abs_line:
             abs_ax.text(
@@ -1996,7 +2076,7 @@ def plot_results(results: Dict[Tuple[int, int, str], UtilResult],
                     tick_label.set_color(highlight_color)
                     tick_label.set_fontweight("bold")
 
-        if col == 0:
+        if is_leftmost_panel:
             _set_left_ylabel(
                 third_ax,
                 _third_metric_label(
@@ -2012,9 +2092,6 @@ def plot_results(results: Dict[Tuple[int, int, str], UtilResult],
                 transform=third_ax.transAxes,
                 ha="center", va="center", fontsize=COMMON_UI_FONT_PT,
             )
-
-    if title:
-        fig.suptitle(title, y=0.99, fontsize=COMMON_UI_FONT_PT)
 
     family_legend_handles: List[Line2D] = [
         Line2D(
@@ -2039,84 +2116,46 @@ def plot_results(results: Dict[Tuple[int, int, str], UtilResult],
         for i, d in enumerate(decodes)
     ]
 
-    # -------------------------------------------------
-    # Legend: 右上角，拆成一个个小框，效果接近你给的示意图
-    # 对于一行两图，会放到第一行最右边那一列；只有一图时就放到唯一那张图上。
-    # -------------------------------------------------
-    legend_panel_idx = min(max(0, ncols - 1), max(0, len(speed_axes) - 1))
-
     decode_labels = [f"decode={d}" for d in decodes]
     family_labels = [FAMILY_LABELS[family] for family in FAMILY_ORDER]
 
-    if speed_axes:
-        n_decode_panels = min(len(speed_axes), max(1, len(decode_legend_handles)))
-        base = len(decode_legend_handles) // n_decode_panels
-        rem = len(decode_legend_handles) % n_decode_panels
-        chunk_sizes = [base] * n_decode_panels
-        for i in range(rem):
-            chunk_sizes[n_decode_panels - rem + i] += 1
+    top_margin = 0.79 if title else 0.84
+    left_margin = 0.12
+    right_margin = 0.92
+    bottom_margin = 0.18
 
-        start = 0
-        for panel_idx, chunk_size in enumerate(chunk_sizes):
-            if chunk_size <= 0:
-                continue
-            end = start + chunk_size
-            panel_handles = decode_legend_handles[start:end]
-            panel_labels = decode_labels[start:end]
-            decode_target_ax = speed_axes[panel_idx]
-            decode_slot_width = _boxed_legend_slot_width(panel_labels, min_w=0.20, max_w=0.31)
-            if (panel_idx % ncols) == 0:
-                _add_boxed_item_legends(
-                    decode_target_ax,
-                    panel_handles,
-                    panel_labels,
-                    y=0.965,
-                    right=0.995,
-                    gap=0.014,
-                    slot_width=decode_slot_width,
-                    fontsize=COMMON_UI_FONT_PT,
-                    handlelength=0.70,
-                    handletextpad=0.30,
-                    borderpad=0.22,
-                )
-            else:
-                _add_boxed_item_legends(
-                    decode_target_ax,
-                    panel_handles,
-                    panel_labels,
-                    y=0.965,
-                    left=0.015,
-                    gap=0.014,
-                    slot_width=decode_slot_width,
-                    fontsize=COMMON_UI_FONT_PT,
-                    handlelength=0.70,
-                    handletextpad=0.30,
-                    borderpad=0.22,
-                )
-            start = end
+    if title:
+        fig.suptitle(title, y=0.935, fontsize=COMMON_UI_FONT_PT)
 
-    if abs_axes:
-        family_target_ax = abs_axes[legend_panel_idx]
-        _add_boxed_item_legends(
-            family_target_ax,
-            family_legend_handles,
-            family_labels,
-            y=0.965,
-            right=0.995,
-            gap=0.016,
-            slot_width=_boxed_legend_slot_width(family_labels, min_w=0.16, max_w=0.24),
-            fontsize=COMMON_UI_FONT_PT,
-            handlelength=0.70,
-            handletextpad=0.40,
-            borderpad=0.22,
-        )
+    fig.subplots_adjust(
+        left=left_margin,
+        right=right_margin,
+        bottom=bottom_margin,
+        top=top_margin,
+    )
 
-    top_margin = 0.90 if title else 0.94
+    # -------------------------------------------------
+    # Legend: decode 和 family 都放到整张图最上方，直接排成一行。
+    # -------------------------------------------------
+    top_legend_handles = [*decode_legend_handles, *family_legend_handles]
+    top_legend_labels = [*decode_labels, *family_labels]
+    _add_boxed_item_legends_to_figure(
+        fig,
+        top_legend_handles,
+        top_legend_labels,
+        y=0.992,
+        center_x=0.5,
+        gap=0.010,
+        fontsize=COMMON_UI_FONT_PT,
+        handlelength=0.82,
+        handletextpad=0.38,
+        borderpad=0.24,
+        max_total_width=0.985,
+    )
+
     enforce_figure_fonts(fig)
-    fig.subplots_adjust(left=0.09, right=0.99, bottom=0.08, top=top_margin)
-
     output.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output, dpi=dpi, bbox_inches="tight")
+    fig.savefig(output, dpi=dpi, bbox_inches="tight", pad_inches=0.18)
     plt.close(fig)
     print(f"[OK] saved figure -> {output.resolve()}")
 
