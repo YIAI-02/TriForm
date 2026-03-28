@@ -131,15 +131,27 @@ class StatsRecorder:
         ops_csv_path.parent.mkdir(parents=True, exist_ok=True)
         comms_csv_path.parent.mkdir(parents=True, exist_ok=True)
 
-        ops_fields = [
+        base_ops_fields = [
             "phase", "node_id", "op", "device", "device_type", "mode",
             "start", "end", "duration"
         ]
+        ops_extra_keys: list[str] = []
+        try:
+            keys = set()
+            for e in self.op_device_events:
+                if isinstance(e, dict):
+                    keys.update(e.keys())
+            keys.difference_update(base_ops_fields)
+            ops_extra_keys = sorted(keys)
+        except Exception:
+            ops_extra_keys = []
+
+        ops_fields = list(base_ops_fields) + list(ops_extra_keys)
         with ops_csv_path.open("w", newline="", encoding="utf-8") as f:
             w = csv.DictWriter(f, fieldnames=ops_fields)
             w.writeheader()
             for e in self.op_device_events:
-                w.writerow({k: e.get(k) for k in ops_fields})
+                w.writerow({k: (e.get(k) if isinstance(e, dict) else "") for k in ops_fields})
 
         base_comm_fields = [
             "phase", "src", "src_type", "dst", "dst_type",

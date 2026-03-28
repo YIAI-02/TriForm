@@ -11,7 +11,7 @@
   "gb_config_path": "./aim_simulator/gb.json",
   "ramulator_config_path": "./aim_simulator/example.yaml",
   "simulation_log_file": "./output/evaluate_single_test/hardware_1npu_2aim/pim_simulation.txt",
-  "result_dir": "./output/evaluate_single_test/hardware_1npu_2aim_test4/",
+  "result_dir": "./output/evaluate_single_test/hardware_1npu_2aim_1p0_envaluate/",
   "hardware_json": "./examples/hardware_1npu_2aim.json",
   "algo": [
     "hefthint"

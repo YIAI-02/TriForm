@@ -32,9 +32,9 @@ NPU_WEIGHT_TARGET_FORMAT_BY_OP = {
 # Format size multipliers (alignment/packing overhead modeling)
 FORMAT_SIZE_MULTIPLIER = {
     "ND": 1.0,
-    "NZ": 1.0,
-    "ZN": 1.0,
-    "ZZ": 1.0,
+    "NZ": 1.5,
+    "ZN": 1.5,
+    "ZZ": 1.5,
     "PIM-OPT": 1.0,
 }
 
@@ -53,13 +53,13 @@ FORMAT_CONV_OVERHEAD_US = {
     "pim": 0.0
 }
 
-WEIGHT_LOCAL_LOAD_OVERLAP_RATIO = 0.9
+WEIGHT_LOCAL_LOAD_OVERLAP_RATIO = 1.0
 # Online PIM weight-load model uses fitted bandwidth/overhead, not trace simulation.
 # Keys are local programming stages measured in ND-equivalent bytes.
 PIM_WEIGHT_RUNTIME_MODEL = {
     "paths": {
-        "ND->PIM-OPT": {"bw_gbs": 640.0, "overhead_us": 2.0},
-        "PIM-OPT->PIM-OPT": {"bw_gbs": 1920.0, "overhead_us": 1.0},
+        "ND->PIM-OPT": {"bw_gbs": 280, "overhead_us": 2.0},
+        "PIM-OPT->PIM-OPT": {"bw_gbs": 8192, "overhead_us": 1.0},
         "NZ->ND": {"bw_gbs": 480.0, "overhead_us": 4.0},
     }
 }

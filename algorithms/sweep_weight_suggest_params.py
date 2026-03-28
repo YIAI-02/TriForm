@@ -151,6 +151,7 @@ RESULT_FIELDNAMES: Tuple[str, ...] = (
     "weight_format_json",
     "weight_format_compare_json",
     "log_path",
+    "weight_suggest_al_log_path",
 )
 
 DEFAULT_PARALLEL_GROUP_KEYS = "model,prefill_len,decode_len,batch"
@@ -793,6 +794,7 @@ def build_best_payload(
     weight_format_json: Path,
     weight_format_compare_json: Path,
     log_path: Path,
+    weight_suggest_al_log_path: Path,
 ) -> Dict[str, Any]:
     return {
         "config_sha256": config_sha256,
@@ -816,6 +818,7 @@ def build_best_payload(
         "weight_format_json": str(weight_format_json),
         "weight_format_compare_json": str(weight_format_compare_json),
         "log_path": str(log_path),
+        "weight_suggest_al_log_path": str(weight_suggest_al_log_path),
     }
 
 
@@ -933,6 +936,7 @@ def main() -> int:
         "weight_format_json": None,
         "weight_format_compare_json": None,
         "log_path": None,
+        "weight_suggest_al_log_path": None,
     }
 
     print(f"[info] mode={args.mode} combos={total_combo_count} repeat={args.repeat} objective={args.objective}")
@@ -1003,12 +1007,14 @@ def main() -> int:
             all_passes_path = run_dir / "all_passes.json"
             weight_format_path = run_dir / "weight_storage_suggestion.json"
             compare_path = run_dir / "weight_format_compare.json"
+            weight_suggest_al_log_path = artifacts_dir / "weight_suggest_al_debug.txt"
 
             effective_cfg["result_dir"] = str(artifacts_dir)
             effective_cfg["all_passes_json"] = str(all_passes_path)
             effective_cfg["best_summary_json"] = str(best_summary_path)
             effective_cfg["weight_format_json"] = str(weight_format_path)
             effective_cfg["weight_format_compare_json"] = str(compare_path)
+            effective_cfg["weight_suggest_al_log_path"] = str(weight_suggest_al_log_path)
 
             with generated_config_path.open("w", encoding="utf-8") as f:
                 json.dump(effective_cfg, f, ensure_ascii=False, indent=2)
@@ -1076,6 +1082,7 @@ def main() -> int:
                 "weight_format_json": str(weight_format_path),
                 "weight_format_compare_json": str(compare_path),
                 "log_path": str(log_path),
+                "weight_suggest_al_log_path": str(weight_suggest_al_log_path),
             }
 
             if summary is None:
@@ -1139,6 +1146,7 @@ def main() -> int:
                     weight_format_json=weight_format_path,
                     weight_format_compare_json=compare_path,
                     log_path=log_path,
+                    weight_suggest_al_log_path=weight_suggest_al_log_path,
                 )
                 best.update(best_payload)
                 save_best_json(best_json, best)

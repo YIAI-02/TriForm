@@ -77,6 +77,9 @@ class LocalWeightLoadCost:
     serial_s: float
     overlap_s: float
     total_s: float
+    overhead_s: float = 0.0
+    stage_sum_s: float = 0.0
+    stage_max_s: float = 0.0
 
 
 _WEIGHT_STORAGE_FORMATS = frozenset(str(x) for x in getattr(_config, 'WEIGHT_STORAGE_FORMATS', ('ND', 'NZ', 'PIM-OPT')))
@@ -1122,27 +1125,66 @@ class CostModel:
             )
         return _normalize_weight_format_token(str(mapping[op]), allow_compute=True)
 
-    def npu_weight_conversion_time(
+    def _weight_local_load_alpha(self) -> float:
+        """Interpolation factor for staged local weight formatting.
+
+        The modeled local time is:
+            sum(overhead) + alpha * sum(stage_time) + (1 - alpha) * max(stage_time)
+
+        alpha=1 => fully serialized stage times.
+        alpha=0 => perfectly pipelined stage times (except fixed overheads).
+        """
+        ratio = float(getattr(_config, 'WEIGHT_LOCAL_LOAD_OVERLAP_RATIO', 0.3) or 0.0)
+        return float(min(1.0, max(0.0, ratio)))
+
+    def _compose_local_weight_load_cost(
+        self,
+        *,
+        overhead_s: float,
+        stage_sum_s: float,
+        stage_max_s: float,
+    ) -> LocalWeightLoadCost:
+        alpha = float(self._weight_local_load_alpha())
+        overhead = max(0.0, float(overhead_s or 0.0))
+        stage_sum = max(0.0, float(stage_sum_s or 0.0))
+        stage_max = max(0.0, float(stage_max_s or 0.0))
+        if stage_sum > 0.0 and stage_max > stage_sum:
+            stage_max = stage_sum
+        serial = float(overhead + alpha * stage_sum)
+        overlap = float((1.0 - alpha) * stage_max)
+        total = float(serial + overlap)
+        return LocalWeightLoadCost(
+            serial_s=float(serial),
+            overlap_s=float(overlap),
+            total_s=float(total),
+            overhead_s=float(overhead),
+            stage_sum_s=float(stage_sum),
+            stage_max_s=float(stage_max),
+        )
+
+    def _npu_weight_conversion_cost(
         self,
         size_nd_bytes: int,
         src_fmt: str,
         dst_fmt: str,
         *,
         from_cache: bool = False,
-    ) -> float:
+    ) -> LocalWeightLoadCost:
         size_nd_bytes = int(size_nd_bytes or 0)
         if size_nd_bytes <= 0:
-            return 0.0
+            return LocalWeightLoadCost(0.0, 0.0, 0.0)
         src = _normalize_weight_format_token(src_fmt, allow_compute=True)
         dst = _normalize_weight_format_token(dst_fmt, allow_compute=True)
         if src == dst:
-            return 0.0
+            return LocalWeightLoadCost(0.0, 0.0, 0.0)
         mdl = self._ensure_npu_weight_runtime_model()
         steps = _resolve_npu_weight_conversion_steps(src, dst)
         bw_scale = float(getattr(_config, 'NPU_CACHE_LOCAL_LOAD_BW_SCALE', 1.0) or 1.0) if bool(from_cache) else 1.0
         if bw_scale <= 0.0:
             raise ValueError(f'Invalid NPU cache local-load bandwidth scale: {bw_scale}')
-        total = 0.0
+        total_overhead_s = 0.0
+        total_stage_s = 0.0
+        max_stage_s = 0.0
         for a, b in steps:
             key = f'{a}->{b}'
             bw_gbs = mdl.bw_gbs.get(key)
@@ -1154,8 +1196,31 @@ class CostModel:
             eff_bw = float(bw_gbs) * float(bw_scale) * 1e9
             if eff_bw <= 0.0:
                 raise ValueError(f'Non-positive NPU runtime-model bandwidth for path {key}: {bw_gbs}')
-            total += float(ovh_us) * 1e-6 + float(size_nd_bytes) / float(eff_bw)
-        return float(total)
+            stage_s = float(size_nd_bytes) / float(eff_bw)
+            total_overhead_s += float(ovh_us) * 1e-6
+            total_stage_s += float(stage_s)
+            max_stage_s = max(float(max_stage_s), float(stage_s))
+        return self._compose_local_weight_load_cost(
+            overhead_s=float(total_overhead_s),
+            stage_sum_s=float(total_stage_s),
+            stage_max_s=float(max_stage_s),
+        )
+
+    def npu_weight_conversion_time(
+        self,
+        size_nd_bytes: int,
+        src_fmt: str,
+        dst_fmt: str,
+        *,
+        from_cache: bool = False,
+    ) -> float:
+        cost = self._npu_weight_conversion_cost(
+            int(size_nd_bytes),
+            str(src_fmt),
+            str(dst_fmt),
+            from_cache=bool(from_cache),
+        )
+        return float(cost.total_s)
 
     def npu_local_weight_load_cost(
         self,
@@ -1165,32 +1230,28 @@ class CostModel:
         *,
         from_cache: bool,
     ) -> LocalWeightLoadCost:
-        total = float(self.npu_weight_conversion_time(
+        return self._npu_weight_conversion_cost(
             int(size_nd_bytes),
             str(src_storage_fmt),
             str(dst_compute_fmt),
             from_cache=bool(from_cache),
-        ))
-        ratio = float(getattr(_config, 'WEIGHT_LOCAL_LOAD_OVERLAP_RATIO', 0.9) or 0.0)
-        ratio = min(1.0, max(0.0, ratio))
-        overlap = float(total) * float(ratio)
-        serial = float(total) - float(overlap)
-        return LocalWeightLoadCost(serial_s=float(serial), overlap_s=float(overlap), total_s=float(total))
+        )
 
-    def pim_weight_load_time(
+    def _pim_weight_load_cost(
         self,
         size_nd_bytes: int,
         src_storage_fmt: str,
         *,
         from_cache: bool = False,
-    ) -> float:
+    ) -> LocalWeightLoadCost:
         size_nd_bytes = int(size_nd_bytes or 0)
-        if size_nd_bytes <= 0 or bool(from_cache):
-            return 0.0
+        if size_nd_bytes <= 0:
+            return LocalWeightLoadCost(0.0, 0.0, 0.0)
         mdl = self._ensure_pim_weight_runtime_model()
         steps = _resolve_pim_weight_load_steps(str(src_storage_fmt))
         total_overhead_s = 0.0
-        bottleneck_stream_s = 0.0
+        total_stage_s = 0.0
+        max_stage_s = 0.0
         for a, b in steps:
             key = f'{a}->{b}'
             bw_gbs = mdl.bw_gbs.get(key)
@@ -1201,9 +1262,29 @@ class CostModel:
             eff_bw = float(bw_gbs) * 1e9
             if eff_bw <= 0.0:
                 raise ValueError(f'Non-positive PIM runtime-model bandwidth for path {key}: {bw_gbs}')
+            stage_s = float(size_nd_bytes) / float(eff_bw)
             total_overhead_s += float(mdl.overhead_us.get(key, 0.0) or 0.0) * 1e-6
-            bottleneck_stream_s = max(float(bottleneck_stream_s), float(size_nd_bytes) / float(eff_bw))
-        return float(total_overhead_s + bottleneck_stream_s)
+            total_stage_s += float(stage_s)
+            max_stage_s = max(float(max_stage_s), float(stage_s))
+        return self._compose_local_weight_load_cost(
+            overhead_s=float(total_overhead_s),
+            stage_sum_s=float(total_stage_s),
+            stage_max_s=float(max_stage_s),
+        )
+
+    def pim_weight_load_time(
+        self,
+        size_nd_bytes: int,
+        src_storage_fmt: str,
+        *,
+        from_cache: bool = False,
+    ) -> float:
+        cost = self._pim_weight_load_cost(
+            int(size_nd_bytes),
+            str(src_storage_fmt),
+            from_cache=bool(from_cache),
+        )
+        return float(cost.total_s)
 
     def pim_local_weight_load_cost(
         self,
@@ -1212,22 +1293,11 @@ class CostModel:
         *,
         from_cache: bool,
     ) -> LocalWeightLoadCost:
-        total = float(self.pim_weight_load_time(
+        return self._pim_weight_load_cost(
             int(size_nd_bytes),
             str(src_storage_fmt),
             from_cache=bool(from_cache),
-        ))
-        ratio = float(
-            getattr(
-                _config,
-                'WEIGHT_LOCAL_LOAD_OVERLAP_RATIO',
-                0.3,
-            ) or 0.0
         )
-        ratio = min(1.0, max(0.0, ratio))
-        overlap = float(total) * float(ratio)
-        serial = float(total) - float(overlap)
-        return LocalWeightLoadCost(serial_s=float(serial), overlap_s=float(overlap), total_s=float(total))
 
     def weight_transfer_comm_bytes(self, size_nd_bytes: int, src_storage_fmt: str) -> int:
         return int(self.weight_storage_bytes(int(size_nd_bytes), str(src_storage_fmt)))

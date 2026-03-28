@@ -20,9 +20,19 @@ conda activate "${CONDA_ENV_NAME}"
 # WEIGHT_LOCAL_LOAD_OVERLAP_RATIO on weight-suggest(hefthint).
 #
 # Example:
-# sbatch \
-#   --export=CONFIG=./examples/evaluate_test_config.json,OUTDIR=./output/ws_overlap_ratio,MODE=grid,OBJECTIVE=total,ALGOS='hefthint',WEIGHT_LOCAL_LOAD_OVERLAP_RATIOS='0.9 0.8 0.7 0.6 0.5 0.4 0.3 0.2 0.1 0.0',COMBO_WORKERS=11,PARALLEL_GROUP_KEYS='weight_local_load_overlap_ratio,model,prefill_len,decode_len,batch',MODELS='llama:7b',PREFILLS='512',DECODES='128',BATCHES='1' \
-#   run_hpc_weight_overlap_ratio_weight_suggest.slurm
+# export CONFIG=./examples/weight_suggest_overlap_ratio_base.json
+# export OUTDIR=./output/ws_overlap_ratio
+# export MODE=grid
+# export OBJECTIVE=total
+# export ALGOS=hefthint
+# export COMBO_WORKERS=4
+# export MODELS="qwen:7b"
+# export PREFILLS="512"
+# export DECODES="128"
+# export BATCHES="1"
+# export DEBUG=1
+
+# sbatch --export=ALL run_hpc_weight_overlap_ratio_weight_suggest.slurm
 # ------------------------------------------------------------------
 
 CONFIG="${CONFIG:-}"
@@ -35,7 +45,7 @@ OUTDIR="${OUTDIR:-./output/ws_overlap_ratio}"
 MODE="${MODE:-grid}"
 OBJECTIVE="${OBJECTIVE:-total}"
 ALGOS="${ALGOS:-hefthint}"
-WEIGHT_LOCAL_LOAD_OVERLAP_RATIOS="${WEIGHT_LOCAL_LOAD_OVERLAP_RATIOS:-0.9 0.8 0.7 0.6 0.5 0.4 0.3 0.2 0.1 0.0}"
+WEIGHT_LOCAL_LOAD_OVERLAP_RATIOS="${WEIGHT_LOCAL_LOAD_OVERLAP_RATIOS:-1.0}"
 PARALLEL_GROUP_KEYS="${PARALLEL_GROUP_KEYS:-weight_local_load_overlap_ratio,model,prefill_len,decode_len,batch}"
 COMBO_WORKERS="${COMBO_WORKERS:-11}"
 THREADS_PER_WORKER="${THREADS_PER_WORKER:-0}"

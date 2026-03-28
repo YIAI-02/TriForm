@@ -36,6 +36,131 @@ from stats_recorder import reset_simulation_logger
 logger = logging.getLogger(__name__)
 attach_local_debug_filter(logger, lambda: True)
 
+_WEIGHT_SUGGEST_DEBUG_SUMMARY_ONLY = False
+_WEIGHT_SUGGEST_PROGRESS_ENABLED = False
+_WEIGHT_SUGGEST_AL_LOGGER: logging.Logger | None = None
+_WEIGHT_SUGGEST_AL_LOG_PATH: str | None = None
+
+def _reset_weight_suggest_al_logger() -> None:
+    global _WEIGHT_SUGGEST_AL_LOGGER, _WEIGHT_SUGGEST_AL_LOG_PATH
+    if _WEIGHT_SUGGEST_AL_LOGGER is not None:
+        for h in list(_WEIGHT_SUGGEST_AL_LOGGER.handlers):
+            _WEIGHT_SUGGEST_AL_LOGGER.removeHandler(h)
+            try:
+                h.flush()
+            except Exception:
+                pass
+            try:
+                h.close()
+            except Exception:
+                pass
+    _WEIGHT_SUGGEST_AL_LOGGER = None
+    _WEIGHT_SUGGEST_AL_LOG_PATH = None
+
+def _setup_weight_suggest_al_logger(log_file: str | None) -> None:
+    global _WEIGHT_SUGGEST_AL_LOGGER, _WEIGHT_SUGGEST_AL_LOG_PATH
+    _reset_weight_suggest_al_logger()
+    if not log_file:
+        return
+
+    path = Path(log_file)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    al_logger = logging.getLogger(f"{__name__}.weight_suggest_al")
+    al_logger.setLevel(logging.DEBUG)
+    al_logger.propagate = False
+
+    formatter = logging.Formatter(
+        f"%(asctime)s [%(levelname)s] {__name__}: %(message)s",
+        "%Y-%m-%d %H:%M:%S",
+    )
+    fh = logging.FileHandler(str(path), encoding="utf-8")
+    fh.setLevel(logging.DEBUG)
+    fh.setFormatter(formatter)
+    al_logger.addHandler(fh)
+
+    _WEIGHT_SUGGEST_AL_LOGGER = al_logger
+    _WEIGHT_SUGGEST_AL_LOG_PATH = str(path)
+
+
+def _emit_weight_suggest_al_log(msg: str, *, level: int = logging.DEBUG) -> None:
+    text = str(msg or "")
+    if not text or _WEIGHT_SUGGEST_AL_LOGGER is None:
+        return
+    try:
+        _WEIGHT_SUGGEST_AL_LOGGER.log(level, text)
+    except Exception:
+        pass
+ 
+
+def _set_weight_suggest_debug_summary_only(enabled: bool, *, emit_progress: bool | None = None) -> None:
+    global _WEIGHT_SUGGEST_DEBUG_SUMMARY_ONLY, _WEIGHT_SUGGEST_PROGRESS_ENABLED
+    _WEIGHT_SUGGEST_DEBUG_SUMMARY_ONLY = bool(enabled)
+    if emit_progress is not None:
+        _WEIGHT_SUGGEST_PROGRESS_ENABLED = bool(emit_progress)
+
+
+def _render_log_message(msg: Any, args: tuple[Any, ...]) -> str:
+    text = str(msg)
+    if not args:
+        return text
+    try:
+        return text % args
+    except Exception:
+        try:
+            return " ".join([text, *(str(a) for a in args)])
+        except Exception:
+            return text
+
+
+def _is_key_weight_suggest_al_message(msg: str) -> bool:
+    text = str(msg or "")
+    if '[AL]' not in text:
+        return False
+    if text.startswith('[AL] init:'):
+        return True
+    if 'outer0->outer1: initial assign' in text:
+        return True
+    if re.search(r"\[AL\] inner\d+: ACCEPT ", text):
+        return True
+    if re.search(r"\[AL\]\[[^\]]+\] outer\d+: baseline total=", text):
+        return True
+    if re.search(r"\[AL\]\[[^\]]+\] outer\d+: after inner total=", text):
+        return True
+    if re.search(r"\[AL\]\[[^\]]+\] outer\d+: total .* stop\.$", text):
+        return True
+    if 'no ND blocks to split' in text:
+        return True
+    if 'compare-only: total=' in text:
+        return True
+    return False
+
+
+def _emit_weight_suggest_progress(msg: str) -> None:
+    if logger.isEnabledFor(logging.INFO):
+        logger.info(msg)
+    else:
+        print(msg)
+
+
+def _debug(msg: Any, *args: Any, **kwargs: Any) -> None:
+    text: str | None = None
+    if _WEIGHT_SUGGEST_AL_LOGGER is not None or _WEIGHT_SUGGEST_DEBUG_SUMMARY_ONLY:
+        text = _render_log_message(msg, tuple(args))
+        if '[AL]' in text:
+            _emit_weight_suggest_al_log(text, level=logging.DEBUG)
+    
+    if _WEIGHT_SUGGEST_DEBUG_SUMMARY_ONLY:
+        if not _WEIGHT_SUGGEST_PROGRESS_ENABLED:
+            return
+        text = _render_log_message(msg, tuple(args))
+        if text is None:
+            text = _render_log_message(msg, tuple(args))
+        if _is_key_weight_suggest_al_message(text):
+            _emit_weight_suggest_progress(text)
+        return
+    logger.debug(msg, *args, **kwargs)
+
 
 def _normalize_weight_storage_fmt(value: Any, *, default: str = 'ND') -> str:
     raw = str(default if value is None else value).strip().lower()
@@ -1043,7 +1168,7 @@ def run(cfg: Dict):
             )
         SchedCls = HEFTCOMMAWAREScheduler
     elif algo_name not in ('heft', 'heft+greedy', 'greedy', ''):
-        logger.debug(f"[weight-suggest] Unknown algo '{algo_name}', fallback to HEFTScheduler")
+        _debug(f"[weight-suggest] Unknown algo '{algo_name}', fallback to HEFTScheduler")
 
     label = auto_select_kv_policy(
         strategy=algo_name,
@@ -1058,9 +1183,9 @@ def run(cfg: Dict):
     sc = getattr(label, 'kv_policy_scores', {})
     msg = _fmt_kv_policy_scores(sc)
     if msg:
-        logger.debug(str(f"[KV-SELECT] selected={sel} | {msg}"))
+        _debug(str(f"[KV-SELECT] selected={sel} | {msg}"))
     else:
-        logger.debug(str(f"[KV-SELECT] selected={sel}"))
+        _debug(str(f"[KV-SELECT] selected={sel}"))
 
     kv_place = _infer_kv_place_from_label(label)
     graph_kv = _apply_kv_place_constraints(graph, kv_place)
@@ -1090,7 +1215,7 @@ def run(cfg: Dict):
     all_wids = sorted({str(n.weight_id) for n in graph.nodes.values() if getattr(n, 'weight_id', None)})
     blocks = _build_weight_blocks(all_wids, layer_span=block_layer_span)
 
-    logger.debug(
+    _debug(
         f"[AL] init: weights={len(all_wids)} blocks={len(blocks)} "
         f"outer_max={outer_max} inner_max_blocks={('inf' if not inner_max_blocks else int(inner_max_blocks))} "
         f"nd_margin_init={nd_margin_init:.3f} decay={nd_margin_decay:.3f} min={nd_margin_min:.3f} "
@@ -1238,14 +1363,14 @@ def run(cfg: Dict):
         # Try the most "wrong" blocks first.
         candidates.sort(key=lambda x: (-x[0], -x[1], x[2]))
 
-        logger.debug(
+        _debug(
             f"[AL] inner{sweep_id}: start cur_total={cur_total:.6f}s "
             f"candidates={len(candidates)} max_blocks={('inf' if not inner_max_blocks else int(inner_max_blocks))} "
             f"eps={inner_improve_eps:g}"
         )
 
         if not candidates:
-            logger.debug(f"[AL] inner{sweep_id}: no candidates; skip.")
+            _debug(f"[AL] inner{sweep_id}: no candidates; skip.")
             return (cur_map, cur_total, cur_prefill, cur_decode, cur_prefill_ser, cur_decode_ser, cur_wstats)
 
         tried = 0
@@ -1268,7 +1393,7 @@ def run(cfg: Dict):
                 _npu_r, _pim_r = blk_cnt.get(str(bkey), (0, 0))
             except Exception:
                 _npu_r, _pim_r = 0, 0
-            logger.debug(
+            _debug(
                 f"[AL] inner{sweep_id}: try#{tried}/{len(candidates)} "
                 f"block={bkey} fmt0={fmt0} reload(npu={float(_npu_r):.3f}, pim={float(_pim_r):.3f}) "
                 f"chain={fmt_chain} cur_total={cur_total:.6f}s"
@@ -1294,7 +1419,7 @@ def run(cfg: Dict):
                     cur_wstats = dict(wstats or {})
                     accepted = True
                     accepted_cnt += 1
-                    logger.debug(
+                    _debug(
                         f"[AL] inner{sweep_id}: ACCEPT block={bkey} {fmt0}->{fmt1} "
                         f"total {old_total:.6f}s -> {cur_total:.6f}s (delta={cur_total - old_total:+.6f}s)"
                     )
@@ -1302,7 +1427,7 @@ def run(cfg: Dict):
                 else:
                     # Keep the logs light: only show a few early rejects.
                     if tried <= 3:
-                        logger.debug(
+                        _debug(
                             f"[AL] inner{sweep_id}: reject block={bkey} {fmt0}->{fmt1} "
                             f"trial_total={float(total_time):.6f}s (cur={cur_total:.6f}s)"
                         )
@@ -1312,11 +1437,11 @@ def run(cfg: Dict):
                 blk_cnt = _block_reload_counts(wlc)
             else:
                 if best_trial is not None and tried <= 3:
-                    logger.debug(
+                    _debug(
                         f"[AL] inner{sweep_id}: best_trial_for_block={float(best_trial):.6f}s (no accept; cur={cur_total:.6f}s)"
                     )
 
-        logger.debug(
+        _debug(
             f"[AL] inner{sweep_id}: done tried={tried} accepted={accepted_cnt} final_total={cur_total:.6f}s"
         )
         return (cur_map, cur_total, cur_prefill, cur_decode, cur_prefill_ser, cur_decode_ser, cur_wstats)
@@ -1325,9 +1450,9 @@ def run(cfg: Dict):
     # ND is the only real search start.
     # -------------------------------
     fmt_map = {}
-    logger.debug(f"[AL][{search_start_mode}] outer0: start (all weights ND)")
+    _debug(f"[AL][{search_start_mode}] outer0: start (all weights ND)")
     total_time0, prefill_time0, decode_time0, prefill_time0_ser, decode_time0_ser, wst0 = _evaluate_map(fmt_map, tag='outer0_all_nd')
-    logger.debug(
+    _debug(
         f"[AL][{search_start_mode}] outer0: done total={float(total_time0):.6f}s prefill={float(prefill_time0):.6f}s decode={float(decode_time0):.6f}s"
     )
     _record(0, total_time0, prefill_time0, decode_time0, prefill_time0_ser, decode_time0_ser, fmt_map, wst0, note='outer0_all_nd')
@@ -1341,7 +1466,7 @@ def run(cfg: Dict):
     fmt_map = _assign_blocks(fmt_map, wlc0, nd_margin=nd_margin_init, only_if_current_nd=False)
     n_npu0 = sum((1 for v in (fmt_map or {}).values() if _normalize_weight_storage_fmt(v) == 'NZ'))
     n_pim0 = sum((1 for v in (fmt_map or {}).values() if _normalize_weight_storage_fmt(v) == 'PIM-OPT'))
-    logger.debug(
+    _debug(
         f"[AL][{search_start_mode}] outer0->outer1: initial assign explicit_weights={len(fmt_map)} "
         f"(NZ={n_npu0}, PIM-OPT={n_pim0}, ND_default={max(0, len(all_wids) - len(fmt_map))})"
     )
@@ -1349,11 +1474,11 @@ def run(cfg: Dict):
     # -------------------------------
     # outer iteration 1: baseline + inner sweep
     # -------------------------------
-    logger.debug(
+    _debug(
         f"[AL][{search_start_mode}] outer1: start baseline (explicit_weights={len(fmt_map)} / total_weights={len(all_wids)})"
     )
     total_time1, prefill_time1, decode_time1, prefill_time1_ser, decode_time1_ser, wst1 = _evaluate_map(fmt_map, tag='outer1_baseline')
-    logger.debug(
+    _debug(
         f"[AL][{search_start_mode}] outer1: baseline total={float(total_time1):.6f}s prefill={float(prefill_time1):.6f}s decode={float(decode_time1):.6f}s"
     )
     outer1_base_total = float(total_time1)
@@ -1361,7 +1486,7 @@ def run(cfg: Dict):
     (fmt_map, total_time1, prefill_time1, decode_time1, prefill_time1_ser, decode_time1_ser, wst1) = _inner_sweep(
         fmt_map, total_time1, prefill_time1, decode_time1, prefill_time1_ser, decode_time1_ser, wst1, sweep_id=1,
     )
-    logger.debug(
+    _debug(
         f"[AL][{search_start_mode}] outer1: after inner total={float(total_time1):.6f}s "
         f"(delta={float(total_time1) - outer1_base_total:+.6f}s, map_diff={mapping_diff_ratio(outer1_base_map, fmt_map):.3f})"
     )
@@ -1392,18 +1517,18 @@ def run(cfg: Dict):
                 changed = sum((1 for k in keys if prev_outer_map.get(k) != cand_map.get(k)))
             except Exception:
                 changed = -1
-            logger.debug(
+            _debug(
                 f"[AL][{search_start_mode}] outer{outer_it}: start nd_margin={nd_margin:.3f} outer_step_changed_weights={changed} "
                 f"diff_ratio={diff_ratio:.3f} prev_total={float(prev_outer_total):.6f}s"
             )
 
         # If nothing changes in the outer step, future tighter margins may still split current ND blocks.
         if diff_ratio == 0.0:
-            logger.debug(f"[AL][{search_start_mode}] outer{outer_it}: no ND blocks to split (nd_margin={nd_margin:.3f}); continue.")
+            _debug(f"[AL][{search_start_mode}] outer{outer_it}: no ND blocks to split (nd_margin={nd_margin:.3f}); continue.")
             continue
 
         total_time_k, prefill_time_k, decode_time_k, prefill_time_k_ser, decode_time_k_ser, wst_k = _evaluate_map(cand_map, tag=f'outer{outer_it}_baseline')
-        logger.debug(
+        _debug(
             f"[AL][{search_start_mode}] outer{outer_it}: baseline total={float(total_time_k):.6f}s prefill={float(prefill_time_k):.6f}s decode={float(decode_time_k):.6f}s"
         )
         outer_k_base_total = float(total_time_k)
@@ -1414,14 +1539,14 @@ def run(cfg: Dict):
 
         # IMPORTANT: use the post-inner-sweep total for decisions/records.
         total_time_k = float(total_k)
-        logger.debug(
+        _debug(
             f"[AL][{search_start_mode}] outer{outer_it}: after inner total={float(total_time_k):.6f}s "
             f"(delta={float(total_time_k) - outer_k_base_total:+.6f}s, map_diff={mapping_diff_ratio(outer_k_base_map, cand_map):.3f})"
         )
 
         # Stop if the new outer baseline is worse than the previous outer baseline.
         if float(total_time_k) > float(prev_outer_total) + float(outer_stop_eps):
-            logger.debug(
+            _debug(
                 f"[AL][{search_start_mode}] outer{outer_it}: total {total_time_k:.6f}s is worse than prev {prev_outer_total:.6f}s; stop."
             )
             break
@@ -1480,13 +1605,13 @@ def run(cfg: Dict):
     weight_format_path.parent.mkdir(parents=True, exist_ok=True)
     with open(weight_format_path, 'w', encoding='utf-8') as f:
         json.dump(best_map or {}, f, indent=2, sort_keys=True)
-    logger.debug(str(f'[INFO] Best weight storage map (ND search) saved to: {weight_format_path}'))
+    _debug(str(f'[INFO] Best weight storage map (ND search) saved to: {weight_format_path}'))
 
     full_map = {str(w): str((best_map or {}).get(str(w), 'ND')) for w in all_wids}
     full_path = weight_format_path.with_name(weight_format_path.stem + "_full" + weight_format_path.suffix)
     with open(full_path, 'w', encoding='utf-8') as f:
         json.dump(full_map, f, indent=2, sort_keys=True)
-    logger.debug(str(f'[INFO] Full weight storage map (ND search) saved to: {full_path}'))
+    _debug(str(f'[INFO] Full weight storage map (ND search) saved to: {full_path}'))
 
     # ------------------------------------------------------------
     # 2: compare-only baselines (all weights NZ / all weights PIM-OPT)
@@ -1513,12 +1638,12 @@ def run(cfg: Dict):
 
     for mode in compare_only_modes:
         uniform_map = {str(w): str(mode) for w in all_wids}
-        logger.debug(f"[AL][{mode}] compare-only: start (all weights {mode})")
+        _debug(f"[AL][{mode}] compare-only: start (all weights {mode})")
         cmp_total, cmp_prefill, cmp_decode, _cmp_prefill_ser, _cmp_decode_ser, _cmp_wstats = _evaluate_map(
             uniform_map,
             tag=f"compare_all_{str(mode).lower().replace('-', '_')}",
         )
-        logger.debug(
+        _debug(
             f"[AL][{mode}] compare-only: total={float(cmp_total):.6f}s prefill={float(cmp_prefill):.6f}s decode={float(cmp_decode):.6f}s"
         )
         compare_rows.append({
@@ -1565,7 +1690,7 @@ def run(cfg: Dict):
     compare_path.parent.mkdir(parents=True, exist_ok=True)
     with open(compare_path, 'w', encoding='utf-8') as f:
         json.dump(comparison_payload, f, ensure_ascii=False, indent=2)
-    logger.debug(str(f'[REPORT] Weight-format comparison saved to: {compare_path}'))
+    _debug(str(f'[REPORT] Weight-format comparison saved to: {compare_path}'))
 
     all_path = Path(cfg.get('all_passes_json', ALL_PASSES_RESULT_PATH))
     best_path = Path(cfg.get('best_summary_json', BEST_PASS_SUMMARY_PATH))
@@ -1591,7 +1716,7 @@ def run(cfg: Dict):
             ensure_ascii=False,
             indent=2,
         )
-    logger.debug(str(f'[REPORT] All passes (ND search only) saved to: {all_path}'))
+    _debug(str(f'[REPORT] All passes (ND search only) saved to: {all_path}'))
 
     best_path.parent.mkdir(parents=True, exist_ok=True)
     with open(best_path, 'w', encoding='utf-8') as f:
@@ -1616,7 +1741,7 @@ def run(cfg: Dict):
             ensure_ascii=False,
             indent=2,
         )
-    logger.debug(str(f'[REPORT] Best pass summary (ND search only) saved to: {best_path}'))
+    _debug(str(f'[REPORT] Best pass summary (ND search only) saved to: {best_path}'))
 
     print("\n=== Weight-Suggest Format Comparison ===")
     header = f"{'Format':<10} {'Role':<10} {'Outer0(s)':>12} {'Best(s)':>12} {'Delta(s)':>12} {'BestPass':>9} {'ND':>8} {'NZ':>8} {'PIM':>8}"
@@ -1985,9 +2110,9 @@ def _eval_one_baseline(cfg: Dict, policy: str) -> Dict:
     sc = getattr(label, 'kv_policy_scores', {})
     msg = _fmt_kv_policy_scores(sc)
     if msg:
-        logger.debug(str(f"[KV-SELECT] selected={sel} | {msg}"))
+        _debug(str(f"[KV-SELECT] selected={sel} | {msg}"))
     else:
-        logger.debug(str(f"[KV-SELECT] selected={sel}"))
+        _debug(str(f"[KV-SELECT] selected={sel}"))
 
     kv_place = _infer_kv_place_from_label(label)
     g_prefill = _apply_kv_place_constraints(g_prefill, kv_place)
@@ -2156,9 +2281,9 @@ def _run_strategy_once(strategy: str, cfg: Dict, *, shared_graph=None, shared_sh
     sc = getattr(label, 'kv_policy_scores', {})
     msg = _fmt_kv_policy_scores(sc)
     if msg:
-        logger.debug(str(f"[KV-SELECT] selected={sel} | {msg}"))
+        _debug(str(f"[KV-SELECT] selected={sel} | {msg}"))
     else:
-        logger.debug(str(f"[KV-SELECT] selected={sel}"))
+        _debug(str(f"[KV-SELECT] selected={sel}"))
 
     kv_place = _infer_kv_place_from_label(label)
     graph_kv = _apply_kv_place_constraints(graph, kv_place)
@@ -2316,7 +2441,7 @@ def _save_best_json(algo_dir: Path, tag: str, policy: str, *, times: Dict, prefi
     path = algo_dir / f"best_summary_{tag}.json"
     with open(path,'w', encoding='utf-8') as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
-    logger.debug(f"[Strategy] Saved best summary to: {path}")
+    _debug(f"[Strategy] Saved best summary to: {path}")
     return path
 
 def evaluate_suite(cfg: Dict, *, algos: List[str], baselines: List[str], result_dir: str | None, debug: bool, combined_out: str):
@@ -2537,7 +2662,16 @@ def main():
 
     if getattr(args, 'mode', None) in ('evaluate', 'weight-suggest'):
         cfg = _load_cfg_from_json(getattr(args, 'config'))
-        cfg['debug'] = bool(getattr(args, 'debug', False)) or cfg.get('debug', False)
+        requested_debug = bool(getattr(args, 'debug', False)) or cfg.get('debug', False)
+        cfg['debug'] = bool(requested_debug)
+        cfg['_weight_suggest_debug_summary_only'] = bool(getattr(args, 'mode', None) == 'weight-suggest')
+        _set_weight_suggest_debug_summary_only(
+            cfg['_weight_suggest_debug_summary_only'],
+            emit_progress=bool(requested_debug),
+        )
+        if cfg['_weight_suggest_debug_summary_only']:
+            cfg['_requested_debug'] = bool(requested_debug)
+            cfg['debug'] = bool(requested_debug)
         
         override_fields = [
             'model_family',
@@ -2589,13 +2723,22 @@ def main():
         # result_dir always encodes batch: <base>/<family>_<variant>_<dtype>_b<batch>
         result_dir = str(_build_result_dir(cfg, cfg.get('result_dir') or './output'))
         cfg['result_dir'] = result_dir
+        if args.mode == 'weight-suggest':
+            ws_al_log_path = cfg.get('weight_suggest_al_log_path')
+            if not ws_al_log_path:
+                ws_al_log_path = str(Path(result_dir) / "weight_suggest_al_debug.txt")
+            cfg['weight_suggest_al_log_path'] = str(ws_al_log_path)
+        else:
+            _setup_weight_suggest_al_logger(None)
         
         tag = f"{int(cfg.get('prefill_len', 0))}x{int(cfg.get('decode_len', 0))}"
         Path(result_dir).mkdir(parents=True, exist_ok=True)
 
         # Top-level driver logger
-        setup_logging(cfg['debug'], log_file=str(Path(result_dir) / "driver_debug.txt"))
-
+        setup_logging(bool(cfg.get('debug', False)), log_file=str(Path(result_dir) / "driver_debug.txt"))
+        if args.mode == 'weight-suggest':
+            _setup_weight_suggest_al_logger(cfg.get('weight_suggest_al_log_path'))
+        
         # Normalize stride if provided
         if cfg.get('decode_sample_stride', None) is not None:
             try:

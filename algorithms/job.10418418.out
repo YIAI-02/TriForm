@@ -1,0 +1,17 @@
+[info] CONFIG=./examples/weight_suggest_overlap_ratio_base.json
+[info] SWEEP_SCRIPT=./sweep_weight_suggest_params.py
+[info] MAIN=./main.py
+[info] OUTDIR=./output/ws_overlap_ratio_03278
+[info] MODE=grid TRIALS=128 SEED=0 OBJECTIVE=total REPEAT=1
+[info] MODELS=llama:7b
+[info] PREFILLS=128 1024
+[info] DECODES=128 512 1024
+[info] BATCHES=1 4
+[info] HARDWARES=
+[info] TP_QKV= TP_FFN=
+[info] WEIGHT_LOCAL_LOAD_OVERLAP_RATIOS=1.0
+[info] FORMAT_OUTER_MAX_ITERS=
+[info] FORMAT_INNER_MAX_BLOCKS=
+[info] COMBO_WORKERS=8 PARALLEL_GROUP_KEYS=weight_local_load_overlap_ratio,model,prefill_len,decode_len,batch THREADS_PER_WORKER=0
+[info] common launch: python ./sweep_weight_suggest_params.py --config ./examples/weight_suggest_overlap_ratio_base.json --main ./main.py --python python --workdir . --mode grid --trials 128 --seed 0 --objective total --repeat 1 --debug --model llama:7b --batch 1 4 --prefill-len 128 1024 --decode-len 128 512 1024 --algo hefthint --weight-local-load-overlap-ratio 1.0 
+[info] launching 8 parallel workers under ./output/ws_overlap_ratio_03278/shards/8w

@@ -19,9 +19,22 @@ conda activate "${CONDA_ENV_NAME}"
 # Required inputs
 
 : <<'COMMENT'
- sbatch \
-   --export=CONFIG=./examples/weight_suggest_overlap_ratio_base.json,OUTDIR=./output/ws_overlap_ratio,MODE=grid,OBJECTIVE=total,ALGOS='hefthint',WEIGHT_LOCAL_LOAD_OVERLAP_RATIOS='0.9 0.6 0.3 0.1',COMBO_WORKERS=4,PARALLEL_GROUP_KEYS='weight_local_load_overlap_ratio,model,prefill_len,decode_len,batch',MODELS='llama:7b',PREFILLS='128,1024',DECODES='128,1024',BATCHES='1,4',DEBUG='1' \
-   run_hpc_weight_overlap_ratio_weight_suggest.slurm
+export CONFIG=./examples/weight_suggest_overlap_ratio_base.json
+export OUTDIR=./output/ws_overlap_ratio_03278
+export MODE=grid
+export OBJECTIVE=total
+export ALGOS="hefthint"
+export COMBO_WORKERS=8
+export PARALLEL_GROUP_KEYS="weight_local_load_overlap_ratio,model,prefill_len,decode_len,batch"
+export MODELS="llama:7b"
+export PREFILLS="128 1024"
+export DECODES="128 512 1024"
+export BATCHES="1 4"
+export WEIGHT_LOCAL_LOAD_OVERLAP_RATIOS="1.0"
+export DEBUG=1
+
+rm -rf "$OUTDIR"
+sbatch --export=ALL run_hpc_weight_overlap_ratio_weight_suggest.slurm
 COMMENT
 # ------------------------------------------------------------------
 CONFIG="${CONFIG:-}"

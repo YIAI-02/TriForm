@@ -260,9 +260,41 @@ class SchedulerBase:
         self._weight_sizes: Dict[str, int] = {}
         self._weight_proto_node: Dict[str, TaskNode] = {}
         self._pim_weight_desc_cache: Dict[Tuple[str, str], Any] = {}
+        self._last_op_trace_extra: Dict[str, Any] = {}
 
     def set_seq_len(self, seq_len: int) -> None:
         self.seq_len = int(seq_len)
+
+    def _set_last_op_trace_extra(self, extra: Optional[Dict[str, Any]]) -> None:
+        self._last_op_trace_extra = dict(extra or {})
+
+    def _pop_last_op_trace_extra(self) -> Dict[str, Any]:
+        extra = dict(getattr(self, '_last_op_trace_extra', {}) or {})
+        self._last_op_trace_extra = {}
+        return extra
+
+    def _log_scheduled_op_trace(self, **kwargs: Any) -> None:
+        if not getattr(self, 'stats', None):
+            return
+        extra = self._pop_last_op_trace_extra()
+        self.stats.log_op_device(extra=(extra or None), **kwargs)
+
+    def _weight_trace_extra_from_profile(self, prof: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
+        if not isinstance(prof, Mapping):
+            return {}
+        wid = str(prof.get('wid', '') or '')
+        if not wid:
+            return {}
+        return {
+            'weight_comm_s': float(prof.get('comm_s', 0.0) or 0.0),
+            'weight_local_total_s': float(prof.get('local_total_s', 0.0) or 0.0),
+            'weight_local_serial_s': float(prof.get('local_serial_s', 0.0) or 0.0),
+            'weight_local_overlap_s': float(prof.get('local_overlap_s', 0.0) or 0.0),
+            'weight_src_fmt': str(prof.get('src_fmt', '') or ''),
+            'weight_resident_fmt': str(prof.get('resident_fmt', '') or ''),
+            'weight_compute_fmt': str(prof.get('compute_fmt', '') or ''),
+            'weight_cache_state': str(prof.get('cache_state', '') or ''),
+        }
 
 
     def export_fixed_plan(self, schedule: List["ScheduledTask"]) -> Dict[str, Any]:
@@ -380,7 +412,7 @@ class SchedulerBase:
                 if getattr(self, "stats", None):
                     op_name = node.attrs.get("op") or node.name
                     try:
-                        self.stats.log_op_device(
+                        self._log_scheduled_op_trace(
                             nid=nid,
                             op=op_name,
                             device="COMM",
@@ -420,7 +452,7 @@ class SchedulerBase:
                 if getattr(self, "stats", None):
                     op_name = node.attrs.get("op") or node.name
                     try:
-                        self.stats.log_op_device(
+                        self._log_scheduled_op_trace(
                             nid=nid,
                             op=op_name,
                             device=dev.name,
@@ -487,6 +519,7 @@ class SchedulerBase:
         self._act_used.clear()
         self._act_resident.clear()
         self._act_refcnt.clear()
+        self._last_op_trace_extra = {}
         self._collective_output_devs = {}
         # KV/activation runtime states on PIM are centrally managed in buffer manager
         try:
@@ -895,99 +928,87 @@ class SchedulerBase:
     def _weight_overlap_ratio(self) -> float:
         try:
             import config as _cfg  # local import to avoid circular surprises
-            ratio = float(getattr(_cfg, 'WEIGHT_LOCAL_LOAD_OVERLAP_RATIO', 0.9) or 0.9)
+            ratio = float(getattr(_cfg, 'WEIGHT_LOCAL_LOAD_OVERLAP_RATIO', 0.3) or 0.0)
         except Exception:
-            ratio = 0.9
+            ratio = 0.3
         return float(min(1.0, max(0.0, float(ratio))))
-
-    def _split_weight_local_total(self, total_s: float) -> Tuple[float, float]:
-        total_s = max(0.0, float(total_s or 0.0))
-        ratio = float(self._weight_overlap_ratio())
-        overlap_s = float(total_s) * float(ratio)
-        serial_s = float(total_s) - float(overlap_s)
-        return float(serial_s), float(overlap_s)
 
     def _npu_resident_weight_format(self, src_storage_fmt: str) -> str:
         return 'NZ'
 
-    def _npu_weight_local_total_pipeline(
-        self,
-        size_nd_bytes: int,
-        src_fmt: str,
-        dst_fmt: str,
-        *,
-        from_cache: bool,
-    ) -> float:
-        """T ≈ ∑overhead i + max​(bwi​size​)"""
-        size_nd_bytes = int(size_nd_bytes or 0)
-        if size_nd_bytes <= 0:
-            return 0.0
-        mdl = self.cost._ensure_npu_weight_runtime_model()
-        src = _sched_normalize_weight_format_token(str(src_fmt), allow_compute=True)
-        dst = _sched_normalize_weight_format_token(str(dst_fmt), allow_compute=True)
-        if src == dst:
-            return 0.0
-        steps = _sched_resolve_npu_weight_conversion_steps(src, dst)
-        if not steps:
-            return 0.0
-        if bool(from_cache):
-            try:
-                import config as _cfg
-                bw_scale = float(getattr(_cfg, 'NPU_CACHE_LOCAL_LOAD_BW_SCALE', 1.0) or 1.0)
-            except Exception:
-                bw_scale = 1.0
-        else:
-            bw_scale = 1.0
-        if bw_scale <= 0.0:
-            bw_scale = 1.0
-
-        total_overhead_s = 0.0
-        bottleneck_stream_s = 0.0
-        for a, b in steps:
-            key = f'{a}->{b}'
-            bw_gbs = mdl.bw_gbs.get(key)
-            if bw_gbs is None:
-                raise ValueError(f"Missing NPU runtime-model bandwidth entry for path '{key}' in {mdl.path}")
-            ovh_us = float(mdl.overhead_us.get(key, 0.0) or 0.0)
-            eff_bw = float(bw_gbs) * float(bw_scale) * 1e9
-            if eff_bw <= 0.0:
-                raise ValueError(f'Non-positive NPU runtime-model bandwidth for path {key}: {bw_gbs}')
-            total_overhead_s += float(ovh_us) * 1e-6
-            bottleneck_stream_s = max(float(bottleneck_stream_s), float(size_nd_bytes) / float(eff_bw))
-        return float(total_overhead_s + bottleneck_stream_s)
-
-
-    def _weight_local_service_total(
+    def _weight_local_service_profile(
         self,
         node: TaskNode,
         dev: DeviceSpec,
         size_nd_bytes: int,
-        fmt_for_local: str,
+        src_fmt: str,
+        resident_fmt: str,
         *,
         from_cache: bool,
-    ) -> float:
+    ) -> Dict[str, Any]:
         size_nd_bytes = int(size_nd_bytes or 0)
-        if size_nd_bytes <= 0:
-            return 0.0
+        src_fmt = str(src_fmt or 'ND')
+        resident_fmt = str(resident_fmt or src_fmt)
         dev_type = str(getattr(dev, 'type', '') or '').lower()
-        fmt_for_local = str(fmt_for_local or 'ND')
+
         if dev_type == 'npu':
-            dst_fmt = str(self.cost.npu_weight_compute_format(node))
-            return float(self._npu_weight_local_total_pipeline(
+            compute_fmt = str(self.cost.npu_weight_compute_format(node))
+        elif dev_type == 'pim':
+            compute_fmt = 'PIM-OPT'
+        else:
+            compute_fmt = str(self.cost.device_preferred_fmt(dev))
+
+        if size_nd_bytes <= 0:
+            return {
+                'src_fmt': str(src_fmt),
+                'resident_fmt': str(resident_fmt),
+                'compute_fmt': str(compute_fmt),
+                'local_serial_s': 0.0,
+                'local_overlap_s': 0.0,
+                'local_total_s': 0.0,
+            }
+
+        if dev_type == 'npu':
+            local = self.cost.npu_local_weight_load_cost(
                 int(size_nd_bytes),
-                str(fmt_for_local),
-                str(dst_fmt),
+                str(src_fmt),
+                str(compute_fmt),
                 from_cache=bool(from_cache),
-            ))
+            )
+            return {
+                'src_fmt': str(src_fmt),
+                'resident_fmt': str(resident_fmt),
+                'compute_fmt': str(compute_fmt),
+                'local_serial_s': float(local.serial_s),
+                'local_overlap_s': float(local.overlap_s),
+                'local_total_s': float(local.total_s),
+            }
+
         if dev_type == 'pim':
-            return float(self.cost.pim_weight_load_time(
+            local = self.cost.pim_local_weight_load_cost(
                 int(size_nd_bytes),
-                str(fmt_for_local),
+                str(src_fmt),
                 from_cache=bool(from_cache),
-            ))
-        dst_fmt = str(self.cost.device_preferred_fmt(dev))
-        size_src = int(self.cost.weight_transfer_comm_bytes(int(size_nd_bytes), fmt_for_local))
-        return float(self.cost.format_conversion_time(int(size_src), str(fmt_for_local), str(dst_fmt), dev))
+            )
+            return {
+                'src_fmt': str(src_fmt),
+                'resident_fmt': str(resident_fmt),
+                'compute_fmt': str(compute_fmt),
+                'local_serial_s': float(local.serial_s),
+                'local_overlap_s': float(local.overlap_s),
+                'local_total_s': float(local.total_s),
+            }
+
+        size_src = int(self.cost.weight_transfer_comm_bytes(int(size_nd_bytes), str(src_fmt)))
+        total = float(self.cost.format_conversion_time(int(size_src), str(src_fmt), str(compute_fmt), dev))
+        return {
+            'src_fmt': str(src_fmt),
+            'resident_fmt': str(resident_fmt),
+            'compute_fmt': str(compute_fmt),
+            'local_serial_s': float(total),
+            'local_overlap_s': 0.0,
+            'local_total_s': float(total),
+        }
 
     def _weight_service_profile_no_contention(
         self,
@@ -1009,8 +1030,13 @@ class SchedulerBase:
                 'total_s': 0.0,
                 'comm_s': 0.0,
                 'local_total_s': 0.0,
+                'local_serial_s': 0.0,
+                'local_overlap_s': 0.0,
                 'src_storage_fmt': 'ND',
+                'src_fmt': 'ND',
                 'resident_fmt': 'ND',
+                'compute_fmt': 'ND',
+                'cache_state': '',
             }
 
         dev_type = str(getattr(dev, 'type', '') or '').lower()
@@ -1023,6 +1049,7 @@ class SchedulerBase:
             resident_fmt = str(src_storage_fmt)
 
         if dev_type == 'pim' and self._weights_preloaded_on_pim():
+            compute_fmt = 'PIM-OPT'
             return {
                 'wid': str(wid),
                 'weight_size_nd': int(wsize_nd),
@@ -1031,38 +1058,40 @@ class SchedulerBase:
                 'total_s': 0.0,
                 'comm_s': 0.0,
                 'local_total_s': 0.0,
+                'local_serial_s': 0.0,
+                'local_overlap_s': 0.0,
                 'src_storage_fmt': str(src_storage_fmt),
+                'src_fmt': str(resident_fmt),
                 'resident_fmt': str(resident_fmt),
+                'compute_fmt': str(compute_fmt),
+                'cache_state': 'preloaded',
             }
 
         if bool(cached):
-            if dev_type == 'pim':
-                return {
-                    'wid': str(wid),
-                    'weight_size_nd': int(wsize_nd),
-                    'serial_s': 0.0,
-                    'overlap_s': 0.0,
-                    'total_s': 0.0,
-                    'comm_s': 0.0,
-                    'local_total_s': 0.0,
-                    'src_storage_fmt': str(src_storage_fmt),
-                    'resident_fmt': str(cached_fmt or resident_fmt),
-                }
             fmt_for_local = str(cached_fmt or resident_fmt)
-            local_total = float(self._weight_local_service_total(
-                node, dev, int(wsize_nd), str(fmt_for_local), from_cache=True
-            ))
-            local_serial, local_overlap = self._split_weight_local_total(local_total)
+            local_prof = self._weight_local_service_profile(
+                node,
+                dev,
+                int(wsize_nd),
+                str(fmt_for_local),
+                str(fmt_for_local),
+                from_cache=True,
+            )
             return {
                 'wid': str(wid),
                 'weight_size_nd': int(wsize_nd),
-                'serial_s': float(local_serial),
-                'overlap_s': float(local_overlap),
-                'total_s': float(local_total),
+                'serial_s': float(local_prof['local_serial_s']),
+                'overlap_s': float(local_prof['local_overlap_s']),
+                'total_s': float(local_prof['local_total_s']),
                 'comm_s': 0.0,
-                'local_total_s': float(local_total),
+                'local_total_s': float(local_prof['local_total_s']),
+                'local_serial_s': float(local_prof['local_serial_s']),
+                'local_overlap_s': float(local_prof['local_overlap_s']),
                 'src_storage_fmt': str(src_storage_fmt),
-                'resident_fmt': str(fmt_for_local),
+                'src_fmt': str(local_prof['src_fmt']),
+                'resident_fmt': str(local_prof['resident_fmt']),
+                'compute_fmt': str(local_prof['compute_fmt']),
+                'cache_state': 'cached',
             }
 
         host = self.cost.get_host_device()
@@ -1072,39 +1101,31 @@ class SchedulerBase:
         except Exception:
             comm_s = float('inf')
 
-        if dev_type == 'pim':
-            local = self.cost.pim_local_weight_load_cost(
-                int(wsize_nd),
-                str(src_storage_fmt),
-                from_cache=False,
-            )
-            return {
-                'wid': str(wid),
-                'weight_size_nd': int(wsize_nd),
-                'serial_s': float(comm_s + float(local.serial_s)),
-                'overlap_s': float(local.overlap_s),
-                'total_s': float(comm_s + float(local.total_s)),
-                'comm_s': float(comm_s),
-                'local_total_s': float(local.total_s),
-                'src_storage_fmt': str(src_storage_fmt),
-                'resident_fmt': str(resident_fmt),
-            }
-
-        local_total = float(self._weight_local_service_total(
-            node, dev, int(wsize_nd), str(src_storage_fmt), from_cache=False
-        ))
-        local_serial, local_overlap = self._split_weight_local_total(local_total)
+        local_prof = self._weight_local_service_profile(
+            node,
+            dev,
+            int(wsize_nd),
+            str(src_storage_fmt),
+            str(resident_fmt),
+            from_cache=False,
+        )
         return {
             'wid': str(wid),
             'weight_size_nd': int(wsize_nd),
-            'serial_s': float(comm_s + local_serial),
-            'overlap_s': float(local_overlap),
-            'total_s': float(comm_s + local_total),
+            'serial_s': float(comm_s + float(local_prof['local_serial_s'])),
+            'overlap_s': float(local_prof['local_overlap_s']),
+            'total_s': float(comm_s + float(local_prof['local_total_s'])),
             'comm_s': float(comm_s),
-            'local_total_s': float(local_total),
+            'local_total_s': float(local_prof['local_total_s']),
+            'local_serial_s': float(local_prof['local_serial_s']),
+            'local_overlap_s': float(local_prof['local_overlap_s']),
             'src_storage_fmt': str(src_storage_fmt),
-            'resident_fmt': str(resident_fmt),
+            'src_fmt': str(local_prof['src_fmt']),
+            'resident_fmt': str(local_prof['resident_fmt']),
+            'compute_fmt': str(local_prof['compute_fmt']),
+            'cache_state': 'miss',
         }
+
 
     def _earliest_finish_on_device(
         self,
@@ -1115,6 +1136,7 @@ class SchedulerBase:
         phase: str,
         commit: bool,
     ) -> Tuple[float, float]:
+        self._set_last_op_trace_extra({})
         node = g.nodes[nid]
         phase_eff = self._node_phase(g, nid, phase)
         batch = self._node_batch(g, nid, phase_eff)
@@ -1413,8 +1435,21 @@ class SchedulerBase:
         #---------------------3. normal weight load + compute + activation handling
         start = max(float(self.avail.get(dev.name, 0.0)), kv_ready)
         compute = self.cost.node_device_cost(node, dev, label, batch, seq_len, phase_eff)
-        wload_serial, wload_overlap = self._weight_load_time(node, dev, start, commit)
-        finish = start + float(wload_serial) + max(float(compute), float(wload_overlap))
+        wload_serial, wload_overlap, weight_extra = self._weight_load_time(node, dev, start, commit)
+        overlap_gate = max(float(compute), float(wload_overlap))
+        finish = start + float(wload_serial) + float(overlap_gate)
+
+        if weight_extra:
+            trace_extra = dict(weight_extra)
+            trace_extra['weight_compute_s'] = float(compute)
+            trace_extra['weight_overlap_gate_s'] = float(overlap_gate)
+            if float(wload_overlap) > float(compute):
+                trace_extra['weight_overlap_dominant'] = 'local_overlap'
+            elif float(compute) > float(wload_overlap):
+                trace_extra['weight_overlap_dominant'] = 'compute'
+            else:
+                trace_extra['weight_overlap_dominant'] = 'tie'
+            self._set_last_op_trace_extra(trace_extra)
 
         if commit:
             self.avail[dev.name] = finish
@@ -1986,13 +2021,19 @@ class SchedulerBase:
         # The node can start after all required inbound transfers are done.
         ready_t = float(max(inbound_end_times, default=0.0))
         return ready_t
-    def _weight_load_time(self, node: TaskNode, dev: DeviceSpec, earliest: float, commit: bool) -> Tuple[float, float]:
+    def _weight_load_time(
+        self,
+        node: TaskNode,
+        dev: DeviceSpec,
+        earliest: float,
+        commit: bool,
+    ) -> Tuple[float, float, Dict[str, Any]]:
         wid = self._node_weight_id(node)
         if not wid:
-            return (0.0, 0.0)
+            return (0.0, 0.0, {})
         wsize_nd = int(self._node_weight_size(node) or 0)
         if wsize_nd <= 0:
-            return (0.0, 0.0)
+            return (0.0, 0.0, {})
 
         self._record_weight_proto_node(node)
         src_storage_fmt = self._weight_storage_format_for_wid(wid)
@@ -2010,7 +2051,15 @@ class SchedulerBase:
                     self._weight_sizes[wid] = int(wsize_nd)
                 except Exception:
                     pass
-            return (0.0, 0.0)
+            prof = self._weight_service_profile_no_contention(
+                node,
+                dev,
+                src_storage_fmt=str(src_storage_fmt),
+                cached=True,
+                cached_fmt=str(resident_fmt),
+            )
+            prof['cache_state'] = 'preloaded'
+            return (0.0, 0.0, self._weight_trace_extra_from_profile(prof))
 
         cached_nd, cached_fmt, cache = self._cached_weight_state(dev, wid, wsize_nd)
 
@@ -2028,7 +2077,11 @@ class SchedulerBase:
                 cached=True,
                 cached_fmt=str(fmt_for_local),
             )
-            return (float(prof['serial_s']), float(prof['overlap_s']))
+            return (
+                float(prof['serial_s']),
+                float(prof['overlap_s']),
+                self._weight_trace_extra_from_profile(prof),
+            )
 
         if cached_nd > 0:
             raise RuntimeError(
@@ -2061,19 +2114,32 @@ class SchedulerBase:
         )
         comm_time = max(0.0, float(l2e) - float(earliest))
 
-        if dev_type == 'pim':
-            local = self.cost.pim_local_weight_load_cost(
-                int(wsize_nd),
-                str(src_storage_fmt),
-                from_cache=False,
-            )
-            serial_s = float(comm_time + float(local.serial_s))
-            overlap_s = float(local.overlap_s)
-        else:
-            local_total = float(self._weight_local_service_total(node, dev, int(wsize_nd), str(src_storage_fmt), from_cache=False))
-            local_serial, local_overlap = self._split_weight_local_total(local_total)
-            serial_s = float(comm_time + local_serial)
-            overlap_s = float(local_overlap)
+        local_prof = self._weight_local_service_profile(
+            node,
+            dev,
+            int(wsize_nd),
+            str(src_storage_fmt),
+            str(resident_fmt),
+            from_cache=False,
+        )
+        serial_s = float(comm_time + float(local_prof['local_serial_s']))
+        overlap_s = float(local_prof['local_overlap_s'])
+        prof = {
+            'wid': str(wid),
+            'weight_size_nd': int(wsize_nd),
+            'serial_s': float(serial_s),
+            'overlap_s': float(overlap_s),
+            'total_s': float(comm_time + float(local_prof['local_total_s'])),
+            'comm_s': float(comm_time),
+            'local_total_s': float(local_prof['local_total_s']),
+            'local_serial_s': float(local_prof['local_serial_s']),
+            'local_overlap_s': float(local_prof['local_overlap_s']),
+            'src_storage_fmt': str(src_storage_fmt),
+            'src_fmt': str(local_prof['src_fmt']),
+            'resident_fmt': str(local_prof['resident_fmt']),
+            'compute_fmt': str(local_prof['compute_fmt']),
+            'cache_state': 'miss',
+        }
 
         if commit:
             try:
@@ -2087,7 +2153,8 @@ class SchedulerBase:
                     f"Failed to cache weight_id='{wid}' on device='{dev.name}' after an explicit miss load."
                 )
 
-        return (float(serial_s), float(overlap_s))
+        return (float(serial_s), float(overlap_s), self._weight_trace_extra_from_profile(prof))
+
 
     def _ensure_host_store(self, u: str, pred_dev: DeviceSpec,bytes_nd: int, src_fmt: str, pred_finish: float, commit: bool) -> float:
         t_done = self._node_host_store_end.get(u)
@@ -2214,7 +2281,7 @@ class NaiveTopoScheduler(SchedulerBase):
                 if getattr(self, 'stats', None):
                     op_name = node.attrs.get('op') or node.name
                     try:
-                        self.stats.log_op_device(
+                        self._log_scheduled_op_trace(
                             nid=nid, op=op_name,
                             device=trace_dev, device_type='comm',
                             start=float(start), end=float(finish),
@@ -2254,7 +2321,7 @@ class NaiveTopoScheduler(SchedulerBase):
             if getattr(self, 'stats', None):
                 op_name = node.attrs.get('op') or node.name
                 try:
-                    self.stats.log_op_device(
+                    self._log_scheduled_op_trace(
                         nid=nid, op=op_name,
                         device=dev.name, device_type=dev.type,
                         start=float(start), end=float(finish),
@@ -2438,7 +2505,7 @@ class HEFTScheduler(SchedulerBase):
                 if getattr(self, 'stats', None):
                     op_name = node.attrs.get('op') or node.name
                     try:
-                        self.stats.log_op_device(
+                        self._log_scheduled_op_trace(
                             nid=nid, op=op_name,
                             device=trace_dev, device_type='comm',
                             start=float(start), end=float(finish),
@@ -2507,7 +2574,7 @@ class HEFTScheduler(SchedulerBase):
             if getattr(self, 'stats', None):
                 op_name = node.attrs.get('op') or node.name
                 try:
-                    self.stats.log_op_device(
+                    self._log_scheduled_op_trace(
                         nid=nid, op=op_name,
                         device=dev.name, device_type=dev.type,
                         start=float(start), end=float(finish),
@@ -3882,7 +3949,7 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
                 op_name = getattr(node, "attrs", {}).get("op") if hasattr(node, "attrs") else None
                 op_name = op_name or getattr(node, "name", "")
                 try:
-                    self.stats.log_op_device(
+                    self._log_scheduled_op_trace(
                         nid=nid,
                         op=op_name,
                         device=trace_dev,

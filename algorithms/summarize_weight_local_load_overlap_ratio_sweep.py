@@ -129,6 +129,7 @@ def _summarize_group(rows: List[Dict[str, Any]], *, objective_field: str) -> Dic
         'positive_iter_gain_runs': len(positive_iter),
         'positive_iter_gain_fraction': (len(positive_iter) / len(finite_iter_gains)) if finite_iter_gains else float('nan'),
         'best_log_path': str(best.get('log_path', '') or ''),
+        'best_weight_suggest_al_log_path': str(best.get('weight_suggest_al_log_path', '') or ''),
         'best_generated_config_json': str(best.get('generated_config_json', '') or ''),
         'best_weight_format_json': str(best.get('weight_format_json', '') or ''),
     }
@@ -196,6 +197,7 @@ def main() -> int:
         'best_iter_gain_s', 'best_iter_gain_pct', 'mean_iter_gain_s', 'mean_iter_gain_pct',
         'max_iter_gain_s', 'positive_iter_gain_runs', 'positive_iter_gain_fraction',
         'best_log_path', 'best_generated_config_json', 'best_weight_format_json',
+        'best_log_path', 'best_weight_suggest_al_log_path', 'best_generated_config_json', 'best_weight_format_json',
     ]
     _write_csv(outdir / 'group_summary.csv', group_rows, group_fieldnames)
 
@@ -216,6 +218,7 @@ def main() -> int:
             'best_iter_gain_s': summary['best_iter_gain_s'],
             'best_iter_gain_pct': summary['best_iter_gain_pct'],
             'best_log_path': summary['best_log_path'],
+            'best_weight_suggest_al_log_path': summary['best_weight_suggest_al_log_path'],
             'best_generated_config_json': summary['best_generated_config_json'],
         }
 
@@ -229,6 +232,7 @@ def main() -> int:
         'best_iter_gain_s', 'best_iter_gain_pct', 'mean_iter_gain_s', 'mean_iter_gain_pct',
         'max_iter_gain_s', 'positive_iter_gain_runs', 'positive_iter_gain_fraction',
         'best_log_path', 'best_generated_config_json', 'best_weight_format_json',
+        'best_log_path', 'best_weight_suggest_al_log_path', 'best_generated_config_json', 'best_weight_format_json',
     ]
     _write_csv(outdir / 'ratio_summary.csv', ratio_rows, ratio_fieldnames)
 
