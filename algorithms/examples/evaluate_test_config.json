@@ -26,7 +26,7 @@
   "dump_graph_dir": "./output/evaluate_single_test/hardware_1npu_2aim/graph_dumps",
   "format_block_layer_span": 4,
   "format_outer_max_iters": 5,
-  "format_nd_margin_init": 0.05,
+  "format_nd_margin_init": 0.06,
   "format_nd_margin_decay": 0.85,
   "format_nd_margin_min": 0.03,
   "format_reload_count_mode": "soft_per_device",

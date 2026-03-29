@@ -20,7 +20,7 @@ conda activate "${CONDA_ENV_NAME}"
 
 : <<'COMMENT'
 export CONFIG=./examples/weight_suggest_overlap_ratio_base.json
-export OUTDIR=./output/ws_overlap_ratio_03278
+export OUTDIR=./output/ws_overlap_ratio_0329
 export MODE=grid
 export OBJECTIVE=total
 export ALGOS="hefthint"
