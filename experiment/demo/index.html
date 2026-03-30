@@ -415,6 +415,7 @@
       <select id="model">
         <option value="auto" selected>auto (infer from trace)</option>
         <option value="llama">llama</option>
+        <option value="mixtral">mixtral</option>
         <option value="mpt">mpt</option>
         <option value="palm">palm</option>
       </select>
@@ -535,13 +536,13 @@
     <div class="control">
       <label>Baseline trace (CSV)</label>
       <input id="fileBase" type="file" accept=".csv,text/csv" />
-      <div class="filetag" id="baseName">Auto-load: 128x1024_ops_trace.csv</div>
+      <div class="filetag" id="baseName">Auto-load: based on prefill/decode selectors</div>
     </div>
 
     <div class="control">
       <label>Heuristic trace (CSV)</label>
       <input id="fileHeu" type="file" accept=".csv,text/csv" />
-      <div class="filetag" id="heuName">Auto-load: hefthint_128x1024_ops_trace.csv</div>
+      <div class="filetag" id="heuName">Auto-load: based on prefill/decode selectors</div>
     </div>
 
     <hr />
@@ -811,7 +812,7 @@ const UNKNOWN_DEVICE = 'UNKNOWN';
 const HYBRID_COLOR = '#9ca3af';
 const UNKNOWN_COLOR = '#7f7f7f';
 const npuPalette = ['#bdade4'];
-const pimPalette = ['#aee4ad','#39a937'];
+const pimPalette = ['#aee4ad'];
 const otherPalette = ['#e4adb5'];
 
 function deviceFamily(name){
@@ -1084,9 +1085,9 @@ function buildLayerEdgesLlamaLike(nodesById, L){
   add(E, 'LN2', 'FFN_W1');
   add(E, 'LN2', 'FFN_W3');
 
-  add(E, 'FFN_W1', 'Act');
-  add(E, 'FFN_W3', 'Act');
-  add(E, 'Act', 'FFN_W2');
+  add(E, 'FFN_W1', ['SwiGLU', 'Act']);
+  add(E, 'FFN_W3', ['SwiGLU', 'Act']);
+  add(E, ['SwiGLU', 'Act'], 'FFN_W2');
 
   add(E, 'Add1', 'Add2');
 
@@ -1258,8 +1259,8 @@ function buildLayerEdgesMixtral(nodesById, L){
       const e = m[1]; expertMap[e] ||= {}; expertMap[e].w1 = id;
     } else if ((m = /^FFN_W3_E(\d+)/i.exec(U))){
       const e = m[1]; expertMap[e] ||= {}; expertMap[e].w3 = id;
-    } else if ((m = /^ACT_E(\d+)/i.exec(U))){
-      const e = m[1]; expertMap[e] ||= {}; expertMap[e].act = id;
+    } else if ((m = /^(ACT|SWIGLU)_E(\d+)/i.exec(U))){
+      const e = m[2]; expertMap[e] ||= {}; expertMap[e].act = id;
     } else if ((m = /^FFN_W2_E(\d+)/i.exec(U))){
       const e = m[1]; expertMap[e] ||= {}; expertMap[e].w2 = id;
     }
@@ -1292,6 +1293,7 @@ function buildLayerEdgesByModel(nodesById, L, modelFamily){
   const m = String(modelFamily || '').toLowerCase();
   if (m === 'palm') return buildLayerEdgesPalm(nodesById, L);
   if (m === 'mpt') return buildLayerEdgesMpt(nodesById, L);
+  if (m === 'mixtral') return buildLayerEdgesMixtral(nodesById, L);
   // default: llama-like
   return buildLayerEdgesLlamaLike(nodesById, L);
 }
@@ -1495,7 +1497,7 @@ const MODEL_DEF_OPS_COMMON = new Set([
 const MODEL_DEF_OPS = {
   llama: new Set([
     ...MODEL_DEF_OPS_COMMON,
-    'FFN_W1', 'FFN_W2', 'FFN_W3', 'ACT'
+    'FFN_W1', 'FFN_W2', 'FFN_W3', 'ACT', 'SWIGLU'
   ]),
   mpt: new Set([
     ...MODEL_DEF_OPS_COMMON,
@@ -1507,7 +1509,7 @@ const MODEL_DEF_OPS = {
   ]),
   mixtral: new Set([
     ...MODEL_DEF_OPS_COMMON,
-    'FFN_W1', 'FFN_W2', 'FFN_W3', 'ACT'
+    'FFN_W1', 'FFN_W2', 'FFN_W3', 'ACT', 'SWIGLU'
   ])
 };
 
@@ -1520,8 +1522,7 @@ function opInModelDefinition(opKey, modelFamily){
   // Mixtral expert patterns (if used).
   if (m === 'mixtral'){
     if (/^FFN_W[123]_E\d+$/i.test(k)) return true;
-    if (/^ACT_E\d+$/i.test(k)) return true;
-    if (/^FFN_W2_E\d+$/i.test(k)) return true;
+    if (/^(ACT|SWIGLU)_E\d+$/i.test(k)) return true;
   }
   return false;
 }
@@ -1938,11 +1939,23 @@ const UI = {
 
 /* =========================
    Infer prefill/decode lengths from trace filename
-   Example: "...4096x2048..." -> prefill=4096, decode=2048
+   Examples:
+   - "...4096x2048..." -> prefill=4096, decode=2048
+   - "...prefill-128xdecode_512..." -> prefill=128, decode=512
 ========================= */
 function inferSeqLensFromFilename(name){
   const s = String(name || '');
-  const m = /(\d+)\s*x\s*(\d+)/i.exec(s);
+  const patterns = [
+    /prefill[-_ ]?(\d+)\s*x\s*decode[-_ ]?(\d+)/i,
+    /prefill[-_ ]?(\d+).*decode[-_ ]?(\d+)/i,
+    /(\d+)\s*x\s*(\d+)/i
+  ];
+
+  let m = null;
+  for (const re of patterns){
+    m = re.exec(s);
+    if (m) break;
+  }
   if (!m) return null;
 
   const prefill = Number(m[1]);
@@ -1979,6 +1992,141 @@ function maybeApplySeqLensFromFilename(name){
   ensureSelectHasValue(UI.prefillLen, got.prefill);
   ensureSelectHasValue(UI.decodeLen, got.decode);
   return true;
+}
+
+
+function uniqStrings(list){
+  const out = [];
+  const seen = new Set();
+  for (const it of (list || [])){
+    const s = String(it || '');
+    if (!s || seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
+  }
+  return out;
+}
+
+function stripLocalPrefix(path){
+  return String(path || '').replace(/^\.\//, '');
+}
+
+function numericSelectValues(sel){
+  return Array.from(sel?.options || [])
+    .map(opt => Number(opt.value || opt.textContent || 0))
+    .filter(v => Number.isFinite(v));
+}
+
+function currentSeqLens(){
+  return {
+    prefill: Number(UI.prefillLen?.value || 0),
+    decode: Number(UI.decodeLen?.value || 0)
+  };
+}
+
+function buildAutoLoadCandidates(kind, prefill, decode){
+  const p = Math.trunc(Number(prefill));
+  const d = Math.trunc(Number(decode));
+  if (!Number.isFinite(p) || !Number.isFinite(d) || p <= 0 || d <= 0) return [];
+
+  const simple = `${p}x${d}_ops_trace.csv`;
+  const tagged = [
+    `prefill-${p}xdecode_${d}_ops_trace.csv`,
+    `prefill_${p}xdecode_${d}_ops_trace.csv`
+  ];
+
+  const out = [];
+  if (String(kind).toLowerCase() === 'base'){
+    out.push(`./${simple}`);
+    out.push(`./pd_${simple}`);
+    out.push(`./baseline_${simple}`);
+    for (const core of tagged){
+      out.push(`./${core}`);
+      out.push(`./pd_${core}`);
+      out.push(`./baseline_${core}`);
+    }
+  } else {
+    out.push(`./hefthint_${simple}`);
+    out.push(`./heft_hint_${simple}`);
+    for (const core of tagged){
+      out.push(`./hefthint_${core}`);
+      out.push(`./heft_hint_${core}`);
+    }
+  }
+  return uniqStrings(out);
+}
+
+function formatAutoLoadHint(kind, prefill, decode){
+  const cands = buildAutoLoadCandidates(kind, prefill, decode).map(stripLocalPrefix);
+  if (!cands.length) return 'Auto-load: —';
+  const shown = cands.slice(0, 2);
+  const tail = cands.length > shown.length ? ' / ...' : '';
+  return `Auto-load: ${shown.join(' / ')}${tail}`;
+}
+
+function refreshAutoLoadHints(){
+  const { prefill, decode } = currentSeqLens();
+
+  if (!(UI.fileBase?.files?.length)){
+    UI.baseName.textContent = formatAutoLoadHint('base', prefill, decode);
+  }
+  if (!(UI.fileHeu?.files?.length)){
+    UI.heuName.textContent = formatAutoLoadHint('heu', prefill, decode);
+  }
+}
+
+async function tryAutoLoadCandidates(urls){
+  for (const url of uniqStrings(urls || [])){
+    const tr = await tryAutoLoad(url, false);
+    if (tr) return { trace: tr, url };
+  }
+  return null;
+}
+
+function candidateSeqPairs(){
+  const prefills = numericSelectValues(UI.prefillLen);
+  const decodes = numericSelectValues(UI.decodeLen);
+  const cur = currentSeqLens();
+
+  const out = [];
+  const seen = new Set();
+  const push = (p, d) => {
+    const pn = Math.trunc(Number(p));
+    const dn = Math.trunc(Number(d));
+    if (!Number.isFinite(pn) || !Number.isFinite(dn)) return;
+    const key = `${pn}x${dn}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ prefill: pn, decode: dn });
+  };
+
+  push(cur.prefill, cur.decode);
+  for (const p of prefills){
+    for (const d of decodes){
+      push(p, d);
+    }
+  }
+  return out;
+}
+
+async function autoLoadMatchingPair(){
+  for (const pair of candidateSeqPairs()){
+    const baseHit = await tryAutoLoadCandidates(buildAutoLoadCandidates('base', pair.prefill, pair.decode));
+    if (!baseHit) continue;
+
+    const heuHit = await tryAutoLoadCandidates(buildAutoLoadCandidates('heu', pair.prefill, pair.decode));
+    if (!heuHit) continue;
+
+    return {
+      prefill: pair.prefill,
+      decode: pair.decode,
+      baseUrl: baseHit.url,
+      heuUrl: heuHit.url,
+      baseTrace: baseHit.trace,
+      heuTrace: heuHit.trace
+    };
+  }
+  return null;
 }
 const player = {
   playing: false,
@@ -2046,12 +2194,16 @@ function inferModelFromTraces(){
   const hasFFNW3 = has(/_FFN_W3\b/i);
   const hasAct  = has(/_Act(\b|_)/i);
   const hasGELU = has(/_GELU\b/i);
+  const hasRouter = has(/_Router(\b|_)/i) || has(/_MoE_Router(\b|_)/i);
+  const hasExpert = has(/_FFN_W[123]_E\d+/i) || has(/_(Act|SwiGLU)_E\d+/i);
   const hasPalmLN = has(/_LN\b/i) && !hasLN1;
+
+  if (hasRouter || hasExpert) return 'mixtral';
 
   // PaLM-style blocks: a single LN feeding both attn + MLP, no Add1/LN2.
   if (!hasAdd1 && !hasLN1 && hasPalmLN) return 'palm';
 
-  // LLaMA-like blocks: SwiGLU path (FFN_W3) / Act node naming.
+  // LLaMA-like blocks: SwiGLU path.
   if (hasFFNW3 || hasAct) return 'llama';
 
   // MPT-style blocks: GELU MLP with Add1/LN2 residual structure.
@@ -2919,6 +3071,8 @@ UI.layer.onchange = () => { player.playing = false; UI.play.textContent = 'Play'
 UI.layerMode.onchange = () => { player.playing = false; UI.play.textContent = 'Play'; rebuildAndRender(); };
 UI.layerCount.onchange = () => { player.playing = false; UI.play.textContent = 'Play'; rebuildAndRender(); };
 UI.model.onchange = () => { player.playing = false; UI.play.textContent = 'Play'; inferredModel = null; posMapByLayer = {}; rebuildAndRender(); };
+UI.prefillLen.onchange = () => { refreshAutoLoadHints(); };
+UI.decodeLen.onchange = () => { refreshAutoLoadHints(); };
 
 UI.tokStart.onchange = () => { player.playing = false; UI.play.textContent = 'Play'; rebuildAndRender(); };
 UI.tokCount.onchange = () => { player.playing = false; UI.play.textContent = 'Play'; rebuildAndRender(); };
@@ -2947,14 +3101,14 @@ async function loadTraceFromFileInput(inputEl, labelEl){
   return trace;
 }
 
-async function tryAutoLoad(url){
+async function tryAutoLoad(url, applySeqFromName = true){
   try{
     const r = await fetch(url, { cache: 'no-store' });
     if (!r.ok) return null;
     const text = await r.text();
     const parsed = parseCsvText(text);
     const tr = buildTrace(parsed);
-    maybeApplySeqLensFromFilename(url);
+    if (applySeqFromName) maybeApplySeqLensFromFilename(url);
     return tr;
   }catch(e){
     return null;
@@ -3002,23 +3156,32 @@ async function boot(){
   UI.speedVal.textContent = Number(UI.speed.value).toFixed(2) + '×';
   player.speed = Number(UI.speed.value);
 
-  setStatus('Auto-loading default traces…');
+  refreshAutoLoadHints();
+  setStatus('Auto-loading traces…');
 
-  // Try default file names (same folder as this HTML)
-  const base = await tryAutoLoad('./128x1024_ops_trace.csv');
-  const heu = await tryAutoLoad('./hefthint_128x1024_ops_trace.csv');
+  const hit = await autoLoadMatchingPair();
+  if (hit){
+    traceBase = hit.baseTrace;
+    traceHeu = hit.heuTrace;
 
-  if (base) { traceBase = base; UI.baseName.textContent = 'Auto: 128x1024_ops_trace.csv'; }
-  if (heu) { traceHeu = heu; UI.heuName.textContent = 'Auto: hefthint_128x1024_ops_trace.csv'; }
+    ensureSelectHasValue(UI.prefillLen, hit.prefill);
+    ensureSelectHasValue(UI.decodeLen, hit.decode);
+    maybeApplySeqLensFromFilename(hit.baseUrl);
+    maybeApplySeqLensFromFilename(hit.heuUrl);
+
+    UI.baseName.textContent = `Auto: ${stripLocalPrefix(hit.baseUrl)}`;
+    UI.heuName.textContent = `Auto: ${stripLocalPrefix(hit.heuUrl)}`;
+  }
 
   inferredModel = null;
   posMapByLayer = {};
 
   if (traceBase && traceHeu){
     populateLayerSelector();
-    setStatus(`Ready. Decode samples: ${traceBase.tokenCount}`);
+    setStatus(`Ready. Auto-loaded ${stripLocalPrefix(hit.baseUrl)} + ${stripLocalPrefix(hit.heuUrl)}. Decode samples: ${traceBase.tokenCount}`);
     await rebuildAndRender();
   } else {
+    refreshAutoLoadHints();
     setStatus('Please load both baseline and heuristic CSV traces.');
   }
 }

@@ -1,0 +1,111 @@
+{
+  "hardware": {
+    "topology": "fc",
+    "devices": [
+      {
+        "name": "CPU0",
+        "type": "cpu",
+        "tflops": 0.001,
+        "mem_bw_GBs": 32768.0,
+        "mem_capacity_GB": 8192.0,
+        "cpu_read_latency_ns": 70.0,
+        "cpu_write_latency_ns": 85.0,
+        "cpu_cacheline_B": 64
+      },
+      {
+        "name": "Ascend_910B_NPU0",
+        "type": "npu",
+        "tflops": 280.0,
+        "mem_bw_GBs": 819.2,
+        "mem_capacity_GB": 32.0
+      },
+      {
+        "name": "PIM0",
+        "type": "pim",
+        "pim_type": "accel",
+        "tflops": 16,
+        "mem_bw_GBs": 16384.0,
+        "mem_capacity_GB": 16,
+        "pim_read_latency_ns": 5.0,
+        "pim_write_latency_ns": 30.0,
+        "pim_memory": {
+          "addr_map_unit": "bits",
+          "addr_map": {
+            "row": 14,
+            "channel": 1,
+            "bank": 2,
+            "column": 8,
+            "offset": 12
+          }
+        }
+      },
+      {
+        "name": "PIM1",
+        "type": "pim",
+        "pim_type": "accel",
+        "tflops": 16,
+        "mem_bw_GBs": 16384.0,
+        "mem_capacity_GB": 16,
+        "pim_read_latency_ns": 5.0,
+        "pim_write_latency_ns": 30.0,
+        "pim_memory": {
+          "addr_map_unit": "bits",
+          "addr_map": {
+            "row": 14,
+            "channel": 1,
+            "bank": 2,
+            "column": 8,
+            "offset": 12
+          }
+        }
+      },
+      {
+        "name": "PIM2",
+        "type": "pim",
+        "pim_type": "accel",
+        "tflops": 16,
+        "mem_bw_GBs": 16384.0,
+        "mem_capacity_GB": 16,
+        "pim_read_latency_ns": 5.0,
+        "pim_write_latency_ns": 30.0,
+        "pim_memory": {
+          "addr_map_unit": "bits",
+          "addr_map": {
+            "row": 14,
+            "channel": 1,
+            "bank": 2,
+            "column": 8,
+            "offset": 12
+          }
+        }
+      },
+      {
+        "name": "PIM3",
+        "type": "pim",
+        "pim_type": "accel",
+        "tflops": 16,
+        "mem_bw_GBs": 16384.0,
+        "mem_capacity_GB": 16,
+        "pim_read_latency_ns": 5.0,
+        "pim_write_latency_ns": 30.0,
+        "pim_memory": {
+          "addr_map_unit": "bits",
+          "addr_map": {
+            "row": 14,
+            "channel": 1,
+            "bank": 2,
+            "column": 8,
+            "offset": 12
+          }
+        }
+      }
+    ],
+    "fc_bw_GBs": 32.0,
+    "link_defaults": {
+      "latency_s": 0.0,
+      "overhead_s": 0.0,
+      "flit_size_B": 16,
+      "max_payload_B": 256
+    }
+  }
+}
