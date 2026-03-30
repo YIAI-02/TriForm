@@ -17,6 +17,8 @@ from plan_label import PlanLabel
 from hardware import Cluster, DeviceSpec
 from task_graph import TaskGraph, TaskNode, JointTaskGraph, JointNodeMeta
 from cost_model import CostModel
+from cost_model import _normalize_weight_format_token as _cm_normalize_weight_format_token
+from cost_model import _resolve_npu_weight_conversion_steps as _cm_resolve_npu_weight_conversion_steps
 from buffer_manager import GlobalMemoryManager, LRUCache
 from config import (
     RANKU_INCLUDE_AVG_WEIGHT_LOAD,
@@ -50,6 +52,55 @@ _MISSING = object()
 DEBUG_SCHEDULER = False
 logger = logging.getLogger(__name__)
 attach_local_debug_filter(logger, lambda: DEBUG_SCHEDULER)
+
+
+def _sched_normalize_weight_format_token(fmt: str, *, allow_compute: bool = False) -> str:
+    if _cm_normalize_weight_format_token is not None:
+        return _cm_normalize_weight_format_token(fmt, allow_compute=allow_compute)
+    s = str(fmt or 'ND').strip().upper().replace('_', '-')
+    alias = {
+        'NPU-OPT': 'NZ',
+        'PIM-OPT': 'PIM-OPT',
+        'DUAL': 'DUAL',
+        'DUAL-COPY': 'DUAL',
+        'NZ+PIM-OPT': 'DUAL',
+    }
+    s = alias.get(s, s)
+    storage_ok = {'ND', 'NZ', 'PIM-OPT', 'DUAL'}
+    compute_ok = {'ZN', 'ZZ'} if allow_compute else set()
+    ok = storage_ok | compute_ok
+    if s not in ok:
+        raise ValueError(f'Unsupported weight format token: {fmt}')
+    return s
+
+
+def _sched_resolve_npu_weight_conversion_steps(src_fmt: str, dst_fmt: str) -> List[Tuple[str, str]]:
+    if _cm_resolve_npu_weight_conversion_steps is not None:
+        return _cm_resolve_npu_weight_conversion_steps(src_fmt, dst_fmt)
+    src = _sched_normalize_weight_format_token(src_fmt, allow_compute=True)
+    dst = _sched_normalize_weight_format_token(dst_fmt, allow_compute=True)
+    if src == 'DUAL':
+        src = 'NZ'
+    if src == dst:
+        return []
+    if src == 'ND':
+        if dst == 'NZ':
+            return [('ND', 'NZ')]
+        if dst in ('ZN', 'ZZ'):
+            return [('ND', 'NZ'), ('NZ', dst)]
+    if src == 'NZ':
+        if dst in ('ZN', 'ZZ'):
+            return [('NZ', dst)]
+        if dst == 'ND':
+            return [('NZ', 'ND')]
+    if src == 'PIM-OPT':
+        if dst == 'ND':
+            return [('PIM-OPT', 'ND')]
+        if dst == 'NZ':
+            return [('PIM-OPT', 'ND'), ('ND', 'NZ')]
+        if dst in ('ZN', 'ZZ'):
+            return [('PIM-OPT', 'ND'), ('ND', 'NZ'), ('NZ', dst)]
+    raise ValueError(f'Unsupported NPU weight conversion path: {src}->{dst}')
 
 @dataclass
 class _GraphIndex:
@@ -212,9 +263,66 @@ class SchedulerBase:
         self.storage_fmt_map: Dict[str, str] = {}
         self._weight_load_count: Dict[Tuple[str, str], int] = defaultdict(int)
         self._weight_sizes: Dict[str, int] = {}
+        self._weight_proto_node: Dict[str, TaskNode] = {}
+        self._pim_weight_desc_cache: Dict[Tuple[str, str], Any] = {}
+        self._last_op_trace_extra: Dict[str, Any] = {}
 
     def set_seq_len(self, seq_len: int) -> None:
         self.seq_len = int(seq_len)
+    
+    def set_storage_format_map(self, fmt_map: Dict[str, str]) -> None:
+        """Install host-side weight storage formats for the next simulation run.
+
+        This is scheduler-agnostic configuration, so it belongs on the common
+        base class rather than only on HEFTScheduler. That keeps NaiveTopo and
+        any other scheduler variants from silently falling back to ND.
+        """
+        self.storage_fmt_map = {}
+        try:
+            self.buffer.host_format.clear()
+        except Exception:
+            pass
+        for k, v in dict(fmt_map or {}).items():
+            try:
+                canon_v = str(self.cost.weight_storage_format(v))
+            except Exception:
+                try:
+                    canon_v = str(_sched_normalize_weight_format_token(v, allow_compute=False))
+                except Exception:
+                    canon_v = str(v)
+            self.storage_fmt_map[str(k)] = str(canon_v)
+            self.buffer.set_host_fmt(str(k), str(canon_v))
+
+    def _set_last_op_trace_extra(self, extra: Optional[Dict[str, Any]]) -> None:
+        self._last_op_trace_extra = dict(extra or {})
+
+    def _pop_last_op_trace_extra(self) -> Dict[str, Any]:
+        extra = dict(getattr(self, '_last_op_trace_extra', {}) or {})
+        self._last_op_trace_extra = {}
+        return extra
+
+    def _log_scheduled_op_trace(self, **kwargs: Any) -> None:
+        if not getattr(self, 'stats', None):
+            return
+        extra = self._pop_last_op_trace_extra()
+        self.stats.log_op_device(extra=(extra or None), **kwargs)
+
+    def _weight_trace_extra_from_profile(self, prof: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
+        if not isinstance(prof, Mapping):
+            return {}
+        wid = str(prof.get('wid', '') or '')
+        if not wid:
+            return {}
+        return {
+            'weight_comm_s': float(prof.get('comm_s', 0.0) or 0.0),
+            'weight_local_total_s': float(prof.get('local_total_s', 0.0) or 0.0),
+            'weight_local_serial_s': float(prof.get('local_serial_s', 0.0) or 0.0),
+            'weight_local_overlap_s': float(prof.get('local_overlap_s', 0.0) or 0.0),
+            'weight_src_fmt': str(prof.get('src_fmt', '') or ''),
+            'weight_resident_fmt': str(prof.get('resident_fmt', '') or ''),
+            'weight_compute_fmt': str(prof.get('compute_fmt', '') or ''),
+            'weight_cache_state': str(prof.get('cache_state', '') or ''),
+        }
 
 
     def export_fixed_plan(self, schedule: List["ScheduledTask"]) -> Dict[str, Any]:
@@ -332,7 +440,7 @@ class SchedulerBase:
                 if getattr(self, "stats", None):
                     op_name = node.attrs.get("op") or node.name
                     try:
-                        self.stats.log_op_device(
+                        self._log_scheduled_op_trace(
                             nid=nid,
                             op=op_name,
                             device="COMM",
@@ -372,7 +480,7 @@ class SchedulerBase:
                 if getattr(self, "stats", None):
                     op_name = node.attrs.get("op") or node.name
                     try:
-                        self.stats.log_op_device(
+                        self._log_scheduled_op_trace(
                             nid=nid,
                             op=op_name,
                             device=dev.name,
@@ -439,6 +547,7 @@ class SchedulerBase:
         self._act_used.clear()
         self._act_resident.clear()
         self._act_refcnt.clear()
+        self._last_op_trace_extra = {}
         self._collective_output_devs = {}
         # KV/activation runtime states on PIM are centrally managed in buffer manager
         try:
@@ -454,10 +563,12 @@ class SchedulerBase:
                 cache.order.clear()
                 cache.used = 0
                 cache.pinned.clear()
+                cache.meta.clear()
             self.weight_cached.clear()
             self.storage_fmt_map.clear()
             self._weight_load_count.clear()
             self._weight_sizes.clear()
+            self._weight_proto_node.clear()
 
     # ------------------------------------------------------------------
     # Weight residency policy
@@ -768,6 +879,281 @@ class SchedulerBase:
             return int(getattr(node, "weight_size", 0) or 0)
         except Exception:
             return 0
+# ?
+    def _record_weight_proto_node(self, node: TaskNode) -> None:
+        wid = self._node_weight_id(node)
+        if not wid:
+            return
+        self._weight_proto_node.setdefault(str(wid), node)
+
+    def _representative_weight_node(self, wid: str) -> TaskNode:
+        node = self._weight_proto_node.get(str(wid))
+        if node is None:
+            raise RuntimeError(
+                f"No representative node recorded for weight_id='{wid}'. "
+                "Run at least one scheduling pass before asking for weight-format suggestions."
+            )
+        return node
+
+    def _weight_storage_format_for_wid(self, wid: str) -> str:
+        try:
+            raw = self.buffer.get_host_fmt(str(wid))
+        except Exception:
+            raw = 'ND'
+        try:
+            return str(self.cost.weight_storage_format(raw or 'ND'))
+        except Exception:
+            s = str(raw or 'ND').strip().upper().replace('_', '-')
+            if s == 'NPU-OPT':
+                return 'NZ'
+            if s == 'PIM-OPT':
+                return 'PIM-OPT'
+            return 'ND' if not s else s
+
+    def _cached_weight_state(self, dev: DeviceSpec, wid: str, wsize_nd: int) -> Tuple[int, Optional[str], Optional[Any]]:
+        cached_nd = 0
+        cache = None
+        try:
+            cache = getattr(self.buffer, 'device_cache', {}).get(dev.name, None)
+            items = getattr(cache, 'items', None)
+            if isinstance(items, dict):
+                v = items.get(wid, 0)
+                if isinstance(v, (int, float)):
+                    cached_nd = int(v)
+        except Exception:
+            cached_nd = 0
+            cache = None
+
+        if cached_nd <= 0:
+            try:
+                if self.buffer.is_cached(dev.name, wid):
+                    cached_nd = int(wsize_nd)
+            except Exception:
+                cached_nd = 0
+
+        if 0 < int(cached_nd) < int(wsize_nd):
+            raise RuntimeError(
+                f"Partial weight caching is not modeled for weight_id='{wid}' on device='{dev.name}'. "
+                f"cached_nd={cached_nd} full_nd={wsize_nd}"
+            )
+
+        cache_fmt: Optional[str] = None
+        if int(cached_nd) >= int(wsize_nd) and int(wsize_nd) > 0:
+            try:
+                cache_fmt = self.buffer.get_cached_weight_format(dev.name, wid)
+            except Exception:
+                cache_fmt = None
+            if cache_fmt in (None, ''):
+                cache_fmt = self._weight_storage_format_for_wid(wid)
+            try:
+                cache_fmt = str(self.cost.weight_storage_format(cache_fmt))
+            except Exception:
+                cache_fmt = str(cache_fmt)
+
+        return int(max(0, cached_nd)), cache_fmt, cache
+
+
+    def _weight_overlap_ratio(self) -> float:
+        try:
+            import config as _cfg  # local import to avoid circular surprises
+            ratio = float(getattr(_cfg, 'WEIGHT_LOCAL_LOAD_OVERLAP_RATIO', 0.3) or 0.0)
+        except Exception:
+            ratio = 0.3
+        return float(min(1.0, max(0.0, float(ratio))))
+
+    def _npu_resident_weight_format(self, src_storage_fmt: str) -> str:
+        return 'NZ'
+
+    def _weight_local_service_profile(
+        self,
+        node: TaskNode,
+        dev: DeviceSpec,
+        size_nd_bytes: int,
+        src_fmt: str,
+        resident_fmt: str,
+        *,
+        from_cache: bool,
+    ) -> Dict[str, Any]:
+        size_nd_bytes = int(size_nd_bytes or 0)
+        src_fmt = str(src_fmt or 'ND')
+        resident_fmt = str(resident_fmt or src_fmt)
+        dev_type = str(getattr(dev, 'type', '') or '').lower()
+
+        if dev_type == 'npu':
+            compute_fmt = str(self.cost.npu_weight_compute_format(node))
+        elif dev_type == 'pim':
+            compute_fmt = 'PIM-OPT'
+        else:
+            compute_fmt = str(self.cost.device_preferred_fmt(dev))
+
+        if size_nd_bytes <= 0:
+            return {
+                'src_fmt': str(src_fmt),
+                'resident_fmt': str(resident_fmt),
+                'compute_fmt': str(compute_fmt),
+                'local_serial_s': 0.0,
+                'local_overlap_s': 0.0,
+                'local_total_s': 0.0,
+            }
+
+        if dev_type == 'npu':
+            local = self.cost.npu_local_weight_load_cost(
+                int(size_nd_bytes),
+                str(src_fmt),
+                str(compute_fmt),
+                from_cache=bool(from_cache),
+            )
+            return {
+                'src_fmt': str(src_fmt),
+                'resident_fmt': str(resident_fmt),
+                'compute_fmt': str(compute_fmt),
+                'local_serial_s': float(local.serial_s),
+                'local_overlap_s': float(local.overlap_s),
+                'local_total_s': float(local.total_s),
+            }
+
+        if dev_type == 'pim':
+            local = self.cost.pim_local_weight_load_cost(
+                int(size_nd_bytes),
+                str(src_fmt),
+                from_cache=bool(from_cache),
+            )
+            return {
+                'src_fmt': str(src_fmt),
+                'resident_fmt': str(resident_fmt),
+                'compute_fmt': str(compute_fmt),
+                'local_serial_s': float(local.serial_s),
+                'local_overlap_s': float(local.overlap_s),
+                'local_total_s': float(local.total_s),
+            }
+
+        size_src = int(self.cost.weight_transfer_comm_bytes(int(size_nd_bytes), str(src_fmt)))
+        total = float(self.cost.format_conversion_time(int(size_src), str(src_fmt), str(compute_fmt), dev))
+        return {
+            'src_fmt': str(src_fmt),
+            'resident_fmt': str(resident_fmt),
+            'compute_fmt': str(compute_fmt),
+            'local_serial_s': float(total),
+            'local_overlap_s': 0.0,
+            'local_total_s': float(total),
+        }
+
+    def _weight_service_profile_no_contention(
+        self,
+        node: TaskNode,
+        dev: DeviceSpec,
+        *,
+        src_storage_fmt: Optional[str] = None,
+        cached: bool,
+        cached_fmt: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        wid = self._node_weight_id(node)
+        wsize_nd = int(self._node_weight_size(node) or 0)
+        if not wid or wsize_nd <= 0:
+            return {
+                'wid': str(wid or ''),
+                'weight_size_nd': int(wsize_nd),
+                'serial_s': 0.0,
+                'overlap_s': 0.0,
+                'total_s': 0.0,
+                'comm_s': 0.0,
+                'local_total_s': 0.0,
+                'local_serial_s': 0.0,
+                'local_overlap_s': 0.0,
+                'src_storage_fmt': 'ND',
+                'src_fmt': 'ND',
+                'resident_fmt': 'ND',
+                'compute_fmt': 'ND',
+                'cache_state': '',
+            }
+
+        dev_type = str(getattr(dev, 'type', '') or '').lower()
+        src_storage_fmt = str(src_storage_fmt or self._weight_storage_format_for_wid(wid))
+        if dev_type == 'npu':
+            resident_fmt = self._npu_resident_weight_format(src_storage_fmt)
+        elif dev_type == 'pim':
+            resident_fmt = 'PIM-OPT'
+        else:
+            resident_fmt = str(src_storage_fmt)
+
+        if dev_type == 'pim' and self._weights_preloaded_on_pim():
+            compute_fmt = 'PIM-OPT'
+            return {
+                'wid': str(wid),
+                'weight_size_nd': int(wsize_nd),
+                'serial_s': 0.0,
+                'overlap_s': 0.0,
+                'total_s': 0.0,
+                'comm_s': 0.0,
+                'local_total_s': 0.0,
+                'local_serial_s': 0.0,
+                'local_overlap_s': 0.0,
+                'src_storage_fmt': str(src_storage_fmt),
+                'src_fmt': str(resident_fmt),
+                'resident_fmt': str(resident_fmt),
+                'compute_fmt': str(compute_fmt),
+                'cache_state': 'preloaded',
+            }
+
+        if bool(cached):
+            fmt_for_local = str(cached_fmt or resident_fmt)
+            local_prof = self._weight_local_service_profile(
+                node,
+                dev,
+                int(wsize_nd),
+                str(fmt_for_local),
+                str(fmt_for_local),
+                from_cache=True,
+            )
+            return {
+                'wid': str(wid),
+                'weight_size_nd': int(wsize_nd),
+                'serial_s': float(local_prof['local_serial_s']),
+                'overlap_s': float(local_prof['local_overlap_s']),
+                'total_s': float(local_prof['local_total_s']),
+                'comm_s': 0.0,
+                'local_total_s': float(local_prof['local_total_s']),
+                'local_serial_s': float(local_prof['local_serial_s']),
+                'local_overlap_s': float(local_prof['local_overlap_s']),
+                'src_storage_fmt': str(src_storage_fmt),
+                'src_fmt': str(local_prof['src_fmt']),
+                'resident_fmt': str(local_prof['resident_fmt']),
+                'compute_fmt': str(local_prof['compute_fmt']),
+                'cache_state': 'cached',
+            }
+
+        host = self.cost.get_host_device()
+        rd_bytes = int(self.cost.weight_transfer_comm_bytes(int(wsize_nd), src_storage_fmt))
+        try:
+            comm_s = float(self.cost.comm_cost(host, dev, int(rd_bytes)))
+        except Exception:
+            comm_s = float('inf')
+
+        local_prof = self._weight_local_service_profile(
+            node,
+            dev,
+            int(wsize_nd),
+            str(src_storage_fmt),
+            str(resident_fmt),
+            from_cache=False,
+        )
+        return {
+            'wid': str(wid),
+            'weight_size_nd': int(wsize_nd),
+            'serial_s': float(comm_s + float(local_prof['local_serial_s'])),
+            'overlap_s': float(local_prof['local_overlap_s']),
+            'total_s': float(comm_s + float(local_prof['local_total_s'])),
+            'comm_s': float(comm_s),
+            'local_total_s': float(local_prof['local_total_s']),
+            'local_serial_s': float(local_prof['local_serial_s']),
+            'local_overlap_s': float(local_prof['local_overlap_s']),
+            'src_storage_fmt': str(src_storage_fmt),
+            'src_fmt': str(local_prof['src_fmt']),
+            'resident_fmt': str(local_prof['resident_fmt']),
+            'compute_fmt': str(local_prof['compute_fmt']),
+            'cache_state': 'miss',
+        }
+
 
     def _earliest_finish_on_device(
         self,
@@ -778,6 +1164,7 @@ class SchedulerBase:
         phase: str,
         commit: bool,
     ) -> Tuple[float, float]:
+        self._set_last_op_trace_extra({})
         node = g.nodes[nid]
         phase_eff = self._node_phase(g, nid, phase)
         batch = self._node_batch(g, nid, phase_eff)
@@ -1076,9 +1463,21 @@ class SchedulerBase:
         #---------------------3. normal weight load + compute + activation handling
         start = max(float(self.avail.get(dev.name, 0.0)), kv_ready)
         compute = self.cost.node_device_cost(node, dev, label, batch, seq_len, phase_eff)
-        wload = self._weight_load_time(node, dev, start, commit)
-        finish = start + max(wload, compute)
-        # finish = start + compute
+        wload_serial, wload_overlap, weight_extra = self._weight_load_time(node, dev, start, commit)
+        overlap_gate = max(float(compute), float(wload_overlap))
+        finish = start + float(wload_serial) + float(overlap_gate)
+
+        if weight_extra:
+            trace_extra = dict(weight_extra)
+            trace_extra['weight_compute_s'] = float(compute)
+            trace_extra['weight_overlap_gate_s'] = float(overlap_gate)
+            if float(wload_overlap) > float(compute):
+                trace_extra['weight_overlap_dominant'] = 'local_overlap'
+            elif float(compute) > float(wload_overlap):
+                trace_extra['weight_overlap_dominant'] = 'compute'
+            else:
+                trace_extra['weight_overlap_dominant'] = 'tie'
+            self._set_last_op_trace_extra(trace_extra)
 
         if commit:
             self.avail[dev.name] = finish
@@ -1650,97 +2049,81 @@ class SchedulerBase:
         # The node can start after all required inbound transfers are done.
         ready_t = float(max(inbound_end_times, default=0.0))
         return ready_t
-
-    def _weight_load_time(self, node: TaskNode, dev: DeviceSpec, earliest: float, commit: bool) -> float:
+    def _weight_load_time(
+        self,
+        node: TaskNode,
+        dev: DeviceSpec,
+        earliest: float,
+        commit: bool,
+    ) -> Tuple[float, float, Dict[str, Any]]:
         wid = self._node_weight_id(node)
         if not wid:
-            return 0.0
+            return (0.0, 0.0, {})
         wsize_nd = int(self._node_weight_size(node) or 0)
         if wsize_nd <= 0:
-            return 0.0
+            return (0.0, 0.0, {})
 
-        def _ondevice_weight_mem_load_s(bytes_nd: int) -> float:
-            bytes_nd = int(bytes_nd or 0)
-            if bytes_nd <= 0:
-                return 0.0
-            fmt = self.cost.device_preferred_fmt(dev)
-            bytes_dev = int(self.cost.format_size(int(bytes_nd), str(fmt)))
-            return float(self.cost.mem_time(int(bytes_dev), dev))
+        self._record_weight_proto_node(node)
+        src_storage_fmt = self._weight_storage_format_for_wid(wid)
+        dev_type = str(getattr(dev, 'type', '') or '').lower()
+        if dev_type == 'npu':
+            resident_fmt = self._npu_resident_weight_format(src_storage_fmt)
+        elif dev_type == 'pim':
+            resident_fmt = 'PIM-OPT'
+        else:
+            resident_fmt = str(src_storage_fmt)
 
-        full_mem_load = float(_ondevice_weight_mem_load_s(int(wsize_nd)))
-
-        if str(getattr(dev, 'type', '')).lower() == 'pim' and self._weights_preloaded_on_pim():
+        if dev_type == 'pim' and self._weights_preloaded_on_pim():
             if commit:
                 try:
-                    if wid not in self._weight_sizes:
-                        self._weight_sizes[wid] = int(wsize_nd)
+                    self._weight_sizes[wid] = int(wsize_nd)
                 except Exception:
                     pass
-            return float(full_mem_load)
+            prof = self._weight_service_profile_no_contention(
+                node,
+                dev,
+                src_storage_fmt=str(src_storage_fmt),
+                cached=True,
+                cached_fmt=str(resident_fmt),
+            )
+            prof['cache_state'] = 'preloaded'
+            return (0.0, 0.0, self._weight_trace_extra_from_profile(prof))
 
-        # --- size-aware cache lookup (ND bytes) ---
-        cached_nd = 0
-        cache = None
-        try:
-            cache = getattr(self.buffer, "device_cache", {}).get(dev.name, None)
-            items = getattr(cache, "items", None)
-            if isinstance(items, dict):
-                v = items.get(wid, 0)
-                if isinstance(v, (int, float)):
-                    cached_nd = int(v)
-        except Exception:
-            cached_nd = 0
+        cached_nd, cached_fmt, cache = self._cached_weight_state(dev, wid, wsize_nd)
 
-        # Fallback: if we cannot inspect size, rely on old boolean check.
-        if cached_nd <= 0:
-            try:
-                if self.buffer.is_cached(dev.name, wid):
-                    if commit and cache is not None:
-                        try:
-                            cache.touch(wid)
-                        except Exception:
-                            pass
-                    return float(full_mem_load)
-            except Exception:
-                pass
-
-        # Full hit
         if cached_nd >= wsize_nd:
             if commit and cache is not None:
                 try:
                     cache.touch(wid)
                 except Exception:
                     pass
-            return float(full_mem_load)
+            fmt_for_local = str(cached_fmt or resident_fmt)
+            prof = self._weight_service_profile_no_contention(
+                node,
+                dev,
+                src_storage_fmt=str(src_storage_fmt),
+                cached=True,
+                cached_fmt=str(fmt_for_local),
+            )
+            return (
+                float(prof['serial_s']),
+                float(prof['overlap_s']),
+                self._weight_trace_extra_from_profile(prof),
+            )
 
-        # Need to fetch only the missing bytes
-        need_nd = int(wsize_nd - max(0, cached_nd))
-        if need_nd <= 0:
-            # Defensive: treat as full hit.
-            if commit and cache is not None:
-                try:
-                    cache.touch(wid)
-                except Exception:
-                    pass
-            return float(full_mem_load)
+        if cached_nd > 0:
+            raise RuntimeError(
+                f"Partial weight caching is not modeled for weight_id='{wid}' on device='{dev.name}'. "
+                f"cached_nd={cached_nd} full_nd={wsize_nd}"
+            )
 
         host = self.cost.get_host_device()
-
-        # Host-side stored format (defaults to ND).
-        try:
-            from_fmt = self.buffer.get_host_fmt(wid) or "ND"
-        except Exception:
-            from_fmt = "ND"
-        to_fmt = self.cost.device_preferred_fmt(dev)
-
-        rd_bytes = int(self.cost.format_size(need_nd, from_fmt))
-
-        # Communication annotation: this is a WEIGHT load (host -> device).
-        l2s, l2e = self.comm.reserve(
+        rd_bytes = int(self.cost.weight_transfer_comm_bytes(int(wsize_nd), src_storage_fmt))
+        _l2s, l2e = self.comm.reserve(
             host.name,
             dev.name,
             rd_bytes,
-            earliest=earliest,
+            earliest=float(earliest),
             commit=commit,
             tag='weight_load',
             extra={
@@ -1749,19 +2132,42 @@ class SchedulerBase:
                 'weight_id': str(wid),
                 'node_id': str(getattr(node, 'id', getattr(node, 'nid', '')) or ''),
                 'op': str(getattr(node, 'name', '') or ''),
-                'bytes_nd': int(need_nd),
+                'bytes_nd': int(wsize_nd),
                 'bytes_full_nd': int(wsize_nd),
-                'cached_before_nd': int(cached_nd),
-                'from_fmt': str(from_fmt),
-                'to_fmt': str(to_fmt),
+                'cached_before_nd': 0,
+                'from_fmt': str(src_storage_fmt),
+                'to_fmt': str(resident_fmt),
                 'cache_capacity_bytes': int(getattr(getattr(self.buffer, 'device_cache', {}).get(dev.name, None), 'capacity', 0) or 0),
             },
         )
+        comm_time = max(0.0, float(l2e) - float(earliest))
 
-        ready = float(l2s) + float(
-            self.cost.combine_transfer_and_convert(host, dev, int(rd_bytes), str(from_fmt), str(to_fmt))
+        local_prof = self._weight_local_service_profile(
+            node,
+            dev,
+            int(wsize_nd),
+            str(src_storage_fmt),
+            str(resident_fmt),
+            from_cache=False,
         )
-        end = max(float(ready), float(earliest))
+        serial_s = float(comm_time + float(local_prof['local_serial_s']))
+        overlap_s = float(local_prof['local_overlap_s'])
+        prof = {
+            'wid': str(wid),
+            'weight_size_nd': int(wsize_nd),
+            'serial_s': float(serial_s),
+            'overlap_s': float(overlap_s),
+            'total_s': float(comm_time + float(local_prof['local_total_s'])),
+            'comm_s': float(comm_time),
+            'local_total_s': float(local_prof['local_total_s']),
+            'local_serial_s': float(local_prof['local_serial_s']),
+            'local_overlap_s': float(local_prof['local_overlap_s']),
+            'src_storage_fmt': str(src_storage_fmt),
+            'src_fmt': str(local_prof['src_fmt']),
+            'resident_fmt': str(local_prof['resident_fmt']),
+            'compute_fmt': str(local_prof['compute_fmt']),
+            'cache_state': 'miss',
+        }
 
         if commit:
             try:
@@ -1769,17 +2175,13 @@ class SchedulerBase:
                 self._weight_sizes[wid] = int(wsize_nd)
             except Exception:
                 pass
-            # Mark cached as the *required full size* (not only the delta).
-            try:
-                self.buffer.mark_cached(dev.name, wid, int(wsize_nd), pinned=False)
-            except Exception:
-                pass
+            ok = bool(self.buffer.mark_cached(dev.name, wid, int(wsize_nd), pinned=False, fmt=str(resident_fmt)))
+            if not ok:
+                raise RuntimeError(
+                    f"Failed to cache weight_id='{wid}' on device='{dev.name}' after an explicit miss load."
+                )
 
-        if dev.type == "pim":
-            load_time = float(self.cost.weight_load_time_pim(int(need_nd)))
-            return float(end - float(earliest) + load_time)
-
-        return float(end - float(earliest))
+        return (float(serial_s), float(overlap_s), self._weight_trace_extra_from_profile(prof))
 
 
     def _ensure_host_store(self, u: str, pred_dev: DeviceSpec,bytes_nd: int, src_fmt: str, pred_finish: float, commit: bool) -> float:
@@ -1907,7 +2309,7 @@ class NaiveTopoScheduler(SchedulerBase):
                 if getattr(self, 'stats', None):
                     op_name = node.attrs.get('op') or node.name
                     try:
-                        self.stats.log_op_device(
+                        self._log_scheduled_op_trace(
                             nid=nid, op=op_name,
                             device=trace_dev, device_type='comm',
                             start=float(start), end=float(finish),
@@ -1947,7 +2349,7 @@ class NaiveTopoScheduler(SchedulerBase):
             if getattr(self, 'stats', None):
                 op_name = node.attrs.get('op') or node.name
                 try:
-                    self.stats.log_op_device(
+                    self._log_scheduled_op_trace(
                         nid=nid, op=op_name,
                         device=dev.name, device_type=dev.type,
                         start=float(start), end=float(finish),
@@ -1998,26 +2400,14 @@ class HEFTScheduler(SchedulerBase):
             total_compute += device_compute
 
             if RANKU_INCLUDE_AVG_WEIGHT_LOAD and wid and (node_weight_size > 0):
-                if str(getattr(d, 'type', '')).lower() == 'pim' and self._weights_preloaded_on_pim():
-                    weight_cost = 0.0
-                else:
-                    stored_fmt = self.storage_fmt_map.get(wid, 'ND')
-                    host = self.cost.get_host_device()
-                    size_src = int(self.cost.format_size(int(node_weight_size), str(stored_fmt)))
-                    weight_cost = float(
-                        self.cost.combine_transfer_and_convert(
-                            host,
-                            d,
-                            int(size_src),
-                            str(stored_fmt),
-                            str(self.cost.device_preferred_fmt(d)),
-                        )
-                    )
-                    if str(getattr(d, 'type', '')).lower() == 'pim':
-                        try:
-                            weight_cost += float(self.cost.weight_load_time_pim(int(node_weight_size)))
-                        except Exception:
-                            pass
+                stored_fmt = self._weight_storage_format_for_wid(wid)
+                prof = self._weight_service_profile_no_contention(
+                    node,
+                    d,
+                    src_storage_fmt=str(stored_fmt),
+                    cached=False,
+                )
+                weight_cost = float(prof.get('total_s', 0.0) or 0.0)
                 total_w += float(weight_cost)
 
         avg_compute = total_compute / k if k else 0.0
@@ -2143,7 +2533,7 @@ class HEFTScheduler(SchedulerBase):
                 if getattr(self, 'stats', None):
                     op_name = node.attrs.get('op') or node.name
                     try:
-                        self.stats.log_op_device(
+                        self._log_scheduled_op_trace(
                             nid=nid, op=op_name,
                             device=trace_dev, device_type='comm',
                             start=float(start), end=float(finish),
@@ -2212,7 +2602,7 @@ class HEFTScheduler(SchedulerBase):
             if getattr(self, 'stats', None):
                 op_name = node.attrs.get('op') or node.name
                 try:
-                    self.stats.log_op_device(
+                    self._log_scheduled_op_trace(
                         nid=nid, op=op_name,
                         device=dev.name, device_type=dev.type,
                         start=float(start), end=float(finish),
@@ -2252,18 +2642,8 @@ class HEFTScheduler(SchedulerBase):
             'weight_chain_hits': chain_hits,
         }
 
-
-    def set_storage_format_map(self, fmt_map: Dict[str, str]):
-        self.storage_fmt_map = dict(fmt_map or {})
-        try:
-            self.buffer.host_format.clear()
-        except Exception:
-            pass
-        for k, v in self.storage_fmt_map.items():
-            self.buffer.set_host_fmt(str(k), str(v))
-
     def suggest_weight_storage_formats(self) -> Dict[str, str]:
-        Base = ['ND', 'NPU_OPT', 'PIM_OPT']
+        Base = ['ND', 'NZ', 'PIM-OPT']
         sugg: Dict[str, str] = {}
 
         # 统计：{wid: {dev_type: load_count}}
@@ -2273,14 +2653,14 @@ class HEFTScheduler(SchedulerBase):
 
         EPS = 1e-6
         for wid, counts in by_wid.items():
-            w_bytes_nd = self._weight_sizes.get(wid, 0)
-            dominant = max(counts.items(), key=lambda x: x[1])[0] if counts else 'pim'
+            counts_eff = self._normalize_counts_by_device_count(counts)
+            dominant = max(counts_eff.items(), key=lambda x: x[1])[0] if counts_eff else 'pim'
             if dominant == 'npu':
-                candidates = ['NPU_OPT', 'ND', 'PIM_OPT']
-                native = 'NPU_OPT'
+                candidates = ['NZ', 'ND', 'PIM-OPT']
+                native = 'NZ'
             elif dominant == 'pim':
-                candidates = ['PIM_OPT', 'ND', 'NPU_OPT']
-                native = 'PIM_OPT'
+                candidates = ['PIM-OPT', 'ND', 'NZ']
+                native = 'PIM-OPT'
             else:
                 candidates = Base
                 native = 'ND'
@@ -2288,19 +2668,19 @@ class HEFTScheduler(SchedulerBase):
             best_t, best_fmt = float('inf'), candidates[0]
             for fmt in candidates:
                 total = 0.0
-                for dev_type, cnt in counts.items():
+                for dev_type, cnt in counts_eff.items():
                     devs = self.cluster.devices_by_type(dev_type)
                     if not devs:
                         continue
                     d = devs[0]
-                    host = self.cost.get_host_device()
-                    size_src = int(self.cost.format_size(int(w_bytes_nd), str(fmt)))
-                    w_cost = float(self.cost.combine_transfer_and_convert( host,d,int(size_src),str(fmt),str(self.cost.device_preferred_fmt(d)),))
-                    if str(getattr(d, 'type', '')).lower() == 'pim':
-                        try:
-                            w_cost += float(self.cost.weight_load_time_pim(int(w_bytes_nd)))
-                        except Exception:
-                            pass
+                    proto = self._representative_weight_node(wid)
+                    prof = self._weight_service_profile_no_contention(
+                        proto,
+                        d,
+                        src_storage_fmt=str(fmt),
+                        cached=False,
+                    )
+                    w_cost = float(prof.get('total_s', 0.0) or 0.0)
                     total += float(cnt) * float(w_cost)
                 if total + EPS < best_t or (abs(total - best_t) < EPS and fmt == native):
                     best_t, best_fmt = total, fmt
@@ -2311,60 +2691,86 @@ class HEFTScheduler(SchedulerBase):
     # ------------------------------------------------------------------
     # Block Coordinate Descent (BCD) weight-format suggestion
     # ------------------------------------------------------------------
-    def _strip_layer_prefix(self, wid: str) -> str:
-        """Strip leading layer tag from weight_id.
-
-        Examples:
-            L12_WQ      -> WQ
-            L3_WQ_S0    -> WQ_S0
-            L7_E2_W1    -> E2_W1
-        """
+    def _split_layer_prefixed_weight_id(self, wid: str) -> Tuple[int | None, str]:
+        """Return (layer_idx, rest_name) for layer-scoped weight ids."""
         if not wid:
-            return ""
+            return (None, "")
+        s = str(wid)
         try:
-            m = re.match(r"^L\d+_(.*)$", str(wid))
-            return m.group(1) if m else str(wid)
+            m = re.match(r"^L(?P<layer>\d+)_(?P<rest>.*)$", s)
+            if not m:
+                return (None, s)
+            layer_idx = int(m.group('layer'))
+            return (layer_idx, m.group('rest') or "")
         except Exception:
-            return str(wid)
+            return (None, s)
 
-    def _weight_block_key(self, wid: str, *, mode: str = "coupled") -> str:
+    def _strip_layer_prefix(self, wid: str) -> str:
+        """Strip leading layer tag from weight_id."""
+        _layer_idx, rest = self._split_layer_prefixed_weight_id(wid)
+        return rest if rest else str(wid or "")
+
+    def _normalize_counts_by_device_count(self, counts: Mapping[str, int | float]) -> Dict[str, float]:
+        """Normalize load counts by the number of devices of each type.
+
+        This avoids biasing block decisions toward a device class simply because the
+        topology contains more devices of that type (for example 1 NPU vs 2 PIMs).
+        """
+        out: Dict[str, float] = {}
+        for dev_type, cnt in dict(counts or {}).items():
+            try:
+                denom = max(1, int(len(self.cluster.devices_by_type(str(dev_type))) or 0))
+            except Exception:
+                denom = 1
+            out[str(dev_type)] = float(cnt or 0.0) / float(denom)
+        return out
+
+    def _weight_block_key(self, wid: str, *, mode: str = "coupled", layer_span: int = 0) -> str:
         """Return a block key for `wid`.
 
         mode:
           - 'none'   : only strip layer prefix, no coupling.
           - 'coupled': additionally couple (WQ,WK,WV) as one block, and (W1,W3) as one block,
                        while keeping shard/expert suffixes.
+
+        layer_span:
+          - <= 0 : merge all layers together (legacy behavior).
+          - 4/8  : keep one block per consecutive 4/8 layers.
         """
-        base = self._strip_layer_prefix(wid)
-        if mode in ("none", "strip_only", ""):
-            return base
+        layer_idx, base = self._split_layer_prefixed_weight_id(wid)
+        base = base if base else str(wid or "")
+        key = base
+        if mode not in ("none", "strip_only", ""):
+            parts = [p for p in str(base).split("_") if p]
+            if parts:
+                # Common (non-MoE) weights: WQ/WK/WV, WO, W1/W2/W3, possibly with _S{sid}.
+                head = parts[0]
+                tail = "_".join(parts[1:]) if len(parts) > 1 else ""
 
-        parts = [p for p in str(base).split("_") if p]
-        if not parts:
-            return base
+                def _join(prefix: str, rest: str) -> str:
+                    return f"{prefix}_{rest}" if rest else prefix
 
-        # Common (non-MoE) weights: WQ/WK/WV, WO, W1/W2/W3, possibly with _S{sid}.
-        head = parts[0]
-        tail = "_".join(parts[1:]) if len(parts) > 1 else ""
+                if head in ("WQ", "WK", "WV"):
+                    key = _join("ATTN_QKV", tail)
+                elif head in ("W1", "W3"):
+                    key = _join("FFN_W13", tail)
+                # MoE style: E{e}_W1 / E{e}_W3 etc. Keep expert id as part of the key.
+                elif head.startswith("E") and len(parts) >= 2:
+                    wname = parts[1]
+                    rest = "_".join(parts[2:]) if len(parts) > 2 else ""
+                    if wname in ("W1", "W3"):
+                        key = _join(f"{head}_FFN_W13", rest)
+                    elif wname in ("WQ", "WK", "WV"):
+                        key = _join(f"{head}_ATTN_QKV", rest)
 
-        def _join(prefix: str, rest: str) -> str:
-            return f"{prefix}_{rest}" if rest else prefix
-
-        if head in ("WQ", "WK", "WV"):
-            return _join("ATTN_QKV", tail)
-        if head in ("W1", "W3"):
-            return _join("FFN_W13", tail)
-
-        # MoE style: E{e}_W1 / E{e}_W3 etc. Keep expert id as part of the key.
-        if head.startswith("E") and len(parts) >= 2:
-            wname = parts[1]
-            rest = "_".join(parts[2:]) if len(parts) > 2 else ""
-            if wname in ("W1", "W3"):
-                return _join(f"{head}_FFN_W13", rest)
-            if wname in ("WQ", "WK", "WV"):
-                return _join(f"{head}_ATTN_QKV", rest)
-
-        return base
+        if layer_idx is None or int(layer_span or 0) <= 0:
+            return key
+        span = max(1, int(layer_span))
+        lo = (int(layer_idx) // span) * span
+        hi = lo + span - 1
+        if span == 1:
+            return f"L{int(layer_idx)}_{key}"
+        return f"L{lo}-{hi}_{key}"
 
     def _estimate_weight_host_to_device_cost(
         self,
@@ -2396,6 +2802,7 @@ class HEFTScheduler(SchedulerBase):
             factor = 1.0
 
         total = 0.0
+        proto = self._representative_weight_node(wid)
         for dev_type, cnt in counts.items():
             if not cnt:
                 continue
@@ -2403,14 +2810,13 @@ class HEFTScheduler(SchedulerBase):
             if not devs:
                 continue
             d = devs[0]
-            host = self.cost.get_host_device()
-            size_src = int(self.cost.format_size(int(w_bytes_nd), str(fmt)))
-            w_cost = float(self.cost.combine_transfer_and_convert(host, d, int(size_src), str(fmt), str(self.cost.device_preferred_fmt(d)), ))
-            if str(getattr(d, 'type', '')).lower() == 'pim':
-                try:
-                    w_cost += float(self.cost.weight_load_time_pim(int(w_bytes_nd)))
-                except Exception:
-                    pass
+            prof = self._weight_service_profile_no_contention(
+                proto,
+                d,
+                src_storage_fmt=str(fmt),
+                cached=False,
+            )
+            w_cost = float(prof.get('total_s', 0.0) or 0.0)
             total += float(cnt) * float(w_cost)
         return float(factor * total)
 
@@ -2421,15 +2827,22 @@ class HEFTScheduler(SchedulerBase):
         max_block_changes: int = 1,
         min_gain_ratio: float = 0.005,
         block_mode: str = "coupled",
-        candidates: Tuple[str, ...] = ("ND", "NPU_OPT", "PIM_OPT"),
+        candidates: Tuple[str, ...] = ("ND", "NZ", "PIM-OPT"),
         lookahead_beta: float = 0.25,
+        layer_span: int = 0,
+        normalize_reload_by_device_count: bool = True,
     ) -> Dict[str, str]:
         """Suggest next host weight formats via *block* coordinate descent (BCD).
 
         Returns:
             A new map (wid -> fmt).
         """
-        cur = dict(current_map or {})
+        cur = {}
+        for _wk, _wv in dict(current_map or {}).items():
+            try:
+                cur[str(_wk)] = str(self.cost.weight_storage_format(_wv))
+            except Exception:
+                cur[str(_wk)] = str(_wv)
 
         # Aggregate cache-miss load counts observed in the last scheduling pass.
         by_wid: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
@@ -2440,6 +2853,13 @@ class HEFTScheduler(SchedulerBase):
         # a few weights did not show up in the stats (e.g., sampling).
         for wid in list(cur.keys()):
             by_wid.setdefault(str(wid), defaultdict(int))
+
+        by_wid_eff: Dict[str, Dict[str, float]] = {}
+        for wid, counts in by_wid.items():
+            if normalize_reload_by_device_count:
+                by_wid_eff[str(wid)] = self._normalize_counts_by_device_count(counts)
+            else:
+                by_wid_eff[str(wid)] = {str(k): float(v) for k, v in dict(counts or {}).items()}
 
         # Lookahead-chain hits (optional, only available in HEFTCOMMAWARE).
         chain_hits = {}
@@ -2452,21 +2872,21 @@ class HEFTScheduler(SchedulerBase):
         # Build blocks.
         blocks: Dict[str, List[str]] = defaultdict(list)
         for wid in by_wid.keys():
-            key = self._weight_block_key(wid, mode=block_mode)
+            key = self._weight_block_key(wid, mode=block_mode, layer_span=layer_span)
             blocks[str(key)].append(str(wid))
 
         # Helper: block-level dominant device type for tie-breaking.
         def _block_native_fmt(wids: List[str]) -> str:
-            npu = 0
-            pim = 0
+            npu = 0.0
+            pim = 0.0
             for w in wids:
-                c = by_wid.get(w, {})
-                npu += int(c.get("npu", 0) or 0)
-                pim += int(c.get("pim", 0) or 0)
+                c = by_wid_eff.get(w, {})
+                npu += float(c.get("npu", 0.0) or 0.0)
+                pim += float(c.get("pim", 0.0) or 0.0)
             if npu > pim:
-                return "NPU_OPT"
+                return "NZ"
             if pim > npu:
-                return "PIM_OPT"
+                return "PIM-OPT"
             return "ND"
 
         # Evaluate each block's best format and improvement.
@@ -2483,7 +2903,7 @@ class HEFTScheduler(SchedulerBase):
             for w in wids:
                 fmt0 = cur.get(w, "ND")
                 cur_cost += self._estimate_weight_host_to_device_cost(
-                    w, by_wid.get(w, {}), fmt0,
+                    w, by_wid_eff.get(w, {}), fmt0,
                     lookahead_beta=lookahead_beta, max_chain_hits=max_hits, chain_hits=chain_hits
                 )
 
@@ -2493,7 +2913,7 @@ class HEFTScheduler(SchedulerBase):
                 total = 0.0
                 for w in wids:
                     total += self._estimate_weight_host_to_device_cost(
-                        w, by_wid.get(w, {}), fmt,
+                        w, by_wid_eff.get(w, {}), fmt,
                         lookahead_beta=lookahead_beta, max_chain_hits=max_hits, chain_hits=chain_hits
                     )
                 # Tie-break to native.
@@ -2659,7 +3079,6 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
         total = 0 if self._decode_total_tokens is None else int(self._decode_total_tokens)
         cur = 0 if self._decode_cur_token_idx is None else int(self._decode_cur_token_idx)
         return max(1, int(total - cur))
-
     def _decode_weight_service_profile(self, node: TaskNode, dev: DeviceSpec) -> Dict[str, float | int | str]:
         """Contention-free weight service estimate for decode amortization.
         """
@@ -2675,15 +3094,21 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
                 'current_weight': 0.0,
             }
 
-        def _ondevice_weight_mem_load_s(bytes_nd: int) -> float:
-            bytes_nd = int(bytes_nd or 0)
-            if bytes_nd <= 0:
-                return 0.0
-            fmt = self.cost.device_preferred_fmt(dev)
-            bytes_dev = int(self.cost.format_size(int(bytes_nd), str(fmt)))
-            return float(self.cost.mem_time(int(bytes_dev), dev))
-
-        full_mem_load = float(_ondevice_weight_mem_load_s(int(wsize_nd)))
+        src_storage_fmt = self._weight_storage_format_for_wid(wid)
+        _dev_type = str(getattr(dev, 'type', '')).lower()
+        if _dev_type == 'npu':
+            resident_fmt = self._npu_resident_weight_format(src_storage_fmt)
+        elif _dev_type == 'pim':
+            resident_fmt = 'PIM-OPT'
+        else:
+            resident_fmt = str(src_storage_fmt)
+        warm_prof = self._weight_service_profile_no_contention(
+            node,
+            dev,
+            src_storage_fmt=str(src_storage_fmt),
+            cached=True,
+            cached_fmt=str(resident_fmt),
+        )
 
         if str(getattr(dev, 'type', '')).lower() == 'pim' and self._weights_preloaded_on_pim():
             return {
@@ -2691,12 +3116,11 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
                 'weight_size_nd': int(wsize_nd),
                 'cached_nd': int(wsize_nd),
                 'need_nd': 0,
-                'warm_weight': float(full_mem_load),
-                'current_weight': float(full_mem_load),
+                'warm_weight': float(warm_prof.get('total_s', 0.0) or 0.0),
+                'current_weight': float(warm_prof.get('total_s', 0.0) or 0.0),
             }
 
         cached_nd = 0
-        cache = None
         try:
             cache = getattr(self.buffer, 'device_cache', {}).get(dev.name, None)
             items = getattr(cache, 'items', None)
@@ -2720,36 +3144,24 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
                 'weight_size_nd': int(wsize_nd),
                 'cached_nd': int(wsize_nd),
                 'need_nd': 0,
-                'warm_weight': float(full_mem_load),
-                'current_weight': float(full_mem_load),
+                'warm_weight': float(warm_prof.get('total_s', 0.0) or 0.0),
+                'current_weight': float(warm_prof.get('total_s', 0.0) or 0.0),
             }
 
         need_nd = int(max(0, wsize_nd - max(0, cached_nd)))
-        try:
-            from_fmt = self.buffer.get_host_fmt(wid) or 'ND'
-        except Exception:
-            from_fmt = 'ND'
-        to_fmt = self.cost.device_preferred_fmt(dev)
-
-        rd_bytes = int(self.cost.format_size(int(need_nd), str(from_fmt)))
-        host = self.cost.get_host_device()
-        migrate_t = float(
-            self.cost.combine_transfer_and_convert(host, dev, int(rd_bytes), str(from_fmt), str(to_fmt))
+        miss_prof = self._weight_service_profile_no_contention(
+            node,
+            dev,
+            src_storage_fmt=str(src_storage_fmt),
+            cached=False,
         )
-        if str(getattr(dev, 'type', '')).lower() == 'pim':
-            try:
-                migrate_t += float(self.cost.weight_load_time_pim(int(need_nd)))
-            except Exception:
-                pass
-
-        current_weight = float(max(full_mem_load, migrate_t))
         return {
             'wid': str(wid),
             'weight_size_nd': int(wsize_nd),
             'cached_nd': int(max(0, cached_nd)),
             'need_nd': int(max(0, need_nd)),
-            'warm_weight': float(full_mem_load),
-            'current_weight': float(current_weight),
+            'warm_weight': float(warm_prof.get('total_s', 0.0) or 0.0),
+            'current_weight': float(miss_prof.get('total_s', 0.0) or 0.0),
         }
 
     def _decode_phase_amortization_bias(self, g: TaskGraph, nid: str, dev: DeviceSpec, phase: str) -> float:
@@ -2901,23 +3313,22 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
         """Contention-free estimate of loading (and converting) a weight to `dev`."""
         if not wid or wsize_nd <= 0:
             return 0.0
-        # If weights are preloaded on PIM, there is no reload cost for PIM.
         if str(getattr(dev, 'type', '')).lower() == 'pim' and self._weights_preloaded_on_pim():
             return 0.0
         if self.buffer.is_cached(dev.name, wid):
             return 0.0
-
-        from_fmt = self.buffer.get_host_fmt(wid) or "ND"
-        to_fmt = self.cost.device_preferred_fmt(dev)
-        host = self.cost.get_host_device()
-        size_src = int(self.cost.format_size(int(wsize_nd), str(from_fmt)))
-        t = float(self.cost.combine_transfer_and_convert(host, dev, size_src, str(from_fmt), str(to_fmt)))
-        if str(getattr(dev, "type", "")).lower() == "pim":
-            try:
-                t += float(self.cost.weight_load_time_pim(int(wsize_nd)))
-            except Exception:
-                pass
-        return float(t)
+        try:
+            node = self._representative_weight_node(str(wid))
+        except Exception:
+            return 0.0
+        from_fmt = self._weight_storage_format_for_wid(wid)
+        prof = self._weight_service_profile_no_contention(
+            node,
+            dev,
+            src_storage_fmt=str(from_fmt),
+            cached=False,
+        )
+        return float(prof.get('total_s', 0.0) or 0.0)
 
     def _representative_activation_bytes(self, g: TaskGraph, nid: str, phase: str) -> int:
         """Representative activation footprint for `nid` used in consistency penalty."""
@@ -3033,15 +3444,32 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
 
             wid = self._node_weight_id(node)
             wsize = int(self._node_weight_size(node))
-            wload_t = 0.0
+            w_serial = 0.0
+            w_overlap = 0.0
             if wid and wsize > 0:
                 dev_cached = cached_shadow.setdefault(dev.name, set())
-                if wid not in dev_cached:
-                    wload_t = float(self._estimate_weight_reload_time(wid, wsize, dev))
+                stored_fmt = self._weight_storage_format_for_wid(wid)
+                if wid in dev_cached:
+                    resident_fmt = self._npu_resident_weight_format(stored_fmt) if str(getattr(dev, 'type', '')).lower() == 'npu' else str(stored_fmt)
+                    prof = self._weight_service_profile_no_contention(
+                        node,
+                        dev,
+                        src_storage_fmt=str(stored_fmt),
+                        cached=True,
+                        cached_fmt=str(resident_fmt),
+                    )
+                else:
+                    prof = self._weight_service_profile_no_contention(
+                        node,
+                        dev,
+                        src_storage_fmt=str(stored_fmt),
+                        cached=False,
+                    )
                     dev_cached.add(wid)
+                w_serial = float(prof.get('serial_s', 0.0) or 0.0)
+                w_overlap = float(prof.get('overlap_s', 0.0) or 0.0)
 
-            finish = start_t + max (wload_t,compute_t)
-            # finish = start_t + compute_t
+            finish = start_t + float(w_serial) + max(float(compute_t), float(w_overlap))
             avail_shadow[dev.name] = finish
             prev_nid, prev_dev = nid, dev
 
@@ -3531,7 +3959,7 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
                 op_name = getattr(node, "attrs", {}).get("op") if hasattr(node, "attrs") else None
                 op_name = op_name or getattr(node, "name", "")
                 try:
-                    self.stats.log_op_device(
+                    self._log_scheduled_op_trace(
                         nid=nid,
                         op=op_name,
                         device=trace_dev,

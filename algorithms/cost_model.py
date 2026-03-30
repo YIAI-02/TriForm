@@ -28,7 +28,6 @@ from stats_recorder import SimulationLogger, get_simulation_logger, reset_simula
 from abc import ABC, abstractmethod
 from cost_model_pim_backend import (
     _get_pim_latency_via_trace,
-    _simulate_weight_loading_latency,
     _normalize_pim_op,
     PIM_TRACE_SUPPORTED_OPS,
     _make_shared_model_dict,
@@ -49,7 +48,7 @@ from cost_model_npu_ascend_backend import (
 )
 
 logger = logging.getLogger(__name__)
-attach_local_debug_filter(logger, lambda: True)
+attach_local_debug_filter(logger, lambda: False)
 DTYPE_BYTES: Dict[str, float] = {'fp32': 4, 'fp16': 2, 'bf16': 2, 'int8': 1, 'int4': 0.5}
 
 
@@ -58,6 +57,123 @@ class NpuFastModeConfigError(ValueError):
 
 class PimFastModeConfigError(ValueError):
     """Raised when per-device config entries required by PIM fast backend are missing."""
+
+@dataclass(frozen=True)
+class NpuWeightRuntimeModel:
+    path: Path
+    bw_gbs: Dict[str, float]
+    overhead_us: Dict[str, float]
+
+
+@dataclass(frozen=True)
+class PimWeightRuntimeModel:
+    source: str
+    bw_gbs: Dict[str, float]
+    overhead_us: Dict[str, float]
+
+
+@dataclass(frozen=True)
+class LocalWeightLoadCost:
+    serial_s: float
+    overlap_s: float
+    total_s: float
+    overhead_s: float = 0.0
+    stage_sum_s: float = 0.0
+    stage_max_s: float = 0.0
+
+
+_WEIGHT_STORAGE_FORMATS = frozenset(str(x) for x in getattr(_config, 'WEIGHT_STORAGE_FORMATS', ('ND', 'NZ', 'PIM-OPT'))) | frozenset({'DUAL'})
+_NPU_WEIGHT_TARGET_FORMATS = frozenset({'ZN', 'ZZ'})
+_PIM_WEIGHT_LOAD_DEFAULT_PATHS: Dict[str, Dict[str, float]] = {
+    'ND->PIM-OPT': {'bw_gbs': 640.0, 'overhead_us': 2.0},
+    'PIM-OPT->PIM-OPT': {'bw_gbs': 1920.0, 'overhead_us': 1.0},
+    'NZ->ND': {'bw_gbs': 480.0, 'overhead_us': 4.0},
+}
+
+
+def _normalize_weight_format_token(fmt: str, *, allow_compute: bool = False) -> str:
+    raw = str(fmt or '').strip()
+    if not raw:
+        raise ValueError('Weight format cannot be empty.')
+    up = raw.upper().replace('_', '-')
+    alias_map = {
+        'NPU-OPT': 'NZ',
+        'PIM-OPT': 'PIM-OPT',
+        'PIMOPT': 'PIM-OPT',
+        'NZ': 'NZ',
+        'ND': 'ND',
+        'ZN': 'ZN',
+        'ZZ': 'ZZ',
+        'DUAL': 'DUAL',
+        'DUAL-COPY': 'DUAL',
+        'DUALCOPY': 'DUAL',
+        'TWO-COPY': 'DUAL',
+        'TWOCOPY': 'DUAL',
+        'NZ+PIM-OPT': 'DUAL',
+        'NZ+PIMOPT': 'DUAL',
+        'PIM-OPT+NZ': 'DUAL',
+        'PIMOPT+NZ': 'DUAL',
+        'PIM_OPT': 'PIM-OPT',
+        'NPU_OPT': 'NZ',
+    }
+    if up in alias_map:
+        up = alias_map[up]
+    allowed = set(_WEIGHT_STORAGE_FORMATS)
+    if allow_compute:
+        allowed |= set(_NPU_WEIGHT_TARGET_FORMATS)
+    if up not in allowed:
+        raise ValueError(f"Unsupported weight format '{raw}'. Allowed={sorted(allowed)}")
+    return up
+
+
+def _normalize_npu_weight_op_name(node: TaskNode) -> str:
+    return str(getattr(node, 'name', '') or '').strip().upper()
+
+
+def _resolve_npu_weight_conversion_steps(src_fmt: str, dst_fmt: str) -> List[Tuple[str, str]]:
+    src = _normalize_weight_format_token(src_fmt, allow_compute=True)
+    dst = _normalize_weight_format_token(dst_fmt, allow_compute=True)
+    if src == 'DUAL':
+        src = 'NZ'
+    if src == dst:
+        return []
+
+    if src == 'ND' and dst == 'NZ':
+        return [('ND', 'NZ')]
+    if src == 'NZ' and dst in ('ZZ', 'ZN', 'ND'):
+        return [('NZ', dst)]
+    if src in ('ZZ', 'ZN') and dst == 'ND':
+        return [(src, 'ND')]
+    if src == 'ND' and dst in ('ZZ', 'ZN'):
+        return [('ND', 'NZ'), ('NZ', dst)]
+    if src == 'PIM-OPT' and dst == 'ND':
+        return [('PIM-OPT', 'ND')]
+    if src == 'PIM-OPT' and dst == 'NZ':
+        return [('PIM-OPT', 'ND'), ('ND', 'NZ')]
+    if src == 'PIM-OPT' and dst in ('ZZ', 'ZN'):
+        return [('PIM-OPT', 'ND'), ('ND', 'NZ'), ('NZ', dst)]
+
+    raise ValueError(
+        f'Unsupported NPU weight conversion chain: {src}->{dst}. '
+        'Please add an explicit rule instead of relying on fallback.'
+    )
+
+
+
+def _resolve_pim_weight_load_steps(src_fmt: str) -> List[Tuple[str, str]]:
+    src = _normalize_weight_format_token(src_fmt, allow_compute=False)
+    if src == 'DUAL':
+        src = 'PIM-OPT'
+    if src == 'ND':
+        return [('ND', 'PIM-OPT')]
+    if src == 'PIM-OPT':
+        return [('PIM-OPT', 'PIM-OPT')]
+    if src == 'NZ':
+        return [('NZ', 'ND'), ('ND', 'PIM-OPT')]
+    raise ValueError(
+        f'Unsupported PIM weight load chain: {src}->PIM-OPT. '
+        'Please add an explicit rule instead of relying on fallback.'
+    )
 
 # Canonical op-key sets for NPU backends
 NPU_ACT_KEYS = {
@@ -566,9 +682,6 @@ class PimBackendBase(ABC):
         """Return estimated end-to-end op latency on PIM (seconds)."""
         raise NotImplementedError
 
-    @abstractmethod
-    def weight_load_s(self, cm: "CostModel", weight_bytes: int) -> float:
-        raise NotImplementedError
 
     @abstractmethod
     def activation_read_s(self, cm: "CostModel", activation_bytes_nd: int) -> float:
@@ -585,13 +698,6 @@ class PimFastBackend(PimBackendBase):
         flops = float(cm.estimate_flops(node, ctx.batch, ctx.seq_len, ctx.phase))
         compute_s = cm.flop_time(flops, dev)
         return max(compute_s, mem_t)
-
-    def weight_load_s(self, cm: "CostModel", weight_bytes: int) -> float:
-        logger.debug(str(f"[PIM][FAST] weight_load bytes={weight_bytes}"))
-        pim_devs = cm.cluster.devices_by_type('pim')
-        if pim_devs:
-            return float(cm.pim_mem_time(int(weight_bytes), 0, pim_devs[0]))
-        return 0.0
 
     def activation_read_s(self, cm: "CostModel", activation_bytes_nd: int) -> float:
         logger.debug(str(f"[PIM][FAST] activation_read bytes={activation_bytes_nd}"))
@@ -729,15 +835,7 @@ class PimTraceBackend(PimBackendBase):
                     )
                 )
 
-    def weight_load_s(self, cm: "CostModel", weight_bytes: int) -> float:
-        # Keep the original behavior: fast-mode bypass
-        if bool(cm.pim_fast_mode):
-            return PimFastBackend().weight_load_s(cm, weight_bytes)
-
-        pim_devs = getattr(cm.cluster, 'devices_by_type', lambda *_: [])('pim')
-        if pim_devs:
-            return float(cm.pim_mem_time(int(weight_bytes), 0, pim_devs[0]))
-        return 0.0
+        return PimFastBackend().estimate_s(cm, node, dev, label, ctx)
 
     def activation_read_s(self, cm: "CostModel", activation_bytes_nd: int) -> float:
         # Keep the original behavior: fast-mode bypass
@@ -822,6 +920,8 @@ class CostModel:
         self.logger = get_simulation_logger(simulation_log_file)
         self.pim_cache_enabled = True
         self._shared_model_dict: Optional[Dict] = model_dict
+        self._npu_weight_runtime_model: Optional[NpuWeightRuntimeModel] = None
+        self._pim_weight_runtime_model: Optional[PimWeightRuntimeModel] = None
         self.kv_pd_separation: bool = False
         if pim_config_path:
             if not pim_config_path.exists():
@@ -869,6 +969,7 @@ class CostModel:
     def has_model_dict(self) -> bool:
         return self._shared_model_dict is not None
 
+
     def get_or_make_pim_model_dict(
         self,
         *,
@@ -911,6 +1012,309 @@ class CostModel:
     def format_size(self, size_bytes: int, fmt: str) -> int:
         m = float(FORMAT_SIZE_MULTIPLIER.get(fmt, 1.0))
         return int(size_bytes * m)
+
+    # ------------------------------------------------------------------
+    # Explicit weight-format model
+    # ------------------------------------------------------------------
+    def _discover_npu_weight_runtime_model_path(self) -> Path:
+        env_path = str(os.environ.get('NPU_WEIGHT_RUNTIME_JSON', '') or '').strip()
+        if env_path:
+            rp = Path(env_path).expanduser().resolve()
+            if not rp.exists():
+                raise ValueError(f'NPU runtime-model JSON not found: {rp}')
+            return rp
+
+        runtime_dir_candidates = list(getattr(_config, 'NPU_RUNTIME_MODEL_DIR_CANDIDATES', ()) or ())
+        runtime_dir = str(getattr(_config, 'NPU_RUNTIME_MODEL_DIR', './run_time_model') or './run_time_model').strip()
+        if runtime_dir:
+            runtime_dir_candidates.append(runtime_dir)
+        if './runtime_models' not in runtime_dir_candidates:
+            runtime_dir_candidates.append('./runtime_models')
+
+        search_roots = [Path.cwd(), Path(__file__).resolve().parent]
+        uniq_hits: List[Path] = []
+        seen_hits = set()
+        for runtime_dir in runtime_dir_candidates:
+            for root in search_roots:
+                d = (root / runtime_dir).resolve() if not Path(runtime_dir).is_absolute() else Path(runtime_dir).resolve()
+                if not d.is_dir():
+                    continue
+                for p in sorted(q.resolve() for q in d.glob('*.json') if q.is_file()):
+                    if p not in seen_hits:
+                        uniq_hits.append(p)
+                        seen_hits.add(p)
+        if not uniq_hits:
+            raise ValueError(
+                'No NPU runtime-model JSON found. Expected exactly one *.json under one of '
+                f"{runtime_dir_candidates}"
+            )
+        if len(uniq_hits) > 1:
+            raise ValueError(
+                'Multiple NPU runtime-model JSON files found; please keep exactly one file in '
+                f"{runtime_dir_candidates} or set NPU_WEIGHT_RUNTIME_JSON. found={[str(p) for p in uniq_hits]}"
+            )
+        return uniq_hits[0]
+
+    def _ensure_npu_weight_runtime_model(self) -> NpuWeightRuntimeModel:
+        mdl = getattr(self, '_npu_weight_runtime_model', None)
+        if mdl is not None:
+            return mdl
+
+        path = self._discover_npu_weight_runtime_model_path()
+        try:
+            raw = json.loads(path.read_text(encoding='utf-8'))
+        except Exception as e:
+            raise ValueError(f'Failed to load NPU runtime-model JSON: {path} ({e})') from e
+
+        bw_root = ((raw or {}).get('format_conv_bw_gbs') or {}).get('npu') or {}
+        ovh_root = ((raw or {}).get('format_conv_overhead_us') or {}).get('npu') or {}
+        bw_paths = bw_root.get('paths') or {}
+        ovh_paths = ovh_root.get('paths') or {}
+        if not isinstance(bw_paths, dict) or not isinstance(ovh_paths, dict) or not bw_paths:
+            raise ValueError(
+                f'NPU runtime-model JSON is missing format_conv_bw_gbs/format_conv_overhead_us paths: {path}'
+            )
+        bw = {str(k): float(v) for k, v in bw_paths.items()}
+        ovh = {str(k): float(v) for k, v in ovh_paths.items()}
+        mdl = NpuWeightRuntimeModel(path=path, bw_gbs=bw, overhead_us=ovh)
+        self._npu_weight_runtime_model = mdl
+        return mdl
+
+    def _ensure_pim_weight_runtime_model(self) -> PimWeightRuntimeModel:
+        mdl = getattr(self, '_pim_weight_runtime_model', None)
+        if mdl is not None:
+            return mdl
+
+        raw = getattr(_config, 'PIM_WEIGHT_RUNTIME_MODEL', {}) or {}
+        if not isinstance(raw, dict):
+            raise ValueError('config.PIM_WEIGHT_RUNTIME_MODEL must be a dict.')
+        root = raw.get('paths') if isinstance(raw.get('paths'), dict) else raw
+        if not isinstance(root, dict):
+            raise ValueError('config.PIM_WEIGHT_RUNTIME_MODEL must contain a dict-valued "paths" section.')
+
+        bw: Dict[str, float] = {}
+        ovh: Dict[str, float] = {}
+        for key, defaults in _PIM_WEIGHT_LOAD_DEFAULT_PATHS.items():
+            entry = root.get(key, defaults)
+            if not isinstance(entry, dict):
+                raise ValueError(
+                    f"config.PIM_WEIGHT_RUNTIME_MODEL[{key!r}] must be a dict with bw_gbs/overhead_us."
+                )
+            bw_gbs = float(entry.get('bw_gbs', defaults['bw_gbs']) or 0.0)
+            overhead_us = float(entry.get('overhead_us', defaults['overhead_us']) or 0.0)
+            if bw_gbs <= 0.0:
+                raise ValueError(
+                    f"config.PIM_WEIGHT_RUNTIME_MODEL[{key!r}]['bw_gbs'] must be > 0, got {bw_gbs}"
+                )
+            bw[key] = float(bw_gbs)
+            ovh[key] = float(overhead_us)
+
+        mdl = PimWeightRuntimeModel(
+            source='config.PIM_WEIGHT_RUNTIME_MODEL',
+            bw_gbs=bw,
+            overhead_us=ovh,
+        )
+        self._pim_weight_runtime_model = mdl
+        return mdl
+
+    def weight_storage_format(self, fmt: str) -> str:
+        return _normalize_weight_format_token(fmt, allow_compute=False)
+
+    def weight_storage_bytes(self, size_nd_bytes: int, fmt: str) -> int:
+        return int(self.format_size(int(size_nd_bytes), self.weight_storage_format(fmt)))
+
+    def npu_weight_compute_format(self, node: TaskNode) -> str:
+        attrs = getattr(node, 'attrs', {}) or {}
+        for key in ('npu_weight_target_format', 'npu_cube_weight_format', 'weight_compute_format', 'cube_weight_format'):
+            val = attrs.get(key)
+            if val not in (None, ''):
+                return _normalize_weight_format_token(str(val), allow_compute=True)
+        op = _normalize_npu_weight_op_name(node)
+        mapping = getattr(_config, 'NPU_WEIGHT_TARGET_FORMAT_BY_OP', {}) or {}
+        if op not in mapping:
+            raise ValueError(
+                f"Missing explicit NPU cube target format for weight op='{op}'. "
+                'Please set config.NPU_WEIGHT_TARGET_FORMAT_BY_OP or annotate node.attrs.'
+            )
+        return _normalize_weight_format_token(str(mapping[op]), allow_compute=True)
+
+    def _weight_local_load_alpha(self) -> float:
+        """Interpolation factor for staged local weight formatting.
+
+        The modeled local time is:
+            sum(overhead) + alpha * sum(stage_time) + (1 - alpha) * max(stage_time)
+
+        alpha=1 => fully serialized stage times.
+        alpha=0 => perfectly pipelined stage times (except fixed overheads).
+        """
+        ratio = float(getattr(_config, 'WEIGHT_LOCAL_LOAD_OVERLAP_RATIO', 0.3) or 0.0)
+        return float(min(1.0, max(0.0, ratio)))
+
+    def _compose_local_weight_load_cost(
+        self,
+        *,
+        overhead_s: float,
+        stage_sum_s: float,
+        stage_max_s: float,
+    ) -> LocalWeightLoadCost:
+        alpha = float(self._weight_local_load_alpha())
+        overhead = max(0.0, float(overhead_s or 0.0))
+        stage_sum = max(0.0, float(stage_sum_s or 0.0))
+        stage_max = max(0.0, float(stage_max_s or 0.0))
+        if stage_sum > 0.0 and stage_max > stage_sum:
+            stage_max = stage_sum
+        serial = float(overhead + alpha * stage_sum)
+        overlap = float((1.0 - alpha) * stage_max)
+        total = float(serial + overlap)
+        return LocalWeightLoadCost(
+            serial_s=float(serial),
+            overlap_s=float(overlap),
+            total_s=float(total),
+            overhead_s=float(overhead),
+            stage_sum_s=float(stage_sum),
+            stage_max_s=float(stage_max),
+        )
+
+    def _npu_weight_conversion_cost(
+        self,
+        size_nd_bytes: int,
+        src_fmt: str,
+        dst_fmt: str,
+        *,
+        from_cache: bool = False,
+    ) -> LocalWeightLoadCost:
+        size_nd_bytes = int(size_nd_bytes or 0)
+        if size_nd_bytes <= 0:
+            return LocalWeightLoadCost(0.0, 0.0, 0.0)
+        src = _normalize_weight_format_token(src_fmt, allow_compute=True)
+        dst = _normalize_weight_format_token(dst_fmt, allow_compute=True)
+        if src == dst:
+            return LocalWeightLoadCost(0.0, 0.0, 0.0)
+        mdl = self._ensure_npu_weight_runtime_model()
+        steps = _resolve_npu_weight_conversion_steps(src, dst)
+        bw_scale = float(getattr(_config, 'NPU_CACHE_LOCAL_LOAD_BW_SCALE', 1.0) or 1.0) if bool(from_cache) else 1.0
+        if bw_scale <= 0.0:
+            raise ValueError(f'Invalid NPU cache local-load bandwidth scale: {bw_scale}')
+        total_overhead_s = 0.0
+        total_stage_s = 0.0
+        max_stage_s = 0.0
+        for a, b in steps:
+            key = f'{a}->{b}'
+            bw_gbs = mdl.bw_gbs.get(key)
+            if bw_gbs is None:
+                raise ValueError(
+                    f"Missing NPU runtime-model bandwidth entry for path '{key}' in {mdl.path}"
+                )
+            ovh_us = float(mdl.overhead_us.get(key, 0.0) or 0.0)
+            eff_bw = float(bw_gbs) * float(bw_scale) * 1e9
+            if eff_bw <= 0.0:
+                raise ValueError(f'Non-positive NPU runtime-model bandwidth for path {key}: {bw_gbs}')
+            stage_s = float(size_nd_bytes) / float(eff_bw)
+            total_overhead_s += float(ovh_us) * 1e-6
+            total_stage_s += float(stage_s)
+            max_stage_s = max(float(max_stage_s), float(stage_s))
+        return self._compose_local_weight_load_cost(
+            overhead_s=float(total_overhead_s),
+            stage_sum_s=float(total_stage_s),
+            stage_max_s=float(max_stage_s),
+        )
+
+    def npu_weight_conversion_time(
+        self,
+        size_nd_bytes: int,
+        src_fmt: str,
+        dst_fmt: str,
+        *,
+        from_cache: bool = False,
+    ) -> float:
+        cost = self._npu_weight_conversion_cost(
+            int(size_nd_bytes),
+            str(src_fmt),
+            str(dst_fmt),
+            from_cache=bool(from_cache),
+        )
+        return float(cost.total_s)
+
+    def npu_local_weight_load_cost(
+        self,
+        size_nd_bytes: int,
+        src_storage_fmt: str,
+        dst_compute_fmt: str,
+        *,
+        from_cache: bool,
+    ) -> LocalWeightLoadCost:
+        return self._npu_weight_conversion_cost(
+            int(size_nd_bytes),
+            str(src_storage_fmt),
+            str(dst_compute_fmt),
+            from_cache=bool(from_cache),
+        )
+
+    def _pim_weight_load_cost(
+        self,
+        size_nd_bytes: int,
+        src_storage_fmt: str,
+        *,
+        from_cache: bool = False,
+    ) -> LocalWeightLoadCost:
+        size_nd_bytes = int(size_nd_bytes or 0)
+        if size_nd_bytes <= 0:
+            return LocalWeightLoadCost(0.0, 0.0, 0.0)
+        mdl = self._ensure_pim_weight_runtime_model()
+        steps = _resolve_pim_weight_load_steps(str(src_storage_fmt))
+        total_overhead_s = 0.0
+        total_stage_s = 0.0
+        max_stage_s = 0.0
+        for a, b in steps:
+            key = f'{a}->{b}'
+            bw_gbs = mdl.bw_gbs.get(key)
+            if bw_gbs is None:
+                raise ValueError(
+                    f"Missing PIM runtime-model bandwidth entry for path '{key}' in {mdl.source}"
+                )
+            eff_bw = float(bw_gbs) * 1e9
+            if eff_bw <= 0.0:
+                raise ValueError(f'Non-positive PIM runtime-model bandwidth for path {key}: {bw_gbs}')
+            stage_s = float(size_nd_bytes) / float(eff_bw)
+            total_overhead_s += float(mdl.overhead_us.get(key, 0.0) or 0.0) * 1e-6
+            total_stage_s += float(stage_s)
+            max_stage_s = max(float(max_stage_s), float(stage_s))
+        return self._compose_local_weight_load_cost(
+            overhead_s=float(total_overhead_s),
+            stage_sum_s=float(total_stage_s),
+            stage_max_s=float(max_stage_s),
+        )
+
+    def pim_weight_load_time(
+        self,
+        size_nd_bytes: int,
+        src_storage_fmt: str,
+        *,
+        from_cache: bool = False,
+    ) -> float:
+        cost = self._pim_weight_load_cost(
+            int(size_nd_bytes),
+            str(src_storage_fmt),
+            from_cache=bool(from_cache),
+        )
+        return float(cost.total_s)
+
+    def pim_local_weight_load_cost(
+        self,
+        size_nd_bytes: int,
+        src_storage_fmt: str,
+        *,
+        from_cache: bool,
+    ) -> LocalWeightLoadCost:
+        return self._pim_weight_load_cost(
+            int(size_nd_bytes),
+            str(src_storage_fmt),
+            from_cache=bool(from_cache),
+        )
+
+    def weight_transfer_comm_bytes(self, size_nd_bytes: int, src_storage_fmt: str) -> int:
+        return int(self.weight_storage_bytes(int(size_nd_bytes), str(src_storage_fmt)))
+
 
     def _compute_utilization(self, flops: float, dev: DeviceSpec) -> float:
         """Heuristic utilization of peak compute throughput for small workloads."""
@@ -1947,10 +2351,6 @@ class CostModel:
 
         return 0.0
 
-    def weight_load_time_pim(self, weight_bytes: int) -> float:
-
-        self._ensure_backend_impls()
-        return float(self._pim_backend_impl.weight_load_s(self, int(weight_bytes or 0)))
 
     def activation_read_time_pim(self, activation_bytes_nd: int) -> float:
         self._ensure_backend_impls()

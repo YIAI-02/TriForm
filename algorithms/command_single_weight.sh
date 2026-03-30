@@ -3,7 +3,6 @@ set -e
 
 python main.py weight-suggest \
   --config ./examples/evaluate_test_config.json \
-  --debug \
-  --npu_backend lut
+  --debug
   
 echo "weight suggest mode done."

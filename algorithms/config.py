@@ -4,25 +4,47 @@ import logging
 RANKU_INCLUDE_AVG_WEIGHT_LOAD: bool = True
 HOST_NAME: str = "CPU0"
 
-# Preferred on-device formats
+# Runtime tensor formats (activation / KV / outputs)
 DEVICE_PREFERRED_FORMAT = {
     "cpu": "ND",
-    "npu": "NPU_OPT",
-    "pim": "PIM_OPT",
+    "npu": "ND",
+    "pim": "ND",
 }
 
+# -----------------------------------------------------------------------------
+# Weight formats
+# -----------------------------------------------------------------------------
+WEIGHT_STORAGE_FORMATS = (
+    "ND",
+    "NZ",
+    "PIM-OPT",
+    "DUAL",
+)
+
+NPU_WEIGHT_TARGET_FORMAT_BY_OP = {
+    "Q": "ZN",
+    "K": "ZN",
+    "V": "ZN",
+    "O": "ZZ",
+    "FFN_W1": "ZN",
+    "FFN_W3": "ZN",
+    "FFN_W2": "ZZ",
+ }
 # Format size multipliers (alignment/packing overhead modeling)
 FORMAT_SIZE_MULTIPLIER = {
-    "ND": 1.0,
-    "NPU_OPT": 1.0,
-    "PIM_OPT": 1.0,
+    "ND": 1.2,
+    "NZ": 1.0,
+    "ZN": 1.0,
+    "ZZ": 1.0,
+    "PIM-OPT": 1.0,
+    "DUAL": 1.0,
 }
 
 #TODO
 # Format conversion bandwidth (GB/s) per device type
 FORMAT_CONV_BW_GBs = {
     "cpu": 25.0,
-    "npu": 409.6,
+    "npu": 819.2,
     "pim": 8192
 }
 
@@ -33,6 +55,23 @@ FORMAT_CONV_OVERHEAD_US = {
     "pim": 0.0
 }
 
+WEIGHT_LOCAL_LOAD_OVERLAP_RATIO = 1.0
+# Online PIM weight-load model uses fitted bandwidth/overhead, not trace simulation.
+# Keys are local programming stages measured in ND-equivalent bytes.
+PIM_WEIGHT_RUNTIME_MODEL = {
+    "paths": {
+        "ND->PIM-OPT": {"bw_gbs": 280, "overhead_us": 2.0},
+        "PIM-OPT->PIM-OPT": {"bw_gbs": 8192, "overhead_us": 1.0},
+        "NZ->ND": {"bw_gbs": 480.0, "overhead_us": 4.0},
+    }
+}
+
+NPU_CACHE_LOCAL_LOAD_BW_SCALE = 1.0
+NPU_RUNTIME_MODEL_DIR_CANDIDATES = (
+    "./run_time_model",
+    "./runtime_models",
+)
+NPU_RUNTIME_MODEL_DIR = "./run_time_model"
 # “latency = transfer + convert” serial or overlap (0~1)
 NONOVERLAP_TIME = 0.5
 
@@ -152,10 +191,10 @@ SCHED_DEFAULT: str = "heft"
 SCHED_JOINT_LK_ENABLE: bool = True
 SCHED_JOINT_LK_H: int = 3
 SCHED_JOINT_LK_GAMMA: float = 0.6
-SCHED_JOINT_LK_CONSIST_LAMBDA: float = 0
+SCHED_JOINT_LK_CONSIST_LAMBDA: float = 4
 SCHED_JOINT_LK_PLAN_HINT_MAX: int =  3
 # Weight-reuse bias gain multiplier (eta in bias formula)
-SCHED_WEIGHT_BIAS_ETA: float = 1.0
+SCHED_WEIGHT_BIAS_ETA: float = 50
 
 #AMORT
 SCHED_DECODE_AMORT_ENABLE = True
@@ -164,8 +203,6 @@ SCHED_DECODE_AMORT_RMIN = 1
 # Optional reuse probability multiplier (useful later for MoE / gated subgraphs).
 # For dense decode, keep 1.0.
 SCHED_DECODE_AMORT_REUSE_PROB = 1.0
-
-
 # -------------------------------------------------------------------------------------------------
 # Peak compute utilization model 
 # -------------------------------------------------------------------------------------------------
