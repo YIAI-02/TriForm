@@ -18,6 +18,7 @@ WEIGHT_STORAGE_FORMATS = (
     "ND",
     "NZ",
     "PIM-OPT",
+    "DUAL",
 )
 
 NPU_WEIGHT_TARGET_FORMAT_BY_OP = {
@@ -35,8 +36,8 @@ FORMAT_SIZE_MULTIPLIER = {
     "NZ": 1.0,
     "ZN": 1.0,
     "ZZ": 1.0,
-    "PIM-OPT": 1.0
-    ,
+    "PIM-OPT": 1.0,
+    "DUAL": 1.0,
 }
 
 #TODO

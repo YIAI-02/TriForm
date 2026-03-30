@@ -20,21 +20,22 @@ conda activate "${CONDA_ENV_NAME}"
 
 : <<'COMMENT'
 export CONFIG=./examples/weight_suggest_overlap_ratio_base.json
-export OUTDIR=./output/ws_overlap_ratio_0329
+export OUTDIR=./output/ws_0p015_compare_adjust_strategy
 export MODE=grid
 export OBJECTIVE=total
 export ALGOS="hefthint"
-export COMBO_WORKERS=8
+export COMBO_WORKERS=32
 export PARALLEL_GROUP_KEYS="weight_local_load_overlap_ratio,model,prefill_len,decode_len,batch"
-export MODELS="llama:7b"
+export MODELS="llama:7b llama:70b"
 export PREFILLS="128 1024"
 export DECODES="128 512 1024"
-export BATCHES="1 4"
+export BATCHES="1 4 8"
 export WEIGHT_LOCAL_LOAD_OVERLAP_RATIOS="1.0"
 export DEBUG=1
+export FORMAT_ND_MARGIN_INIT=0.015
 
 rm -rf "$OUTDIR"
-sbatch --export=ALL run_hpc_weight_overlap_ratio_weight_suggest.slurm
+sbatch --export=ALL -p C064M1024G --qos=high --ntasks=1 --cpus-per-task=64 run_hpc_weight_overlap_ratio_weight_suggest.slurm
 COMMENT
 # ------------------------------------------------------------------
 CONFIG="${CONFIG:-}"

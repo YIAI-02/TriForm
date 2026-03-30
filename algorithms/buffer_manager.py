@@ -185,7 +185,7 @@ class PIMRuntimeState:
 class GlobalMemoryManager:
     """Host / device / PIM buffer manager.
     """
-    # Host-side storage format per weight_id: 'ND' | 'npu-opt' | 'pim-opt'
+    # Host-side storage format per weight_id: 'ND' | 'npu-opt' | 'pim-opt' | 'dual'
     host_format: Dict[str, str] = field(default_factory=dict)
 
     # Conversion throughputs (GB/s) for format conversion

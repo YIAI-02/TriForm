@@ -82,6 +82,7 @@ COMMON_SWEEP_FIELDS: Tuple[str, ...] = (
 # Optional format_* knobs. These are now optional axes, not the only sweep target.
 FORMAT_SWEEP_FIELDS: Tuple[str, ...] = (
     "format_outer_max_iters",
+    "format_block_change_percent",
     "format_inner_max_blocks",
     "format_nd_margin_init",
     "format_nd_margin_decay",
@@ -117,6 +118,7 @@ RESULT_FIELDNAMES: Tuple[str, ...] = (
     "npu_backend",
     "weight_local_load_overlap_ratio",
     "format_outer_max_iters",
+    "format_block_change_percent",
     "format_inner_max_blocks",
     "format_nd_margin_init",
     "format_nd_margin_decay",
@@ -142,6 +144,18 @@ RESULT_FIELDNAMES: Tuple[str, ...] = (
     "pim_opt_role",
     "pim_opt_initial",
     "pim_opt_best",
+    "pd_linear_role",
+    "pd_linear_initial",
+    "pd_linear_best",
+    "pd_dual_copy_role",
+    "pd_dual_copy_initial",
+    "pd_dual_copy_best",
+    "hefthint_linear_role",
+    "hefthint_linear_initial",
+    "hefthint_linear_best",
+    "hefthint_dual_copy_role",
+    "hefthint_dual_copy_initial",
+    "hefthint_dual_copy_best",
     "iter_gain_s",
     "iter_gain_pct",
     "returncode",
@@ -433,6 +447,18 @@ def parse_compare_json(compare_path: Path) -> Dict[str, Any]:
         "pim_opt_role": "",
         "pim_opt_initial": "",
         "pim_opt_best": "",
+        "pd_linear_role": "",
+        "pd_linear_initial": "",
+        "pd_linear_best": "",
+        "pd_dual_copy_role": "",
+        "pd_dual_copy_initial": "",
+        "pd_dual_copy_best": "",
+        "hefthint_linear_role": "",
+        "hefthint_linear_initial": "",
+        "hefthint_linear_best": "",
+        "hefthint_dual_copy_role": "",
+        "hefthint_dual_copy_initial": "",
+        "hefthint_dual_copy_best": "",
     }
     if not compare_path.exists():
         return out
@@ -441,24 +467,34 @@ def parse_compare_json(compare_path: Path) -> Dict[str, Any]:
         with compare_path.open("r", encoding="utf-8") as f:
             data = json.load(f)
 
+        def _fill(prefix: str, row: Dict[str, Any]) -> None:
+            out[f"{prefix}_role"] = str(row.get("role", ""))
+            out[f"{prefix}_initial"] = float(row.get("initial_total_s", 0.0) or 0.0)
+            out[f"{prefix}_best"] = float(row.get("best_total_s", 0.0) or 0.0)
+
         rows = data.get("rows")
         if isinstance(rows, list):
-            by_key = {str(row.get("format", "")): row for row in rows if isinstance(row, dict)}
-            if "ND" in by_key:
-                row = by_key["ND"]
-                out["nd_role"] = str(row.get("role", ""))
-                out["nd_initial"] = float(row.get("initial_total_s", 0.0) or 0.0)
-                out["nd_best"] = float(row.get("best_total_s", 0.0) or 0.0)
-            if "NZ" in by_key:
-                row = by_key["NZ"]
-                out["nz_role"] = str(row.get("role", ""))
-                out["nz_initial"] = float(row.get("initial_total_s", 0.0) or 0.0)
-                out["nz_best"] = float(row.get("best_total_s", 0.0) or 0.0)
-            if "PIM-OPT" in by_key:
-                row = by_key["PIM-OPT"]
-                out["pim_opt_role"] = str(row.get("role", ""))
-                out["pim_opt_initial"] = float(row.get("initial_total_s", 0.0) or 0.0)
-                out["pim_opt_best"] = float(row.get("best_total_s", 0.0) or 0.0)
+            by_exp = {str(row.get("experiment_id", "")): row for row in rows if isinstance(row, dict)}
+            by_fmt = {str(row.get("format", "")): row for row in rows if isinstance(row, dict)}
+
+            if "search_nd_tuned" in by_exp:
+                _fill("nd", by_exp["search_nd_tuned"])
+            elif "ND" in by_fmt:
+                _fill("nd", by_fmt["ND"])
+
+            if "NZ" in by_fmt:
+                _fill("nz", by_fmt["NZ"])
+            if "PIM-OPT" in by_fmt:
+                _fill("pim_opt", by_fmt["PIM-OPT"])
+
+            if "pd_linear" in by_exp:
+                _fill("pd_linear", by_exp["pd_linear"])
+            if "pd_dual_copy" in by_exp:
+                _fill("pd_dual_copy", by_exp["pd_dual_copy"])
+            if "hefthint_linear" in by_exp:
+                _fill("hefthint_linear", by_exp["hefthint_linear"])
+            if "hefthint_dual_copy" in by_exp:
+                _fill("hefthint_dual_copy", by_exp["hefthint_dual_copy"])
             return out
 
         # Backward compatibility with older compare payloads.
@@ -466,20 +502,17 @@ def parse_compare_json(compare_path: Path) -> Dict[str, Any]:
         if isinstance(old_rows, list):
             by_key = {str(row.get("start_mode", "")): row for row in old_rows if isinstance(row, dict)}
             if "ND" in by_key:
-                row = by_key["ND"]
-                out["nd_role"] = "search"
-                out["nd_initial"] = float(row.get("initial_total_s", 0.0) or 0.0)
-                out["nd_best"] = float(row.get("best_total_s", 0.0) or 0.0)
+                row = dict(by_key["ND"])
+                row["role"] = "search"
+                _fill("nd", row)
             if "NZ" in by_key:
-                row = by_key["NZ"]
-                out["nz_role"] = "compare"
-                out["nz_initial"] = float(row.get("initial_total_s", 0.0) or 0.0)
-                out["nz_best"] = float(row.get("best_total_s", 0.0) or 0.0)
+                row = dict(by_key["NZ"])
+                row["role"] = "compare"
+                _fill("nz", row)
             if "PIM-OPT" in by_key:
-                row = by_key["PIM-OPT"]
-                out["pim_opt_role"] = "compare"
-                out["pim_opt_initial"] = float(row.get("initial_total_s", 0.0) or 0.0)
-                out["pim_opt_best"] = float(row.get("best_total_s", 0.0) or 0.0)
+                row = dict(by_key["PIM-OPT"])
+                row["role"] = "compare"
+                _fill("pim_opt", row)
     except Exception:
         return out
     return out
@@ -592,6 +625,7 @@ def collect_axes(args: argparse.Namespace) -> Dict[str, List[Any]]:
     add_axis("weight_local_load_overlap_ratio", args.weight_local_load_overlap_ratio)
 
     add_axis("format_outer_max_iters", args.format_outer_max_iters)
+    add_axis("format_block_change_percent", args.format_block_change_percent)
     add_axis("format_inner_max_blocks", args.format_inner_max_blocks)
     add_axis("format_nd_margin_init", args.format_nd_margin_init)
     add_axis("format_nd_margin_decay", args.format_nd_margin_decay)
@@ -677,6 +711,7 @@ def effective_summary_fields(cfg: Dict[str, Any], params_json: str) -> Dict[str,
         "npu_backend": cfg.get("npu_backend", ""),
         "weight_local_load_overlap_ratio": cfg.get("weight_local_load_overlap_ratio", ""),
         "format_outer_max_iters": cfg.get("format_outer_max_iters", ""),
+        "format_block_change_percent": cfg.get("format_block_change_percent", ""),
         "format_inner_max_blocks": cfg.get("format_inner_max_blocks", ""),
         "format_nd_margin_init": cfg.get("format_nd_margin_init", ""),
         "format_nd_margin_decay": cfg.get("format_nd_margin_decay", ""),
@@ -745,6 +780,7 @@ def make_parser() -> argparse.ArgumentParser:
 
     # Optional format_* axes.
     ap.add_argument("--format-outer-max-iters", dest="format_outer_max_iters", type=int, nargs="*", default=None, help="candidate format_outer_max_iters values")
+    ap.add_argument("--format-block-change-percent", dest="format_block_change_percent", type=float, nargs="*", default=None, help="candidate format_block_change_percent values")
     ap.add_argument("--format-inner-max-blocks", dest="format_inner_max_blocks", type=int, nargs="*", default=None, help="candidate format_inner_max_blocks values")
     ap.add_argument("--format-nd-margin-init", dest="format_nd_margin_init", type=float, nargs="*", default=None, help="candidate format_nd_margin_init values")
     ap.add_argument("--format-nd-margin-decay", dest="format_nd_margin_decay", type=float, nargs="*", default=None, help="candidate format_nd_margin_decay values")
@@ -1121,9 +1157,11 @@ def main() -> int:
                 f"-> objective({args.objective})={obj:.4f}"
             )
             print(
-                f"[cmp] ND({compare.get('nd_role', '')})={compare.get('nd_best', '')} "
-                f"NZ({compare.get('nz_role', '')})={compare.get('nz_best', '')} "
-                f"PIM-OPT({compare.get('pim_opt_role', '')})={compare.get('pim_opt_best', '')} "
+                f"[cmp] ND-search({compare.get('nd_role', '')})={compare.get('nd_best', '')} "
+                f"PD+Linear({compare.get('pd_linear_role', '')})={compare.get('pd_linear_best', '')} "
+                f"PD+Dual({compare.get('pd_dual_copy_role', '')})={compare.get('pd_dual_copy_best', '')} "
+                f"hefthint+Linear({compare.get('hefthint_linear_role', '')})={compare.get('hefthint_linear_best', '')} "
+                f"hefthint+Dual({compare.get('hefthint_dual_copy_role', '')})={compare.get('hefthint_dual_copy_best', '')} "
                 f"iter_gain_s={row.get('iter_gain_s', '')} iter_gain_pct={row.get('iter_gain_pct', '')}"
             )
 

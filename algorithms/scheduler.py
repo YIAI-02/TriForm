@@ -61,9 +61,12 @@ def _sched_normalize_weight_format_token(fmt: str, *, allow_compute: bool = Fals
     alias = {
         'NPU-OPT': 'NZ',
         'PIM-OPT': 'PIM-OPT',
+        'DUAL': 'DUAL',
+        'DUAL-COPY': 'DUAL',
+        'NZ+PIM-OPT': 'DUAL',
     }
     s = alias.get(s, s)
-    storage_ok = {'ND', 'NZ', 'PIM-OPT'}
+    storage_ok = {'ND', 'NZ', 'PIM-OPT', 'DUAL'}
     compute_ok = {'ZN', 'ZZ'} if allow_compute else set()
     ok = storage_ok | compute_ok
     if s not in ok:
@@ -76,6 +79,8 @@ def _sched_resolve_npu_weight_conversion_steps(src_fmt: str, dst_fmt: str) -> Li
         return _cm_resolve_npu_weight_conversion_steps(src_fmt, dst_fmt)
     src = _sched_normalize_weight_format_token(src_fmt, allow_compute=True)
     dst = _sched_normalize_weight_format_token(dst_fmt, allow_compute=True)
+    if src == 'DUAL':
+        src = 'NZ'
     if src == dst:
         return []
     if src == 'ND':
@@ -264,6 +269,29 @@ class SchedulerBase:
 
     def set_seq_len(self, seq_len: int) -> None:
         self.seq_len = int(seq_len)
+    
+    def set_storage_format_map(self, fmt_map: Dict[str, str]) -> None:
+        """Install host-side weight storage formats for the next simulation run.
+
+        This is scheduler-agnostic configuration, so it belongs on the common
+        base class rather than only on HEFTScheduler. That keeps NaiveTopo and
+        any other scheduler variants from silently falling back to ND.
+        """
+        self.storage_fmt_map = {}
+        try:
+            self.buffer.host_format.clear()
+        except Exception:
+            pass
+        for k, v in dict(fmt_map or {}).items():
+            try:
+                canon_v = str(self.cost.weight_storage_format(v))
+            except Exception:
+                try:
+                    canon_v = str(_sched_normalize_weight_format_token(v, allow_compute=False))
+                except Exception:
+                    canon_v = str(v)
+            self.storage_fmt_map[str(k)] = str(canon_v)
+            self.buffer.set_host_fmt(str(k), str(canon_v))
 
     def _set_last_op_trace_extra(self, extra: Optional[Dict[str, Any]]) -> None:
         self._last_op_trace_extra = dict(extra or {})
@@ -2613,24 +2641,6 @@ class HEFTScheduler(SchedulerBase):
             'host_format': dict(self.buffer.host_format or {}),
             'weight_chain_hits': chain_hits,
         }
-
-
-    def set_storage_format_map(self, fmt_map: Dict[str, str]):
-        self.storage_fmt_map = {}
-        try:
-            self.buffer.host_format.clear()
-        except Exception:
-            pass
-        for k, v in dict(fmt_map or {}).items():
-            try:
-                canon_v = str(self.cost.weight_storage_format(v))
-            except Exception:
-                try:
-                    canon_v = str(_sched_normalize_weight_format_token(v, allow_compute=False))
-                except Exception:
-                    canon_v = str(v)
-            self.storage_fmt_map[str(k)] = str(canon_v)
-            self.buffer.set_host_fmt(str(k), str(canon_v))
 
     def suggest_weight_storage_formats(self) -> Dict[str, str]:
         Base = ['ND', 'NZ', 'PIM-OPT']

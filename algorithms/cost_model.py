@@ -82,7 +82,7 @@ class LocalWeightLoadCost:
     stage_max_s: float = 0.0
 
 
-_WEIGHT_STORAGE_FORMATS = frozenset(str(x) for x in getattr(_config, 'WEIGHT_STORAGE_FORMATS', ('ND', 'NZ', 'PIM-OPT')))
+_WEIGHT_STORAGE_FORMATS = frozenset(str(x) for x in getattr(_config, 'WEIGHT_STORAGE_FORMATS', ('ND', 'NZ', 'PIM-OPT'))) | frozenset({'DUAL'})
 _NPU_WEIGHT_TARGET_FORMATS = frozenset({'ZN', 'ZZ'})
 _PIM_WEIGHT_LOAD_DEFAULT_PATHS: Dict[str, Dict[str, float]] = {
     'ND->PIM-OPT': {'bw_gbs': 640.0, 'overhead_us': 2.0},
@@ -104,6 +104,15 @@ def _normalize_weight_format_token(fmt: str, *, allow_compute: bool = False) -> 
         'ND': 'ND',
         'ZN': 'ZN',
         'ZZ': 'ZZ',
+        'DUAL': 'DUAL',
+        'DUAL-COPY': 'DUAL',
+        'DUALCOPY': 'DUAL',
+        'TWO-COPY': 'DUAL',
+        'TWOCOPY': 'DUAL',
+        'NZ+PIM-OPT': 'DUAL',
+        'NZ+PIMOPT': 'DUAL',
+        'PIM-OPT+NZ': 'DUAL',
+        'PIMOPT+NZ': 'DUAL',
         'PIM_OPT': 'PIM-OPT',
         'NPU_OPT': 'NZ',
     }
@@ -124,6 +133,8 @@ def _normalize_npu_weight_op_name(node: TaskNode) -> str:
 def _resolve_npu_weight_conversion_steps(src_fmt: str, dst_fmt: str) -> List[Tuple[str, str]]:
     src = _normalize_weight_format_token(src_fmt, allow_compute=True)
     dst = _normalize_weight_format_token(dst_fmt, allow_compute=True)
+    if src == 'DUAL':
+        src = 'NZ'
     if src == dst:
         return []
 
@@ -151,6 +162,8 @@ def _resolve_npu_weight_conversion_steps(src_fmt: str, dst_fmt: str) -> List[Tup
 
 def _resolve_pim_weight_load_steps(src_fmt: str) -> List[Tuple[str, str]]:
     src = _normalize_weight_format_token(src_fmt, allow_compute=False)
+    if src == 'DUAL':
+        src = 'PIM-OPT'
     if src == 'ND':
         return [('ND', 'PIM-OPT')]
     if src == 'PIM-OPT':
