@@ -29,6 +29,7 @@ NPU_WEIGHT_TARGET_FORMAT_BY_OP = {
     "FFN_W1": "ZN",
     "FFN_W3": "ZN",
     "FFN_W2": "ZZ",
+    "MOE_ROUTER": "ZN",
  }
 # Format size multipliers (alignment/packing overhead modeling)
 FORMAT_SIZE_MULTIPLIER = {
@@ -108,6 +109,7 @@ OPERATOR_DEVICE_ALLOWED = {
     "SWIGLU":  {"cpu": True, "npu": True, "pim": True},
     "GELU":    {"cpu": True, "npu": True, "pim": True},
     "ACT":     {"cpu": True, "npu": True, "pim": True},
+    "MOE_ROUTER": {"cpu": True, "npu": True, "pim": False},
 
     "IDENTITY": {"cpu": True, "npu": True, "pim": True},
     "K_WRITE": {"cpu": True, "npu": True, "pim": True},
@@ -197,7 +199,7 @@ SCHED_JOINT_LK_PLAN_HINT_MAX: int =  3
 SCHED_WEIGHT_BIAS_ETA: float = 50
 
 #AMORT
-SCHED_DECODE_AMORT_ENABLE = True
+SCHED_DECODE_AMORT_ENABLE = False
 SCHED_DECODE_AMORT_ALPHA = 1
 SCHED_DECODE_AMORT_RMIN = 1
 # Optional reuse probability multiplier (useful later for MoE / gated subgraphs).

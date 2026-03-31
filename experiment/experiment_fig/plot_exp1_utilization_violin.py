@@ -23,9 +23,9 @@ Key changes
 
 Typical usage
 -------------
-# Scan all llama_7b_fp16 batch-size folders under sst8_rst8
+# Scan all llama_7b_fp16 batch-size folders under sst2_rst2
 python3 plot_exp1_utilization_violin.py \
-  --search-dir ../../algorithms/output/exp1/hw_hardware_1npu_2aim/sst8_rst8 \
+  --search-dir ../../algorithms/output/exp1/hw_hardware_1npu_2aim/sst2_rst2 \
   --model-prefix llama_7b_fp16 \
   --exclude-algos weights_on_pim \
   --speedup-plot-max 3 \
@@ -92,7 +92,7 @@ DEFAULT_UTIL_LAYOUT = "overlay"
 CACHE_VERSION = "violin_v9"
 
 TRACE_RE = re.compile(
-    r"^(?P<algo>.+?)_prefill-(?P<prefill>\d+)xdecode_(?P<decode>\d+)_(?P<kind>comms|ops)_trace\.csv$",
+    r"^(?P<algo>.+?)_linear_prefill-(?P<prefill>\d+)xdecode_(?P<decode>\d+)_(?P<kind>comms|ops)_trace\.csv$",
     re.IGNORECASE,
 )
 BASELINE_COMPARE_RE = re.compile(

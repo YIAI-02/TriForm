@@ -982,22 +982,59 @@ class MixtralDef:
     name = "mixtral"
 
     @staticmethod
-    def _active_expert_count(total: int, top_k: int, imbalance: float) -> int:
-        if total <= 0:
-            return 0
-        guard = max(1.0, float(imbalance or 1.0))
-        baseline = max(1, int(top_k))
-        return max(1, min(int(total), int(math.ceil(float(baseline) * guard))))
+    def _resolve_top_k(total: int, top_k: int) -> int:
+        total_i = max(1, int(total or 1))
+        return max(1, min(total_i, int(top_k or 1)))
+
+    @staticmethod
+    def _resolve_active_experts(total: int, top_k: int, requested: Optional[int]) -> int:
+        total_i = max(1, int(total or 1))
+        top_k_i = MixtralDef._resolve_top_k(total_i, top_k)
+        if requested is None:
+            return total_i
+        try:
+            req_i = int(requested)
+        except Exception:
+            req_i = total_i
+        if req_i <= 0:
+            return total_i
+        return max(top_k_i, min(total_i, req_i))
+
+    @staticmethod
+    def _expert_token_fractions(total: int, active: int, top_k: int, imbalance: float) -> List[float]:
+        total_i = max(1, int(total or 1))
+        top_k_i = MixtralDef._resolve_top_k(total_i, top_k)
+        active_i = max(top_k_i, min(total_i, int(active or total_i)))
+        skew = max(1.0, float(imbalance or 1.0))
+
+        # Active experts receive a simple deterministic skew profile. Fractions are
+        # normalized so that the expected total expert selections per token remains top-k.
+        weights: List[float] = [0.0 for _ in range(total_i)]
+        if active_i == 1:
+            weights[0] = 1.0
+        else:
+            denom = max(1, active_i - 1)
+            for rank in range(active_i):
+                hotness = float(active_i - 1 - rank) / float(denom)
+                weights[rank] = 1.0 + (skew - 1.0) * hotness
+
+        s = float(sum(weights))
+        if s <= 0.0:
+            return [0.0 for _ in range(total_i)]
+
+        scale = float(top_k_i) / s
+        return [float(max(0.0, min(1.0, w * scale))) for w in weights]
 
     def build(self, shape: ModelShape, dtype_bytes: int, cfg: Optional[Dict] = None) -> TaskGraph:
         g = TaskGraph()
 
         experts = int(getattr(shape, "experts_per_layer", 1) or 1)
-        top_k = int(getattr(shape, "experts_top_k", 1) or 1)
+        top_k = self._resolve_top_k(experts, int(getattr(shape, "experts_top_k", 1) or 1))
         moe_imbalance = float(getattr(shape, "moe_imbalance_factor", 1.0) or 1.0)
-        active_experts = int(getattr(shape, "active_experts_per_layer", 0) or 0)
-        if active_experts <= 0 or active_experts > experts:
-            active_experts = self._active_expert_count(experts, top_k, moe_imbalance)
+        active_requested = getattr(shape, "active_experts_per_layer", None) if hasattr(shape, "active_experts_per_layer") else None
+        active_experts = self._resolve_active_experts(experts, top_k, active_requested)
+        expert_token_fracs = self._expert_token_fractions(experts, active_experts, top_k, moe_imbalance)
+
         setattr(shape, "active_experts_per_layer", int(active_experts))
         setattr(shape, "moe_pruned_experts_per_layer", max(0, int(experts - active_experts)))
 
@@ -1005,6 +1042,7 @@ class MixtralDef:
         dim, ffn = int(shape.dim), int(shape.ffn_dim)
         qh, kvh, hd = int(shape.n_heads), int(shape.n_kv_heads), int(shape.head_dim)
         q_dim, kv_dim, o_in_dim = int(qh * hd), int(kvh * hd), int(qh * hd)
+        router_weight_size = int(dim * experts * dtype_bytes)
 
         tp_qkv = int((cfg or {}).get('tp_qkv_effective', 1) or 1)
         # For MoE, prefer an explicit tp_moe_effective; otherwise reuse tp_ffn_effective.
@@ -1026,13 +1064,19 @@ class MixtralDef:
                 "kv_dim": int(kv_dim),
                 "o_dim": int(o_in_dim),
                 "experts": int(experts),
+                "experts_total": int(experts),
+                "active_experts": int(active_experts),
                 "top_k": int(top_k),
+                "num_local_experts": int(experts),
+                "num_experts_per_tok": int(top_k),
                 "moe_imbalance_factor": float(moe_imbalance),
+                "router_kind": "topk",
+                "router_weight_size": int(router_weight_size),
                 "tp_qkv": int(tp_qkv),
                 "tp_moe": int(tp_moe),
             }
 
-            # Attention part (LLaMA-style, LN1 here)
+            # Attention part (Mistral/LLaMA-style, LN1 here)
             nid_LN1 = f"L{l}_LN1"
             g.add_node(TaskNode(nid_LN1, "LN", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("LN")))
             if l > 0:
@@ -1073,8 +1117,9 @@ class MixtralDef:
             g.add_edge(nid_Add1, nid_LN2)
 
             expert_outputs: List[str] = []
-            for e in range(int(active_experts)):
+            for e in range(int(experts)):
                 expert_shard = int(e % tp_moe) if tp_moe > 0 else 0
+                expert_frac = float(expert_token_fracs[e]) if e < len(expert_token_fracs) else 0.0
                 expert_attr = {
                     **base_attr,
                     "expert": int(e),
@@ -1083,6 +1128,8 @@ class MixtralDef:
                     "active_experts": int(active_experts),
                     "top_k": int(top_k),
                     "moe_imbalance": float(moe_imbalance),
+                    "moe_token_fraction": float(expert_frac),
+                    "expert_active": bool(expert_frac > 0.0),
                 }
                 nid_W1 = f"L{l}_FFN_W1_E{e}"
                 nid_W3 = f"L{l}_FFN_W3_E{e}"
@@ -1132,16 +1179,18 @@ class MixtralDef:
 
                 expert_outputs.append(nid_W2)
 
-            # Routers: if tp_moe>1, we build one router per expert shard (partial combine), then a
-            # topology-dependent collective to get the final MoE output.
+            # Router / combine.
+            router_weight_id = f"L{l}_ROUTER_W"
             if tp_moe > 1:
                 router_outputs: List[str] = []
 
                 for si in range(int(tp_moe)):
-                    # Collect experts owned by this shard.
                     local_expert_outs = [
                         out for e, out in enumerate(expert_outputs) if int(e % tp_moe) == int(si)
                     ]
+                    local_expert_ids = [int(e) for e in range(int(experts)) if int(e % tp_moe) == int(si)]
+                    local_active = [eid for eid in local_expert_ids if float(expert_token_fracs[eid]) > 0.0]
+                    local_top_k = float(sum(float(expert_token_fracs[eid]) for eid in local_expert_ids))
                     if not local_expert_outs:
                         continue
 
@@ -1151,14 +1200,20 @@ class MixtralDef:
                             nid_router_s,
                             "MoE_Router",
                             flops=0.0,
+                            weight_id=router_weight_id,
+                            weight_size=int(router_weight_size),
                             attrs={
                                 **base_attr,
                                 "experts": int(experts),
                                 "active_experts": int(active_experts),
                                 "top_k": int(top_k),
+                                "local_experts": int(len(local_expert_ids)),
+                                "local_active_experts": int(len(local_active)),
+                                "local_top_k": float(local_top_k),
                                 "moe_imbalance": float(moe_imbalance),
                                 "tp_moe": int(tp_moe),
                                 "moe_shard": int(si),
+                                "router_replicated": True,
                             },
                             allowed=get_op_allowed("MoE_Router"),
                         )
@@ -1186,13 +1241,19 @@ class MixtralDef:
                         nid_router,
                         "MoE_Router",
                         flops=0.0,
+                        weight_id=router_weight_id,
+                        weight_size=int(router_weight_size),
                         attrs={
                             **base_attr,
                             "experts": int(experts),
                             "active_experts": int(active_experts),
                             "top_k": int(top_k),
+                            "local_experts": int(experts),
+                            "local_active_experts": int(active_experts),
+                            "local_top_k": float(top_k),
                             "moe_imbalance": float(moe_imbalance),
                             "tp_moe": int(tp_moe),
+                            "router_replicated": False,
                         },
                         allowed=get_op_allowed("MoE_Router"),
                     )

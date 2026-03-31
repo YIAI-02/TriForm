@@ -212,11 +212,20 @@ def parse_model_shape_from_file(family: str, variant: str, batch: int, max_seq_l
             raise ValueError(f"No shape file mapping for ({family},{variant}). Provide --config with 'shape_file' explicitly.")
         data = load_shape_json(DEFAULT_SHAPE_DIR / fname)
 
-    hidden_dim = data.get("hidden_dim")
-    layer_num = data.get("layer_num")
-    intermediate_dim = data.get("intermediate_dim")
-    q_head_num = data.get("q_head_num")
-    kv_head_num = data.get("kv_head_num")
+    def _pick(*keys: str, default: Any = None) -> Any:
+        for src in (override, data):
+            if not isinstance(src, dict):
+                continue
+            for key in keys:
+                if key in src and src.get(key) is not None:
+                    return src.get(key)
+        return default
+
+    hidden_dim = _pick("hidden_dim", "hidden_size")
+    layer_num = _pick("layer_num", "num_hidden_layers")
+    intermediate_dim = _pick("intermediate_dim", "intermediate_size", "ffn_dim")
+    q_head_num = _pick("q_head_num", "num_attention_heads", "n_heads")
+    kv_head_num = _pick("kv_head_num", "num_key_value_heads", "n_kv_heads", default=q_head_num)
 
     shape =  ModelShape(
         layer_num=layer_num,
@@ -227,15 +236,31 @@ def parse_model_shape_from_file(family: str, variant: str, batch: int, max_seq_l
         batch=batch,
         max_seq_len=max_seq_len,
     )
-    experts_per_layer = data.get("experts_per_layer")
+
+    experts_per_layer = _pick("experts_per_layer", "num_local_experts", "num_experts")
     if experts_per_layer is not None:
-        setattr(shape, "experts_per_layer", experts_per_layer)
-    experts_top_k = data.get("experts_top_k")
+        setattr(shape, "experts_per_layer", int(experts_per_layer))
+
+    experts_top_k = _pick("experts_top_k", "num_experts_per_tok", "top_k")
     if experts_top_k is not None:
-        setattr(shape, "experts_top_k", experts_top_k)
-    moe_imbalance_factor = data.get("moe_imbalance_factor")
+        setattr(shape, "experts_top_k", int(experts_top_k))
+
+    active_experts_per_layer = _pick("active_experts_per_layer")
+    if active_experts_per_layer is not None:
+        setattr(shape, "active_experts_per_layer", int(active_experts_per_layer))
+
+    moe_imbalance_factor = _pick("moe_imbalance_factor", default=1.0)
     if moe_imbalance_factor is not None:
-        setattr(shape, "moe_imbalance_factor", moe_imbalance_factor)
+        setattr(shape, "moe_imbalance_factor", float(moe_imbalance_factor))
+
+    router_aux_loss_coef = _pick("router_aux_loss_coef")
+    if router_aux_loss_coef is not None:
+        setattr(shape, "router_aux_loss_coef", float(router_aux_loss_coef))
+
+    router_jitter_noise = _pick("router_jitter_noise")
+    if router_jitter_noise is not None:
+        setattr(shape, "router_jitter_noise", float(router_jitter_noise))
+
     return shape
 
 def build_graph(cfg: Dict[str, Any]):
@@ -311,9 +336,36 @@ def build_graph(cfg: Dict[str, Any]):
                 f"Invalid tp_ffn={tp_ffn}: require ffn_dim%tp_ffn==0 (ffn_dim={Hf})."
             )
 
+    # tp_moe: Mixtral/MoE expert-parallel shard count (route experts by expert id).
+    tp_moe_raw = cfg.get('tp_moe', cfg.get('tp_ffn', 1) if str(family).lower() == 'mixtral' else 1)
+    try:
+        tp_moe = max(1, int(tp_moe_raw or 1))
+    except Exception:
+        tp_moe = 1
+    if str(family).lower() == 'mixtral':
+        try:
+            E = int(getattr(shape, 'experts_per_layer', 0) or 0)
+        except Exception:
+            E = 0
+        if tp_moe > 1:
+            if E <= 0:
+                raise ValueError(f"Invalid tp_moe={tp_moe}: unknown experts_per_layer (E={E}).")
+            if tp_moe > E:
+                raise ValueError(
+                    f"Invalid tp_moe={tp_moe}: require tp_moe <= experts_per_layer (experts_per_layer={E})."
+                )
+            if (E % tp_moe) != 0:
+                raise ValueError(
+                    f"Invalid tp_moe={tp_moe}: require experts_per_layer%tp_moe==0 "
+                    f"(experts_per_layer={E})."
+                )
+    else:
+        tp_moe = 1
+
     # Stash validated effective values for downstream components.
     cfg['tp_qkv_effective'] = int(tp_qkv_eff)
     cfg['tp_ffn_effective'] = int(tp_ffn)
+    cfg['tp_moe_effective'] = int(tp_moe)
 
     g = md.build(shape, dtype_bytes=dtype_bytes, cfg=cfg)
 

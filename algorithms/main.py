@@ -329,6 +329,46 @@ def _effective_tp_qkv(cfg: Dict) -> int:
     return max(1, int(cfg.get('tp_qkv', 1) or 1))
 
 
+def _build_cost_model_for_run(
+    cfg: Dict,
+    cluster: Cluster,
+    shape: Any,
+    *,
+    simulation_log_file: Path | str,
+    debug_traces: bool = False,
+) -> CostModel:
+    """Build CostModel with the same runtime knobs across search / compare / evaluate."""
+    prefill_len = int(cfg.get('prefill_len', 128))
+    model_dict = _make_shared_model_dict(
+        dim=int(getattr(shape, 'dim', 128)),
+        n_heads=int(getattr(shape, 'n_heads', 1)),
+        n_kv_heads=int(getattr(shape, 'n_kv_heads', 1)),
+        ffn_dim=int(getattr(shape, 'ffn_dim', 512)),
+        seqlen=prefill_len,
+    )
+
+    npu_backend = _normalize_npu_backend(cfg.get('npu_backend', None))
+    if _cluster_type_count(cluster, 'npu') <= 0:
+        npu_backend = None
+
+    pim_fast_mode = bool(cfg.get('pim_fast_mode', False))
+    return CostModel(
+        cluster=cluster,
+        dtype=cfg.get('dtype', 'fp16'),
+        pim_config_path=Path(cfg.get('pim_config_path')),
+        gb_config_path=Path(cfg.get('gb_config_path')),
+        ramulator_config_path=Path(cfg.get('ramulator_config_path')),
+        simulation_log_file=Path(simulation_log_file),
+        debug_traces=bool(debug_traces),
+        model_dict=model_dict,
+        npu_backend=npu_backend,
+        pim_fast_mode=pim_fast_mode,
+        tp_qkv=int(cfg.get('tp_qkv', 1) or 1),
+        tp_ffn=int(cfg.get('tp_ffn', 1) or 1),
+        tp_moe=int(cfg.get('tp_moe', 1) or 1),
+    )
+
+
 def _compute_kv_plan_info(
     *,
     cfg: Dict,
@@ -533,7 +573,9 @@ def _make_label_from_kv_plan(
     # Tensor-parallel shard knobs (used by cost model/NPU backends).
     setattr(label, 'tp_qkv', int(cfg.get('tp_qkv', 1) or 1))
     setattr(label, 'tp_ffn', int(cfg.get('tp_ffn', 1) or 1))
-    setattr(label, 'tp_ffn_effective', int(cfg.get('tp_ffn', 1) or 1))
+    setattr(label, 'tp_ffn_effective', int(cfg.get('tp_ffn_effective', cfg.get('tp_ffn', 1)) or 1))
+    setattr(label, 'tp_moe', int(cfg.get('tp_moe', cfg.get('tp_ffn', 1)) or 1))
+    setattr(label, 'tp_moe_effective', int(cfg.get('tp_moe_effective', cfg.get('tp_moe', cfg.get('tp_ffn', 1))) or 1))
     setattr(label, 'pim_total_capacity_bytes', int(pim_bytes_total))
     setattr(label, 'weights_preloaded_on_pim', bool(weights_preloaded_on_pim))
 
@@ -1174,31 +1216,13 @@ def run(cfg: Dict):
     prefill_len = int(cfg.get('prefill_len', 128))
     batch = int(cfg.get('batch', 1))
     graph, shape = build_graph(cfg)
-    model_dict = _make_shared_model_dict(
-        dim=int(getattr(shape, 'dim', 128)),
-        n_heads=int(getattr(shape, 'n_heads', 1)),
-        n_kv_heads=int(getattr(shape, 'n_kv_heads', 1)),
-        ffn_dim=int(getattr(shape, 'ffn_dim', 512)),
-        seqlen=prefill_len,
-    )
     sim_log_file = cfg.get('simulation_log_file', str(result_dir / 'pim_simulation.txt'))
-    npu_backend = _normalize_npu_backend(cfg.get('npu_backend', None))
-    if _cluster_type_count(cluster, 'npu') <= 0:
-        npu_backend = None
-    pim_fast_mode = bool(cfg.get('pim_fast_mode', False))
-    cost = CostModel(
+    cost = _build_cost_model_for_run(
+        cfg,
         cluster,
-        dtype=cfg.get('dtype', 'fp16'),
-        pim_config_path=pim_config_path,
-        gb_config_path=gb_config_path,
-        ramulator_config_path=ramulator_config_path,
+        shape,
         simulation_log_file=sim_log_file,
         debug_traces=False,
-        model_dict=model_dict,
-        npu_backend=npu_backend,
-        pim_fast_mode=pim_fast_mode,
-        tp_qkv=int(cfg.get('tp_qkv', 1) or 1),
-        tp_ffn=int(cfg.get('tp_ffn', 1) or 1),
     )
     cost.logger.start_simulation()
 
@@ -2315,15 +2339,6 @@ def _eval_one_baseline(
     algo_dir = base_dir / algo_dir_name
     algo_dir.mkdir(parents=True, exist_ok=True)
 
-    # PIM trace 共享的模型形状信息
-    model_dict = _make_shared_model_dict(
-        dim=int(getattr(shape, "dim", 128)),
-        n_heads=int(getattr(shape, "n_heads", 1)),
-        n_kv_heads=int(getattr(shape, "n_kv_heads", 1)),
-        ffn_dim=int(getattr(shape, "ffn_dim", 512)),
-        seqlen=prefill_len,
-    )
-
     if tag_tok:
         sim_log_path = algo_dir / f"pim_simulation_{tag_tok}.txt"
     else:
@@ -2332,20 +2347,11 @@ def _eval_one_baseline(
             algo_dir / "pim_simulation.txt",
         ))
 
-    npu_backend = _normalize_npu_backend(cfg.get('npu_backend', None))
-    if _cluster_type_count(cluster, 'npu') <= 0:
-        npu_backend = None
-    pim_fast_mode = bool(cfg.get('pim_fast_mode', False))
-    cost = CostModel(
-        cluster=cluster,
-        dtype=cfg.get("dtype", "fp16"),
-        pim_config_path=Path(cfg.get("pim_config_path")),
-        gb_config_path=Path(cfg.get("gb_config_path")),
-        ramulator_config_path=Path(cfg.get("ramulator_config_path")),
+    cost = _build_cost_model_for_run(
+        cfg,
+        cluster,
+        shape,
         simulation_log_file=sim_log_path,
-        model_dict=model_dict,
-        pim_fast_mode=pim_fast_mode,
-        npu_backend=npu_backend
     )
 
     try:
@@ -2513,15 +2519,6 @@ def _run_strategy_once(
     prefill_len = int(cfg.get("prefill_len", 128))
     decode_len = int(cfg.get("decode_len", 32))
 
-    # PIM trace 需要的模型形状信息
-    model_dict = _make_shared_model_dict(
-        dim=int(getattr(shape, "dim", 128)),
-        n_heads=int(getattr(shape, "n_heads", 1)),
-        n_kv_heads=int(getattr(shape, "n_kv_heads", 1)),
-        ffn_dim=int(getattr(shape, "ffn_dim", 512)),
-        seqlen=prefill_len,
-    )
-
     reset_simulation_logger()
 
     tag_tok = _artifact_tag_token(artifact_tag)
@@ -2535,20 +2532,11 @@ def _run_strategy_once(
             "./output/pim_simulation.txt",
         ))
 
-    npu_backend = _normalize_npu_backend(cfg.get('npu_backend', None))
-    if _cluster_type_count(cluster, 'npu') <= 0:
-        npu_backend = None
-    pim_fast_mode = bool(cfg.get('pim_fast_mode', False))
-    cost = CostModel(
-        cluster=cluster,
-        dtype=cfg.get("dtype", "fp16"),
-        pim_config_path=Path(cfg.get("pim_config_path")),
-        gb_config_path=Path(cfg.get("gb_config_path")),
-        ramulator_config_path=Path(cfg.get("ramulator_config_path")),
+    cost = _build_cost_model_for_run(
+        cfg,
+        cluster,
+        shape,
         simulation_log_file=sim_log_path,
-        model_dict=model_dict,
-        npu_backend=npu_backend,
-        pim_fast_mode=pim_fast_mode
     )
 
     try:
@@ -2745,6 +2733,11 @@ def evaluate_suite(cfg: Dict, *, algos: List[str], baselines: List[str], result_
     base_dir = _ensure_dir(Path(result_dir or './output/len_sweep'))
     tag = f"{int(cfg.get('prefill_len', 0))}x{int(cfg.get('decode_len', 0))}"
     results: List[Dict] = []
+    # Build once and share the exact same graph / shape across baselines and algos.
+    cluster = demo_cluster(cfg)
+    cfg['topology'] = getattr(cluster, 'topology', cfg.get('topology', None))
+    shared_graph, shared_shape = build_graph(cfg)
+
     # --- baselines ONCE ---
     blist = []
     for b in baselines:
@@ -2759,8 +2752,14 @@ def evaluate_suite(cfg: Dict, *, algos: List[str], baselines: List[str], result_
             logger.error(f"Failed to setup logging for baseline '{b}'")
             pass
         cfg_b = dict(cfg)
+        cfg_b['result_dir'] = str(base_dir)
         cfg_b['simulation_log_file'] = str(algo_dir / f"pim_sim_{tag}.txt")
-        r = _eval_one_baseline(cfg_b, b)
+        r = _eval_one_baseline(
+            cfg_b,
+            b,
+            shared_graph=shared_graph,
+            shared_shape=shared_shape,
+        )
         _save_best_json(algo_dir, tag, policy=f"algo:{b}", times=r, cfg=cfg_b, prefill_schedule=r.get('prefill_schedule'), decode_steps=r.get('decode_steps'), label=r.get('label'))
         results.append({
             'policy': f"algo:{b}",
@@ -2776,10 +2775,6 @@ def evaluate_suite(cfg: Dict, *, algos: List[str], baselines: List[str], result_
         a = a.strip().lower()
         if not a: continue
         if a not in alist: alist.append(a)
-    # Build once to share across algos
-    cluster = demo_cluster(cfg)
-    cfg['topology'] = getattr(cluster, 'topology', cfg.get('topology', None))
-    shared_graph, shared_shape = build_graph(cfg)
     for a in alist:
         algo_dir = _ensure_dir(base_dir / f"algo_{a}")
         try: 
@@ -2851,6 +2846,8 @@ def parse_args():
                          help='Tensor-parallel shard size for Q/K/V generation and attention head sharding (column split).')
     sp_eval.add_argument('--tp_ffn', type=int,
                          help='Tensor-parallel shard size for FFN intermediate dimension (ffn_dim split).')
+    sp_eval.add_argument('--tp_moe', type=int,
+                         help='Expert-parallel shard size for MoE experts / Mixtral router-expert partitioning.')
     # weight-suggest mode: multi-pass SA to suggest weight formats
     sp_ws = sub.add_parser('weight-suggest', help='Run multi-pass SA to suggest weight formats and fixed baseline experiments.')
     sp_ws.add_argument('--config', required=True, type=str, help='Path to a JSON config with run parameters.')
@@ -2882,6 +2879,8 @@ def parse_args():
                         help='Tensor-parallel shard size for Q/K/V generation and attention head sharding (column split).')
     sp_ws.add_argument('--tp_ffn', type=int,
                         help='Tensor-parallel shard size for FFN intermediate dimension (ffn_dim split).')
+    sp_ws.add_argument('--tp_moe', type=int,
+                        help='Expert-parallel shard size for MoE experts / Mixtral router-expert partitioning.')
     sp_ws.add_argument('--format_outer_max_iters', type=int,
                        help='Deprecated compatibility knob. If format_block_change_percent is unset, percent is derived as 1/format_outer_max_iters.')
     sp_ws.add_argument('--format_block_change_percent', type=float,
@@ -2983,6 +2982,7 @@ def main():
             'decode_plan_refresh_stride',
             'tp_qkv',
             'tp_ffn',
+            'tp_moe',
             'result_dir',
             'hardware_json',
             'algo',

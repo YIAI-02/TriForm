@@ -187,6 +187,9 @@ NPU_NORM_KEYS = {
 NPU_GEMM_KEYS = {
     'q_proj','k_proj','v_proj','wo_proj','ffn_up','ffn_gate','ffn_down','score','output',
 }
+NPU_ROUTER_KEYS = {
+    'router', 'moe_router',
+}
 
 
 def _normalize_npu_backend_safe(backend: Optional[str]) -> str:
@@ -297,12 +300,16 @@ _NPU_OP_ALIASES: Dict[str, str] = {
 
     # Residual / elementwise
     'residual': 'add',
+
+    # MoE router / gate
+    'router': 'moe_router',
+    'moe_router': 'moe_router',
 }
 
 
 # Token-level matcher for embedded op names.
 _NPU_OP_TOKEN_RE = re.compile(
-    r'(^|_)(qk|sv|softmax|ffn_w1|ffn_w2|ffn_w3|q_proj|k_proj|v_proj|wo_proj)($|_)'
+    r'(^|_)(qk|sv|softmax|ffn_w1|ffn_w2|ffn_w3|q_proj|k_proj|v_proj|wo_proj|moe_router|router)($|_)'
 )
 
 
@@ -506,10 +513,16 @@ class NpuLlmCompassBackend(NpuBackendBase):
             ))
             return float(lat_s + float(ctx.mem_s))
 
-        # (e) Unknown op -> HARD ERROR
+        # (e) MoE router: use the analytic fallback because it mixes gate GEMM, softmax, top-k,
+        # and weighted combine in one graph node.
+        if op in NPU_ROUTER_KEYS:
+            logger.debug(str(f'[NPU-ROUTER][LLMCompass] fallback-fast op={op} node={getattr(node, "name", "?")}'))
+            return float(self._fallback_fast_s(cm, node, dev, ctx))
+
+        # (f) Unknown op -> HARD ERROR
         raise RuntimeError(
             f"[LLMCompass] Unrecognized NPU op_key='{op}'. "
-            f"Supported categories: softmax, norm-like, activation-like, "
+            f"Supported categories: softmax, norm-like, activation-like, router-like, "
             f"gemm-like ({sorted(NPU_GEMM_KEYS)}), elem-like(add/identity/...). "
             f"Node={getattr(node, 'name', '?')}"
         )
@@ -629,7 +642,12 @@ class NpuAscend310BLutBackend(NpuBackendBase):
                 return float(max(float(us) * 1e-06, float(ctx.mem_s)))
             return float(self._fallback_fast_s(cm, node, dev, ctx))
 
-        # (f) Unknown -> fallback
+        # (f) MoE router: use analytic fallback (combined gate GEMM + softmax + top-k + combine).
+        if op in NPU_ROUTER_KEYS:
+            logger.debug(str(f'[NPU-ROUTER][ASCEND-LUT] fallback-fast op={op} node={getattr(node, "name", "?")}'))
+            return float(self._fallback_fast_s(cm, node, dev, ctx))
+
+        # (g) Unknown -> fallback
         return float(self._fallback_fast_s(cm, node, dev, ctx))
 
 
@@ -867,6 +885,7 @@ class CostModel:
         npu_backend: Optional[str] = None,
         tp_qkv: int = 1,
         tp_ffn: int = 1,
+        tp_moe: int = 1,
         pim_ramulator_bin: Optional[Path] = None,
         pim_ramulator_timeout_s: Optional[int] = None,
         pim_trace_strict: bool = False,
@@ -911,12 +930,12 @@ class CostModel:
         self.npu_backend = _normalize_npu_backend_safe(npu_backend)
         try:
             self.tp_qkv = max(1, int(tp_qkv or 1))
-        except Exception:
-            self.tp_qkv = 1
-        try:
             self.tp_ffn = max(1, int(tp_ffn or 1))
+            self.tp_moe = max(1, int(tp_moe or 1))
         except Exception:
             self.tp_ffn = 1
+            self.tp_qkv = 1
+            self.tp_moe = 1
         self.logger = get_simulation_logger(simulation_log_file)
         self.pim_cache_enabled = True
         self._shared_model_dict: Optional[Dict] = model_dict
@@ -2038,13 +2057,19 @@ class CostModel:
         moe_top_k = int(attrs.get('top_k', attrs.get('experts_top_k', 0)) or 0)
 
         def moe_token_fraction() -> float:
+            frac_explicit = attrs.get('moe_token_fraction', attrs.get('expert_token_fraction', None))
+            if frac_explicit is not None:
+                try:
+                    return float(min(1.0, max(0.0, float(frac_explicit))))
+                except Exception:
+                    pass
             if 'expert' not in attrs or moe_experts <= 0 or moe_top_k <= 0:
                 return 1.0
             imbalance = float(attrs.get('moe_imbalance',
                                         attrs.get('moe_imbalance_factor', 1.0)) or 1.0)
             active = max(1.0, float(moe_active))
             base = moe_top_k / active
-            return min(1.0, base * imbalance)
+            return min(1.0, base * max(1.0, imbalance))
 
         # Common sparsity multipliers (algorithmic FLOPs reduction)
         w_den = float(self._weight_density_for_compute(node))
@@ -2110,18 +2135,27 @@ class CostModel:
 
         # 12) MoE Router
         if 'ROUTER' in name and D > 0 and moe_experts > 0:
+            router_experts = int(attrs.get('router_experts', attrs.get('num_local_experts', moe_experts)) or moe_experts)
+            router_experts = max(1, router_experts)
+            router_local_top_k = attrs.get('local_top_k', attrs.get('router_local_top_k', attrs.get('num_experts_per_tok', moe_top_k)))
+            try:
+                local_top_k = float(router_local_top_k if router_local_top_k is not None else moe_top_k)
+            except Exception:
+                local_top_k = float(moe_top_k or 1)
+            local_top_k = max(0.0, local_top_k)
+
             # 1) gating linear: [B*T, D] x [D, E]
-            gate_linear = C_MATMUL * D * moe_experts * b * q_len
+            gate_linear = C_MATMUL * D * router_experts * b * q_len
 
             # 2) softmax over experts
-            gate_softmax = b * q_len * moe_experts * C_SOFTMAX
+            gate_softmax = b * q_len * router_experts * C_SOFTMAX
 
             # 3) top-k selection
             C_TOPK = 2.0
-            gate_topk = b * q_len * moe_experts * C_TOPK
+            gate_topk = b * q_len * router_experts * C_TOPK
 
-            # 4) combine K expert outputs: sum_{i=1..K} p_i * y_i
-            combine = C_MATMUL * D * max(1, moe_top_k) * b * q_len
+            # 4) combine local expert outputs: sum_i p_i * y_i
+            combine = C_MATMUL * D * local_top_k * b * q_len
 
             return float(gate_linear + gate_softmax + gate_topk + combine)
 
@@ -2165,13 +2199,19 @@ class CostModel:
         moe_active = max(1, min(moe_experts if moe_experts > 0 else moe_active, moe_active))
         moe_top_k = int(attrs.get('top_k', attrs.get('experts_top_k', 0)) or 0)
         def moe_token_fraction() -> float:
+            frac_explicit = attrs.get('moe_token_fraction', attrs.get('expert_token_fraction', None))
+            if frac_explicit is not None:
+                try:
+                    return float(min(1.0, max(0.0, float(frac_explicit))))
+                except Exception:
+                    pass
             if 'expert' not in attrs or moe_experts <= 0 or moe_top_k <= 0:
                 return 1.0
             imbalance = float(attrs.get('moe_imbalance',
                                         attrs.get('moe_imbalance_factor', 1.0)) or 1.0)
             active = max(1.0, float(moe_active))
             base = moe_top_k / active
-            return min(1.0, base * imbalance)
+            return min(1.0, base * max(1.0, imbalance))
         if name == 'LN' and D > 0:
             elems = dens_store * (b * q_len * D)
             return (to_bytes(elems), to_bytes(elems))
@@ -2238,9 +2278,15 @@ class CostModel:
             return (0, int(math.ceil(max(0.0, elems) * kv_dtype_bytes)))
         if 'ROUTER' in name and D > 0:
             tokens = float(b * q_len)
+            router_local_top_k = attrs.get('local_top_k', attrs.get('router_local_top_k', attrs.get('num_experts_per_tok', moe_top_k)))
+            try:
+                local_top_k = float(router_local_top_k if router_local_top_k is not None else moe_top_k)
+            except Exception:
+                local_top_k = float(moe_top_k or 1)
+            local_top_k = max(0.0, local_top_k)
             read_elems = tokens * D
-            if moe_top_k > 0:
-                read_elems += tokens * moe_top_k * D
+            if local_top_k > 0.0:
+                read_elems += tokens * local_top_k * D
             write_elems = tokens * D
             return (to_bytes(read_elems), to_bytes(write_elems))
         if D > 0:

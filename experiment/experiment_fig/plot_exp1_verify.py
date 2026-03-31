@@ -3,9 +3,11 @@
 """
 Plot latency comparison from *merge_all.csv files.
 
+find "$(pwd)" -name "*.merge_all.csv" | sort > files.txt
+
 Single model (same as before):
 python3 plot_exp1_verify.py \
-  --file-list ../../verify/sst8_rst8/llama_7b_fp16_b16_s8/files.txt \
+  --file-list ../../verify/sst2_rst2/llama_7b_fp16_b16_s2/files.txt \
   --algo-order "pd,attn_on_pim, ianus,facil,attacc,hefthint" \
   --exclude "weights_on_pim" \
   --dims "128x128,128x512,128x1024,1024x128,1024x512,1024x1024" \
@@ -45,8 +47,8 @@ MIN_FONT_PT = 7.0
 
 def apply_global_plot_style() -> None:
     plt.rcParams.update({
-        "font.family": [ARIAL_FONT_FAMILY],
-        "font.sans-serif": [ARIAL_FONT_FAMILY],
+        # "font.family": [ARIAL_FONT_FAMILY],
+        # "font.sans-serif": [ARIAL_FONT_FAMILY],
         "pdf.fonttype": 42,
         "ps.fonttype": 42,
         "svg.fonttype": "none",
@@ -227,7 +229,7 @@ def index_merge_all(csv_paths: List[Path]) -> Dict[Tuple[int, int], Dict[str, Li
         m = FNAME_RE.match(p.name)
         if not m:
             continue
-        algo = m.group("algo").lower()
+        algo = _normalize_strategy_token(m.group("algo"))
         lin = int(m.group("lin"))
         lout = int(m.group("lout"))
         idx.setdefault((lin, lout), {}).setdefault(algo, []).append(p)
@@ -313,6 +315,9 @@ def parse_dims_arg(s: str) -> List[Tuple[int, int]]:
 
 def _normalize_strategy_token(s: str) -> str:
     raw = (s or "").strip().lower()
+    if raw.endswith("_linear"):
+        raw = raw[: -len("_linear")]
+
     compact = re.sub(r"[\s_\-]+", "", raw)
     if compact in {"thiswork", "bifocal(thiswork)", "bifocal", "hefthint", "heft"}:
         return "hefthint"

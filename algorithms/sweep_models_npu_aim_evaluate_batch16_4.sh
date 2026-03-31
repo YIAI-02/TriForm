@@ -6,7 +6,7 @@ shopt -s nullglob
 # Single source of truth
 # =========================
 CONFIG_FILE="${CONFIG_FILE:-./examples/evaluate_len_sweep_config_npu.json}"
-OUTPUT_ROOT="${OUTPUT_ROOT:-./output/exp1}"
+OUTPUT_ROOT="${OUTPUT_ROOT:-./output_test2/exp1}"
 
 # Sweep dims
 MODEL_FAMILY_VARIANTS=(
@@ -14,11 +14,11 @@ MODEL_FAMILY_VARIANTS=(
   # "palm:8b"
   # "palm:62b"
   "qwen:1.8b"
-  "qwen:7b"
-  "qwen:14b"
+  # "qwen:7b"
+  # "qwen:14b"
   "llama:7b"
-  "llama:13b"
-  "llama:70b"
+  # "llama:13b"
+  # "llama:70b"
   # "llama:405b"
 )
 PREFILLS=(2048)
@@ -34,8 +34,8 @@ HARDWARE_CONFIGS=(
 )
 
 # Run knobs
-DECODE_SAMPLE_STRIDE="${DECODE_SAMPLE_STRIDE:-${SAMPLE_STRIDE:-${STRIDE:-8}}}"
-DECODE_PLAN_REFRESH_STRIDE="${DECODE_PLAN_REFRESH_STRIDE:-${PLAN_REFRESH_STRIDE:-${STRIDE:-8}}}"
+DECODE_SAMPLE_STRIDE="${DECODE_SAMPLE_STRIDE:-${SAMPLE_STRIDE:-${STRIDE:-2}}}"
+DECODE_PLAN_REFRESH_STRIDE="${DECODE_PLAN_REFRESH_STRIDE:-${PLAN_REFRESH_STRIDE:-${STRIDE:-2}}}"
 DTYPE="${DTYPE:-fp16}"
 BATCHES_STR="${BATCHES:-${BATCH:-"16"}}"
 

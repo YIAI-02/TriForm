@@ -4,8 +4,8 @@
 
 1) 批量：
 python plot_exp1_simulated.py \
-  --output-root ../../algorithms/output/exp1/\
-  --out-dir ../../figs/speedup/exp1/
+  --output-root ../../algorithms/output_test2/exp1/\
+  --out-dir ../../figs/speedup/exp1_test2/
 
 
 不要传hw_ 这一层目录

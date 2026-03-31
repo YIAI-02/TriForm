@@ -1,23 +1,28 @@
 {
-  "model_family": "llama",
-  "model_variant": "7b",
+  "model_family": "mixtral",
+  "model_variant": "8x7b",
   "dtype": "fp16",
   "batch": 1,
   "prefill_len": 512,
   "decode_len": 128,
-  "decode_sample_stride": 2,
-  "decode_plan_refresh_stride":2,
+  "decode_sample_stride": 8,
+  "decode_plan_refresh_stride":8,
   "pim_config_path": "./aim_simulator/PIM_AiM.json",
   "gb_config_path": "./aim_simulator/gb.json",
   "ramulator_config_path": "./aim_simulator/example.yaml",
   "simulation_log_file": "./output/evaluate_single_test/hardware_1npu_2aim/pim_simulation.txt",
-  "result_dir": "./output/evaluate_single_test/hardware_1npu_2aim_1p0_evaluate/",
+  "result_dir": "./output/evaluate_single_test/hardware_1npu_2aim_evaluate/",
   "hardware_json": "./examples/hardware_1npu_2aim.json",
   "algo": [
     "hefthint"
   ],
   "baselines": [
-    "pd"
+    "pd",
+    "attn_on_pim",
+    "weights_on_pim",
+    "ianus",
+    "facil",
+    "attacc"
   ],
   "tp_qkv": 2,
   "tp_ffn": 2,

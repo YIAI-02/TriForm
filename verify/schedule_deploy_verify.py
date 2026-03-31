@@ -79,6 +79,7 @@ import shutil
 import uuid
 import importlib
 import importlib.util
+from types import SimpleNamespace
 import yaml
 from pathlib import Path
 from collections import Counter
@@ -3335,6 +3336,42 @@ def _get_npu_lut_backend():
             "Make sure it is importable (same folder or PYTHONPATH)."
         ) from e1
 
+_NPU_COST_MODEL_MODULES = None
+
+def _get_algorithm_npu_cost_model_modules():
+    """Import the shared algorithm-side NPU CostModel modules."""
+    global _NPU_COST_MODEL_MODULES
+    if _NPU_COST_MODEL_MODULES is not None:
+        return _NPU_COST_MODEL_MODULES
+
+    roots = []
+    try:
+        repo_root = _script_dir().parent
+        roots.extend([repo_root, repo_root / 'algorithms', repo_root / 'algorithm'])
+    except Exception:
+        pass
+
+    for r in roots:
+        try:
+            rp = Path(r).expanduser().resolve()
+            if rp.exists():
+                _add_sys_path(rp)
+        except Exception:
+            continue
+
+    try:
+        import cost_model as cm_mod  # type: ignore
+        import hardware as hw_mod  # type: ignore
+        import task_graph as tg_mod  # type: ignore
+    except Exception as e:
+        raise RuntimeError(
+            "Failed to import shared algorithm modules (cost_model / hardware / task_graph). "
+            "Ensure PYTHONPATH includes the repo root and ./algorithms."
+        ) from e
+
+    _NPU_COST_MODEL_MODULES = (cm_mod, hw_mod, tg_mod)
+    return _NPU_COST_MODEL_MODULES
+
 
 def _set_npu_lut_env(
     *,
@@ -3423,9 +3460,8 @@ class _NpuOpParams:
     o_dim: int
     batch: int
 
-
-class NPUBackendViaLUT:
-    """NPU segment latency backend using the Ascend 310B LUT backend."""
+class NPUBackendViaCostModel:
+    """NPU segment latency backend that reuses algorithms/cost_model.py."""
 
     def __init__(
         self,
@@ -3435,7 +3471,6 @@ class NPUBackendViaLUT:
         npu_dtype: str = "fp16",
         npu_mem_bw_gbs: float = 0.0,
         op_overhead_us: float = 0.0,
-        use_mem_bound: bool = True,
     ):
         self.cfg = cfg
         self._dbg = debug_logger
@@ -3444,22 +3479,35 @@ class NPUBackendViaLUT:
         self.npu_dtype = str(npu_dtype).lower().strip()
         if self.npu_dtype not in _NPU_DTYPE_BYTES:
             raise ValueError(f"Unsupported --npu-dtype: {npu_dtype!r}. Supported: {sorted(_NPU_DTYPE_BYTES.keys())}")
-        self.dtype_bytes = int(_NPU_DTYPE_BYTES[self.npu_dtype])
 
         self.npu_mem_bw_gbs = float(npu_mem_bw_gbs)
-        self.op_overhead_us = float(op_overhead_us)
-        if not bool(use_mem_bound):
-            raise ValueError(
-                "Memory BW (mem bound) is mandatory for NPU weight-load modeling. Please remove --npu-no-mem-bound (or set NPU_NO_MEM_BOUND=0)."
-            )
         if self.npu_mem_bw_gbs <= 0.0:
             raise ValueError(
-                "Memory BW (mem bound) is mandatory for NPU weight-load modeling. Please provide a positive --npu-mem-bw-gbs (GB/s), e.g. 2000."
+                "Memory BW (mem bound) is mandatory for NPU weight-load modeling. "
+                "Please provide a positive --npu-mem-bw-gbs (GB/s)."
             )
-        self.use_mem_bound = True
+        self.op_overhead_us = float(op_overhead_us)
 
-        # Small cache: (op_key, dims_tuple) -> us
-        self._lut_cache: Dict[Tuple[str, Tuple[int, ...]], float] = {}
+        self.cm_mod, self.hw_mod, self.tg_mod = _get_algorithm_npu_cost_model_modules()
+
+        cluster = self.hw_mod.Cluster()
+        self.dev = self.hw_mod.DeviceSpec(
+            name="NPU0",
+            type="npu",
+            tflops=1.0,
+            mem_bw_GBs=float(self.npu_mem_bw_gbs),
+            mem_capacity_GB=1.0,
+            arch="Ascend_310B",
+        )
+        cluster.add_device(self.dev)
+
+        self.cm = self.cm_mod.CostModel(
+            cluster=cluster,
+            dtype=str(self.npu_dtype),
+            npu_backend="ascend_310b_lut",
+        )
+        self._label = SimpleNamespace(kv_in_pim=False)
+        self.debug_segments: Optional[Dict[str, Any]] = {} if self.debug else None
 
         if self.debug:
             self._print_debug_header()
@@ -3472,12 +3520,11 @@ class NPUBackendViaLUT:
             backend_file = None
 
         self._dbg.log("=" * 80)
-        self._dbg.log("[run-npu][debug] Using Ascend LUT backend via cost_model_npu_ascend_backend")
+        self._dbg.log("[run-npu][debug] Using shared algorithms/cost_model.py Ascend LUT backend")
         if backend_file:
-            self._dbg.log(f"[run-npu][debug] backend_file={backend_file}")
+            self._dbg.log(f"[run-npu][debug] lut_backend_file={backend_file}")
         self._dbg.log(
-            f"[run-npu][debug] npu_dtype={self.npu_dtype} dtype_bytes={self.dtype_bytes} "
-            f"npu_mem_bw_gbs={self.npu_mem_bw_gbs} use_mem_bound={self.use_mem_bound} op_overhead_us={self.op_overhead_us}"
+            f"[run-npu][debug] npu_dtype={self.npu_dtype} npu_mem_bw_gbs={self.npu_mem_bw_gbs} op_overhead_us={self.op_overhead_us}"
         )
         self._dbg.log(
             f"[run-npu][debug] model: dim={int(self.cfg.dim)} ffn_dim={int(self.cfg.ffn_dim)} n_heads={int(self.cfg.n_heads)} "
@@ -3487,7 +3534,6 @@ class NPUBackendViaLUT:
         self._dbg.log("=" * 80)
 
     def _infer_params(self, *, shard: int, sh: OpShape) -> _NpuOpParams:
-        # Base shapes from cfg
         dim = int(getattr(self.cfg, "dim"))
         ffn_dim_total = int(getattr(self.cfg, "ffn_dim"))
         n_heads_total = int(getattr(self.cfg, "n_heads"))
@@ -3496,11 +3542,9 @@ class NPUBackendViaLUT:
         shard_policy = str(getattr(self.cfg, "shard_policy", "coarse_majority") or "").strip().lower()
         fine = shard_policy in ("fine",)
 
-        # Token / sequence lengths from infer_op_shape
         q_len = int(max(1, getattr(sh, "query_len")))
         kv_len = int(max(1, getattr(sh, "key_len")))
         seq_len = int(kv_len)
-
         head_dim = int(max(1, getattr(sh, "head_dim")))
         batch = int(max(1, getattr(self.cfg, "batch", 1) or 1))
 
@@ -3532,332 +3576,49 @@ class NPUBackendViaLUT:
             batch=batch,
         )
 
-    def _act_rw_s(self, op_key: str, p: _NpuOpParams) -> float:
-        """Activation read/write lower bound (GB/s)."""
-        bw = float(self.npu_mem_bw_gbs)
-        if bw <= 0.0:
-            # Should have been validated in __init__.
-            raise ValueError("npu_mem_bw_gbs must be > 0 to apply activation RW (mem bound).")
-
-        B = int(max(1, p.batch))
-        T = int(max(1, p.q_len))
-        K = int(max(1, p.kv_len))
-        D = int(max(1, p.dim))
-        H = int(max(1, p.q_heads))
-        Hd = int(max(1, p.head_dim))
-        Qd = int(max(1, p.q_dim))
-        Kd = int(max(1, p.kv_dim))
-        Fd = int(max(1, p.ffn_dim))
-
-        read_elems = 0
-        write_elems = 0
-        op_key = str(op_key).lower().strip()
-
-        if op_key in ("ln", "rmsnorm", "layernorm", "norm"):
-            read_elems = B * T * D
-            write_elems = B * T * D
-        elif op_key in ("q_proj",):
-            read_elems = B * T * D
-            write_elems = B * T * Qd
-        elif op_key in ("k_proj", "v_proj"):
-            read_elems = B * T * D
-            write_elems = B * T * Kd
-        elif op_key in ("wo_proj",):
-            read_elems = B * T * Qd
-            write_elems = B * T * D
-        elif op_key in ("ffn_gate", "ffn_up"):
-            read_elems = B * T * D
-            write_elems = B * T * Fd
-        elif op_key in ("ffn_down",):
-            read_elems = B * T * Fd
-            write_elems = B * T * D
-        elif op_key in ("gelu", "swiglu", "silu", "act"):
-            read_elems = B * T * Fd
-            write_elems = B * T * Fd
-        elif op_key in ("add", "identity"):
-            read_elems = B * T * D * (2 if op_key == "add" else 1)
-            write_elems = B * T * D
-        elif op_key in ("score",):
-            # q: [B,H,T,Hd] -> B*T*Qd ; output scores: [B,H,T,K]
-            read_elems = B * T * Qd
-            write_elems = B * H * T * K
-        elif op_key in ("softmax",):
-            read_elems = B * H * T * K
-            write_elems = B * H * T * K
-        elif op_key in ("output", "sv"):
-            # p: [B,H,T,K] -> output: [B,H,T,Hd]
-            read_elems = B * H * T * K
-            write_elems = B * T * Qd
-        else:
-            return 0.0
-
-        total_bytes = float(read_elems + write_elems) * float(self.dtype_bytes)
-        bw_Bps = float(bw) * 1e9
-        return float(total_bytes) / float(bw_Bps)
-
-    def _weight_bytes(self, op_key: str, p: _NpuOpParams) -> int:
-        """Return *model weight* bytes that must be loaded for this op (0 if none).
-
-        This is intended for modeling matrix weight load time on NPU:
-            mem_time = weight_bytes / bandwidth
-        """
-        op_key = str(op_key).lower().strip()
-
-        D = int(max(1, p.dim))
-        Qd = int(max(1, p.q_dim))
-        Kd = int(max(1, p.kv_dim))
-        Fd = int(max(1, p.ffn_dim))
-        Od = int(max(1, p.o_dim))
-        dt = int(max(1, self.dtype_bytes))
-
-        if op_key == "q_proj":
-            # Wq: [Qd, D]
-            return int(D * Qd * dt)
-        if op_key in ("k_proj", "v_proj"):
-            # Wk/Wv: [Kd, D]
-            return int(D * Kd * dt)
-        if op_key == "wo_proj":
-            # Wo: [D, Od] (Od == Qd)
-            return int(Od * D * dt)
-        if op_key in ("ffn_gate", "ffn_up"):
-            # W1/W3: [Fd, D]
-            return int(D * Fd * dt)
-        if op_key == "ffn_down":
-            # W2: [D, Fd]
-            return int(Fd * D * dt)
-
-        return 0
-    def _lut_us_mmad(self, M: int, N: int, K: int) -> float:
-        key = ("mmad", (int(M), int(N), int(K)))
-        if key in self._lut_cache:
-            return float(self._lut_cache[key])
-        backend = _get_npu_lut_backend()
-        us = backend._predict_mmad_latency_us_from_lut(int(M), int(N), int(K))
-        if us is None:
-            raise RuntimeError("MMAD LUT not available. Provide it via --mmad-lut or set env TRIFORM_MMAD_LUT.")
-        self._lut_cache[key] = float(us)
-        return float(us)
-
-    def _lut_us_softmax(self, M: int, K: int, *, phase: str, causal: bool) -> float:
-        key = ("softmax", (int(M), int(K)))
-        if key in self._lut_cache:
-            return float(self._lut_cache[key])
-        backend = _get_npu_lut_backend()
-        us = backend._predict_softmax_latency_us_from_lut(int(M), int(K), phase=str(phase), causal=bool(causal))
-        if us is None:
-            raise RuntimeError("Softmax LUT not available. Provide it via --softmax-lut or set env TRIFORM_SOFTMAX_LUT.")
-        self._lut_cache[key] = float(us)
-        return float(us)
-
-    def _lut_us_gelu(self, data_len: int) -> float:
-        key = ("gelu", (int(data_len),))
-        if key in self._lut_cache:
-            return float(self._lut_cache[key])
-        backend = _get_npu_lut_backend()
-        us = backend._predict_gelu_latency_us_from_lut(int(data_len))
-        if us is None:
-            raise RuntimeError("GELU LUT not available. Provide it via --gelu-lut or set env TRIFORM_GELU_LUT.")
-        self._lut_cache[key] = float(us)
-        return float(us)
-
-    def _lut_us_norm(self, rows: int, width: int) -> float:
-        key = ("norm", (int(rows), int(width)))
-        if key in self._lut_cache:
-            return float(self._lut_cache[key])
-        backend = _get_npu_lut_backend()
-        us = backend._predict_layernorm_latency_us_from_lut(int(rows), int(width))
-        if us is None:
-            raise RuntimeError("Norm LUT not available. Provide it via --norm-lut or set env TRIFORM_NORM_LUT/TRIFORM_LAYERNORM_LUT.")
-        self._lut_cache[key] = float(us)
-        return float(us)
+    def _make_node(self, sig: OpSig, sh: OpShape):
+        p = self._infer_params(shard=int(sig.shard), sh=sh)
+        attrs = {
+            "dim": int(p.dim),
+            "ffn_dim": int(p.ffn_dim),
+            "q_heads": int(p.q_heads),
+            "n_heads": int(p.q_heads),
+            "kv_heads": int(p.kv_heads),
+            "n_kv_heads": int(p.kv_heads),
+            "head_dim": int(p.head_dim),
+            "q_dim": int(p.q_dim),
+            "kv_dim": int(p.kv_dim),
+            "o_dim": int(p.o_dim),
+            "causal": True,
+            "batch": int(p.batch),
+        }
+        node = self.tg_mod.TaskNode(
+            id=f"{sig.phase}_{int(sig.step)}_{sig.op}_{int(sig.shard)}",
+            name=str(sig.op),
+            attrs=attrs,
+        )
+        return node, p
 
     def estimate_op_s(
         self,
         *,
-        op: str,
-        shard: int,
-        phase: str,
-        step: int,
+        sig: OpSig,
         sh: OpShape,
-        weight_bytes: Optional[int] = None,
     ) -> Tuple[float, Dict[str, Any]]:
-        """Estimate one operator latency; returns (sec, debug_dict).
+        node, p = self._make_node(sig, sh)
+        seq_len = int(max(1, p.seq_len))
 
-        We model:
-          - lut_time: operator kernel time predicted from LUT (when available)
-          - mem_time: model weight load time, mem_time = weight_bytes / bandwidth
+        rd, wr = self.cm.estimate_activation_bytes(node, int(p.batch), int(seq_len), str(sig.phase))
+        mem_s = float(self.cm.mem_time(int(rd + wr), self.dev))
+        op_key = str(self.cm_mod._normalize_npu_op_key(str(sig.op)))
 
-        Per-op latency:
-            lat = max(lut_time, mem_time) + op_overhead
-        """
-        op_raw = str(op)
-        op = op_raw.strip()
-
-        # Skip communication / synchronization ops (handled elsewhere)
-        if op.strip().lower() in _COMM_OPS:
-            return 0.0, {"op": op_raw, "skip": True, "reason": "comm"}
-
-        # Normalize op key to a small canonical set
-        if op == "LN":
-            op_key = "norm"
-        elif op in ("Q",):
-            op_key = "q_proj"
-        elif op in ("K",):
-            op_key = "k_proj"
-        elif op in ("V",):
-            op_key = "v_proj"
-        elif op in ("O",):
-            op_key = "wo_proj"
-        elif op in ("FFN_W1",):
-            op_key = "ffn_gate"
-        elif op in ("FFN_W3",):
-            op_key = "ffn_up"
-        elif op in ("FFN_W2",):
-            op_key = "ffn_down"
-        elif op in ("SwiGLU", "GELU", "SiLU", "SILU", "Swish", "ACT"):
-            op_key = "gelu"
-        elif op in ("Add",):
-            op_key = "add"
-        elif op in ("QK",):
-            op_key = "score"
-        elif op in ("Softmax", "SOFTMAX"):
-            op_key = "softmax"
-        elif op in ("SV",):
-            op_key = "output"
-        else:
-            op_key = "unknown"
-
-        p = self._infer_params(shard=int(shard), sh=sh)
-
-        # ------------------------------
-        # Memory bound (weight load)
-        # ------------------------------
-        bw = float(self.npu_mem_bw_gbs)
-        if bw <= 0.0:
-            raise ValueError("npu_mem_bw_gbs must be > 0 to apply weight load (mem bound).")
-        bw_Bps = float(bw) * 1e9
-        w_bytes = None
-        if weight_bytes is not None:
-            try:
-                w_bytes = int(weight_bytes)
-            except Exception:
-                try:
-                    w_bytes = int(float(weight_bytes))  # type: ignore[arg-type]
-                except Exception:
-                    w_bytes = None
-        if w_bytes is None:
-            w_bytes = int(self._weight_bytes(op_key, p))
-        if w_bytes < 0:
-            w_bytes = 0
-
-        weight_mem_s = float(w_bytes) / float(bw_Bps) if w_bytes > 0 else 0.0
-        act_mem_s = float(self._act_rw_s(op_key, p))
-        mem_s = float(weight_mem_s)
-        if w_bytes <= 0 and op_key in ("add", "unknown"):
-            mem_s = float(act_mem_s)
-
-        # ------------------------------
-        # LUT time
-        # ------------------------------
-        lut_us: Optional[float] = None
-        lut_dims: Optional[Tuple[int, ...]] = None
-
-        # Elementwise / unknown -> mem bound only
-        if op_key in ("add", "unknown"):
-            sec = float(mem_s) + float(self.op_overhead_us) * 1e-6
-            return sec, {
-                "op": op_raw,
-                "op_key": op_key,
-                "lut_us": None,
-                "lut_dims": None,
-                "weight_bytes": int(w_bytes),
-                "weight_mem_s": float(weight_mem_s),
-                "act_mem_s": float(act_mem_s),
-                "mem_s": float(mem_s),
-                "bw_gbs": float(bw),
-                "overhead_us": float(self.op_overhead_us),
-                "lat_s": float(sec),
-            }
-
-        # Norm
-        if op_key == "norm":
-            rows = max(1, int(p.batch) * max(1, int(p.q_len)))
-            width = max(1, int(p.dim))
-            lut_dims = (rows, width)
-            lut_us = float(self._lut_us_norm(rows, width))
-
-        # Softmax
-        elif op_key == "softmax":
-            # scores shape: [B, H, T, K] -> treat as (B*H*T) rows x K columns
-            M_rows = max(1, int(p.batch) * max(1, int(p.q_heads)) * max(1, int(p.q_len)))
-            K_cols = max(1, int(p.kv_len))
-            lut_dims = (M_rows, K_cols)
-            lut_us = float(self._lut_us_softmax(M_rows, K_cols, phase=str(phase), causal=True))
-
-        # Activation (GELU proxy)
-        elif op_key == "gelu":
-            width = int(p.ffn_dim if int(p.ffn_dim) > 0 else int(p.dim))
-            data_len = max(1, int(p.batch)) * max(1, int(p.q_len)) * max(1, int(width))
-            lut_dims = (data_len,)
-            lut_us = float(self._lut_us_gelu(data_len))
-
-        # MMAD / GEMM / BMM
-        else:
-            # Attention core BMM folded into GEMM
-            if op_key in ("score", "output"):
-                bmm_batch = max(1, int(p.batch) * max(1, int(p.q_heads)))
-                M_mm = max(1, int(bmm_batch) * max(1, int(p.q_len)))
-                Tk = max(1, int(p.kv_len))
-                Dh = max(1, int(p.head_dim))
-
-                if op_key == "score":
-                    N_mm = int(Tk)
-                    K_mm = int(Dh)
-                else:
-                    N_mm = int(Dh)
-                    K_mm = int(Tk)
-
-            # Projections / FFN GEMM
-            else:
-                M_mm = max(1, int(p.batch) * max(1, int(p.q_len)))
-
-                if op_key == "q_proj":
-                    K_mm = max(1, int(p.dim))
-                    N_mm = max(1, int(p.q_dim))
-                elif op_key in ("k_proj", "v_proj"):
-                    K_mm = max(1, int(p.dim))
-                    N_mm = max(1, int(p.kv_dim))
-                elif op_key == "wo_proj":
-                    K_mm = max(1, int(p.o_dim))
-                    N_mm = max(1, int(p.dim))
-                elif op_key in ("ffn_up", "ffn_gate"):
-                    K_mm = max(1, int(p.dim))
-                    N_mm = max(1, int(p.ffn_dim))
-                elif op_key == "ffn_down":
-                    K_mm = max(1, int(p.ffn_dim))
-                    N_mm = max(1, int(p.dim))
-                else:
-                    K_mm = 1
-                    N_mm = 1
-
-            lut_dims = (int(M_mm), int(N_mm), int(K_mm))
-            lut_us = float(self._lut_us_mmad(int(M_mm), int(N_mm), int(K_mm)))
-
-        # Convert to seconds + mem-bound + overhead
-        sec_lut = float(lut_us) * 1e-6 if lut_us is not None else 0.0
-        sec = float(max(sec_lut, float(mem_s)))
+        sec = float(self.cm.node_device_cost(node, self.dev, self._label, int(p.batch), int(seq_len), str(sig.phase)))
         sec += float(self.op_overhead_us) * 1e-6
 
-        return sec, {
-            "op": op_raw,
-            "op_key": op_key,
-            "lut_us": float(lut_us) if lut_us is not None else None,
-            "lut_dims": tuple(int(x) for x in (lut_dims or tuple())),
-            "weight_bytes": int(w_bytes),
-            "weight_mem_s": float(weight_mem_s),
-            "act_mem_s": float(act_mem_s),
+        return float(sec), {
+            "op": str(sig.op),
+            "op_key": str(op_key),
             "mem_s": float(mem_s),
-            "bw_gbs": float(bw),
             "overhead_us": float(self.op_overhead_us),
             "lat_s": float(sec),
             "params": {
@@ -3897,7 +3658,6 @@ class NPUBackendViaLUT:
                 self._dbg.log(f"[npu-debug] ops_repr: {ops_repr}")
             self._dbg.log("[npu-debug] op plan (logical shapes inferred from schedule cfg):")
 
-        # Pre-build plan using shared infer_op_shape
         plan: List[Tuple[OpSig, OpShape]] = []
         for op, shard in seg.ops:
             sig = OpSig(device_type=seg.device_type, phase=seg.phase, step=seg.step, op=op, shard=shard)
@@ -3905,7 +3665,6 @@ class NPUBackendViaLUT:
             plan.append((sig, sh))
 
             if self.debug and str(op).strip().lower() not in _COMM_OPS:
-                # Match schedule_deploy_verify.py debug shape print style (batch is applied in LUT dims).
                 D = int(sh.dim)
                 Sd = int(sh.shard_dim)
                 Fsd = int(sh.ffn_shard_dim)
@@ -3955,44 +3714,19 @@ class NPUBackendViaLUT:
                 out_s = f"{out[0]}=[{_fmt_shape(out[1])}]" if out[1] else out[0]
                 self._dbg.log(f"  - op op={str(op):<8} shard={int(shard):<2d}  {ins_s}  ->  {out_s}  (T={int(T)}, K={int(K)})")
 
-        # Run estimation
-        ops_meta = meta.get("ops", []) or []
         for j, (sig, sh) in enumerate(plan):
-            # Optional per-op weight bytes from exported tasks JSON (if present).
-            w_bytes = None
-            try:
-                if isinstance(ops_meta, list) and j < len(ops_meta) and isinstance(ops_meta[j], dict):
-                    od = ops_meta[j]
-                    for kk in ("weight_bytes", "weight_size", "weight", "wbytes"):
-                        if kk in od and od.get(kk) is not None:
-                            w_bytes = int(float(od.get(kk)))
-                            break
-            except Exception:
-                w_bytes = None
-
-            sec, dbg = self.estimate_op_s(
-                op=sig.op,
-                shard=int(sig.shard),
-                phase=str(sig.phase),
-                step=int(sig.step),
-                sh=sh,
-                weight_bytes=w_bytes,
-            )
+            sec, dbg = self.estimate_op_s(sig=sig, sh=sh)
             total_s += float(sec)
-            if self.debug and dbg is not None:
+            if self.debug:
                 dbg["idx"] = int(j)
                 dbg["phase"] = str(sig.phase)
                 dbg["step"] = int(sig.step)
                 dbg["shard"] = int(sig.shard)
                 per_op.append(dbg)
-
-                if not dbg.get("skip", False):
-                    self._dbg.log(
-                        f"[npu-debug] op#{j:02d} op={dbg.get('op'):<8} key={dbg.get('op_key'):<10} "
-                        f"lut_dims={dbg.get('lut_dims')} lut={dbg.get('lut_us')}us "
-                        f"w={int(dbg.get('weight_bytes',0) or 0)}B wmem={dbg.get('weight_mem_s',0)*1e3:.3f}ms "
-                        f"mem={dbg.get('mem_s',0)*1e3:.3f}ms lat={dbg.get('lat_s',0)*1e3:.3f}ms"
-                    )
+                self._dbg.log(
+                    f"[npu-debug] op#{j:02d} op={dbg.get('op'):<8} key={dbg.get('op_key'):<10} "
+                    f"mem={dbg.get('mem_s',0)*1e3:.3f}ms lat={dbg.get('lat_s',0)*1e3:.3f}ms"
+                )
 
         if self.debug:
             self._dbg.log(f"[npu-debug] segment total latency: {total_s*1e3:.3f} ms")
@@ -4053,13 +3787,12 @@ def run_npu(
 
     dbg_logger = _DebugLogger(enabled=bool(debug), out_path=debug_txt)
 
-    backend = NPUBackendViaLUT(
+    backend = NPUBackendViaCostModel(
         cfg,
         debug_logger=dbg_logger,
         npu_dtype=str(npu_dtype),
         npu_mem_bw_gbs=float(npu_mem_bw_gbs),
         op_overhead_us=float(op_overhead_us),
-        use_mem_bound=bool(use_mem_bound),
     )
 
     results: Dict[str, float] = {}
@@ -4360,12 +4093,21 @@ def _build_row_durations_layer_scope(
         else:
             total_lat = None
 
+        extra_local = 0.0
+        try:
+            if "weight_extra_noncompute_s" in g.columns:
+                extra_local = float(pd.to_numeric(g["weight_extra_noncompute_s"], errors="coerce").fillna(0.0).sum())
+        except Exception:
+            extra_local = 0.0
+
         if total_lat is None:
             if allow_missing:
                 total_lat = 0.0
             else:
                 missing += 1
                 total_lat = 0.0
+
+        total_lat = float(total_lat) + float(extra_local)
 
         wsum = float(np.nansum(w.astype(np.float64)))
         if wsum > 0:
@@ -4507,6 +4249,87 @@ def compute_trace_times_from_ops_csv(df: pd.DataFrame, *, decode_stride: int = 1
         "trace_total_scaled_s": float(total),
         "trace_total_s": float(total),
     }
+
+def _prepare_weight_extra_noncompute_columns(
+    df: pd.DataFrame,
+    *,
+    include_weight_comm_fallback: bool,
+) -> pd.DataFrame:
+    """Prepare per-op non-compute weight overhead columns from ops_trace extras."""
+    out = df.copy()
+    numeric_cols = (
+        "weight_comm_s",
+        "weight_local_total_s",
+        "weight_local_serial_s",
+        "weight_local_overlap_s",
+        "weight_compute_s",
+        "weight_overlap_gate_s",
+    )
+    for c in numeric_cols:
+        if c not in out.columns:
+            out[c] = 0.0
+        out[c] = pd.to_numeric(out[c], errors="coerce").fillna(0.0).astype(float)
+
+    overlap_tail = (out["weight_overlap_gate_s"] - out["weight_compute_s"]).clip(lower=0.0)
+    weight_extra = out["weight_local_serial_s"] + overlap_tail
+
+    # Fallback for older traces that do not carry the gate/compute fields yet.
+    fallback_mask = (out["weight_overlap_gate_s"].abs() + out["weight_compute_s"].abs()) <= 0.0
+    if bool(fallback_mask.any()):
+        weight_extra = weight_extra.where(~fallback_mask, out["weight_local_total_s"])
+
+    if include_weight_comm_fallback:
+        weight_extra = weight_extra + out["weight_comm_s"]
+
+    out["weight_extra_noncompute_s"] = pd.to_numeric(weight_extra, errors="coerce").fillna(0.0).astype(float)
+    return out
+
+
+def _build_coarse_majority_weight_extra_map(
+    df: pd.DataFrame,
+    *,
+    total_shards: int,
+    extra_col: str = "weight_extra_noncompute_s",
+) -> Dict[Tuple[str, int, int, str], float]:
+    """Aggregate per-(phase,step,layer,device_type) weight extra in coarse-majority mode."""
+    total_shards = int(total_shards)
+    if total_shards <= 0:
+        total_shards = 1
+
+    comp = df[df["device_type"].astype(str).str.lower().isin(["npu", "pim"])].copy()
+    if comp.empty:
+        return {}
+    op_l = comp["op"].astype(str).str.strip().str.lower()
+    comp = comp[~op_l.isin(_COMM_OPS)].copy()
+    if comp.empty:
+        return {}
+
+    comp["_base_node"] = comp["node_id"].apply(strip_shard_suffix)
+    if extra_col not in comp.columns:
+        comp[extra_col] = 0.0
+    comp[extra_col] = pd.to_numeric(comp[extra_col], errors="coerce").fillna(0.0).astype(float)
+
+    out: Dict[Tuple[str, int, int, str], float] = {}
+    for (phase, step, layer), g_layer in comp.groupby(["phase", "step", "layer"], sort=False):
+        for _base, g_op in g_layer.groupby("_base_node", sort=False):
+            dev0 = str(g_op["device_type"].iloc[0]).strip().lower()
+            sh_series = pd.to_numeric(g_op.get("shard"), errors="coerce").fillna(-1).astype(int)
+            is_sharded = bool((sh_series >= 0).any())
+
+            chosen = dev0
+            if is_sharded:
+                gtmp = g_op.copy()
+                gtmp["_shard_i"] = sh_series.values
+                gpu_mask = gtmp["device_type"].astype(str).str.lower().eq("npu") & (gtmp["_shard_i"] >= 0)
+                gpu_shards = set(gtmp.loc[gpu_mask, "_shard_i"].tolist())
+                num_gpu = len(gpu_shards)
+                chosen = "npu" if num_gpu > (float(total_shards) / 2.0) else "pim"
+
+            kk = (str(phase), int(step), int(layer), str(chosen))
+            out[kk] = float(out.get(kk, 0.0)) + float(g_op[extra_col].sum())
+
+    return out
+
 
 def merge(
     schedule_paths: List[str],
@@ -4756,6 +4579,10 @@ def merge(
         actual_token_index_by_step = build_actual_step_token_index_map(df, decode_stride=int(decode_stride))
 
         comms_for_sched = _pick_comms_for_schedule(i)
+        df = _prepare_weight_extra_noncompute_columns(
+            df,
+            include_weight_comm_fallback=(not bool(comms_for_sched)),
+        )
         wl_total = _lookup_weight_load_from_results(str(p))
         weight_load_prefill_s = 0.0
         weight_load_decode_s = 0.0
@@ -4889,12 +4716,20 @@ def merge(
         gpu_layer_eff: Dict[Tuple[str, int, int], float] = {}
         pim_layer_eff: Dict[Tuple[str, int, int], float] = {}
         missing_segments = 0
+        coarse_weight_extra_map: Dict[Tuple[str, int, int, str], float] = {}
+        if use_coarse:
+            coarse_weight_extra_map = _build_coarse_majority_weight_extra_map(
+                df,
+                total_shards=int(shards),
+                extra_col="weight_extra_noncompute_s",
+            )
 
         if use_coarse:
             # Coarse-grained shard placement: decide GPU vs PIM per sharded op by majority,
             # then build one GPU segment and/or one PIM segment per (phase,step,layer).
             for phase, step, sig_step, layer, dev_type, ops in _iter_layer_segments_coarse_majority(df, total_shards=int(shards)):
                 lat = _lookup_latency(str(dev_type), str(phase), int(sig_step), tuple(ops))
+                extra_local = float(coarse_weight_extra_map.get((str(phase), int(step), int(layer), str(dev_type).strip().lower()), 0.0))
                 if lat is None:
                     missing_segments += 1
                     if not allow_missing and dbg_f:
@@ -4902,6 +4737,8 @@ def merge(
                             f"[MISSING] {p.name} phase={phase} step={step} layer={layer} dev={dev_type} ops={len(ops)} (coarse)\n"
                         )
                     lat = 0.0
+
+                lat = float(lat) + float(extra_local)
 
                 key = (str(phase), int(step), int(layer))
                 dt = str(dev_type).strip().lower()
@@ -4938,11 +4775,19 @@ def merge(
                     continue
 
                 lat = _lookup_latency(dev_type, str(phase), int(sig_step), tuple(ops))
+                extra_local = 0.0
+                try:
+                    if "weight_extra_noncompute_s" in g.columns:
+                        extra_local = float(pd.to_numeric(g["weight_extra_noncompute_s"], errors="coerce").fillna(0.0).sum())
+                except Exception:
+                    extra_local = 0.0
                 if lat is None:
                     missing_segments += 1
                     if not allow_missing and dbg_f:
                         dbg_f.write(f"[MISSING] {p.name} phase={phase} step={step} layer={layer} dev={dev_type} ops={len(ops)}\n")
                     lat = 0.0
+
+                lat = float(lat) + float(extra_local)
 
                 slack = 0.0
                 if slack_model != "none":
@@ -5024,6 +4869,9 @@ def merge(
                                 continue
                             ops_t = tuple(ops)
                             lat_s, lat_key, step_used, mode = _lookup_latency_with_key(dev_type, str(phase), int(sig_step_dbg), ops_t)
+                            extra_local = float(coarse_weight_extra_map.get((str(phase), int(step), int(layer), str(dev_type).strip().lower()), 0.0))
+                            if lat_s is not None:
+                                lat_s = float(lat_s) + float(extra_local)
 
                             slack_s = 0.0
                             span_s = None
@@ -5055,6 +4903,7 @@ def merge(
                                     "schedule_sum_s": float(trace_s),
                                     "schedule_span_s": float(span_s) if span_s is not None else None,
                                     "schedule_slack_s": float(slack_s),
+                                    "weight_extra_noncompute_s": float(extra_local),
                                     "measured_s": float(lat_s) if lat_s is not None else None,
                                     "measured_key": lat_key,
                                     "measured_step": step_used,
@@ -5106,6 +4955,14 @@ def merge(
                         except Exception:
                             sig_step_dbg = int(step)
                         lat_s, lat_key, step_used, mode = _lookup_latency_with_key(dev_type, str(phase), int(sig_step_dbg), ops_t)
+                        extra_local = 0.0
+                        try:
+                            if "weight_extra_noncompute_s" in g.columns:
+                                extra_local = float(pd.to_numeric(g["weight_extra_noncompute_s"], errors="coerce").fillna(0.0).sum())
+                        except Exception:
+                            extra_local = 0.0
+                        if lat_s is not None:
+                            lat_s = float(lat_s) + float(extra_local)
                         if str(phase) == "decode":
                             scale = float(decode_scale_by_step.get(int(step), int(decode_stride)))
                             tok_idx = int(actual_token_index_by_step.get(int(step), decode_token_block_start_from_sample_step(int(step), int(decode_stride))))

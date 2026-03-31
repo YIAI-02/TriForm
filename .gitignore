@@ -1,6 +1,9 @@
 /measurements/**/build/**
 /algorithms/debug_log.txt
 /algorithms/output/
+/algorithms/output_test2/
+/algorithms/pkl/
+/algorithms/output_test/
 /algorithms/job*/
 figs/
 output/
@@ -19,6 +22,9 @@ submodules/CENT
 submodules/LLMCompass
 verify/sst64_rst64
 verify/sst8_rst8
-/algorithms/output/
+verify/sst2_rst2
+/algorithms/*.out
+/algorithms/*.sh
+/algorithms/*.slurm
 /verify/hw_hardware_1gpu_2aim/
 /verify/hw_hardware_1npu_2aim/
