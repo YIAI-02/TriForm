@@ -6,7 +6,7 @@ shopt -s nullglob
 # Single source of truth
 # =========================
 CONFIG_FILE="${CONFIG_FILE:-./examples/evaluate_len_sweep_config_npu.json}"
-OUTPUT_ROOT="${OUTPUT_ROOT:-./output_test2/exp1}"
+OUTPUT_ROOT="${OUTPUT_ROOT:-./output/exp1}"
 
 # Sweep dims
 MODEL_FAMILY_VARIANTS=(

@@ -17,7 +17,7 @@
         "type": "npu",
         "tflops": 280.0,
         "mem_bw_GBs": 819.2,
-        "mem_capacity_GB": 32.0
+        "mem_capacity_GB": 16.0
       },
       {
         "name": "PIM0",
@@ -37,7 +37,8 @@
             "column": 8,
             "offset": 12
           }
-        }
+        },
+        "freq_ghz": 0.8
       },
       {
         "name": "PIM1",
@@ -57,7 +58,8 @@
             "column": 8,
             "offset": 12
           }
-        }
+        },
+        "freq_ghz": 0.8
       },
       {
         "name": "PIM2",
@@ -77,7 +79,8 @@
             "column": 8,
             "offset": 12
           }
-        }
+        },
+        "freq_ghz": 0.8
       },
       {
         "name": "PIM3",
@@ -97,10 +100,11 @@
             "column": 8,
             "offset": 12
           }
-        }
+        },
+        "freq_ghz": 0.8
       }
     ],
-    "fc_bw_GBs": 32.0,
+    "fc_bw_GBs":62.0,
     "link_defaults": {
       "latency_s": 0.0,
       "overhead_s": 0.0,

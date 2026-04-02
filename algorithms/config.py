@@ -33,41 +33,25 @@ NPU_WEIGHT_TARGET_FORMAT_BY_OP = {
  }
 # Format size multipliers (alignment/packing overhead modeling)
 FORMAT_SIZE_MULTIPLIER = {
-    "ND": 1.2,
-    "NZ": 1.0,
+    "ND": 1.0,
+    "NZ": 0.9,
     "ZN": 1.0,
     "ZZ": 1.0,
     "PIM-OPT": 1.0,
     "DUAL": 1.0,
 }
 
-#TODO
-# Format conversion bandwidth (GB/s) per device type
-FORMAT_CONV_BW_GBs = {
-    "cpu": 25.0,
-    "npu": 819.2,
-    "pim": 8192
-}
+# -----------------------------------------------------------------------------
+# Overlap controls (runtime-configurable; keep hardware/runtime bandwidth knobs
+# in hardware JSON or runtime_models/*.json only)
+# -----------------------------------------------------------------------------
+# 0.0 => fully serial L1/L2, 1.0 => full overlap between L1(host->PIM comm)
+# and L2(local ND/NZ -> PIM-OPT conversion/programming).
+PIM_WEIGHT_LOAD_OVERLAP_RATIO: float = 0.0
 
-# data format cold start
-FORMAT_CONV_OVERHEAD_US = {
-    "cpu": 1,
-    "npu": 0.0,
-    "pim": 0.0
-}
-
-WEIGHT_LOCAL_LOAD_OVERLAP_RATIO = 1.0
-# Online PIM weight-load model uses fitted bandwidth/overhead, not trace simulation.
-# Keys are local programming stages measured in ND-equivalent bytes.
-PIM_WEIGHT_RUNTIME_MODEL = {
-    "paths": {
-        "ND->PIM-OPT": {"bw_gbs": 280, "overhead_us": 2.0},
-        "PIM-OPT->PIM-OPT": {"bw_gbs": 8192, "overhead_us": 1.0},
-        "NZ->ND": {"bw_gbs": 480.0, "overhead_us": 4.0},
-    }
-}
-
-NPU_CACHE_LOCAL_LOAD_BW_SCALE = 1.0
+# 0.0 => f 1.0 => full overlap between load stage L
+# and compute stage C for weight-bearing operators.
+WEIGHT_LOAD_COMPUTE_OVERLAP_RATIO: float = 1.0
 NPU_RUNTIME_MODEL_DIR_CANDIDATES = (
     "./run_time_model",
     "./runtime_models",
@@ -75,10 +59,6 @@ NPU_RUNTIME_MODEL_DIR_CANDIDATES = (
 NPU_RUNTIME_MODEL_DIR = "./run_time_model"
 # “latency = transfer + convert” serial or overlap (0~1)
 NONOVERLAP_TIME = 0.5
-
-# PIM 频率（GHz）：cycles / (PIM_FREQ_GHZ * 1e9) = seconds
-PIM_FREQ_GHZ: float = 1.0
-GB_FREQ_GHZ: float = 1.0
 
 # PIM 容量分配系数
 PIM_STATIC_ALLOC_RATIO: float = 0.9
@@ -192,14 +172,13 @@ SCHED_DEFAULT: str = "heft"
 # in large unrolled decode graphs.
 SCHED_JOINT_LK_ENABLE: bool = True
 SCHED_JOINT_LK_H: int = 3
-SCHED_JOINT_LK_GAMMA: float = 0.6
-SCHED_JOINT_LK_CONSIST_LAMBDA: float = 4
+SCHED_JOINT_LK_GAMMA: float = 0.0
+SCHED_JOINT_LK_CONSIST_LAMBDA: float = 0
 SCHED_JOINT_LK_PLAN_HINT_MAX: int =  3
 # Weight-reuse bias gain multiplier (eta in bias formula)
-SCHED_WEIGHT_BIAS_ETA: float = 50
-
+SCHED_WEIGHT_BIAS_ETA: float = 0.1
 #AMORT
-SCHED_DECODE_AMORT_ENABLE = False
+SCHED_DECODE_AMORT_ENABLE = True
 SCHED_DECODE_AMORT_ALPHA = 1
 SCHED_DECODE_AMORT_RMIN = 1
 # Optional reuse probability multiplier (useful later for MoE / gated subgraphs).

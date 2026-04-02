@@ -9,6 +9,7 @@ import logging
 import time
 from datetime import datetime
 from threading import Lock
+from weight_stage_trace_tools import enrich_weight_stage_rows
 
 logger = logging.getLogger(__name__)
 
@@ -135,10 +136,15 @@ class StatsRecorder:
             "phase", "node_id", "op", "device", "device_type", "mode",
             "start", "end", "duration"
         ]
+        try:
+            op_rows = enrich_weight_stage_rows(self.op_device_events)
+        except Exception:
+            op_rows = [dict(e) if isinstance(e, dict) else {} for e in self.op_device_events]
+
         ops_extra_keys: list[str] = []
         try:
             keys = set()
-            for e in self.op_device_events:
+            for e in op_rows:
                 if isinstance(e, dict):
                     keys.update(e.keys())
             keys.difference_update(base_ops_fields)
@@ -150,7 +156,7 @@ class StatsRecorder:
         with ops_csv_path.open("w", newline="", encoding="utf-8") as f:
             w = csv.DictWriter(f, fieldnames=ops_fields)
             w.writeheader()
-            for e in self.op_device_events:
+            for e in op_rows:
                 w.writerow({k: (e.get(k) if isinstance(e, dict) else "") for k in ops_fields})
 
         base_comm_fields = [

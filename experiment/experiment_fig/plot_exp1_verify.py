@@ -12,7 +12,7 @@ python3 plot_exp1_verify.py \
   --exclude "weights_on_pim" \
   --dims "128x128,128x512,128x1024,1024x128,1024x512,1024x1024" \
   --name-map "pd=PD,ianus=PD+FFN,facil=PD+Linear,attacc=PD+Attention,attn_on_pim=AF,hefthint=Bifocal" \
-  --output ../../figs/verify/sst8_rst8/llama_7b_fp16_b16_s8.pdf
+  --output ../../figs/exp1/verify/sst8_rst8/llama_7b_fp16_b16_s8.pdf
 
 Multiple models (one model per row, one shared legend at the top):
 python3 plot_exp1_verify.py \

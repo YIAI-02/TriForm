@@ -12,7 +12,7 @@ OUTPUT_ROOT="${OUTPUT_ROOT:-./output/exp2/4shards}"
 MODEL_FAMILY_VARIANTS=(
   # "mixtral:8x7b"
   # "palm:62b"
-  "qwen:7b"
+  # "qwen:7b"
   "qwen:14b"
   "llama:7b"
   "llama:13b"

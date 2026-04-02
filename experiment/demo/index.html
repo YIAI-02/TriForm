@@ -1806,13 +1806,17 @@ function buildTrace(rowsRaw){
 
   // Token indexing for decode
   const nodesPerToken = prefill.length;
-  const decodeSorted = decode.slice().sort((a,b)=>(a.start-b.start));
-  const tokenCount = (nodesPerToken > 0) ? Math.floor(decodeSorted.length / nodesPerToken) : 0;
+
+  // Keep decode rows in CSV/file order when assigning token_idx.
+  // Some heuristic traces overlap work across adjacent decode steps in time;
+  // sorting by start time can then mix rows from neighboring tokens.
+  const decodeOrdered = decode.slice();
+  const tokenCount = (nodesPerToken > 0) ? Math.floor(decodeOrdered.length / nodesPerToken) : 0;
 
   // Assign token_idx
-  for (let i=0;i<decodeSorted.length;i++){
+  for (let i=0;i<decodeOrdered.length;i++){
     const t = (nodesPerToken > 0) ? Math.floor(i / nodesPerToken) : 0;
-    decodeSorted[i].token_idx = t;
+    decodeOrdered[i].token_idx = t;
   }
 
   // Build per-token start/end using the full decode (all layers)
@@ -1823,7 +1827,7 @@ function buildTrace(rowsRaw){
     const a = t * nodesPerToken;
     const b = (t+1) * nodesPerToken;
     for (let i=a;i<b;i++){
-      const r = decodeSorted[i];
+      const r = decodeOrdered[i];
       const s = Number(r.start), e = Number(r.end);
       if (Number.isFinite(s)) sMin = Math.min(sMin, s);
       if (Number.isFinite(e)) eMax = Math.max(eMax, e);
@@ -1839,7 +1843,7 @@ function buildTrace(rowsRaw){
   }
 
   const idxDecode = {};
-  for (const r of decodeSorted){
+  for (const r of decodeOrdered){
     const t = r.token_idx || 0;
     idxDecode[t] ||= {};
     (idxDecode[t][r.layer] ||= []).push(r);
@@ -2143,7 +2147,11 @@ const player = {
   layersToPlay: [],
 
   // control how long a segment takes in wall time at speed = 1
-  segmentSecondsAt1x: 2.4
+  segmentSecondsAt1x: 2.4,
+
+  // Hold the completed end-of-segment frame briefly so the final operator
+  // (often Add2 in these traces) can actually be seen before we switch views.
+  segmentEndHoldMs: 120
 };
 
 function curSeg(){
@@ -2508,15 +2516,24 @@ function alignedMetricY(metric){
   return speedup;
 }
 
-function updateInfoBar(){
+function updateInfoTitle(){
   const model = modelLabel();
   const batch = UI.batch.value;
-    const prefillLen = UI.prefillLen?.value;
+  const prefillLen = UI.prefillLen?.value;
   const decodeLen  = UI.decodeLen?.value;
   const dtype = UI.dtype.value;
 
+  UI.infoTitle.textContent = `Model: ${model} • B=${batch} • prefill=${prefillLen} • decode=${decodeLen} • ${dtype}`;
+}
+
+function updateInfoBar(){
+  updateInfoTitle();
+
   const seg = curSeg();
-  if (!seg) return;
+  if (!seg){
+    UI.infoSub.textContent = 'Phase: — • Layer: — • Token: —';
+    return;
+  }
 
   const phase = seg.phase;
   const layer = seg.layer;
@@ -2524,7 +2541,6 @@ function updateInfoBar(){
 
   const tokenLabel = (phase === 'prefill') ? 'prefill' : `decode#${tok}`;
 
-  UI.infoTitle.textContent = `Model: ${model} • B=${batch} • prefill=${prefillLen} • decode=${decodeLen} • ${dtype}`;
   UI.infoSub.textContent = `Phase: ${phase} • Layer: L${layer} • Token: ${tokenLabel}`;
 
   const { baseT, heuT, speedup, saved } = alignedTimes();
@@ -2878,6 +2894,10 @@ function showJumpBadge(prevSeg, nextSeg){
 }
 
 
+function sleep(ms){
+  return new Promise(resolve => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
+}
+
 async function gotoSegment(segIdx){
   player.segIdx = clamp(segIdx, 0, player.segList.length - 1);
   player.p = 0;
@@ -2898,6 +2918,10 @@ async function nextSegment(){
   }
 
   const prevSeg = curSeg();
+
+  // Let the completed frame paint before switching to the next segment.
+  await sleep(player.segmentEndHoldMs);
+
   player.segIdx++;
   player.p = 0;
   const nextSeg = curSeg();
@@ -2965,8 +2989,11 @@ async function stepOnce(){
   }
 
   if (next == null){
-    player.p = 1;
-    renderFrame();
+    if (player.p < 1 - 1e-9){
+      player.p = 1;
+      renderFrame();
+      return;
+    }
     await nextSegment();
     return;
   }
@@ -3070,9 +3097,11 @@ UI.phase.onchange = () => { player.playing = false; UI.play.textContent = 'Play'
 UI.layer.onchange = () => { player.playing = false; UI.play.textContent = 'Play'; rebuildAndRender(); };
 UI.layerMode.onchange = () => { player.playing = false; UI.play.textContent = 'Play'; rebuildAndRender(); };
 UI.layerCount.onchange = () => { player.playing = false; UI.play.textContent = 'Play'; rebuildAndRender(); };
-UI.model.onchange = () => { player.playing = false; UI.play.textContent = 'Play'; inferredModel = null; posMapByLayer = {}; rebuildAndRender(); };
-UI.prefillLen.onchange = () => { refreshAutoLoadHints(); };
-UI.decodeLen.onchange = () => { refreshAutoLoadHints(); };
+UI.model.onchange = () => { player.playing = false; UI.play.textContent = 'Play'; inferredModel = null; posMapByLayer = {}; updateInfoTitle(); rebuildAndRender(); };
+UI.batch.onchange = () => { updateInfoTitle(); };
+UI.dtype.onchange = () => { updateInfoTitle(); };
+UI.prefillLen.onchange = () => { refreshAutoLoadHints(); updateInfoTitle(); };
+UI.decodeLen.onchange = () => { refreshAutoLoadHints(); updateInfoTitle(); };
 
 UI.tokStart.onchange = () => { player.playing = false; UI.play.textContent = 'Play'; rebuildAndRender(); };
 UI.tokCount.onchange = () => { player.playing = false; UI.play.textContent = 'Play'; rebuildAndRender(); };
@@ -3157,6 +3186,7 @@ async function boot(){
   player.speed = Number(UI.speed.value);
 
   refreshAutoLoadHints();
+  updateInfoTitle();
   setStatus('Auto-loading traces…');
 
   const hit = await autoLoadMatchingPair();

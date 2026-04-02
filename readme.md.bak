@@ -1,0 +1,40 @@
+
+
+
+
+
+## Terminology mapping: paper names vs code names
+
+The paper and the code use slightly different names in a few places. This table is the quickest way to translate between them.
+
+| Paper term                        | Code / CLI term                                              |
+| --------------------------------- | ------------------------------------------------------------ |
+| **Bifocal scheduler**             | `hefthint`                                                   |
+| **Weight Layout Arbiter**         | `weight-suggest`                                             |
+| **Linear** layout                 | `ND`                                                         |
+| **NPU_OPT** layout                | `NZ`                                                         |
+| **PIM_OPT** layout                | `PIM-OPT`                                                    |
+| **Dual copy**                     | `DUAL`                                                       |
+| **Prefill–decode partition (PD)** | `pd` baseline                                                |
+| **Attention-on-PIM baseline**     | `attn_on_pim` or `attacc` depending on the granularity you want |
+| **FACIL-inspired decode rule**    | `facil`                                                      |
+| **IANUS-inspired decode rule**    | `ianus`                                                      |
+| **NeuPIMs-inspired rule**         | `neupims`                                                    |
+
+### Built-in baseline policies
+
+The current baseline registry includes the following policy names:
+
+| Baseline         | Code behavior                                                |
+| ---------------- | ------------------------------------------------------------ |
+| `pd`             | Prefill on NPU, decode on PIM.                               |
+| `weights_on_pim` | Weight-bearing operators on PIM; the rest on NPU/CPU.        |
+| `attn_on_pim`    | Attention-related operators on PIM.                          |
+| `ianus`          | Prefill on NPU; decode keeps Q/K/Softmax/Norm/Add off PIM and offloads most other work. |
+| `neupims`        | Prefill on NPU; decode offloads `QK`, `SV`, and KV-read/write-style work to PIM. |
+| `attacc`         | Prefill on NPU; decode offloads `QK`, `SV`, `Softmax`, and KV-read/write-style work to PIM. |
+| `facil`          | Prefill on NPU; decode offloads GEMV-like operators and `QK`/`SV` to PIM. |
+
+---
+
+## 

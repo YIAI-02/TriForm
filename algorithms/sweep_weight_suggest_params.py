@@ -76,7 +76,8 @@ COMMON_SWEEP_FIELDS: Tuple[str, ...] = (
     "tp_ffn",
     "algo",
     "npu_backend",
-    "weight_local_load_overlap_ratio",
+    "pim_weight_load_overlap_ratio",
+    "weight_load_compute_overlap_ratio",
 )
 
 # Optional format_* knobs. These are now optional axes, not the only sweep target.
@@ -116,7 +117,8 @@ RESULT_FIELDNAMES: Tuple[str, ...] = (
     "tp_ffn",
     "algo",
     "npu_backend",
-    "weight_local_load_overlap_ratio",
+    "pim_weight_load_overlap_ratio",
+    "weight_load_compute_overlap_ratio",
     "format_outer_max_iters",
     "format_block_change_percent",
     "format_inner_max_blocks",
@@ -622,7 +624,8 @@ def collect_axes(args: argparse.Namespace) -> Dict[str, List[Any]]:
     add_axis("tp_ffn", args.tp_ffn)
     add_axis("algo", args.algo)
     add_axis("npu_backend", args.npu_backend)
-    add_axis("weight_local_load_overlap_ratio", args.weight_local_load_overlap_ratio)
+    add_axis("pim_weight_load_overlap_ratio", args.pim_weight_load_overlap_ratio)
+    add_axis("weight_load_compute_overlap_ratio", args.weight_load_compute_overlap_ratio)
 
     add_axis("format_outer_max_iters", args.format_outer_max_iters)
     add_axis("format_block_change_percent", args.format_block_change_percent)
@@ -709,7 +712,8 @@ def effective_summary_fields(cfg: Dict[str, Any], params_json: str) -> Dict[str,
         "tp_ffn": cfg.get("tp_ffn", ""),
         "algo": cfg.get("algo", ""),
         "npu_backend": cfg.get("npu_backend", ""),
-        "weight_local_load_overlap_ratio": cfg.get("weight_local_load_overlap_ratio", ""),
+        "pim_weight_load_overlap_ratio": cfg.get("pim_weight_load_overlap_ratio", ""),
+        "weight_load_compute_overlap_ratio": cfg.get("weight_load_compute_overlap_ratio", ""),
         "format_outer_max_iters": cfg.get("format_outer_max_iters", ""),
         "format_block_change_percent": cfg.get("format_block_change_percent", ""),
         "format_inner_max_blocks": cfg.get("format_inner_max_blocks", ""),
@@ -776,7 +780,8 @@ def make_parser() -> argparse.ArgumentParser:
     ap.add_argument("--tp-ffn", dest="tp_ffn", type=int, nargs="*", default=None, help="candidate tp_ffn values")
     ap.add_argument("--algo", nargs="*", default=None, help="candidate algo values")
     ap.add_argument("--npu-backend", dest="npu_backend", nargs="*", default=None, help="candidate npu_backend values")
-    ap.add_argument("--weight-local-load-overlap-ratio", dest="weight_local_load_overlap_ratio", type=float, nargs="*", default=None, help="candidate WEIGHT_LOCAL_LOAD_OVERLAP_RATIO values in [0,1]")
+    ap.add_argument("--pim-weight-load-overlap-ratio", dest="pim_weight_load_overlap_ratio", type=float, nargs="*", default=None, help="candidate PIM_WEIGHT_LOAD_OVERLAP_RATIO values in [0,1]")
+    ap.add_argument("--weight-load-compute-overlap-ratio", dest="weight_load_compute_overlap_ratio", type=float, nargs="*", default=None, help="candidate WEIGHT_LOAD_COMPUTE_OVERLAP_RATIO values in [0,1]")
 
     # Optional format_* axes.
     ap.add_argument("--format-outer-max-iters", dest="format_outer_max_iters", type=int, nargs="*", default=None, help="candidate format_outer_max_iters values")

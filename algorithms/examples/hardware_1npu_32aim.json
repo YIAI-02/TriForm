@@ -37,7 +37,8 @@
             "column": 8,
             "offset": 12
           }
-        }
+        },
+        "freq_ghz": 0.8
       },
       {
         "name": "PIM1",
@@ -57,7 +58,8 @@
             "column": 8,
             "offset": 12
           }
-        }
+        },
+        "freq_ghz": 0.8
       },
       {
         "name": "PIM2",
@@ -77,7 +79,8 @@
             "column": 8,
             "offset": 12
           }
-        }
+        },
+        "freq_ghz": 0.8
       },
       {
         "name": "PIM3",
@@ -97,7 +100,8 @@
             "column": 8,
             "offset": 12
           }
-        }
+        },
+        "freq_ghz": 0.8
       },
       {
         "name": "PIM4",
@@ -117,7 +121,8 @@
             "column": 8,
             "offset": 12
           }
-        }
+        },
+        "freq_ghz": 0.8
       },
       {
         "name": "PIM5",
@@ -137,7 +142,8 @@
             "column": 8,
             "offset": 12
           }
-        }
+        },
+        "freq_ghz": 0.8
       },
       {
         "name": "PIM6",
@@ -157,7 +163,8 @@
             "column": 8,
             "offset": 12
           }
-        }
+        },
+        "freq_ghz": 0.8
       },
       {
         "name": "PIM7",
@@ -177,7 +184,8 @@
             "column": 8,
             "offset": 12
           }
-        }
+        },
+        "freq_ghz": 0.8
       },
       {
         "name": "PIM8",
@@ -197,7 +205,8 @@
             "column": 8,
             "offset": 12
           }
-        }
+        },
+        "freq_ghz": 0.8
       },
       {
         "name": "PIM9",
@@ -217,7 +226,8 @@
             "column": 8,
             "offset": 12
           }
-        }
+        },
+        "freq_ghz": 0.8
       },
       {
         "name": "PIM10",
@@ -237,7 +247,8 @@
             "column": 8,
             "offset": 12
           }
-        }
+        },
+        "freq_ghz": 0.8
       },
       {
         "name": "PIM11",
@@ -257,7 +268,8 @@
             "column": 8,
             "offset": 12
           }
-        }
+        },
+        "freq_ghz": 0.8
       },
       {
         "name": "PIM12",
@@ -277,7 +289,8 @@
             "column": 8,
             "offset": 12
           }
-        }
+        },
+        "freq_ghz": 0.8
       },
       {
         "name": "PIM13",
@@ -297,7 +310,8 @@
             "column": 8,
             "offset": 12
           }
-        }
+        },
+        "freq_ghz": 0.8
       },
       {
         "name": "PIM14",
@@ -317,7 +331,8 @@
             "column": 8,
             "offset": 12
           }
-        }
+        },
+        "freq_ghz": 0.8
       },
       {
         "name": "PIM15",
@@ -337,7 +352,8 @@
             "column": 8,
             "offset": 12
           }
-        }
+        },
+        "freq_ghz": 0.8
       },
       {
         "name": "PIM16",
@@ -357,7 +373,8 @@
             "column": 8,
             "offset": 12
           }
-        }
+        },
+        "freq_ghz": 0.8
       },
       {
         "name": "PIM17",
@@ -377,7 +394,8 @@
             "column": 8,
             "offset": 12
           }
-        }
+        },
+        "freq_ghz": 0.8
       },
       {
         "name": "PIM18",
@@ -397,7 +415,8 @@
             "column": 8,
             "offset": 12
           }
-        }
+        },
+        "freq_ghz": 0.8
       },
       {
         "name": "PIM19",
@@ -417,7 +436,8 @@
             "column": 8,
             "offset": 12
           }
-        }
+        },
+        "freq_ghz": 0.8
       },
       {
         "name": "PIM20",
@@ -437,7 +457,8 @@
             "column": 8,
             "offset": 12
           }
-        }
+        },
+        "freq_ghz": 0.8
       },
       {
         "name": "PIM21",
@@ -457,7 +478,8 @@
             "column": 8,
             "offset": 12
           }
-        }
+        },
+        "freq_ghz": 0.8
       },
       {
         "name": "PIM22",
@@ -477,7 +499,8 @@
             "column": 8,
             "offset": 12
           }
-        }
+        },
+        "freq_ghz": 0.8
       },
       {
         "name": "PIM23",
@@ -497,7 +520,8 @@
             "column": 8,
             "offset": 12
           }
-        }
+        },
+        "freq_ghz": 0.8
       },
       {
         "name": "PIM24",
@@ -517,7 +541,8 @@
             "column": 8,
             "offset": 12
           }
-        }
+        },
+        "freq_ghz": 0.8
       },
       {
         "name": "PIM25",
@@ -537,7 +562,8 @@
             "column": 8,
             "offset": 12
           }
-        }
+        },
+        "freq_ghz": 0.8
       },
       {
         "name": "PIM26",
@@ -557,7 +583,8 @@
             "column": 8,
             "offset": 12
           }
-        }
+        },
+        "freq_ghz": 0.8
       },
       {
         "name": "PIM27",
@@ -577,7 +604,8 @@
             "column": 8,
             "offset": 12
           }
-        }
+        },
+        "freq_ghz": 0.8
       },
       {
         "name": "PIM28",
@@ -597,7 +625,8 @@
             "column": 8,
             "offset": 12
           }
-        }
+        },
+        "freq_ghz": 0.8
       },
       {
         "name": "PIM29",
@@ -617,7 +646,8 @@
             "column": 8,
             "offset": 12
           }
-        }
+        },
+        "freq_ghz": 0.8
       },
       {
         "name": "PIM30",
@@ -637,7 +667,8 @@
             "column": 8,
             "offset": 12
           }
-        }
+        },
+        "freq_ghz": 0.8
       },
       {
         "name": "PIM31",
@@ -657,7 +688,8 @@
             "column": 8,
             "offset": 12
           }
-        }
+        },
+        "freq_ghz": 0.8
       }
     ],
     "fc_bw_GBs": 32.0,

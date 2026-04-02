@@ -41,16 +41,30 @@ def _ensure_repo_root_on_syspath() -> None:
 
 try:
     import config as _config  # type: ignore
-    from config import attach_local_debug_filter, PIM_FREQ_GHZ, GB_FREQ_GHZ  # type: ignore
+    from config import attach_local_debug_filter  # type: ignore
     from stats_recorder import get_simulation_logger  # type: ignore
 except ModuleNotFoundError:
     _ensure_repo_root_on_syspath()
     import config as _config  # type: ignore
-    from config import attach_local_debug_filter, PIM_FREQ_GHZ, GB_FREQ_GHZ  # type: ignore
+    from config import attach_local_debug_filter  # type: ignore
     from stats_recorder import get_simulation_logger  # type: ignore
 
 logger = logging.getLogger(__name__)
 attach_local_debug_filter(logger, lambda: False)
+
+
+def _require_pim_freq_ghz(pim_freq_ghz: Any) -> float:
+    try:
+        freq = float(pim_freq_ghz)
+    except Exception as exc:
+        raise RuntimeError(
+            'PIM trace backend requires device freq_ghz to be set in the hardware JSON for each PIM device.'
+        ) from exc
+    if not (freq > 0.0):
+        raise RuntimeError(
+            f'PIM trace backend requires device freq_ghz > 0 in hardware JSON, got {pim_freq_ghz!r}.'
+        )
+    return float(freq)
 
 
 @dataclass(frozen=True)
@@ -755,6 +769,7 @@ class PIMLatencyCache:
         pim_config: Path,
         ramulator_config: Path,
         batch: int = 1,
+        pim_freq_ghz: Optional[float] = None,
     ) -> str:
         ph = str(phase or '').strip().lower() or 'decode'
 
@@ -771,13 +786,17 @@ class PIMLatencyCache:
             f'|o={int(o_dim) if o_dim is not None else -1}'
         )
         cfgs = f'{_file_signature(pim_config)}|{_file_signature(ramulator_config)}'
+        try:
+            freq_tag = float(pim_freq_ghz) if pim_freq_ghz is not None else -1.0
+        except Exception:
+            freq_tag = -1.0
 
         scale_flag = 1 if PIM_TRACE_SCALE_REPEATS else 0
 
         if int(b) == 1:
-            key = f'v4|{params_base}|scale={int(scale_flag)}|{cfgs}'
+            key = f'v6|{params_base}|scale={int(scale_flag)}|freq={freq_tag}|{cfgs}'
         else:
-            key = f'v5|{params_base}|b={int(b)}|scale={int(scale_flag)}|{cfgs}'
+            key = f'v6|{params_base}|b={int(b)}|scale={int(scale_flag)}|freq={freq_tag}|{cfgs}'
         return hashlib.md5(key.encode()).hexdigest()
 
     def get(
@@ -796,8 +815,9 @@ class PIMLatencyCache:
         pim_config: Path,
         ramulator_config: Path,
         batch: int = 1,
+        pim_freq_ghz: Optional[float] = None,
     ) -> Optional[float]:
-        key = self._make_key(op, phase, dim, n_heads, n_kv_heads, ffn_dim, seqlen, head_dim, q_dim, kv_dim, o_dim, pim_config, ramulator_config, batch=batch)
+        key = self._make_key(op, phase, dim, n_heads, n_kv_heads, ffn_dim, seqlen, head_dim, q_dim, kv_dim, o_dim, pim_config, ramulator_config, batch=batch, pim_freq_ghz=pim_freq_ghz)
         with self.lock:
             v = self.cache.get(key)
         try:
@@ -822,8 +842,9 @@ class PIMLatencyCache:
         ramulator_config: Path,
         latency: float,
         batch: int = 1,
+        pim_freq_ghz: Optional[float] = None,
     ):
-        key = self._make_key(op, phase, dim, n_heads, n_kv_heads, ffn_dim, seqlen, head_dim, q_dim, kv_dim, o_dim, pim_config, ramulator_config, batch=batch)
+        key = self._make_key(op, phase, dim, n_heads, n_kv_heads, ffn_dim, seqlen, head_dim, q_dim, kv_dim, o_dim, pim_config, ramulator_config, batch=batch, pim_freq_ghz=pim_freq_ghz)
         with self.lock:
             self.cache[key] = float(latency)
             self._save_cache()
@@ -852,6 +873,7 @@ def _get_pim_latency_via_trace(
     keep_traces: bool = False,
     trace_dir: Optional[Path] = None,
     trace_prefix: Optional[str] = None,
+    pim_freq_ghz: Optional[float] = None,
     **_unused_kwargs,
 ) -> float:
     orig_op = op
@@ -866,6 +888,7 @@ def _get_pim_latency_via_trace(
         b = 1
 
     ph = str(phase or '').strip().lower() or 'decode'
+    freq_ghz = _require_pim_freq_ghz(pim_freq_ghz)
     sim_logger = get_simulation_logger()
     sim_logger.record_simulation(op, dim, n_heads, n_kv_heads, ffn_dim, seqlen)
     if orig_op != op:
@@ -905,6 +928,7 @@ def _get_pim_latency_via_trace(
                 (int(o_dim) if o_dim is not None else None),
                 pim_config, ramulator_config,
                 batch=int(base_b),
+                pim_freq_ghz=float(freq_ghz),
             )
             if cached_base is not None:
                 return float(cached_base) * float(scale)
@@ -951,10 +975,7 @@ def _get_pim_latency_via_trace(
             sim_logger._log('[PIM] Starting ramulator simulation (unit trace)...')
             timeout_s = int(ramulator_timeout_s) if ramulator_timeout_s else 3000
             cycles = _run_ramulator(trace_path, ramulator_config, timeout=timeout_s)
-            if PIM_FREQ_GHZ > 0.0:
-                base_latency = float(cycles) / (PIM_FREQ_GHZ * 1000000000.0)
-            else:
-                base_latency = 0.0
+            base_latency = float(cycles) / (float(freq_ghz) * 1000000000.0)
             total_latency = float(base_latency) * float(scale)
             sim_logger._log(
                 f'[PIM] Latency computed: base={base_latency:.6e}s ({cycles} cycles), '
@@ -972,6 +993,7 @@ def _get_pim_latency_via_trace(
                     pim_config, ramulator_config,
                     float(base_latency),
                     batch=int(base_b),
+                    pim_freq_ghz=float(freq_ghz),
                 )
             return float(total_latency)
         except Exception as e:
@@ -998,6 +1020,7 @@ def _get_pim_latency_via_trace(
             (int(o_dim) if o_dim is not None else None),
             pim_config, ramulator_config,
             batch=int(b),
+            pim_freq_ghz=float(freq_ghz),
         )
         if cached is not None:
             return float(cached)
@@ -1030,10 +1053,7 @@ def _get_pim_latency_via_trace(
         sim_logger._log('[PIM] Starting ramulator simulation...')
         timeout_s = int(ramulator_timeout_s) if ramulator_timeout_s else 3000
         cycles = _run_ramulator(trace_path, ramulator_config, timeout=timeout_s)
-        if PIM_FREQ_GHZ > 0.0:
-            latency = float(cycles) / (PIM_FREQ_GHZ * 1000000000.0)
-        else:
-            latency = 0.0
+        latency = float(cycles) / (float(freq_ghz) * 1000000000.0)
         sim_logger._log(f'[PIM] Latency computed: {latency:.6e} seconds ({cycles} cycles)')
         if use_cache:
             _pim_cache.set(
@@ -1047,6 +1067,7 @@ def _get_pim_latency_via_trace(
                 pim_config, ramulator_config,
                 float(latency),
                 batch=int(b),
+                pim_freq_ghz=float(freq_ghz),
             )
         return float(latency)
     except Exception as e:

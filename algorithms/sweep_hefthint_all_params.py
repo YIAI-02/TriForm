@@ -13,19 +13,23 @@ Compared with the old sweep_hefthint.py, this version:
 
 Example:
 python3 sweep_hefthint_all_params.py \
-  --mode random --trials 256 --seed 42 \
+  --mode grid \
+  --config-py ./config.py \
   --h 2 3 4 \
   --gamma 0.2 0.4 0.6 0.8 \
-  --lambda_ 0 1 2 4 \
-  --plan-hint-max 1 3 5 \
-  --eta 1 5 10 \
-  --amort-enable true false \
-  --amort-alpha 2 4 6 \
-  --amort-rmin 0.5 1.0 2.0 \
-  --amort-reuse-prob 0.5 1.0 \
+  --lambda 0 1 2 4 \
+  --plan_hint_max 1 \
+  --eta 0 5 10 \
+  --amort_enable false \
   --objective total \
   --outdir ./output/sweep_hefthint_all \
-  --resume
+  --resume \
+  --config ./examples/evaluate_test_config.json
+
+Notes:
+- This sweep edits config.py in place, so its own file flag is --config-py.
+- Unknown args are passed through to the runner (typically main.py evaluate),
+  so the standard runtime flag --config keeps its JSON-config meaning.
 """
 
 from __future__ import annotations
@@ -62,6 +66,69 @@ PARAM_NAME_TO_CFG = {k: cfg_name for k, cfg_name, _ in PARAM_SPECS}
 PARAM_NAME_TO_TYPE = {k: typ for k, _, typ in PARAM_SPECS}
 RESULT_FIELD_ORDER = [name for name, _, _ in PARAM_SPECS]
 TARGET_POLICY_DEFAULT = "algo:hefthint"
+
+
+def _looks_like_python_config_path(value: str) -> bool:
+    s = str(value or "").strip()
+    if not s:
+        return False
+    name = Path(s).name.lower()
+    return s.lower().endswith(".py") or name == "config.py"
+
+
+def _rewrite_legacy_config_flag(argv: Sequence[str]) -> List[str]:
+    """
+    Keep backward compatibility for the old sweep-local --config flag while
+    freeing standard runner --config (JSON) for pass-through args.
+
+    - --config config.py        -> --config-py config.py
+    - --config=./path/foo.py    -> --config-py=./path/foo.py
+    - --config ./examples/x.json stays untouched and is forwarded to runner
+    """
+    out: List[str] = []
+    i = 0
+    while i < len(argv):
+        tok = str(argv[i])
+        if tok == "--config" and i + 1 < len(argv):
+            val = str(argv[i + 1])
+            if _looks_like_python_config_path(val):
+                out.extend(["--config-py", val])
+                i += 2
+                continue
+        if tok.startswith("--config="):
+            val = tok.split("=", 1)[1]
+            if _looks_like_python_config_path(val):
+                out.append(f"--config-py={val}")
+                i += 1
+                continue
+        out.append(tok)
+        i += 1
+    return out
+
+
+def _validate_candidate_axes(ap: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    axes = {
+        "h": args.h,
+        "gamma": args.gamma,
+        "lambda": args.lambda_,
+        "plan_hint_max": args.plan_hint_max,
+        "eta": args.eta,
+        "amort_enable": args.amort_enable,
+        "amort_alpha": args.amort_alpha,
+        "amort_rmin": args.amort_rmin,
+        "amort_reuse_prob": args.amort_reuse_prob,
+    }
+    empty = [name for name, vals in axes.items() if len(list(vals)) == 0]
+    if empty:
+        ap.error("candidate list cannot be empty: " + ", ".join(empty))
+
+
+def _script_supports_passthrough(script_path: Path) -> bool:
+    try:
+        txt = _read_text(script_path)
+    except Exception:
+        return False
+    return any(token in txt for token in ('"$@"', "$@", "${@}"))
 
 
 def _fmt_num(v: float) -> str:
@@ -334,11 +401,19 @@ def build_random_combos(args: argparse.Namespace) -> List[Dict[str, Any]]:
 
 
 def make_parser() -> argparse.ArgumentParser:
-    ap = argparse.ArgumentParser(description="Sweep all HEFTHINT scheduler parameters")
-    ap.add_argument("--config", default="config.py", help="path to config.py")
+    ap = argparse.ArgumentParser(
+        description="Sweep all HEFTHINT scheduler parameters",
+        allow_abbrev=False,
+    )
+    ap.add_argument(
+        "--config-py", "--config_py", "--scheduler-config-py",
+        dest="config_py",
+        default="config.py",
+        help="path to the config.py file edited in place by this sweep script",
+    )
     ap.add_argument("--script", default="./command_single_evaluate.sh", help="bash script to run")
     ap.add_argument("--workdir", default=".", help="working directory")
-    ap.add_argument("--target-policy", default=TARGET_POLICY_DEFAULT, help="policy row to extract, e.g. algo:hefthint")
+    ap.add_argument("--target-policy", "--target_policy", default=TARGET_POLICY_DEFAULT, help="policy row to extract, e.g. algo:hefthint")
 
     ap.add_argument("--mode", choices=["grid", "random"], default="grid")
     ap.add_argument("--objective", choices=["total", "decode", "prefill"], default="total")
@@ -346,18 +421,18 @@ def make_parser() -> argparse.ArgumentParser:
     # Explicit discrete candidate lists for all HEFTHINT-related knobs.
     ap.add_argument("--h", type=int, nargs="*", default=[2, 3, 4], help="candidate SCHED_JOINT_LK_H values")
     ap.add_argument("--gamma", type=float, nargs="*", default=[0.2, 0.4, 0.6, 0.8], help="candidate SCHED_JOINT_LK_GAMMA values")
-    ap.add_argument("--lambda_", type=float, nargs="*", default=[0.0, 1.0, 2.0, 4.0], help="candidate SCHED_JOINT_LK_CONSIST_LAMBDA values")
-    ap.add_argument("--plan-hint-max", dest="plan_hint_max", type=int, nargs="*", default=[1, 3, 5], help="candidate SCHED_JOINT_LK_PLAN_HINT_MAX values")
+    ap.add_argument("--lambda", "--lambda_", dest="lambda_", type=float, nargs="*", default=[0.0, 1.0, 2.0, 4.0], help="candidate SCHED_JOINT_LK_CONSIST_LAMBDA values")
+    ap.add_argument("--plan-hint-max", "--plan_hint_max", dest="plan_hint_max", type=int, nargs="*", default=[1, 3, 5], help="candidate SCHED_JOINT_LK_PLAN_HINT_MAX values")
     ap.add_argument("--eta", type=float, nargs="*", default=[1.0, 5.0, 10.0], help="candidate SCHED_WEIGHT_BIAS_ETA values")
-    ap.add_argument("--amort-enable", dest="amort_enable", type=_parse_bool_token, nargs="*", default=[True, False], help="candidate SCHED_DECODE_AMORT_ENABLE values")
-    ap.add_argument("--amort-alpha", dest="amort_alpha", type=float, nargs="*", default=[2.0, 4.0, 6.0], help="candidate SCHED_DECODE_AMORT_ALPHA values")
-    ap.add_argument("--amort-rmin", dest="amort_rmin", type=float, nargs="*", default=[0.5, 1.0, 2.0], help="candidate SCHED_DECODE_AMORT_RMIN values")
-    ap.add_argument("--amort-reuse-prob", dest="amort_reuse_prob", type=float, nargs="*", default=[0.5, 1.0], help="candidate SCHED_DECODE_AMORT_REUSE_PROB values")
+    ap.add_argument("--amort-enable", "--amort_enable", dest="amort_enable", type=_parse_bool_token, nargs="*", default=[True, False], help="candidate SCHED_DECODE_AMORT_ENABLE values")
+    ap.add_argument("--amort-alpha", "--amort_alpha", dest="amort_alpha", type=float, nargs="*", default=[2.0, 4.0, 6.0], help="candidate SCHED_DECODE_AMORT_ALPHA values")
+    ap.add_argument("--amort-rmin", "--amort_rmin", dest="amort_rmin", type=float, nargs="*", default=[0.5, 1.0, 2.0], help="candidate SCHED_DECODE_AMORT_RMIN values")
+    ap.add_argument("--amort-reuse-prob", "--amort_reuse_prob", dest="amort_reuse_prob", type=float, nargs="*", default=[0.5, 1.0], help="candidate SCHED_DECODE_AMORT_REUSE_PROB values")
 
     ap.add_argument("--trials", type=int, default=256, help="random mode: number of sampled combinations")
     ap.add_argument("--seed", type=int, default=0, help="random mode seed")
     ap.add_argument("--repeat", type=int, default=1, help="repeat each combo N times")
-    ap.add_argument("--max-runs", type=int, default=0, help="cap total runs (0=unlimited)")
+    ap.add_argument("--max-runs", "--max_runs", type=int, default=0, help="cap total runs (0=unlimited)")
     ap.add_argument("--outdir", default="./output/sweep_hefthint_all", help="output directory for logs/results")
     ap.add_argument("--resume", action="store_true", help="skip combos already in results.csv")
     return ap
@@ -365,9 +440,11 @@ def make_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     ap = make_parser()
-    args, extra = ap.parse_known_args()
+    argv = _rewrite_legacy_config_flag(sys.argv[1:])
+    args, extra = ap.parse_known_args(argv)
+    _validate_candidate_axes(ap, args)
 
-    config_path = (Path(args.workdir) / args.config).resolve()
+    config_path = (Path(args.workdir) / args.config_py).resolve()
     script_path = (Path(args.workdir) / args.script).resolve()
     workdir = Path(args.workdir).resolve()
     outdir = Path(args.outdir).resolve()
@@ -411,6 +488,11 @@ def main() -> int:
     print(f"[info] outdir={outdir}")
     if extra:
         print(f"[info] pass-through args to runner: {' '.join(extra)}")
+        if not _script_supports_passthrough(script_path):
+            print(
+                f"[warn] runner script does not appear to forward $@: {script_path} ; "
+                'pass-through args may be ignored unless the script appends "$@" to its main command.'
+            )
 
     run_id = 0
     executed = 0

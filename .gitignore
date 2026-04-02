@@ -27,4 +27,7 @@ verify/sst2_rst2
 /algorithms/*.sh
 /algorithms/*.slurm
 /verify/hw_hardware_1gpu_2aim/
-/verify/hw_hardware_1npu_2aim/
+/verify/hw_hardware_1npu_2aim/measurements/relayout/**/*.trace
+measurements/relayout/**/sim_stdout.txt
+measurements/relayout/**/summary.json
+readme.md.bak

@@ -33,6 +33,7 @@ from pathlib import Path
 import logging
 from task_graph import TaskGraph, TaskNode
 from stats_recorder import reset_simulation_logger
+from weight_stage_trace_tools import summarize_weight_stage_trace_csv
 logger = logging.getLogger(__name__)
 attach_local_debug_filter(logger, lambda: True)
 
@@ -1957,7 +1958,8 @@ def run(cfg: Dict):
             'format_nd_margin_min': cfg.get('format_nd_margin_min', 0.05),
             'format_inner_improve_eps': cfg.get('format_inner_improve_eps', 1e-6),
             'format_outer_stop_eps': cfg.get('format_outer_stop_eps', 0.0),
-            'weight_local_load_overlap_ratio': cfg.get('weight_local_load_overlap_ratio', None),
+            'pim_weight_load_overlap_ratio': cfg.get('pim_weight_load_overlap_ratio', None),
+            'weight_load_compute_overlap_ratio': cfg.get('weight_load_compute_overlap_ratio', None),
         },
         'rows': compare_rows,
         'search_format': str(search_start_mode),
@@ -1989,7 +1991,8 @@ def run(cfg: Dict):
                     'search_format': str(search_start_mode),
                     'compare_only_formats': [],
                     'baseline_experiment_ids': list(baseline_experiment_ids),
-                    'weight_local_load_overlap_ratio': cfg.get('weight_local_load_overlap_ratio', None),
+                    'pim_weight_load_overlap_ratio': cfg.get('pim_weight_load_overlap_ratio', None),
+                    'weight_load_compute_overlap_ratio': cfg.get('weight_load_compute_overlap_ratio', None),
                 },
                 'weight_format_comparison': comparison_payload,
                 'passes': all_pass_records,
@@ -2015,7 +2018,8 @@ def run(cfg: Dict):
                 'improvements_vs_each_pass': improvements,
                 'weight_format_comparison': compare_rows,
                 'baseline_experiment_ids': list(baseline_experiment_ids),
-                'weight_local_load_overlap_ratio': cfg.get('weight_local_load_overlap_ratio', None),
+                'pim_weight_load_overlap_ratio': cfg.get('pim_weight_load_overlap_ratio', None),
+                'weight_load_compute_overlap_ratio': cfg.get('weight_load_compute_overlap_ratio', None),
                 'best_weight_format_json': str(weight_format_path),
                 'best_weight_format_full_json': str(full_path),
                 'weight_format_compare_json': str(compare_path),
@@ -2049,7 +2053,8 @@ def run(cfg: Dict):
         )
     print(
         f"[weight-suggest] search_format={str(search_start_mode)} "
-        f"weight_local_load_overlap_ratio={cfg.get('weight_local_load_overlap_ratio', None)} "
+        f"pim_weight_load_overlap_ratio={cfg.get('pim_weight_load_overlap_ratio', None)} "
+        f"weight_load_compute_overlap_ratio={cfg.get('weight_load_compute_overlap_ratio', None)} "
         f"best_total={float(best_total_rec):.6f}s"
     )
 
@@ -2457,6 +2462,7 @@ def _eval_one_baseline(
                 setattr(best_label, 'trace_comms_csv', str(trace_comms))
             except Exception:
                 pass
+            _emit_weight_stage_stats_artifacts(best_label, trace_ops)
     except Exception:
         pass
 
@@ -2627,6 +2633,7 @@ def _run_strategy_once(
                 setattr(best_label, 'trace_comms_csv', str(trace_comms))
             except Exception:
                 pass
+            _emit_weight_stage_stats_artifacts(best_label, trace_ops)
 
     except Exception:
         pass
@@ -2674,6 +2681,34 @@ def _ensure_dir(p:Path):
         pass
     return p
 
+
+def _emit_weight_stage_stats_artifacts(label: PlanLabel | None, trace_ops: Path) -> None:
+    try:
+        outputs = summarize_weight_stage_trace_csv(
+            trace_ops,
+            out_dir=trace_ops.parent,
+            output_stem=trace_ops.stem,
+        )
+    except Exception as e:
+        _debug(f"[stats] failed to summarize weight-stage trace from {trace_ops}: {e}")
+        return
+
+    if label is None:
+        return
+    try:
+        setattr(label, 'weight_stage_overall_csv', str(outputs.get('overall_csv') or ''))
+        setattr(label, 'weight_stage_by_phase_csv', str(outputs.get('by_phase_csv') or ''))
+        setattr(label, 'weight_stage_by_device_type_csv', str(outputs.get('by_device_type_csv') or ''))
+        setattr(label, 'weight_stage_by_op_csv', str(outputs.get('by_op_csv') or ''))
+        setattr(label, 'weight_stage_summary_json', str(outputs.get('summary_json') or ''))
+        summary_json = outputs.get('summary_json')
+        if summary_json:
+            payload = json.loads(Path(summary_json).read_text(encoding='utf-8'))
+            setattr(label, 'weight_stage_summary_overall', dict(payload.get('overall') or {}))
+    except Exception as e:
+        _debug(f"[stats] failed to attach weight-stage summary artifacts to label: {e}")
+
+
 def _label_summary(label: PlanLabel | None) -> Dict[str, Any]:
     if label is None:
         return {}
@@ -2687,14 +2722,23 @@ def _label_summary(label: PlanLabel | None) -> Dict[str, Any]:
         'pinned_fc_on_pim': sorted(list(getattr(label, 'pinned_fc_on_pim', set()) or [])),
     }
 
-    # Optional: record trace file locations if the caller populated them.
+    # Optional: record trace/stat artifact locations if the caller populated them.
     try:
-        ops_p = getattr(label, 'trace_ops_csv', None)
-        comms_p = getattr(label, 'trace_comms_csv', None)
-        if ops_p:
-            out['trace_ops_csv'] = str(ops_p)
-        if comms_p:
-            out['trace_comms_csv'] = str(comms_p)
+        for attr in (
+            'trace_ops_csv',
+            'trace_comms_csv',
+            'weight_stage_overall_csv',
+            'weight_stage_by_phase_csv',
+            'weight_stage_by_device_type_csv',
+            'weight_stage_by_op_csv',
+            'weight_stage_summary_json',
+        ):
+            val = getattr(label, attr, None)
+            if val:
+                out[attr] = str(val)
+        overall = getattr(label, 'weight_stage_summary_overall', None)
+        if isinstance(overall, dict) and overall:
+            out['weight_stage_summary_overall'] = dict(overall)
     except Exception:
         pass
 
@@ -2836,11 +2880,13 @@ def parse_args():
     sp_eval.add_argument('--baselines', type=str,
                          help='Baseline list, e.g. "pd,weights_on_pim,attn_on_pim"')
     sp_eval.add_argument('--npu_backend', type=str, default=None,
-                         choices=['fast_mode', 'ascend_310b_json', 'llmcompass'],
-                         help='NPU operator-latency backend: fast_mode/ascend_310b_json/llmcompass. Must be explicitly specified (in config JSON or CLI).')
+                         choices=['fast', 'fast_mode', 'lut', 'ascend_310b_json', 'llmcompass'],
+                         help='NPU operator-latency backend: fast/lut/llmcompass (aliases fast_mode/ascend_310b_json are also accepted). Must be explicitly specified (in config JSON or CLI).')
     sp_eval.add_argument('--pim_fast_mode', action='store_true',default=None)
-    sp_eval.add_argument('--weight-local-load-overlap-ratio', dest='weight_local_load_overlap_ratio', type=float,
-                         help='Override config.WEIGHT_LOCAL_LOAD_OVERLAP_RATIO in [0,1] for this process only.')
+    sp_eval.add_argument('--pim-weight-load-overlap-ratio', dest='pim_weight_load_overlap_ratio', type=float,
+                         help='Override config.PIM_WEIGHT_LOAD_OVERLAP_RATIO in [0,1] for this process only.')
+    sp_eval.add_argument('--weight-load-compute-overlap-ratio', dest='weight_load_compute_overlap_ratio', type=float,
+                         help='Override config.WEIGHT_LOAD_COMPUTE_OVERLAP_RATIO in [0,1] for this process only.')
     # Tensor-parallel shard controls (graph splitting)
     sp_eval.add_argument('--tp_qkv', type=int,
                          help='Tensor-parallel shard size for Q/K/V generation and attention head sharding (column split).')
@@ -2869,11 +2915,13 @@ def parse_args():
     sp_ws.add_argument('--best_summary_json', type=str, help='Override path for best pass summary JSON.')
     sp_ws.add_argument('--weight_format_json', type=str, help='Override path for accepted weight format JSON.')
     sp_ws.add_argument('--npu_backend', type=str, default=None,
-                        choices=['fast_mode', 'ascend_310b_json', 'llmcompass'],
-                        help='NPU operator-latency backend: fast/ascend_310b_json/llmcompass. Must be explicitly specified (in config JSON or CLI).')
+                        choices=['fast', 'fast_mode', 'lut', 'ascend_310b_json', 'llmcompass'],
+                        help='NPU operator-latency backend: fast/lut/llmcompass (aliases fast_mode/ascend_310b_json are also accepted). Must be explicitly specified (in config JSON or CLI).')
     sp_ws.add_argument('--pim_fast_mode', action='store_true', default=None)   
-    sp_ws.add_argument('--weight-local-load-overlap-ratio', dest='weight_local_load_overlap_ratio', type=float,
-                       help='Override config.WEIGHT_LOCAL_LOAD_OVERLAP_RATIO in [0,1] for this process only.')
+    sp_ws.add_argument('--pim-weight-load-overlap-ratio', dest='pim_weight_load_overlap_ratio', type=float,
+                       help='Override config.PIM_WEIGHT_LOAD_OVERLAP_RATIO in [0,1] for this process only.')
+    sp_ws.add_argument('--weight-load-compute-overlap-ratio', dest='weight_load_compute_overlap_ratio', type=float,
+                       help='Override config.WEIGHT_LOAD_COMPUTE_OVERLAP_RATIO in [0,1] for this process only.')
     # Tensor-parallel shard controls (graph splitting)
     sp_ws.add_argument('--tp_qkv', type=int,
                         help='Tensor-parallel shard size for Q/K/V generation and attention head sharding (column split).')
@@ -2939,20 +2987,22 @@ def _apply_runtime_config_overrides(cfg: Dict) -> Dict[str, Any]:
 
     applied: Dict[str, Any] = {}
 
-    if 'weight_local_load_overlap_ratio' in cfg and cfg.get('weight_local_load_overlap_ratio') is not None:
+    def _apply_ratio(cfg_key: str, runtime_key: str) -> None:
+        if cfg_key not in cfg or cfg.get(cfg_key) is None:
+            return
         try:
-            ratio = float(cfg.get('weight_local_load_overlap_ratio'))
+            ratio = float(cfg.get(cfg_key))
         except Exception as exc:
             raise ValueError(
-                f"Invalid weight_local_load_overlap_ratio={cfg.get('weight_local_load_overlap_ratio')!r}; expected a float in [0, 1]"
+                f"Invalid {cfg_key}={cfg.get(cfg_key)!r}; expected a float in [0, 1]"
             ) from exc
         if not math.isfinite(ratio) or ratio < 0.0 or ratio > 1.0:
-            raise ValueError(
-                f"weight_local_load_overlap_ratio must be within [0, 1], got {ratio!r}"
-            )
-        setattr(_runtime_config, 'WEIGHT_LOCAL_LOAD_OVERLAP_RATIO', float(ratio))
-        applied['WEIGHT_LOCAL_LOAD_OVERLAP_RATIO'] = float(ratio)
+            raise ValueError(f"{cfg_key} must be within [0, 1], got {ratio!r}")
+        setattr(_runtime_config, runtime_key, float(ratio))
+        applied[runtime_key] = float(ratio)
 
+    _apply_ratio('pim_weight_load_overlap_ratio', 'PIM_WEIGHT_LOAD_OVERLAP_RATIO')
+    _apply_ratio('weight_load_compute_overlap_ratio', 'WEIGHT_LOAD_COMPUTE_OVERLAP_RATIO')
     return applied
 
 def main():
@@ -2992,7 +3042,8 @@ def main():
             'weight_format_json',
             'npu_backend',
             'pim_fast_mode',
-            'weight_local_load_overlap_ratio',
+            'pim_weight_load_overlap_ratio',
+            'weight_load_compute_overlap_ratio',
             'format_outer_max_iters',
             'format_block_change_percent',
             'format_inner_max_blocks',

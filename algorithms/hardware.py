@@ -41,6 +41,7 @@ class DeviceSpec:
     cpu_read_latency_ns: float = 0.0
     cpu_write_latency_ns: float = 0.0
     cpu_access_bytes_B: int = 64
+    freq_ghz: float = 0.0
 
 class Cluster:
     def __init__(self):
@@ -296,6 +297,7 @@ def demo_cluster(cfg: Dict | None = None) -> Cluster:
             cpu_read_latency_ns=float(d.get('cpu_read_latency_ns', d.get('read_latency_ns', 0.0)) or 0.0),
             cpu_write_latency_ns=float(d.get('cpu_write_latency_ns', d.get('write_latency_ns', 0.0)) or 0.0),
             cpu_access_bytes_B=int(cpu_access_bytes_B),
+            freq_ghz=float(d.get('freq_ghz', d.get('clock_ghz', d.get('pim_freq_ghz', 0.0))) or 0.0),
         )
 
         # Capacity consistency check (required):

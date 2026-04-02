@@ -1,25 +1,26 @@
 {
-    "hardware": {
-      "devices": [
-        {
-          "name": "CPU0",
-          "type": "cpu",
-          "tflops": 24.0,
-          "mem_bw_GBs":45,
-          "mem_capacity_GB": 1000000.0
-        },
-        {
-          "name": "PIM0",
-          "type": "pim",
-          "pim_type": "accel",
-          "tflops": 12.8,
-          "mem_bw_GBs": 300.0,
-          "mem_capacity_GB": 12.8,
-          "pim_read_latency_ns": 5.0,
-          "pim_write_latency_ns": 30.0
-        }
-      ],
-      "links": [
+  "hardware": {
+    "devices": [
+      {
+        "name": "CPU0",
+        "type": "cpu",
+        "tflops": 24.0,
+        "mem_bw_GBs": 45,
+        "mem_capacity_GB": 1000000.0
+      },
+      {
+        "name": "PIM0",
+        "type": "pim",
+        "pim_type": "accel",
+        "tflops": 12.8,
+        "mem_bw_GBs": 300.0,
+        "mem_capacity_GB": 12.8,
+        "pim_read_latency_ns": 5.0,
+        "pim_write_latency_ns": 30.0,
+        "freq_ghz": 0.8
+      }
+    ],
+    "links": [
       {
         "a": "CPU0",
         "b": "PIM0",
@@ -27,6 +28,6 @@
         "latency_us": 1.0,
         "overhead_us": 0.0
       }
-      ]
-    }
+    ]
   }
+}

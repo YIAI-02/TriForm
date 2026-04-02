@@ -17,7 +17,7 @@ conda activate "${CONDA_ENV_NAME}"
 
 # ------------------------------------------------------------------
 # Direct-submit wrapper for studying the impact of
-# WEIGHT_LOCAL_LOAD_OVERLAP_RATIO on weight-suggest(hefthint).
+# PIM_WEIGHT_LOAD_OVERLAP_RATIO and WEIGHT_LOAD_COMPUTE_OVERLAP_RATIO on weight-suggest(hefthint).
 #
 # Example:
 # export CONFIG=./examples/weight_suggest_overlap_ratio_base.json
@@ -45,16 +45,17 @@ OUTDIR="${OUTDIR:-./output/ws_overlap_ratio}"
 MODE="${MODE:-grid}"
 OBJECTIVE="${OBJECTIVE:-total}"
 ALGOS="${ALGOS:-hefthint}"
-WEIGHT_LOCAL_LOAD_OVERLAP_RATIOS="${WEIGHT_LOCAL_LOAD_OVERLAP_RATIOS:-1.0}"
-PARALLEL_GROUP_KEYS="${PARALLEL_GROUP_KEYS:-weight_local_load_overlap_ratio,model,prefill_len,decode_len,batch}"
+PIM_WEIGHT_LOAD_OVERLAP_RATIOS="${PIM_WEIGHT_LOAD_OVERLAP_RATIOS:-1.0}"
+WEIGHT_LOAD_COMPUTE_OVERLAP_RATIOS="${WEIGHT_LOAD_COMPUTE_OVERLAP_RATIOS:-1.0}"
+PARALLEL_GROUP_KEYS="${PARALLEL_GROUP_KEYS:-pim_weight_load_overlap_ratio,weight_load_compute_overlap_ratio,model,prefill_len,decode_len,batch}"
 COMBO_WORKERS="${COMBO_WORKERS:-11}"
 THREADS_PER_WORKER="${THREADS_PER_WORKER:-0}"
 MERGE_RESULTS="${MERGE_RESULTS:-1}"
 SUMMARY_AFTER_RUN="${SUMMARY_AFTER_RUN:-1}"
-SUMMARY_SCRIPT="${SUMMARY_SCRIPT:-./summarize_weight_local_load_overlap_ratio_sweep.py}"
+SUMMARY_SCRIPT="${SUMMARY_SCRIPT:-./summarize_weight_overlap_sweep.py}"
 PYTHON_BIN="${PYTHON_BIN:-python}"
 
-export CONFIG OUTDIR MODE OBJECTIVE ALGOS WEIGHT_LOCAL_LOAD_OVERLAP_RATIOS
+export CONFIG OUTDIR MODE OBJECTIVE ALGOS PIM_WEIGHT_LOAD_OVERLAP_RATIOS WEIGHT_LOAD_COMPUTE_OVERLAP_RATIOS
 export PARALLEL_GROUP_KEYS COMBO_WORKERS THREADS_PER_WORKER MERGE_RESULTS PYTHON_BIN
 
 # Forward any optional sweep dimensions already passed via --export, such as:
@@ -70,4 +71,4 @@ if [[ "${SUMMARY_AFTER_RUN}" == "1" && -f "${RESULTS_CSV}" ]]; then
     --outdir "${OUTDIR}/ratio_summary"
 fi
 
-echo "Weight overlap ratio weight-suggest sweep done."
+echo "Weight overlap sweep for PIM load and load-vs-compute overlap done."
