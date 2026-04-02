@@ -4,10 +4,10 @@
 Single trace:
 
 python plot_trace_gantt.py \
-  --base_dir ../algorithms/output/evaluate_single_test/hardware_1npu_2aim/llama_7b_fp16_b16_s64\
-  --policy algo_pd \
-  --length prefill-2048xdecode_512 \
-  --out_dir ../figs/gantt/evaluate_single_test/hardware_1npu_2aim/llama_7b_fp16_b16_s64
+  --base_dir ../algorithms/output/exp1/hardware_1npu_2aim/llama_7b_fp16_b16_s2\
+  --policy algo_hefthint \
+  --length prefill-128xdecode_128 \
+  --out_dir ../figs/exp1/gantt
 
 python plot_trace_gantt.py \
   --compare \

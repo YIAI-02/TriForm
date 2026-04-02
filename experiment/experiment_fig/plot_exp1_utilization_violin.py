@@ -28,7 +28,7 @@ python3 plot_exp1_utilization_violin.py \
   --search-dir ../../algorithms/output/exp1/hw_hardware_1npu_2aim/sst2_rst2 \
   --model-prefix llama_7b_fp16 \
   --exclude-algos weights_on_pim \
-  --speedup-plot-max 3 \
+  --speedup-plot-max 4 \
   --algo-label-map 'hefthint=Bifocal (this work),pd=PD,attn_on_pim=AF,ianus=PD+FFN,facil=PD+Linear,attacc=PD+Attention' \
   --output ../../figs/exp1/util/llama_7b_fp16_all_batches_violin.pdf
 
