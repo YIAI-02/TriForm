@@ -3,7 +3,7 @@
   "gb_config_path": "./aim_simulator/gb.json",
   "ramulator_config_path": "./aim_simulator/example.yaml",
   "algo": [
-    "heft,hefthint"
+    "hefthint"
   ],
   "baselines": [
     "ianus",

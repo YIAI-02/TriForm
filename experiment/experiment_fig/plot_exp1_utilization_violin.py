@@ -3,24 +3,6 @@
 # -*- coding: utf-8 -*-
 
 """
-Plot three stacked violin plots for:
-  1) speedup ratio relative to the chosen reference
-  2) PIM + NPU utilization (combined in one axis)
-  3) co-utilization
-
-Compared with the original line-plot script, this version aggregates *all*
-(batch size, prefill length, decode length) cases into distributions per
-algorithm, which is a better fit for violin plots.
-
-Key changes
------------
-- Uses seaborn.violinplot instead of per-(prefill, decode) line plots.
-- Scans all batch-size folders under a model root when requested.
-- Keeps the original utilization / co-utilization computation logic.
-- Keeps on-disk cache support.
-- Uses "Arial" as the preferred plotting font.
-- Enlarges fonts and spacing to avoid overlap.
-
 Typical usage
 -------------
 # Scan all llama_7b_fp16 batch-size folders under sst2_rst2
@@ -30,12 +12,8 @@ python3 plot_exp1_utilization_violin.py \
   --exclude-algos weights_on_pim \
   --speedup-plot-max 4 \
   --algo-label-map 'hefthint=Bifocal (this work),pd=PD,attn_on_pim=AF,ianus=PD+FFN,facil=PD+Linear,attacc=PD+Attention' \
-  --output ../../figs/exp1/util/llama_7b_fp16_all_batches_violin.pdf
-
-# Or point directly to a batch-size folder; the script will still work
-python3 plot_exp1_utilization_violin.py \
-  --search-dir ../../algorithms/output/exp1/hw_hardware_1npu_2aim/sst8_rst8/llama_7b_fp16_b16_s8 \
-  --output ../../figs/exp1/util/llama_7b_fp16_b16_violin.pdf
+  --output ../../figs/exp1/util/llama_7b_fp16_all_batches_violin.pdf\
+  --weight-stage-util-mode l1_l2
 """
 from __future__ import annotations
 
@@ -88,8 +66,9 @@ DEFAULT_SPEEDUP_REF = "pd"
 DEFAULT_SPEEDUP_MODE = "ratio"
 DEFAULT_SPEEDUP_PLOT_MAX = 5.0
 DEFAULT_UTIL_LAYOUT = "overlay"
+DEFAULT_WEIGHT_STAGE_UTIL_MODE = "none"
 
-CACHE_VERSION = "violin_v9"
+CACHE_VERSION = "violin_v10"
 
 TRACE_RE = re.compile(
     r"^(?P<algo>.+?)_linear_prefill-(?P<prefill>\d+)xdecode_(?P<decode>\d+)_(?P<kind>comms|ops)_trace\.csv$",
@@ -159,6 +138,16 @@ def enforce_figure_fonts(
 
 
 apply_global_plot_style()
+
+
+_WARNED_ONCE: set[str] = set()
+
+
+def warn_once(message: str) -> None:
+    if message in _WARNED_ONCE:
+        return
+    _WARNED_ONCE.add(message)
+    print(f"[WARN] {message}", file=sys.stderr)
 
 
 # ---------------------------------------------------------------------
@@ -328,24 +317,54 @@ def _util_time_signature(time_res: Optional[TimeResult]) -> Dict[str, Optional[f
     }
 
 
+def _weight_stage_sidecar_paths(ops_path: Path) -> Dict[str, Path]:
+    stem = ops_path.stem
+    return {
+        "overall": ops_path.with_name(f"{stem}_weight_stage_overall.csv"),
+        "by_phase": ops_path.with_name(f"{stem}_weight_stage_by_phase.csv"),
+        "by_device_type": ops_path.with_name(f"{stem}_weight_stage_by_device_type.csv"),
+        "summary": ops_path.with_name(f"{stem}_weight_stage_summary.json"),
+    }
+
+
+def _weight_stage_sidecar_fingerprints(
+    ops_path: Path,
+    weight_stage_util_mode: str,
+) -> Dict[str, Dict[str, object]]:
+    mode = (weight_stage_util_mode or DEFAULT_WEIGHT_STAGE_UTIL_MODE).strip().lower()
+    if mode == DEFAULT_WEIGHT_STAGE_UTIL_MODE:
+        return {}
+
+    out: Dict[str, Dict[str, object]] = {}
+    for name, path in _weight_stage_sidecar_paths(ops_path).items():
+        if path.exists():
+            out[name] = _file_fingerprint(path)
+    return out
+
+
 def _util_cache_key(
     comms_path: Path,
     ops_path: Path,
     phase: str,
     include_cpu: bool,
     time_res: Optional[TimeResult],
+    weight_stage_util_mode: str = DEFAULT_WEIGHT_STAGE_UTIL_MODE,
 ) -> str:
     payload = {
         "cache_version": CACHE_VERSION,
         "phase": phase,
         "include_cpu": include_cpu,
         "time_signature": _util_time_signature(time_res),
+        "weight_stage_util_mode": weight_stage_util_mode,
+        "weight_stage_sidecars": _weight_stage_sidecar_fingerprints(
+            ops_path,
+            weight_stage_util_mode=weight_stage_util_mode,
+        ),
         "comms": _file_fingerprint(comms_path),
         "ops": _file_fingerprint(ops_path),
     }
     raw = json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
     return hashlib.sha256(raw).hexdigest()
-
 
 def _load_util_cache(
     cache_dir: Path,
@@ -354,8 +373,16 @@ def _load_util_cache(
     phase: str,
     include_cpu: bool,
     time_res: Optional[TimeResult],
+    weight_stage_util_mode: str = DEFAULT_WEIGHT_STAGE_UTIL_MODE,
 ) -> Optional[UtilResult]:
-    key = _util_cache_key(comms_path, ops_path, phase, include_cpu, time_res)
+    key = _util_cache_key(
+        comms_path,
+        ops_path,
+        phase,
+        include_cpu,
+        time_res,
+        weight_stage_util_mode=weight_stage_util_mode,
+    )
     cache_path = cache_dir / f"{key}.json"
     if not cache_path.exists():
         return None
@@ -367,16 +394,23 @@ def _load_util_cache(
         print(f"[WARN] failed to read cache {cache_path}: {exc}", file=sys.stderr)
         return None
 
-
 def _save_util_cache(
     cache_dir: Path,
     res: UtilResult,
     phase: str,
     include_cpu: bool,
     time_res: Optional[TimeResult],
+    weight_stage_util_mode: str = DEFAULT_WEIGHT_STAGE_UTIL_MODE,
 ) -> None:
     cache_dir.mkdir(parents=True, exist_ok=True)
-    key = _util_cache_key(res.comms_path, res.ops_path, phase, include_cpu, time_res)
+    key = _util_cache_key(
+        res.comms_path,
+        res.ops_path,
+        phase,
+        include_cpu,
+        time_res,
+        weight_stage_util_mode=weight_stage_util_mode,
+    )
     cache_path = cache_dir / f"{key}.json"
 
     payload = {
@@ -384,6 +418,7 @@ def _save_util_cache(
         "phase": phase,
         "include_cpu": include_cpu,
         "time_signature": _util_time_signature(time_res),
+        "weight_stage_util_mode": weight_stage_util_mode,
         "result": util_result_to_dict(res),
     }
 
@@ -391,8 +426,6 @@ def _save_util_cache(
         cache_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2))
     except Exception as exc:
         print(f"[WARN] failed to write cache {cache_path}: {exc}", file=sys.stderr)
-
-
 # ---------------------------------------------------------------------
 # Parsing helpers
 # ---------------------------------------------------------------------
@@ -909,12 +942,208 @@ def _normalize_intervals(intervals: Iterable[Tuple[float, float]]) -> List[Tuple
 
 
 def _read_trace_csv(path: Path) -> pd.DataFrame:
-    df = pd.read_csv(path)
-    for col in ["start", "end", "duration"]:
+    df = pd.read_csv(path, low_memory=False)
+    for col in [
+        "start",
+        "end",
+        "duration",
+        "bytes",
+        "bytes_full_nd",
+        "bytes_nd",
+        "cache_capacity_bytes",
+        "cached_before_nd",
+    ]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
     return df
 
+
+def _safe_text_series(df: pd.DataFrame, col: str) -> pd.Series:
+    if col not in df.columns:
+        return pd.Series("", index=df.index, dtype="object")
+    s = df[col].fillna("").astype(str).str.strip()
+    s = s.mask(s.str.lower().isin({"nan", "none"}), "")
+    return s
+
+
+def _weight_load_mask(comms_df: pd.DataFrame) -> pd.Series:
+    if comms_df.empty:
+        return pd.Series(False, index=comms_df.index)
+
+    mask = pd.Series(False, index=comms_df.index)
+    if "tag" in comms_df.columns:
+        mask |= _safe_text_series(comms_df, "tag").str.lower().eq("weight_load")
+    if "action" in comms_df.columns and "payload" in comms_df.columns:
+        action = _safe_text_series(comms_df, "action").str.lower()
+        payload = _safe_text_series(comms_df, "payload").str.lower()
+        mask |= action.eq("load") & payload.eq("weight")
+    return mask
+
+
+def _weight_load_needs_l2_mask(comms_df: pd.DataFrame) -> pd.Series:
+    if comms_df.empty:
+        return pd.Series(False, index=comms_df.index)
+
+    mask = _weight_load_mask(comms_df)
+    if not mask.any():
+        return mask
+
+    if "to_fmt" not in comms_df.columns:
+        dst_type = _safe_text_series(comms_df, "dst_type").str.lower()
+        dst = _safe_text_series(comms_df, "dst").str.lower()
+        return mask & (dst_type.str.contains("pim", regex=False) | dst.str.contains("pim", regex=False))
+
+    invalid = {"", "NAN", "NONE"}
+    to_fmt = _safe_text_series(comms_df, "to_fmt").str.upper()
+    from_fmt = _safe_text_series(comms_df, "from_fmt").str.upper()
+    needs_l2 = (~to_fmt.isin(list(invalid | {"ND"}))) & (from_fmt.isin(list(invalid)) | to_fmt.ne(from_fmt))
+    return mask & needs_l2
+
+
+def _weight_stage_overlap_saved_s(ops_path: Path) -> Optional[float]:
+    overall_path = _weight_stage_sidecar_paths(ops_path)["overall"]
+    if not overall_path.exists():
+        return None
+    try:
+        overall_df = _read_trace_csv(overall_path)
+    except Exception as exc:
+        warn_once(f"failed to read weight-stage overall CSV {overall_path}: {exc}")
+        return None
+    if overall_df.empty or "load_l1_l2_saved_s_sum" not in overall_df.columns:
+        return None
+    return _safe_float(overall_df.iloc[0].get("load_l1_l2_saved_s_sum"))
+
+
+def _weight_stage_l2_sec_per_byte_by_phase(
+    ops_path: Path,
+    pack_df: pd.DataFrame,
+) -> Tuple[Dict[str, float], Optional[float]]:
+    phase_coeffs: Dict[str, float] = {}
+    overall_coeff: Optional[float] = None
+
+    if pack_df.empty or "bytes" not in pack_df.columns:
+        return phase_coeffs, overall_coeff
+
+    bytes_series = pd.to_numeric(pack_df["bytes"], errors="coerce").fillna(0.0)
+    total_pack_bytes = float(bytes_series.clip(lower=0.0).sum())
+    if total_pack_bytes <= 0:
+        return phase_coeffs, overall_coeff
+
+    sidecars = _weight_stage_sidecar_paths(ops_path)
+
+    overall_path = sidecars["overall"]
+    if overall_path.exists():
+        try:
+            overall_df = _read_trace_csv(overall_path)
+            if not overall_df.empty and "load_l2_s_sum" in overall_df.columns:
+                l2_sum = _safe_float(overall_df.iloc[0].get("load_l2_s_sum"))
+                if l2_sum is not None and l2_sum >= 0:
+                    overall_coeff = float(l2_sum / total_pack_bytes)
+        except Exception as exc:
+            warn_once(f"failed to read weight-stage overall CSV {overall_path}: {exc}")
+
+    by_phase_path = sidecars["by_phase"]
+    if by_phase_path.exists() and "phase" in pack_df.columns:
+        try:
+            by_phase_df = _read_trace_csv(by_phase_path)
+            if {"phase", "load_l2_s_sum"}.issubset(by_phase_df.columns):
+                phase_key_series = _safe_text_series(pack_df, "phase").str.lower()
+                bytes_by_phase = (
+                    pd.DataFrame({"phase_key": phase_key_series, "bytes": bytes_series})
+                    .groupby("phase_key", dropna=False)["bytes"]
+                    .sum()
+                    .to_dict()
+                )
+                for _, row in by_phase_df.iterrows():
+                    phase_key = _safe_lower(row.get("phase"))
+                    l2_sum = _safe_float(row.get("load_l2_s_sum"))
+                    phase_bytes = float(bytes_by_phase.get(phase_key, 0.0))
+                    if phase_key and phase_bytes > 0 and l2_sum is not None and l2_sum >= 0:
+                        phase_coeffs[phase_key] = float(l2_sum / phase_bytes)
+        except Exception as exc:
+            warn_once(f"failed to read weight-stage by-phase CSV {by_phase_path}: {exc}")
+
+    return phase_coeffs, overall_coeff
+
+
+def _build_weight_stage_busy_intervals(
+    *,
+    comms_df: pd.DataFrame,
+    ops_path: Path,
+    mode: str,
+) -> Dict[str, List[Tuple[float, float]]]:
+    mode = (mode or DEFAULT_WEIGHT_STAGE_UTIL_MODE).strip().lower()
+    if mode == DEFAULT_WEIGHT_STAGE_UTIL_MODE or comms_df.empty:
+        return {}
+
+    if not {"dst", "start", "end"}.issubset(comms_df.columns):
+        warn_once(
+            f"weight-stage util mode requested but comms trace is missing dst/start/end columns for {ops_path}"
+        )
+        return {}
+
+    load_df = comms_df.loc[_weight_load_mask(comms_df)].copy()
+    if load_df.empty:
+        return {}
+
+    intervals: DefaultDict[str, List[Tuple[float, float]]] = defaultdict(list)
+
+    for _, row in load_df.iterrows():
+        dev = str(row.get("dst", "")).strip()
+        if not dev:
+            continue
+        start = _safe_float(row.get("start"))
+        end = _safe_float(row.get("end"))
+        if start is None or end is None or end <= start:
+            continue
+        intervals[dev].append((float(start), float(end)))
+
+    if mode != "l1_l2":
+        return {dev: list(v) for dev, v in intervals.items()}
+
+    overlap_saved = _weight_stage_overlap_saved_s(ops_path)
+    if overlap_saved is not None and overlap_saved > 1e-12:
+        warn_once(
+            f"weight-stage L1/L2 overlap is non-zero for {ops_path}; L2 is modeled after L1 end, so overlap is ignored"
+        )
+
+    pack_df = load_df.loc[_weight_load_needs_l2_mask(load_df)].copy()
+    if pack_df.empty:
+        return {dev: list(v) for dev, v in intervals.items()}
+
+    if "bytes" not in pack_df.columns:
+        warn_once(
+            f"weight-stage util mode l1_l2 requested but comms trace is missing bytes column for {ops_path}; using L1 only"
+        )
+        return {dev: list(v) for dev, v in intervals.items()}
+
+    phase_coeffs, overall_coeff = _weight_stage_l2_sec_per_byte_by_phase(ops_path, pack_df)
+    if overall_coeff is None and not phase_coeffs:
+        warn_once(
+            f"weight-stage util mode l1_l2 requested but no usable weight-stage overall/by-phase sidecar was found for {ops_path}; using L1 only"
+        )
+        return {dev: list(v) for dev, v in intervals.items()}
+
+    for _, row in pack_df.iterrows():
+        dev = str(row.get("dst", "")).strip()
+        if not dev:
+            continue
+        end = _safe_float(row.get("end"))
+        nbytes = _safe_float(row.get("bytes"))
+        if end is None or nbytes is None or nbytes <= 0:
+            continue
+
+        phase_key = _safe_lower(row.get("phase"))
+        coeff = phase_coeffs.get(phase_key, overall_coeff)
+        if coeff is None or coeff <= 0:
+            continue
+
+        l2_dur = float(coeff * nbytes)
+        if l2_dur <= 0:
+            continue
+        intervals[dev].append((float(end), float(end + l2_dur)))
+
+    return {dev: list(v) for dev, v in intervals.items()}
 
 def _family_mean(device_utils: Dict[str, float], device_families: Dict[str, str], family: str) -> Optional[float]:
     vals = [util for dev, util in device_utils.items() if device_families.get(dev) == family]
@@ -991,6 +1220,7 @@ def compute_device_utilization(
     phase: str = "all",
     include_cpu: bool = False,
     time_res: Optional[TimeResult] = None,
+    weight_stage_util_mode: str = DEFAULT_WEIGHT_STAGE_UTIL_MODE,
 ) -> UtilResult:
     ops_df = _filter_phase(_read_trace_csv(ops_path), phase=phase)
     if ops_df.empty:
@@ -1000,22 +1230,48 @@ def compute_device_utilization(
     if not {"start", "end"}.issubset(ops_df.columns):
         raise ValueError(f"ops trace missing start/end columns: {ops_path}")
 
+    weight_stage_util_mode = (weight_stage_util_mode or DEFAULT_WEIGHT_STAGE_UTIL_MODE).strip().lower()
+    comms_df = pd.DataFrame()
+    if weight_stage_util_mode != DEFAULT_WEIGHT_STAGE_UTIL_MODE:
+        comms_df = _filter_phase(_read_trace_csv(comms_path), phase=phase)
+
     window_start, window_end, runtime_s = _resolve_phase_window(time_res, phase)
 
     device_families = _collect_device_families(
         ops_df=ops_df,
-        comms_df=pd.DataFrame(),
+        comms_df=comms_df,
         include_cpu=include_cpu,
     )
     if not device_families:
         raise ValueError("no physical devices discovered from ops trace")
 
+    device_raw_intervals: DefaultDict[str, List[Tuple[float, float]]] = defaultdict(list)
+    for dev in sorted(device_families.keys()):
+        sub = ops_df[ops_df["device"].astype(str) == dev]
+        device_raw_intervals[dev].extend(
+            [
+                (float(start), float(end))
+                for start, end in zip(sub["start"], sub["end"])
+                if not pd.isna(start) and not pd.isna(end) and float(end) > float(start)
+            ]
+        )
+
+    if weight_stage_util_mode != DEFAULT_WEIGHT_STAGE_UTIL_MODE and not comms_df.empty:
+        extra_intervals = _build_weight_stage_busy_intervals(
+            comms_df=comms_df,
+            ops_path=ops_path,
+            mode=weight_stage_util_mode,
+        )
+        for dev, intervals in extra_intervals.items():
+            if dev not in device_families:
+                continue
+            device_raw_intervals[dev].extend(intervals)
+
     device_busy_intervals: Dict[str, List[Tuple[float, float]]] = {}
     device_utils: Dict[str, float] = {}
     for dev in sorted(device_families.keys()):
-        sub = ops_df[ops_df["device"].astype(str) == dev]
         intervals = _clip_intervals_to_window(
-            zip(sub["start"], sub["end"]),
+            device_raw_intervals.get(dev, []),
             window_start=window_start,
             window_end=window_end,
         )
@@ -1064,8 +1320,6 @@ def compute_device_utilization(
         comms_path=comms_path,
         ops_path=ops_path,
     )
-
-
 # ---------------------------------------------------------------------
 # Selection / ordering
 # ---------------------------------------------------------------------
@@ -1138,6 +1392,7 @@ def _get_or_compute(
     phase: str,
     include_cpu: bool,
     time_res: Optional[TimeResult],
+    weight_stage_util_mode: str = DEFAULT_WEIGHT_STAGE_UTIL_MODE,
     disk_cache_dir: Optional[Path] = None,
 ) -> Tuple[Optional[UtilResult], str]:
     if key in mem_cache:
@@ -1161,6 +1416,7 @@ def _get_or_compute(
             phase=phase,
             include_cpu=include_cpu,
             time_res=time_res,
+            weight_stage_util_mode=weight_stage_util_mode,
         )
         if cached is not None:
             mem_cache[key] = cached
@@ -1177,6 +1433,7 @@ def _get_or_compute(
         phase=phase,
         include_cpu=include_cpu,
         time_res=time_res,
+        weight_stage_util_mode=weight_stage_util_mode,
     )
     mem_cache[key] = res
 
@@ -1187,10 +1444,10 @@ def _get_or_compute(
             phase=phase,
             include_cpu=include_cpu,
             time_res=time_res,
+            weight_stage_util_mode=weight_stage_util_mode,
         )
 
     return res, "computed"
-
 
 def build_results(
     *,
@@ -1201,6 +1458,7 @@ def build_results(
     phase: str = "all",
     include_cpu: bool = False,
     heft_pick_by: str = "family_mean",
+    weight_stage_util_mode: str = DEFAULT_WEIGHT_STAGE_UTIL_MODE,
     disk_cache_dir: Optional[Path] = None,
 ) -> Dict[Tuple[str, int, int, str], UtilResult]:
     results: Dict[Tuple[str, int, int, str], UtilResult] = {}
@@ -1238,6 +1496,7 @@ def build_results(
                             phase=phase,
                             include_cpu=include_cpu,
                             time_res=time_index.get((run_id, p, d, algo)),
+                            weight_stage_util_mode=weight_stage_util_mode,
                             disk_cache_dir=disk_cache_dir,
                         )
                         progress.update(status=status)
@@ -1263,6 +1522,7 @@ def build_results(
                             phase=phase,
                             include_cpu=include_cpu,
                             time_res=time_index.get((run_id, p, d, variant)),
+                            weight_stage_util_mode=weight_stage_util_mode,
                             disk_cache_dir=disk_cache_dir,
                         )
                         progress.update(status=status)
@@ -1305,8 +1565,6 @@ def build_results(
                     results[(run_id, p, d, "hefthint")] = best_for_plot
 
     return results
-
-
 # ---------------------------------------------------------------------
 # Runtime / speedup helpers
 # ---------------------------------------------------------------------
@@ -1515,9 +1773,11 @@ def build_plot_dataframe(
     time_field: str,
     speedup_ref: str,
     speedup_mode: str,
+    weight_stage_util_mode: str = DEFAULT_WEIGHT_STAGE_UTIL_MODE,
 ) -> pd.DataFrame:
     rows: List[Dict[str, object]] = []
     speedup_mode = (speedup_mode or DEFAULT_SPEEDUP_MODE).strip().lower()
+    weight_stage_util_mode = (weight_stage_util_mode or DEFAULT_WEIGHT_STAGE_UTIL_MODE).strip().lower()
 
     for (run_id, prefill, decode, plotted_algo), res in sorted(
         results.items(),
@@ -1581,9 +1841,10 @@ def build_plot_dataframe(
             "speedup_ref_algo": speedup_ref_algo,
             "speedup_ref_time_s": speedup_ref_time_s,
             "speedup_mode": speedup_mode,
+            "speedup": speedup,
             "speedup_ratio": speedup_ratio,
             "speedup_improvement": speedup_improvement,
-            "speedup": speedup,
+            "util_weight_stage_mode": weight_stage_util_mode,
             "overall_utilization_fraction": res.overall_utilization,
             "pim_utilization_fraction": res.pim_utilization,
             "accel_utilization_fraction": res.accel_utilization,
@@ -1600,8 +1861,6 @@ def build_plot_dataframe(
         })
 
     return pd.DataFrame(rows)
-
-
 # ---------------------------------------------------------------------
 # Plot helpers
 # ---------------------------------------------------------------------
@@ -2547,10 +2806,29 @@ def main() -> None:
                     help="Directory for on-disk utilization cache. Default: <search-dir>/.plot_cache_violin")
     ap.add_argument("--no-cache", action="store_true",
                     help="Disable on-disk cache.")
+    ap.add_argument(
+        "--weight-stage-util-mode",
+        type=str,
+        choices=["none", "l1", "l1_l2"],
+        default=DEFAULT_WEIGHT_STAGE_UTIL_MODE,
+        help=(
+            "How to account for weight-stage time in utilization/co-utilization. "
+            "none: keep legacy behavior; l1: add weight-load transfer time from comms trace; "
+            "l1_l2: also add modeled format-conversion/pack time from weight-stage sidecars."
+        ),
+    )
+    ap.add_argument(
+        "--include-weight-stage-time",
+        dest="weight_stage_util_mode",
+        action="store_const",
+        const="l1_l2",
+        help="Compatibility switch: include weight-stage L1 + L2 time in utilization/co-utilization.",
+    )
 
     args = ap.parse_args()
 
     apply_global_plot_style(font_family=args.font_family, font_size=args.font_size)
+    args.weight_stage_util_mode = (args.weight_stage_util_mode or DEFAULT_WEIGHT_STAGE_UTIL_MODE).strip().lower()
 
     search_dir = Path(args.search_dir)
     if not search_dir.exists():
@@ -2644,6 +2922,8 @@ def main() -> None:
         disk_cache_dir = Path(args.cache_dir) if args.cache_dir else (search_dir / ".plot_cache_violin")
         print(f"[INFO] using cache dir: {disk_cache_dir}", file=sys.stderr)
 
+    print(f"[INFO] weight-stage util mode: {args.weight_stage_util_mode}", file=sys.stderr)
+
     results = build_results(
         index=index,
         time_index=time_index,
@@ -2652,6 +2932,7 @@ def main() -> None:
         phase=args.phase,
         include_cpu=args.include_cpu,
         heft_pick_by=args.heft_pick_by,
+        weight_stage_util_mode=args.weight_stage_util_mode,
         disk_cache_dir=disk_cache_dir,
     )
     if not results:
@@ -2678,6 +2959,7 @@ def main() -> None:
         time_field=time_field,
         speedup_ref=args.speedup_ref,
         speedup_mode=args.speedup_mode,
+        weight_stage_util_mode=args.weight_stage_util_mode,
     )
     if plot_df.empty:
         ap.error("No rows available for violin plotting.")

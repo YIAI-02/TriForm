@@ -3,5 +3,6 @@
   "DRAM_row": 16384,
   "burst_length": 16,
   "num_banks": 16,
-  "num_channels": 32
+  "num_channels": 32,
+   "freq_ghz": 0.8
 }

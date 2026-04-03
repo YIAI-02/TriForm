@@ -38,7 +38,7 @@ export LD_LIBRARY_PATH="/lustre/home/2501111916/workspace/TriForm/submodules/CEN
 THIS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$THIS_DIR/.." && pwd)"
 
-PY_SCRIPT="${PY_SCRIPT:-$REPO_ROOT/verify/schedule_deploy_verify_gpu.py}"
+PY_SCRIPT="${PY_SCRIPT:-$REPO_ROOT/verify/schedule_deploy_verify.py}"
 
 OUT_DIR="${OUT_DIR:-}"
 PREFIX="${PREFIX:-}"

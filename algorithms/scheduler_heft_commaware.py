@@ -1020,6 +1020,8 @@ class HEFTCOMMAWAREScheduler(HEFTScheduler):
             for dev in cands:
                 _, eft = self._earliest_finish_on_device(g, nid, dev, self.label, phase, commit=False)
                 eft = float(eft)
+                if not math.isfinite(eft):
+                    continue
 
                 # Strategy 1: lookahead window estimate with consistency penalty.
                 window_est = eft

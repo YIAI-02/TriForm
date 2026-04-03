@@ -12,8 +12,8 @@
 5. 可选输出 phase-wise 最优（prefill / decode / total 分别选 heft 或 hefthint 中更快的那个）。
 
 示例：
-    python compare_heft_best_vs_pd.py /path/to/exp1
-    python compare_heft_best_vs_pd.py /path/to/llama_13b_fp16_b1_s8 --prefill 128 --decode 128
+    python avg_speedup.py /lustre/home/2501111916/workspace/DOPS_0330_merge/TriForm/algorithms/output/exp1/hw_hardware_1npu_2aim/sst2_rst2
+    python avg_speedup.py /path/to/llama_13b_fp16_b1_s8 --prefill 128 --decode 128
     python compare_heft_best_vs_pd.py /path/to/exp1 --choose-by total --show-phase-best
     python compare_heft_best_vs_pd.py /path/to/exp1 --format json > result.json
 """

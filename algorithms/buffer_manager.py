@@ -403,66 +403,137 @@ class GlobalMemoryManager:
     # Weight caching (all devices)
     # ------------------------------------------------------------------
 
-    def pim_cache_weight(self, dev_name: str, wid: str, size: int, *, pinned: bool, commit: bool, fmt: Optional[str] = None) -> bool:
-        st = self.pim_state.get(dev_name)
-        if st is None:
-            # Non-PIM path (or unregistered PIM): treat as a generic weight LRU.
-            cache = self.device_cache.get(dev_name)
-            if cache is None:
-                # Best-effort default: at least large enough to hold this single weight.
-                self.ensure_device_cache(dev_name, capacity_bytes=max(0, int(size)))
-                cache = self.device_cache[dev_name]
-            ok = cache.add(wid, int(size), pinned=bool(pinned), meta=({'format': str(fmt)} if fmt not in (None, '') else None))
-            if ok:
-                cache.touch(wid)
-                if pinned:
-                    cache.pin(wid)
-            return bool(ok)
+    def _cache_evictable_bytes(self, cache: Optional[LRUCache], *, exclude_key: Optional[Hashable] = None) -> int:
+        if cache is None:
+            return 0
+        total = 0
+        for key, sz in cache.items.items():
+            if exclude_key is not None and key == exclude_key:
+                continue
+            if key in cache.pinned:
+                continue
+            total += int(sz)
+        return int(total)
 
+    def can_cache_weight(self, dev_name: str, wid: str, size: int, *, pinned: bool = False, fmt: Optional[str] = None) -> bool:
+        """Pure feasibility check for caching `wid` on `dev_name`.
+
+        This method must not mutate runtime state, cache contents, or LRU order.
+        `fmt` is accepted for API symmetry with `mark_cached`, but it does not affect
+        the feasibility calculation.
+        """
+        _ = fmt  # metadata only; no impact on capacity feasibility
         size = max(0, int(size))
         if size == 0:
+            return True
+
+        st = self.pim_state.get(dev_name)
+        cache = self.device_cache.get(dev_name)
+
+        # Generic fallback: if the device has no registered runtime/cache state,
+        # the commit path will create a cache large enough for this one item.
+        if st is None and cache is None:
+            return True
+
+        cap = int(getattr(cache, 'capacity', 0) or 0) if cache is not None else 0
+        old_size = int(cache.items.get(wid, 0)) if cache is not None else 0
+        other_weight_used = max(0, int(getattr(cache, 'used', 0) or 0) - old_size) if cache is not None else 0
+
+        # Weight-cache capacity constraint (device-local static cache budget).
+        if cap <= 0:
+            return False
+        if size > cap:
+            return False
+        need_free_cache = max(0, other_weight_used + size - cap)
+        evictable_other = self._cache_evictable_bytes(cache, exclude_key=wid)
+        if need_free_cache > evictable_other:
+            return False
+
+        # Runtime budget constraint (KV + activation + weight cache).
+        if st is None:
             return True
 
         limit = int(st.limit_bytes)
         if limit <= 0:
             return False
         if size > limit:
-            # Single weight larger than total runtime budget: impossible.
             return False
 
+        kv_used = int(st.kv_used_bytes) if bool(st.kv_in_pim) else 0
+        act_used = int(st.act_used_bytes)
+        need_free_runtime = max(0, kv_used + act_used + other_weight_used + size - limit)
+        if need_free_runtime > evictable_other:
+            return False
+        return True
+
+    def pim_cache_weight(self, dev_name: str, wid: str, size: int, *, pinned: bool, commit: bool, fmt: Optional[str] = None) -> bool:
+        size = max(0, int(size))
+        if size == 0:
+            return True
+
+        st = self.pim_state.get(dev_name)
         cache = self.device_cache.get(dev_name)
+
+        if st is None:
+            # Non-runtime path (or unregistered device): behave like a generic weight LRU.
+            if cache is None:
+                if not commit:
+                    return True
+                # Best-effort default: at least large enough to hold this single weight.
+                self.ensure_device_cache(dev_name, capacity_bytes=max(0, int(size)))
+                cache = self.device_cache[dev_name]
+            if not commit:
+                return bool(self.can_cache_weight(dev_name, wid, size, pinned=bool(pinned), fmt=fmt))
+            ok = bool(cache.add(wid, int(size), pinned=bool(pinned), meta=({'format': str(fmt)} if fmt not in (None, '') else None)))
+            if ok:
+                cache.touch(wid)
+                if pinned:
+                    cache.pin(wid)
+            return bool(ok)
+
+        if not commit:
+            return bool(self.can_cache_weight(dev_name, wid, size, pinned=bool(pinned), fmt=fmt))
+
+        limit = int(st.limit_bytes)
+        if limit <= 0 or size > limit:
+            return False
+
         if cache is None:
             self.ensure_device_cache(dev_name, capacity_bytes=limit)
             cache = self.device_cache[dev_name]
 
+        # Refuse early if the request is impossible even after evicting all eligible weights.
+        if not self.can_cache_weight(dev_name, wid, size, pinned=bool(pinned), fmt=fmt):
+            return False
+
         kv_used = int(st.kv_used_bytes) if bool(st.kv_in_pim) else 0
         act_used = int(st.act_used_bytes)
-        weight_used = int(cache.used)
+        old_size = int(cache.items.get(wid, 0)) if cache.has(wid) else 0
+        other_weight_used = max(0, int(cache.used) - old_size)
+        need_free_runtime = max(0, kv_used + act_used + other_weight_used + size - limit)
 
-        # Quick check: is there enough room *without* extra evictions?
-        if kv_used + act_used + weight_used + size > limit:
-            need_free = kv_used + act_used + weight_used + size - limit
-            freed = self._pim_evict_weights_bytes(dev_name, need_free, commit=commit)
-            if not commit:
-                # dry-run: success iff we *could* free enough
-                if freed < need_free:
-                    return False
-            else:
-                # commit path: recompute used weight after eviction
-                weight_used = self._pim_weight_used(dev_name)
-                if kv_used + act_used + weight_used + size > limit:
-                    # Still cannot fit even after evicting everything.
-                    return False
+        temp_pin = bool(cache.has(wid) and wid not in cache.pinned)
+        if temp_pin:
+            cache.pin(wid)
+        try:
+            if need_free_runtime > 0:
+                cache.evict_bytes(need_free_runtime)
 
-        # At this point we know we can respect runtime limit; rely on
-        # the inner LRU cache to enforce its own capacity.
-        ok = cache.add(wid, size, pinned=pinned)
-        ok = cache.add(wid, size, pinned=pinned, meta=({'format': str(fmt)} if fmt not in (None, '') else None))
-        if ok:
-            cache.touch(wid)
-            if pinned:
-                cache.pin(wid)
-        return ok
+            # Runtime-limit sanity check after actual evictions.
+            old_size_after = int(cache.items.get(wid, 0)) if cache.has(wid) else 0
+            other_weight_used_after = max(0, int(cache.used) - old_size_after)
+            if kv_used + act_used + other_weight_used_after + size > limit:
+                return False
+
+            ok = bool(cache.add(wid, size, pinned=bool(pinned), meta=({'format': str(fmt)} if fmt not in (None, '') else None)))
+            if ok:
+                cache.touch(wid)
+                if pinned:
+                    cache.pin(wid)
+            return bool(ok)
+        finally:
+            if temp_pin and not pinned:
+                cache.unpin(wid)
 
     def mark_cached(self, dev_name: str, wid: str, size: int, pinned: bool = False, fmt: Optional[str] = None) -> bool:
         """Notify the buffer manager that a weight has been cached.

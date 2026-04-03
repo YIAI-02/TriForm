@@ -2022,6 +2022,44 @@ class SchedulerBase:
                 f"cached_nd={cached_nd} full_nd={wsize_nd}"
             )
 
+        cache_feasible = True
+        try:
+            cache_feasible = bool(self.buffer.can_cache_weight(dev.name, wid, int(wsize_nd), pinned=False, fmt=str(resident_fmt)))
+        except Exception:
+            cache_feasible = True
+
+        if not cache_feasible:
+            cache_obj = getattr(getattr(self, 'buffer', None), 'device_cache', {}).get(dev.name, None)
+            cap_bytes = int(getattr(cache_obj, 'capacity', 0) or 0) if cache_obj is not None else 0
+            phy_bytes, kv_used_bytes, act_used_bytes, weight_used_bytes, total_used_bytes = (0, 0, 0, 0, 0)
+            try:
+                phy_bytes, kv_used_bytes, act_used_bytes, weight_used_bytes, total_used_bytes = self.buffer.pim_used_bytes(dev.name)
+            except Exception:
+                pass
+            prof = {
+                'wid': str(wid),
+                'weight_size_nd': int(wsize_nd),
+                'host_storage_fmt': str(src_storage_fmt),
+                'host_src_fmt': str(self._weight_host_source_format(dev, str(src_storage_fmt))),
+                'resident_fmt': str(resident_fmt),
+                'cache_state': 'infeasible',
+                'cache_capacity_bytes': int(cap_bytes),
+                'runtime_phy_bytes': int(phy_bytes),
+                'runtime_kv_used_bytes': int(kv_used_bytes),
+                'runtime_act_used_bytes': int(act_used_bytes),
+                'runtime_weight_used_bytes': int(weight_used_bytes),
+                'runtime_total_used_bytes': int(total_used_bytes),
+                'total_s': float('inf'),
+            }
+            if commit:
+                raise RuntimeError(
+                    f"Infeasible to cache weight_id='{wid}' on device='{dev.name}': "
+                    f"weight_size_nd={int(wsize_nd)}, cache_capacity_bytes={int(cap_bytes)}, "
+                    f"kv_used_bytes={int(kv_used_bytes)}, act_used_bytes={int(act_used_bytes)}, "
+                    f"weight_used_bytes={int(weight_used_bytes)}, runtime_total_used_bytes={int(total_used_bytes)}."
+                )
+            return (float('inf'), float('inf'), prof)
+
         host = self.cost.get_host_device()
         host_src_fmt = self._weight_host_source_format(dev, str(src_storage_fmt))
         rd_bytes = int(self.cost.weight_transfer_comm_bytes(int(wsize_nd), str(src_storage_fmt), dev_or_type=dev))

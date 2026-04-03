@@ -4,19 +4,8 @@
 Single trace:
 
 python plot_trace_gantt.py \
-  --base_dir ../algorithms/output/exp1/hardware_1npu_2aim/llama_7b_fp16_b16_s2\
-  --policy algo_hefthint \
-  --length prefill-128xdecode_128 \
-  --out_dir ../figs/exp1/gantt
-
-python plot_trace_gantt.py \
-  --compare \
-  ../../algorithms/output/hw_hardware_1npu_2aim/st64/llama_7b_bf16_b16_s64/algo_heft/heft_prefill-256xdecode_256_ops_trace.csv \
-  ../../algorithms/output/hw_hardware_1npu_2aim/st64/llama_7b_bf16_b16_s64/algo_pd/pd_prefill-256xdecode_256_comms_trace.csv \
-  --out_dir ../../figs/gantt_comparison/hw_hardware_1npu_2aim/st64/llama_7b_bf16_b16_s64 \
-  --time_unit ms \
-  --fig_w 25 \
-  --comm_lane_mode aggregate
+  --csv ../../algorithms/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/llama_7b_fp16_b16_s2/algo_hefthint/hefthint_linear_prefill-128xdecode_128_comms_trace.csv \
+  --out_dir ../../figs/exp1/gantt
 """
 
 from __future__ import annotations
@@ -45,10 +34,10 @@ import pandas as pd
 OP_GROUP_ORDER = ["FFN_W", "ATTN_CORE", "QKVO", "OTHER"]
 
 OP_GROUP_STYLE = {
-    "FFN_W": {"label": "FFN_W1/W2/W3", "color": "#2e7277"},
-    "ATTN_CORE": {"label": "QK/SV/Softmax/K_write/V_write", "color": "#98d98e"},
-    "QKVO": {"label": "Q/K/V/O", "color": "#6C92DA"},
-    "OTHER": {"label": "Other", "color": "#dbed93"},
+    "FFN_W": {"label": "FFN_W1/W2/W3", "color": "#3760a9"},
+    "ATTN_CORE": {"label": "QK/SV/Softmax/K_write/V_write", "color": "#39a937"},
+    "QKVO": {"label": "Q/K/V/O", "color": "#5837a8"},
+    "OTHER": {"label": "Other", "color": "#3791a8"},
 }
 
 DATA_XFER_STYLE = {"label": "data transfer", "color": "#808080", "alpha": 0.40}

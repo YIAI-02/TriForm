@@ -34,7 +34,7 @@ conda activate triform310
 THIS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$THIS_DIR/.." && pwd)"
 
-PY_SCRIPT="${PY_SCRIPT:-$REPO_ROOT/verify/schedule_deploy_verify_gpu.py}"
+PY_SCRIPT="${PY_SCRIPT:-$REPO_ROOT/verify/schedule_deploy_verify.py}"
 
 # ----------------------------------------------------------------------
 # Optional: collect mode (concatenate multiple merge.csv into one)
@@ -47,24 +47,24 @@ SCHEDULE_CSV="${SCHEDULE_CSV:-}"
 OUT_DIR="${OUT_DIR:-}"
 PREFIX="${PREFIX:-}"
 
-GPU_RESULTS_JSON="${GPU_RESULTS_JSON:-}" 
+NPU_RESULTS_JSON="${NPU_RESULTS_JSON:-${npu_RESULTS_JSON:-${GPU_RESULTS_JSON:-}}}" 
 PIM_RESULTS_JSON="${PIM_RESULTS_JSON:-}" 
-GPU_OK_FILE="${GPU_OK_FILE:-}"
+NPU_OK_FILE="${NPU_OK_FILE:-${npu_OK_FILE:-${GPU_OK_FILE:-}}}"
 PIM_OK_FILE="${PIM_OK_FILE:-}"
-GPU_LOG_DIR="${GPU_LOG_DIR:-}"
+NPU_LOG_DIR="${NPU_LOG_DIR:-${npu_LOG_DIR:-${GPU_LOG_DIR:-}}}"
 PIM_LOG_DIR="${PIM_LOG_DIR:-}"
 
 COMM_MODEL="${COMM_MODEL:-schedule}"
 PCIE_LANES="${PCIE_LANES:-16}"
 DECODE_STRIDE="${DECODE_STRIDE:-1}"
-NON_OVERLAP="${NON_OVERLAP:-0.2}"
+OVERLAP="${OVERLAP:-${NON_OVERLAP:-0.0}}"
 COMMS_CSV="${COMMS_CSV:-}"
 BATCH="${BATCH:-}"
 OUT_CSV="${OUT_CSV:-}"
 OUT_STEPS_CSV="${OUT_STEPS_CSV:-}"
 
-if [[ -z "$GPU_RESULTS_JSON" && -n "$OUT_DIR" && -n "$PREFIX" ]]; then
-  GPU_RESULTS_JSON="${OUT_DIR%/}/${PREFIX}.gpu_results.json"
+if [[ -z "$NPU_RESULTS_JSON" && -n "$OUT_DIR" && -n "$PREFIX" ]]; then
+  NPU_RESULTS_JSON="${OUT_DIR%/}/${PREFIX}.npu_results.json"
 fi
 if [[ -z "$PIM_RESULTS_JSON" && -n "$OUT_DIR" && -n "$PREFIX" ]]; then
   PIM_RESULTS_JSON="${OUT_DIR%/}/${PREFIX}.pim_results.json"
@@ -119,19 +119,19 @@ fi
 
 echo "[slurm] PY_SCRIPT=${PY_SCRIPT}"
 echo "[slurm] SCHEDULE_CSV=${SCHEDULE_CSV}"
-echo "[slurm] GPU_RESULTS_JSON=${GPU_RESULTS_JSON:-<none>}"
+echo "[slurm] NPU_RESULTS_JSON=${NPU_RESULTS_JSON:-<none>}"
 echo "[slurm] PIM_RESULTS_JSON=${PIM_RESULTS_JSON:-<none>}"
-echo "[slurm] GPU_OK_FILE=${GPU_OK_FILE:-<none>}"
+echo "[slurm] NPU_OK_FILE=${NPU_OK_FILE:-<none>}"
 echo "[slurm] PIM_OK_FILE=${PIM_OK_FILE:-<none>}"
-echo "[slurm] COMM_MODEL=${COMM_MODEL} PCIE_LANES=${PCIE_LANES} DECODE_STRIDE=${DECODE_STRIDE} NON_OVERLAP=${NON_OVERLAP}"
+echo "[slurm] COMM_MODEL=${COMM_MODEL} PCIE_LANES=${PCIE_LANES} DECODE_STRIDE=${DECODE_STRIDE} OVERLAP=${OVERLAP}"
 echo "[slurm] COMMS_CSV=${COMMS_CSV:-<none>}"
 echo "[slurm] OUT_CSV=${OUT_CSV}"
 echo "[slurm] OUT_STEPS_CSV=${OUT_STEPS_CSV:-<none>}"
 
-if [[ -n "$GPU_OK_FILE" && ! -f "$GPU_OK_FILE" ]]; then
-  echo "[slurm] ERROR: GPU stage failed or did not finish cleanly (missing GPU_OK_FILE=$GPU_OK_FILE)" >&2
-  if [[ -n "$GPU_LOG_DIR" ]]; then
-    echo "[slurm] Hint: check GPU logs under: $GPU_LOG_DIR" >&2
+if [[ -n "$NPU_OK_FILE" && ! -f "$NPU_OK_FILE" ]]; then
+  echo "[slurm] ERROR: NPU stage failed or did not finish cleanly (missing NPU_OK_FILE=$NPU_OK_FILE)" >&2
+  if [[ -n "$NPU_LOG_DIR" ]]; then
+    echo "[slurm] Hint: check NPU logs under: $NPU_LOG_DIR" >&2
   fi
   exit 10
 fi
@@ -143,9 +143,9 @@ if [[ -n "$PIM_OK_FILE" && ! -f "$PIM_OK_FILE" ]]; then
   exit 11
 fi
 
-if [[ -n "$GPU_RESULTS_JSON" && "$GPU_RESULTS_JSON" != "-" && ! -f "$GPU_RESULTS_JSON" ]]; then
-  echo "[slurm] ERROR: GPU_RESULTS_JSON not found: $GPU_RESULTS_JSON" >&2
-  exit 12
+if [[ -n "$NPU_RESULTS_JSON" && "$NPU_RESULTS_JSON" != "-" && ! -f "$NPU_RESULTS_JSON" ]]; then
+  echo "[slurm] ERROR: NPU_RESULTS_JSON not found: $NPU_RESULTS_JSON" >&2
+   exit 12
 fi
 if [[ -n "$PIM_RESULTS_JSON" && "$PIM_RESULTS_JSON" != "-" && ! -f "$PIM_RESULTS_JSON" ]]; then
   echo "[slurm] ERROR: PIM_RESULTS_JSON not found: $PIM_RESULTS_JSON" >&2
@@ -157,15 +157,15 @@ cmd=(python "$PY_SCRIPT" merge \
   --comm-model "$COMM_MODEL" \
   --pcie-lanes "$PCIE_LANES" \
   --decode-stride "$DECODE_STRIDE" \
-  --non-overlap "$NON_OVERLAP" \
+  --overlap "$OVERLAP" \
   --out-csv "$OUT_CSV")
 
 if [[ -n "${BATCH}" ]]; then
   cmd+=(--batch "$BATCH")
 fi
 
-if [[ -n "${GPU_RESULTS_JSON}" && "${GPU_RESULTS_JSON}" != "-" ]]; then
-  cmd+=(--gpu-results "$GPU_RESULTS_JSON")
+if [[ -n "${NPU_RESULTS_JSON}" && "${NPU_RESULTS_JSON}" != "-" ]]; then
+  cmd+=(--npu-results "$NPU_RESULTS_JSON")
 fi
 if [[ -n "${PIM_RESULTS_JSON}" && "${PIM_RESULTS_JSON}" != "-" ]]; then
   cmd+=(--pim-results "$PIM_RESULTS_JSON")

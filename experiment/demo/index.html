@@ -579,26 +579,26 @@
 
     <div class="controlRow" id="tokRow">
       <div class="control">
-        <label>Decode sample start</label>
-        <input id="tokStart" type="number" min="0" step="1" value="0" title="0-based decode sample index to start from." />
+        <label>Decode token start</label>
+        <input id="tokStart" type="number" min="0" step="1" value="0" title="0-based decode token index to start from." />
       </div>
       <div class="control">
-        <label>Samples to play</label>
-        <input id="tokCount" type="number" min="1" step="1" value="4" title="Number of sampled decode steps to play." />
+        <label>Tokens to play</label>
+        <input id="tokCount" type="number" min="1" step="1" value="4" title="Number of decode tokens to play." />
       </div>
     </div>
 
     <div class="controlRow" id="strideRow">
       <div class="control">
         <label>Stride label</label>
-        <select id="strideLabel" title="Show a stride badge (×Stride) when jumping between sampled decode steps.">
+        <select id="strideLabel" title="Show a stride badge (×Stride) when jumping between decode steps.">
           <option value="on" selected>on</option>
           <option value="off">off</option>
         </select>
       </div>
       <div class="control">
         <label>Stride</label>
-        <input id="stride" type="number" min="1" step="1" value="64" title="Sampling stride used only for labeling (e.g. 64 means one sample represents ~64 tokens).">
+        <input id="stride" type="number" min="1" step="1" value="1" title="Decode sampling stride. Use 1 for ordinary per-token traces.">
       </div>
     </div>
 
@@ -887,11 +887,12 @@ function mergeShardNodes(nodesByIdRaw, layer){
     const devTypeSet = new Set();
     const shardSet = new Set();
 
-    // For HYBRID pie rendering: keep duration breakdown per device type, and
-    // choose a representative device name per type (to pick its assigned color).
+    // For HYBRID pie rendering: split by participating device count per type,
+    // not by runtime duration. Keep duration only to choose a stable
+    // representative device name per type (to pick its assigned color).
     const devDur = {};          // device name -> total duration
     const devTypeOfDev = {};    // device name -> normalized type
-    const typeDur = {};         // type -> total duration
+    const typeDeviceSet = {};   // type -> Set(unique device names)
 
     for (const it of arr){
       const n = it.n || {};
@@ -911,7 +912,7 @@ function mergeShardNodes(nodesByIdRaw, layer){
 
       devDur[devName] = (devDur[devName] || 0) + (Number.isFinite(d) ? d : 0);
       devTypeOfDev[devName] = devType;
-      typeDur[devType] = (typeDur[devType] || 0) + (Number.isFinite(d) ? d : 0);
+      (typeDeviceSet[devType] ||= new Set()).add(devName);
 
       if (n.shard) shardSet.add(n.shard);
 
@@ -933,27 +934,33 @@ function mergeShardNodes(nodesByIdRaw, layer){
       const names = [...devNameSet].filter(Boolean).sort();
       dev = names.length ? names[0] : UNKNOWN_DEVICE;
     } else {
+      const typeDeviceCount = {};
+      for (const t of Object.keys(typeDeviceSet)){
+        typeDeviceCount[t] = typeDeviceSet[t]?.size || 0;
+      }
+
       // Build a stable (and interpretable) type ordering: NPU -> PIM -> others,
-      // tie-broken by total duration then lexicographic.
+      // tie-broken by device count then lexicographic.
       hybridTypes = [...devTypeSet].sort((a,b) => {
         const ra = typeRank(a), rb = typeRank(b);
         if (ra !== rb) return ra - rb;
-        const da = Number(typeDur[a] || 0);
-        const db = Number(typeDur[b] || 0);
-        if (db !== da) return db - da;
+        const ca = Number(typeDeviceCount[a] || 0);
+        const cb = Number(typeDeviceCount[b] || 0);
+        if (cb !== ca) return cb - ca;
         return String(a).localeCompare(String(b));
       });
 
-      const total = Object.values(typeDur).reduce((s,v) => s + Number(v || 0), 0);
+      const totalCount = hybridTypes.reduce((s, t) => s + Number(typeDeviceCount[t] || 0), 0);
 
       // Percent sizes for Cytoscape pie slices; ensure they sum to 100.
+      // Example: 1 NPU + 1 PIM => 50 / 50.
       let sum = 0;
       for (let i=0;i<hybridTypes.length;i++){
         const t = hybridTypes[i];
 
         let pct = 0;
-        if (total > 1e-12){
-          pct = (Number(typeDur[t] || 0) / total) * 100;
+        if (totalCount > 0){
+          pct = (Number(typeDeviceCount[t] || 0) / totalCount) * 100;
           pct = Math.round(pct * 10) / 10;
         } else {
           pct = 100 / Math.max(1, hybridTypes.length);
@@ -2042,18 +2049,22 @@ function buildAutoLoadCandidates(kind, prefill, decode){
   const out = [];
   if (String(kind).toLowerCase() === 'base'){
     out.push(`./${simple}`);
+    out.push(`./linear_${simple}`);
     out.push(`./pd_${simple}`);
     out.push(`./baseline_${simple}`);
     for (const core of tagged){
       out.push(`./${core}`);
+      out.push(`./linear_${core}`);
       out.push(`./pd_${core}`);
       out.push(`./baseline_${core}`);
     }
   } else {
     out.push(`./hefthint_${simple}`);
+    out.push(`./hefthint_linear_${simple}`);
     out.push(`./heft_hint_${simple}`);
     for (const core of tagged){
       out.push(`./hefthint_${core}`);
+      out.push(`./hefthint_linear_${core}`);
       out.push(`./heft_hint_${core}`);
     }
   }
@@ -2429,7 +2440,7 @@ function updateDeviceIcons(cy, icons, seg, tRel, ptrs){
    Speed / saved-time metrics
    The metric display is aligned to *completed* work to avoid oscillations when playback is split per-layer.
    - Prefill: updates after each completed prefill layer segment.
-   - Decode: updates after the last played layer of a sampled decode step.
+   - Decode: updates after the last played layer of a decode step.
 ========================= */
 const METRIC_EPS = 1e-9;
 
@@ -2516,6 +2527,21 @@ function alignedMetricY(metric){
   return speedup;
 }
 
+function modelLayerStats(){
+  const layers = traceBase?.layerList || traceHeu?.layerList || [];
+  const total = layers.length || 0;
+  const first = total ? Number(layers[0]) : 0;
+  return { total, first };
+}
+
+function fmtLayerPos(layer){
+  const L = Number(layer);
+  const meta = modelLayerStats();
+  if (!Number.isFinite(L) || !meta.total) return '—';
+  const pos = meta.first === 0 ? (L + 1) : (L - meta.first + 1);
+  return `L${L} (${pos}/${meta.total})`;
+}
+
 function updateInfoTitle(){
   const model = modelLabel();
   const batch = UI.batch.value;
@@ -2539,32 +2565,36 @@ function updateInfoBar(){
   const layer = seg.layer;
   const tok = seg.tok;
 
-  const tokenLabel = (phase === 'prefill') ? 'prefill' : `decode#${tok}`;
+  const totalSamples = Math.min(traceBase?.tokenCount || 0, traceHeu?.tokenCount || 0);
+  const tokenLabel = (phase === 'prefill')
+    ? 'prefill'
+    : `decode token ${Number.isFinite(+tok) ? (+tok + 1) : '—'}${totalSamples ? '/' + totalSamples : ''}`;
 
-  UI.infoSub.textContent = `Phase: ${phase} • Layer: L${layer} • Token: ${tokenLabel}`;
+  UI.infoSub.textContent = `Phase: ${phase} • Layer: ${fmtLayerPos(layer)} • Token: ${tokenLabel}`;
 
   const { baseT, heuT, speedup, saved } = alignedTimes();
 
   const stride = Math.max(1, Number(UI.stride.value || 1));
-  const totalSamples = Math.min(traceBase?.tokenCount || 0, traceHeu?.tokenCount || 0);
 
   let progText = `seg ${player.segIdx + 1}/${player.segList.length}`;
 
   if (phase === 'prefill'){
     const li = Number.isFinite(+seg.layerPlayIdx) ? (+seg.layerPlayIdx) : 0;
     const lc = Number.isFinite(+seg.layerPlayCount) ? (+seg.layerPlayCount) : 1;
-    progText += ` • layer ${li + 1}/${lc} • ${Math.round(player.p * 100)}%`;
+    progText += ` • model ${fmtLayerPos(layer)}`;
+    if (lc > 1) progText += ` • play-layer ${li + 1}/${lc}`;
+    progText += ` • ${Math.round(player.p * 100)}%`;
   } else {
     const sIdx = Number.isFinite(+tok) ? (+tok) : 0;
     const li = Number.isFinite(+seg.tokLayerIdx) ? (+seg.tokLayerIdx) : 0;
     const lc = Number.isFinite(+seg.tokLayerCount) ? (+seg.tokLayerCount) : 1;
 
     const denom = totalSamples ? `/${totalSamples}` : '';
-    const approxTokens = (sIdx + clamp(player.p, 0, 1) + 1) * stride;
-
-    progText += ` • sample ${sIdx + 1}${denom}`;
-    progText += ` • layer ${li + 1}/${lc} • ${Math.round(player.p * 100)}%`;
-    progText += ` • ≈ tokens ${Math.floor(approxTokens)}`;
+    progText += ` • token ${sIdx + 1}${denom}`;
+    progText += ` • model ${fmtLayerPos(layer)}`;
+    if (lc > 1) progText += ` • play-layer ${li + 1}/${lc}`;
+    progText += ` • ${Math.round(player.p * 100)}%`;
+    if (stride > 1) progText += ` • stride ×${stride}`;
   }
 
   UI.pProg.textContent = progText;
@@ -2575,7 +2605,6 @@ function updateInfoBar(){
 
   updateSpeedChart();
 }
-
 
 /* =========================
    Speedup chart (canvas)
@@ -2868,7 +2897,7 @@ function showJumpBadge(prevSeg, nextSeg){
   if (+p.tok === +n.tok) return;
 
   // Show the badge only when the original trace contains a noticeable gap
-  // between consecutive sampled decode steps (common with stride sampling).
+  // between consecutive decode steps (common with stride sampling).
   if (traceBase){
     const prevTok = +p.tok;
     const nextTok = +n.tok;
@@ -3152,7 +3181,7 @@ UI.fileBase.addEventListener('change', async () => {
     setStatus('Baseline trace loaded. Load heuristic trace…');
     if (traceBase && traceHeu){
       populateLayerSelector();
-      setStatus(`Ready. Decode samples: ${traceBase.tokenCount}`);
+      setStatus(`Ready. Decode tokens: ${traceBase.tokenCount}`);
       rebuildAndRender();
     }
   }catch(e){
@@ -3169,7 +3198,7 @@ UI.fileHeu.addEventListener('change', async () => {
     setStatus('Heuristic trace loaded. Load baseline trace…');
     if (traceBase && traceHeu){
       populateLayerSelector();
-      setStatus(`Ready. Decode samples: ${traceBase.tokenCount}`);
+      setStatus(`Ready. Decode tokens: ${traceBase.tokenCount}`);
       rebuildAndRender();
     }
   }catch(e){
@@ -3208,7 +3237,7 @@ async function boot(){
 
   if (traceBase && traceHeu){
     populateLayerSelector();
-    setStatus(`Ready. Auto-loaded ${stripLocalPrefix(hit.baseUrl)} + ${stripLocalPrefix(hit.heuUrl)}. Decode samples: ${traceBase.tokenCount}`);
+    setStatus(`Ready. Auto-loaded ${stripLocalPrefix(hit.baseUrl)} + ${stripLocalPrefix(hit.heuUrl)}. Decode tokens: ${traceBase.tokenCount}`);
     await rebuildAndRender();
   } else {
     refreshAutoLoadHints();

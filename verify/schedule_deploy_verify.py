@@ -1,64 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-
-1) export
-   - 输入：一个或多个 schedule CSV
-   - 输出：
-     * <prefix>.gpu_tasks.json
-     * <prefix>.pim_tasks.json
-
-python ./verify/schedule_deploy_verify.py export \
-  --schedule  ./algorithms/output/evaluate_single_test/hardware_1gpu_4aim/llama_7b_int8_b1_s128/algo_pd/pd_prefill-8192xdecode_128_ops_trace.csv \
-  --comms     ./algorithms/output/evaluate_single_test/hardware_1gpu_4aim/llama_7b_int8_b1_s128/algo_pd/pd_prefill-8192xdecode_128_comms_trace.csv \
-  --out-dir   ./verify/out \
-  --prefix    pd_seg \
-  --segment-scope layer \
-  --prefill-len 8192 \
-  --decode-stride 128 \
-  --cfg ./configs/llama_7b_shape.json
-
-python ./verify/schedule_deploy_verify.py export \
-  --schedule  ./algorithms/output/evaluate_single_test/hardware_1gpu_4aim/llama_7b_int8_b1_s128/algo_hefthint/hefthint_prefill-8192xdecode_128_ops_trace.csv \
-  --comms     ./algorithms/output/evaluate_single_test/hardware_1gpu_4aim/llama_7b_int8_b1_s128/algo_hefthint/hefthint_prefill-8192xdecode_128_comms_trace.csv \
-  --out-dir   ./verify/out \
-  --prefix    hefthint_seg \
-  --segment-scope layer \
-  --prefill-len 8192 \
-  --decode-stride 128 \
-  --cfg ./configs/llama_7b_shape.json
-
-2) run-gpu
-   - 读取 gpu_tasks.json，把每个 segment 的算子序列连续执行并计时
-   - 输出：gpu_results.json （key -> sec_per_call）
-   python ./verify/schedule_deploy_verify.py run-gpu \
-  --tasks ./verify/out/hefthint_seg.gpu_tasks.json \
-  --out ./verify/out/hefthint_seg.gpu_results.json \
-  --warmup 3 --iters 10
-
-
-3) run-pim
-   - 读取 pim_tasks.json，调用 aim_sim.PIM 的 only_trace primitive，
-     把 segment 内算子连续仿真并计时
-   - 输出：pim_results.json （key -> sec_per_call）
-  python ./verify/schedule_deploy_verify.py run-pim \
-  --tasks ./verify/out/hefthint_seg.pim_tasks.json \
-  --out   ./verify/out/hefthint_seg.pim_results.json \
-  --pim-ramulator-config ./algorithms/aim_simulator/example.yaml \
-  --pim-hw-json          ./algorithms/aim_simulator/PIM_AiM.json \
-  --pim-ramulator-bin ./algorithms/ramulator2\
-  --pim-num-devices 4
-
-4) merge
-   - 输入：schedule CSV + gpu_results.json + pim_results.json
-   - 重新按同样规则切 segment，统计每个 segment 出现次数，做求和/聚合，给出总 latency + speedup 对比。
-   python ./verify/schedule_deploy_verify.py merge \
-  --schedule ./algorithms/output/evaluate_single_test/hardware_1gpu_4aim/llama_7b_int8_b1_s128/algo_hefthint/hefthint_prefill-8192xdecode_128_ops_trace.csv \
-  --gpu-results ./verify/out/hefthint_seg.gpu_results.json \
-  --pim-results ./verify/out/hefthint_seg.pim_results.json \
-  --comm-model schedule \
-  --decode-stride 128 \
-  --out-csv ./verify/out/merge_report_hefthint.csv
+NPU/PIM-only verification driver aligned with the current simulator.
 """
 
 from __future__ import annotations
@@ -118,152 +61,6 @@ _COMM_OPS = {
     "identity",
 }
 
-
-# ==========================================================
-# GPU env / spec report helpers
-# ==========================================================
-def _try_run(cmd: List[str]) -> Tuple[bool, str]:
-    """Run a command and return (ok, stdout_or_error)."""
-    try:
-        out = subprocess.check_output(cmd, stderr=subprocess.STDOUT, text=True)
-        return True, out.strip()
-    except Exception as e:
-        return False, str(e)
-
-def collect_gpu_info(device_str: str) -> Dict[str, Any]:
-    """Collect GPU model/spec info for the device this script will use.
-
-    The returned dict is JSON-serializable.
-    """
-    info: Dict[str, Any] = {
-        "requested_device": str(device_str),
-        "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
-    }
-
-    if torch is None:
-        info["torch_available"] = False
-        return info
-
-    info["torch_available"] = True
-    info["torch_version"] = getattr(torch, "__version__", None)
-    info["torch_cuda_version"] = getattr(getattr(torch, "version", None), "cuda", None)
-    # ROCm/HIP environments (best effort)
-    info["torch_hip_version"] = getattr(getattr(torch, "version", None), "hip", None)
-
-    # cuDNN
-    try:
-        info["cudnn_available"] = bool(torch.backends.cudnn.is_available())
-        info["cudnn_version"] = torch.backends.cudnn.version()
-    except Exception:
-        info["cudnn_available"] = None
-        info["cudnn_version"] = None
-
-    # CUDA device properties via torch
-    try:
-        info["cuda_available"] = bool(torch.cuda.is_available())
-    except Exception:
-        info["cuda_available"] = False
-
-    if info.get("cuda_available"):
-        try:
-            info["cuda_device_count"] = int(torch.cuda.device_count())
-        except Exception:
-            info["cuda_device_count"] = None
-
-    try:
-        dev = torch.device(device_str)
-    except Exception as e:
-        info["torch_device_parse_error"] = str(e)
-        dev = None
-
-    if dev is not None and dev.type == "cuda" and info.get("cuda_available"):
-        try:
-            idx = dev.index
-            if idx is None:
-                idx = int(torch.cuda.current_device())
-            info["device_index"] = int(idx)
-            props = torch.cuda.get_device_properties(int(idx))
-
-            info["name"] = getattr(props, "name", None)
-            info["multi_processor_count"] = int(getattr(props, "multi_processor_count", -1))
-            info["compute_capability"] = f"{int(getattr(props, 'major', -1))}.{int(getattr(props, 'minor', -1))}"
-
-            # Best-effort extra specs (present in most PyTorch builds)
-            for attr, key in [
-                ("clock_rate", "clock_rate_khz"),
-                ("memory_clock_rate", "memory_clock_rate_khz"),
-                ("memory_bus_width", "memory_bus_width_bits"),
-                ("l2_cache_size", "l2_cache_size_bytes"),
-                ("warp_size", "warp_size"),
-                ("max_threads_per_block", "max_threads_per_block"),
-                ("max_threads_per_multi_processor", "max_threads_per_multiprocessor"),
-                ("shared_memory_per_block", "shared_memory_per_block_bytes"),
-            ]:
-                if hasattr(props, attr):
-                    try:
-                        info[key] = int(getattr(props, attr))
-                    except Exception:
-                        pass
-
-        except Exception as e:
-            info["torch_cuda_props_error"] = str(e)
-
-    # Best-effort NVIDIA driver info (if nvidia-smi exists)
-    smi_path = shutil.which("nvidia-smi")
-    if smi_path:
-        ok, out = _try_run([smi_path, "-L"])
-        if ok:
-            info["nvidia_smi_L"] = out
-        else:
-            info["nvidia_smi_L_error"] = out
-
-        # Minimal, generally-supported query fields
-        ok, out = _try_run([
-            smi_path,
-            "--query-gpu=name,uuid,driver_version,memory.total",
-            "--format=csv,noheader,nounits",
-        ])
-        if ok:
-            info["nvidia_smi_query"] = out
-        else:
-            info["nvidia_smi_query_error"] = out
-    else:
-        info["nvidia_smi"] = "not_found"
-
-    return info
-
-
-def print_gpu_info(info: Dict[str, Any], *, print_fn=print) -> None:
-    """Pretty-print GPU info for logs."""
-    dev = info.get("requested_device")
-    if not info.get("torch_available", False):
-        print_fn(f"[run-gpu] torch not available; cannot query GPU properties. requested_device={dev}")
-        return
-
-    if dev and str(dev).startswith("cuda") and info.get("cuda_available"):
-        name = info.get("name") or "<unknown>"
-        mem = info.get("total_memory_gib")
-        cc = info.get("compute_capability")
-        sm = info.get("multi_processor_count")
-        idx = info.get("device_index")
-        extra = []
-        if mem is not None:
-            extra.append(f"{mem:.2f} GiB")
-        if sm is not None and sm != -1:
-            extra.append(f"SM={sm}")
-        if cc:
-            extra.append(f"CC={cc}")
-        extra_s = ("; " + ", ".join(extra)) if extra else ""
-
-        print_fn(f"[run-gpu] GPU[{idx}] {name}{extra_s}")
-        if info.get("nvidia_smi_L"):
-            print_fn(f"[run-gpu] nvidia-smi -L: {info['nvidia_smi_L']}")
-        if info.get("nvidia_smi_query"):
-            print_fn(f"[run-gpu] nvidia-smi query: {info['nvidia_smi_query']}")
-    else:
-        print_fn(
-            f"[run-gpu] running on non-CUDA device={dev} (cuda_available={info.get('cuda_available')})."
-        )
 
 # cxl model is optional
 try:
@@ -793,7 +590,7 @@ def build_actual_step_token_index_map(
 def normalize_device_type(v: Any) -> str:
     s = str(v).strip().lower()
     # Common aliases
-    if s in ("gpu", "cuda"):
+    if s in ("npu", "cuda"):
         return "npu"
     if s in ("aim",):
         return "pim"
@@ -833,22 +630,22 @@ def load_comms_csv(path: str) -> pd.DataFrame:
     return df
 
 
+
 def extract_weight_load_seconds_by_phase(
     comms_paths: List[str],
 ) -> Dict[str, Dict[str, float]]:
-    """Aggregate `weight_load` durations from comms trace(s), split by phase.
+    """Aggregate direct `weight_load` durations from comms trace(s), split by phase.
 
-    Returns a dict:
-        {
-          "<phase>": {"gpu_s": ..., "pim_s": ..., "unknown_s": ..., "total_s": ...},
-          "all":     {"gpu_s": ..., "pim_s": ..., "unknown_s": ..., "total_s": ...},
-        }
+    Intentional simplification for deploy/verify:
+      - use the durations explicitly marked in comms.csv
+      - sum rows directly
+      - do not match individual loads back to ops
+      - do not do subtraction /补足 / max-by-destination bookkeeping
     """
 
+    zero = {"npu_s": 0.0, "pim_s": 0.0, "unknown_s": 0.0, "total_s": 0.0}
     if not comms_paths:
-        return {
-            "all": {"gpu_s": 0.0, "pim_s": 0.0, "total_s": 0.0, "unknown_s": 0.0},
-        }
+        return {"all": dict(zero)}
 
     rows: List[pd.DataFrame] = []
 
@@ -858,7 +655,6 @@ def extract_weight_load_seconds_by_phase(
     def _norm_phase(s: pd.Series) -> pd.Series:
         ph = s.astype(str).fillna("prefill").replace("nan", "prefill", regex=False).str.strip().str.lower()
         ph = ph.where(ph != "", "prefill")
-        # common aliases
         ph = ph.str.replace(r"^pre.*", "prefill", regex=True)
         ph = ph.str.replace(r"^dec.*", "decode", regex=True)
         return ph
@@ -866,9 +662,7 @@ def extract_weight_load_seconds_by_phase(
     for cp in comms_paths:
         p = resolve_existing_path(cp)
         df = load_comms_csv(str(p))
-        if df is None or df.empty:
-            continue
-        if "tag" not in df.columns or "duration" not in df.columns:
+        if df is None or df.empty or "tag" not in df.columns or "duration" not in df.columns:
             continue
 
         tag_l = df["tag"].astype(str).str.strip().str.lower()
@@ -877,112 +671,57 @@ def extract_weight_load_seconds_by_phase(
             continue
 
         wl["duration"] = pd.to_numeric(wl["duration"], errors="coerce").fillna(0.0).astype(float)
+        phase = _norm_phase(wl["phase"]) if "phase" in wl.columns else pd.Series(["prefill"] * len(wl), index=wl.index)
 
-        # phase
-        if "phase" in wl.columns:
-            phase = _norm_phase(wl["phase"])
-        else:
-            phase = pd.Series(["prefill"] * len(wl), index=wl.index)
-
-        # destination-based classification
         dst = _norm_str(wl["dst"]) if "dst" in wl.columns else pd.Series([""] * len(wl), index=wl.index)
         dst_type = _norm_str(wl["dst_type"]) if "dst_type" in wl.columns else pd.Series([""] * len(wl), index=wl.index)
 
-        dst_u = dst.astype(str).str.upper().str.strip()
-        dst_norm = dst_u.str.replace("_", "", regex=False)
-        dst_norm = dst_norm.str.replace(r"^NPU", "GPU", regex=True)
-
-        dst_type_l = dst_type.astype(str).str.strip().str.lower()
+        dst_norm = dst.astype(str).str.upper().str.replace("_", "", regex=False).str.strip()
+        dst_type_l = dst_type.astype(str).str.lower().str.strip()
 
         pim_mask = dst_norm.str.startswith("PIM") | dst_type_l.str.contains("pim")
-        gpu_mask = (
-            dst_norm.str.startswith("GPU")
-            | dst_norm.str.startswith("NPU")
-            | dst_type_l.str.contains("gpu")
-            | dst_type_l.str.contains("npu")
-            | dst_type_l.isin(["other"])
-        )
-        gpu_mask = gpu_mask & (~pim_mask)
+        npu_mask = dst_norm.str.contains("NPU") | dst_type_l.str.contains("npu")
+        npu_mask = npu_mask & (~pim_mask)
 
-        cls = np.where(pim_mask.to_numpy(), "pim", np.where(gpu_mask.to_numpy(), "gpu", "unknown"))
-
-        # weight key: try node_id/weight_id/op in order
-        wkey = pd.Series([""] * len(wl), index=wl.index)
-        if "node_id" in wl.columns:
-            nid = _norm_str(wl["node_id"])
-            wkey = wkey.where(wkey != "", nid)
-        if "weight_id" in wl.columns:
-            wid = _norm_str(wl["weight_id"])
-            wkey = wkey.where(wkey != "", wid)
-        if "op" in wl.columns:
-            op = _norm_str(wl["op"])
-            wkey = wkey.where(wkey != "", op)
-        # last resort: stable per-row id inside this comms trace
-        wkey = wkey.where(wkey != "", pd.Series([f"ROW{i}" for i in range(len(wl))], index=wl.index))
-
+        cls = np.where(pim_mask.to_numpy(), "pim", np.where(npu_mask.to_numpy(), "npu", "unknown"))
         rows.append(
             pd.DataFrame(
                 {
                     "phase": phase.to_numpy(),
                     "class": cls,
-                    "dst": dst_norm.to_numpy(),
-                    "wkey": wkey.to_numpy(),
                     "duration": wl["duration"].to_numpy(dtype=np.float64),
                 }
             )
         )
 
     if not rows:
-        return {
-            "all": {"gpu_s": 0.0, "pim_s": 0.0, "total_s": 0.0, "unknown_s": 0.0},
-        }
+        return {"all": dict(zero)}
 
     all_wl = pd.concat(rows, ignore_index=True)
-    per_dst = (
-        all_wl.groupby(["phase", "class", "dst"], dropna=False)["duration"]
-        .sum()
-        .reset_index()
-    )
-
     out: Dict[str, Dict[str, float]] = {}
-    phases = [str(p) for p in sorted(per_dst["phase"].dropna().unique())]
-    for ph in phases:
-        sub = per_dst[per_dst["phase"] == ph]
-
-        pim_by = sub[sub["class"] == "pim"].set_index("dst")["duration"].to_dict()
-        gpu_by = sub[sub["class"] == "gpu"].set_index("dst")["duration"].to_dict()
-        unk_by = sub[sub["class"] == "unknown"].set_index("dst")["duration"].to_dict()
-
-        pim_part = max(pim_by.values()) if pim_by else 0.0
-        gpu_part = max(gpu_by.values()) if gpu_by else 0.0
-        unk_part = sum(unk_by.values()) if unk_by else 0.0
-
-        # Unknown is conservatively charged to GPU/NPU side to avoid undercount.
-        gpu_s = float(gpu_part + unk_part)
-        pim_s = float(pim_part)
-        unknown_s = float(unk_part)
-
-        # IMPORTANT: weight_load is treated as non-overlapped time.
-        total_s = float(gpu_s + pim_s)
-
+    for ph, sub in all_wl.groupby("phase", sort=False):
+        cls_sum = sub.groupby("class", sort=False)["duration"].sum()
+        npu_s = float(cls_sum.get("npu", 0.0) or 0.0)
+        pim_s = float(cls_sum.get("pim", 0.0) or 0.0)
+        unknown_s = float(cls_sum.get("unknown", 0.0) or 0.0)
         out[str(ph)] = {
-            "gpu_s": float(gpu_s),
+            "npu_s": float(npu_s),
             "pim_s": float(pim_s),
             "unknown_s": float(unknown_s),
-            "total_s": float(total_s),
+            "total_s": float(npu_s + pim_s + unknown_s),
         }
 
-    # "all": sum across phases (phases are sequential)
-    all_gpu = float(sum(float(out[p].get("gpu_s", 0.0) or 0.0) for p in out.keys()))
-    all_pim = float(sum(float(out[p].get("pim_s", 0.0) or 0.0) for p in out.keys()))
-    all_unk = float(sum(float(out[p].get("unknown_s", 0.0) or 0.0) for p in out.keys()))
+    all_npu = float(sum(float(v.get("npu_s", 0.0) or 0.0) for v in out.values()))
+    all_pim = float(sum(float(v.get("pim_s", 0.0) or 0.0) for v in out.values()))
+    all_unknown = float(sum(float(v.get("unknown_s", 0.0) or 0.0) for v in out.values()))
     out["all"] = {
-        "gpu_s": float(all_gpu),
+        "npu_s": float(all_npu),
         "pim_s": float(all_pim),
-        "unknown_s": float(all_unk),
-        "total_s": float(all_gpu + all_pim),
+        "unknown_s": float(all_unknown),
+        "total_s": float(all_npu + all_pim + all_unknown),
     }
     return out
+
 
 def extract_weight_load_seconds_by_step(
     comms_paths: List[str],
@@ -990,7 +729,7 @@ def extract_weight_load_seconds_by_step(
 ) -> pd.DataFrame:
     """Aggregate `weight_load` durations per (phase, step)."""
 
-    cols = ["phase", "step", "gpu_s", "pim_s", "unknown_s", "total_s"]
+    cols = ["phase", "step", "npu_s", "pim_s", "unknown_s", "total_s"]
     if not comms_paths:
         return pd.DataFrame(columns=cols)
 
@@ -1065,25 +804,25 @@ def extract_weight_load_seconds_by_step(
         # prefill (and any non-decode) is treated as step=-1 to align with schedule
         step = step.where(phase.astype(str) == "decode", -1).astype(int)
 
-        # destination-based classification (gpu/pim/unknown), same as phase-level function
+        # destination-based classification (npu/pim/unknown), same as phase-level function
         dst = _norm_str(wl["dst"]) if "dst" in wl.columns else pd.Series([""] * len(wl), index=wl.index)
         dst_type = _norm_str(wl["dst_type"]) if "dst_type" in wl.columns else pd.Series([""] * len(wl), index=wl.index)
 
         dst_u = dst.astype(str).str.upper().str.strip()
         dst_norm = dst_u.str.replace("_", "", regex=False)
-        dst_norm = dst_norm.str.replace(r"^NPU", "GPU", regex=True)
+        dst_norm = dst_norm.str.replace(r"^NPU", "npu", regex=True)
         dst_type_l = dst_type.astype(str).str.strip().str.lower()
 
         pim_mask = dst_norm.str.startswith("PIM") | dst_type_l.str.contains("pim")
-        gpu_mask = (
-            dst_norm.str.startswith("GPU")
+        npu_mask = (
+            dst_norm.str.startswith("npu")
             | dst_norm.str.startswith("NPU")
-            | dst_type_l.str.contains("gpu")
+            | dst_type_l.str.contains("npu")
             | dst_type_l.str.contains("npu")
             | dst_type_l.isin(["other"])
         )
-        gpu_mask = gpu_mask & (~pim_mask)
-        cls = np.where(pim_mask.to_numpy(), "pim", np.where(gpu_mask.to_numpy(), "gpu", "unknown"))
+        npu_mask = npu_mask & (~pim_mask)
+        cls = np.where(pim_mask.to_numpy(), "pim", np.where(npu_mask.to_numpy(), "npu", "unknown"))
 
         rows.append(
             pd.DataFrame(
@@ -1111,23 +850,23 @@ def extract_weight_load_seconds_by_step(
     recs: List[Dict[str, Any]] = []
     for (ph, st), sub in per_dst.groupby(["phase", "step"], sort=False):
         pim_by = sub[sub["class"] == "pim"].set_index("dst")["duration"].to_dict()
-        gpu_by = sub[sub["class"] == "gpu"].set_index("dst")["duration"].to_dict()
+        npu_by = sub[sub["class"] == "npu"].set_index("dst")["duration"].to_dict()
         unk_by = sub[sub["class"] == "unknown"].set_index("dst")["duration"].to_dict()
 
         pim_part = max(pim_by.values()) if pim_by else 0.0
-        gpu_part = max(gpu_by.values()) if gpu_by else 0.0
+        npu_part = max(npu_by.values()) if npu_by else 0.0
         unk_part = sum(unk_by.values()) if unk_by else 0.0
 
-        gpu_s = float(gpu_part + unk_part)
+        npu_s = float(npu_part + unk_part)
         pim_s = float(pim_part)
         unknown_s = float(unk_part)
-        total_s = float(gpu_s + pim_s)
+        total_s = float(npu_s + pim_s)
 
         recs.append(
             {
                 "phase": str(ph),
                 "step": int(st),
-                "gpu_s": float(gpu_s),
+                "npu_s": float(npu_s),
                 "pim_s": float(pim_s),
                 "unknown_s": float(unknown_s),
                 "total_s": float(total_s),
@@ -1154,7 +893,7 @@ def extract_weight_load_seconds(
     by_phase = extract_weight_load_seconds_by_phase(comms_paths)
     rec = by_phase.get("all", {}) if isinstance(by_phase, dict) else {}
     return {
-        "gpu_s": float(rec.get("gpu_s", 0.0) or 0.0),
+        "npu_s": float(rec.get("npu_s", 0.0) or 0.0),
         "pim_s": float(rec.get("pim_s", 0.0) or 0.0),
         "total_s": float(rec.get("total_s", 0.0) or 0.0),
         "unknown_s": float(rec.get("unknown_s", 0.0) or 0.0),
@@ -1444,9 +1183,8 @@ class WorkloadConfig:
     prefill_len: int = 128
     decode_context_lens: Optional[List[int]] = None  # length = decode steps
     decode_stride: int = 1
-    # gpu bench
-    device: str = "cuda"
-    gpu_dtype: str = "fp16"
+    device: str = "none"
+    npu_dtype: str = "fp16"
 
     # KV-cache load modeling (verification-time)
     kv_load_bw_gbs: float = 0.0
@@ -1479,7 +1217,7 @@ class WorkloadConfig:
     segment_scope: str = "layer"
 
     # shard placement granularity:
-    shard_policy: str = "coarse_majority"
+    shard_policy: str = "fine"
 
     def to_dict(self) -> Dict[str, Any]:
         return dataclasses.asdict(self)
@@ -1617,7 +1355,7 @@ def extract_segments(df: pd.DataFrame, segment_scope: str) -> Tuple[Dict[str, Se
 
     Notes:
       - Ops in `_COMM_OPS` are treated as communication/synchronization and are **not** exported
-        as compute segments (GPU/PIM benchmarking skips them).
+        as compute segments (NPU/PIM benchmarking skips them).
       - Device-scope segmentation (splitting a device timeline by comm ops) has been removed.
 
     Returns:
@@ -1662,643 +1400,7 @@ def extract_segments(df: pd.DataFrame, segment_scope: str) -> Tuple[Dict[str, Se
     return uniq, ctr
 
 
-def _iter_layer_segments_coarse_majority(
-    df: pd.DataFrame,
-    *,
-    total_shards: int,
-) -> Iterable[Tuple[str, int, int, int, str, Tuple[Tuple[str, int], ...]]]:
-    """Yield coarse-grained compute segments for each (phase, actual_step, layer).
-
-    Returns tuples: (phase, actual_step, sig_step, layer, device_type, ops)
-
-    We only consider compute rows with device_type in {npu, pim}, and we ignore comm ops in _COMM_OPS.
-
-    Placement rule for sharded ops (node_id like *_s0..*_sN):
-      - if (# unique shards on GPU) > total_shards/2 -> put the whole op on GPU (npu)
-      - else -> put the whole op on PIM (pim)
-
-    """
-    total_shards = int(total_shards)
-    if total_shards <= 0:
-        total_shards = 1
-
-    # Restrict to compute on GPU/PIM and drop comm ops.
-    comp = df[df["device_type"].astype(str).str.lower().isin(["npu", "pim"])].copy()
-    if comp.empty:
-        return
-    op_l = comp["op"].astype(str).str.strip().str.lower()
-    comp = comp[~op_l.isin(_COMM_OPS)].copy()
-    if comp.empty:
-        return
-
-    comp["_base_node"] = comp["node_id"].apply(strip_shard_suffix)
-
-    # group by layer occurrence
-    for (phase, step, layer), g_layer in comp.groupby(["phase", "step", "layer"], sort=False):
-        try:
-            sig_step = int(pd.to_numeric(g_layer.get("sig_step"), errors="coerce").fillna(step).iloc[0]) if "sig_step" in g_layer.columns else int(step)
-        except Exception:
-            sig_step = int(step)
-        # group by op instance (base node id) to avoid merging LN vs LN2, Add1 vs Add2, etc.
-        items: List[Tuple[float, int, str, str, bool]] = []
-        # (t0, row0, op, chosen_dev, is_sharded)
-        for base, g_op in g_layer.groupby("_base_node", sort=False):
-            # ordering keys (stable)
-            try:
-                t0 = float(pd.to_numeric(g_op["start"], errors="coerce").min())
-            except Exception:
-                t0 = 0.0
-            try:
-                row0 = int(pd.to_numeric(g_op["_row"], errors="coerce").min())
-            except Exception:
-                row0 = 0
-
-            op = str(g_op["op"].iloc[0]).strip()
-            dev0 = str(g_op["device_type"].iloc[0]).strip().lower()
-
-            sh_series = pd.to_numeric(g_op.get("shard"), errors="coerce").fillna(-1).astype(int)
-            is_sharded = bool((sh_series >= 0).any())
-
-            chosen = dev0
-            if is_sharded:
-                # Count unique shard indices scheduled on GPU (npu)
-                gtmp = g_op.copy()
-                gtmp["_shard_i"] = sh_series.values
-                gpu_mask = gtmp["device_type"].astype(str).str.lower().eq("npu") & (gtmp["_shard_i"] >= 0)
-                gpu_shards = set(gtmp.loc[gpu_mask, "_shard_i"].tolist())
-                num_gpu = len(gpu_shards)
-
-                if num_gpu > (float(total_shards) / 2.0):
-                    chosen = "npu"
-                else:
-                    chosen = "pim"
-
-            items.append((t0, row0, op, chosen, is_sharded))
-
-        # stable order inside the layer
-        items.sort(key=lambda x: (x[0], x[1]))
-
-        gpu_ops: List[Tuple[str, int]] = []
-        pim_ops: List[Tuple[str, int]] = []
-
-        for _, _, op, chosen, is_sharded in items:
-            if chosen == "npu":
-                if is_sharded and total_shards > 1:
-                    for s in range(total_shards):
-                        gpu_ops.append((op, int(s)))
-                else:
-                    gpu_ops.append((op, -1))
-            elif chosen == "pim":
-                # In coarse mode, sharded ops are emitted once; PIMBackend handles model-parallel via FC_devices.
-                pim_ops.append((op, -1))
-            else:
-                # not npu/pim -> ignore (trace-only in merge)
-                pass
-
-        if gpu_ops:
-            yield (str(phase), int(step), int(sig_step), int(layer), "npu", tuple(gpu_ops))
-        if pim_ops:
-            yield (str(phase), int(step), int(sig_step), int(layer), "pim", tuple(pim_ops))
-
-
-def extract_segments_coarse_majority(df: pd.DataFrame, segment_scope: str, *, total_shards: int) -> Tuple[Dict[str, SegmentSig], Counter]:
-    """Extract unique segments using coarse-majority shard placement.
-
-    Returns:
-      - uniq: dict key -> SegmentSig
-      - ctr:  Counter over keys (each occurrence corresponds to one (phase, step, layer, device_type) group)
-    """
-    scope = str(segment_scope).lower().strip()
-    if scope != "layer":
-        raise ValueError(
-            f"Only segment_scope='layer' is supported (got {segment_scope!r}). "
-            "Device-scope segmentation has been removed."
-        )
-
-    uniq: Dict[str, SegmentSig] = {}
-    ctr: Counter = Counter()
-
-    for phase, actual_step, sig_step, layer, dev, ops in _iter_layer_segments_coarse_majority(df, total_shards=total_shards):
-        if not ops:
-            continue
-        seg = SegmentSig(device_type=str(dev), phase=str(phase), step=int(sig_step), ops=tuple(ops))
-        k = seg.to_key()
-        uniq[k] = seg
-        ctr[k] += 1
-
-    return uniq, ctr
-
-
-# ==========================================================
-# GPU backend (segment-level benchmark)
-# ==========================================================
-
-class GPUBackend:
-    def __init__(self, cfg: WorkloadConfig):
-        if torch is None or F is None:
-            raise RuntimeError("PyTorch not available; cannot run GPUBackend.")
-        self.cfg = cfg
-        self.device = torch.device(cfg.device)
-        if self.device.type == "cuda" and not torch.cuda.is_available():
-            raise RuntimeError("cfg.device=cuda but torch.cuda.is_available() == False on this machine.")
-        self.dtype = self._parse_dtype(cfg.gpu_dtype)
-        self._buf: Dict[Tuple[int, ...], torch.Tensor] = {}
-        self._wbuf: Dict[Tuple[str, Tuple[int, ...]], torch.Tensor] = {}
-
-    @staticmethod
-    def _parse_dtype(name: str):
-        name = name.lower()
-        if name == "fp16":
-            return torch.float16
-        if name == "bf16":
-            return torch.bfloat16
-        if name == "fp32":
-            return torch.float32
-        raise ValueError(f"unknown gpu_dtype: {name}")
-
-    def _rand(self, shape: Tuple[int, ...]) -> torch.Tensor:
-        if shape not in self._buf:
-            t = torch.randn(shape, device=self.device, dtype=self.dtype)
-            self._buf[shape] = t
-        return self._buf[shape]
-
-    def _weight(self, name: str, shape: Tuple[int, ...]) -> torch.Tensor:
-        key = (name, shape)
-        if key not in self._wbuf:
-            w = torch.randn(shape, device=self.device, dtype=self.dtype)
-            self._wbuf[key] = w
-        return self._wbuf[key]
-
-    @staticmethod
-    def _cuda_sync():
-        if torch is not None and torch.cuda.is_available():
-            torch.cuda.synchronize()
-
-    def _bench(self, fn, warmup: int = 3, iters: int = 10) -> float:
-        """Return average latency in seconds for fn()."""
-        if self.device.type == "cuda":
-            self._cuda_sync()
-            # warmup
-            for _ in range(max(0, warmup)):
-                fn()
-            self._cuda_sync()
-            starter = torch.cuda.Event(enable_timing=True)
-            ender = torch.cuda.Event(enable_timing=True)
-            starter.record()
-            for _ in range(max(1, iters)):
-                fn()
-            ender.record()
-            self._cuda_sync()
-            ms = starter.elapsed_time(ender) / max(1, iters)
-            return float(ms) / 1000.0
-        else:
-            # CPU fallback
-            for _ in range(max(0, warmup)):
-                fn()
-            t0 = time.perf_counter()
-            for _ in range(max(1, iters)):
-                fn()
-            t1 = time.perf_counter()
-            return float(t1 - t0) / max(1, iters)
-
-    def rmsnorm(self, x: torch.Tensor, w: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
-        # x: [T, D], w: [D]
-        var = x.pow(2).mean(dim=-1, keepdim=True)
-        x = x * torch.rsqrt(var + eps)
-        return x * w
-
-    def execute_one(self, sig: OpSig, sh: OpShape) -> None:
-        """Execute one op once (no timing)."""
-        D = sh.dim
-        Sd = sh.shard_dim
-        Fsd = sh.ffn_shard_dim
-        T = sh.query_len
-        H = sh.heads_per_shard
-        Hd = sh.head_dim
-        K = sh.key_len
-        B = int(getattr(self.cfg, "batch", 1) or 1)
-
-        op = sig.op
-        s = sig.shard
-
-        # Use no_grad to avoid autograd overhead
-        if op == "LN":
-            x = self._rand((B, T, D))
-            w = self._weight("rms_w", (D,))
-            _ = self.rmsnorm(x, w)
-            return
-
-        elif op in ("Q","K","V"):
-            x = self._rand((B, T, D))
-            w = self._weight(f"{op}_w_{s}", (Sd, D))
-            _ = F.linear(x, w)
-            return
-
-        elif op == "O":
-            x = self._rand((B, T, Sd))
-            w = self._weight(f"O_w_{s}", (D, Sd))
-            _ = F.linear(x, w)
-            return
-
-        elif op in ("FFN_W1","FFN_W3"):
-            x = self._rand((B, T, D))
-            w = self._weight(f"{op}_w_{s}", (Fsd, D))
-            _ = F.linear(x, w)
-            return
-
-        elif op == "SwiGLU":
-            a = self._rand((B, T, Fsd))
-            b = self._rand((B, T, Fsd))
-            _ = F.silu(a) * b
-            return
-
-        elif op == "FFN_W2":
-            x = self._rand((B, T, Fsd))
-            w = self._weight(f"FFN_W2_w_{s}", (D, Fsd))
-            _ = F.linear(x, w)
-            return
-
-        elif op == "Add":
-            a = self._rand((B, T, D))
-            b = self._rand((B, T, D))
-            _ = a + b
-            return
-
-        elif op == "QK":
-            q = self._rand((B, H, T, Hd))
-            k = self._rand((B, H, Hd, K))
-            scale = 1.0 / (Hd ** 0.5)
-            _ = torch.matmul(q, k) * scale
-            return
-
-        elif op == "Softmax":
-            scores = self._rand((B, H, T, K))
-            _ = torch.softmax(scores, dim=-1)
-            return
-
-        elif op == "SV":
-            p = self._rand((B, H, T, K))
-            v = self._rand((B, H, K, Hd))
-            _ = torch.matmul(p, v)
-            return
-
-        # Unknown op:
-        else:
-            raise ValueError(f"Unknown op for GPUBackend: {op}")
-            return
-
-    def benchmark_segment(
-        self,
-        seg: SegmentSig,
-        warmup: int = 3,
-        iters: int = 10,
-        *,
-        debug: bool = False,
-        debug_logger: Optional[Any] = None,
-        seg_key: Optional[str] = None,
-        task_meta: Optional[Dict[str, Any]] = None,
-        debug_store: Optional[Dict[str, Any]] = None,
-    ) -> float:
-        """Benchmark one segment.
-
-        When debug=True, prints per-op shapes + a per-op timing breakdown (very noisy).
-        """
-
-        # Pre-build execution plan to avoid shape inference in inner loop
-        plan: List[Tuple[OpSig, OpShape]] = []
-        for op, shard in seg.ops:
-            sig = OpSig(device_type=seg.device_type, phase=seg.phase, step=seg.step, op=op, shard=shard)
-            plan.append((sig, infer_op_shape(sig, self.cfg)))
-
-        def fn():
-            with torch.no_grad():
-                for sig, sh in plan:
-                    self.execute_one(sig, sh)
-
-        if not bool(debug):
-            return self._bench(fn, warmup=warmup, iters=iters)
-
-        # ------------------------------
-        # Debug path
-        # ------------------------------
-        log = (getattr(debug_logger, "log", None) if debug_logger is not None else None)
-        if not callable(log):
-            log = print
-
-        # Segment meta
-        key_s = seg_key or seg.to_key()
-        meta = task_meta or {}
-        try:
-            cnt = int(meta.get("count_hint", 0))
-        except Exception:
-            cnt = 0
-        ops_repr = meta.get("ops_repr", None)
-
-        log("=" * 88)
-        log(f"[gpu-debug] segment_key={key_s}")
-        log(f"[gpu-debug] sig: device_type={seg.device_type} phase={seg.phase} step={seg.step} (count_hint={cnt})")
-        if ops_repr:
-            log(f"[gpu-debug] ops_repr: {ops_repr}")
-        log(
-            f"[gpu-debug] cfg: device={self.device} dtype={self.dtype} batch={getattr(self.cfg,'batch',1)} "
-            f"dim={self.cfg.dim} ffn_dim={self.cfg.ffn_dim} n_heads={self.cfg.n_heads} shards={self.cfg.shards}"
-        )
-
-        # Helper formatters
-        def _fmt_shape(shape: Tuple[int, ...]) -> str:
-            return "x".join(str(int(x)) for x in shape)
-
-        def _fmt_bytes(n: float) -> str:
-            n = float(n)
-            if n < 1024:
-                return f"{n:.0f} B"
-            if n < 1024**2:
-                return f"{n/1024:.2f} KiB"
-            if n < 1024**3:
-                return f"{n/1024**2:.2f} MiB"
-            return f"{n/1024**3:.2f} GiB"
-
-        def _fmt_flops(n: float) -> str:
-            n = float(n)
-            if n < 1e3:
-                return f"{n:.0f}"
-            if n < 1e6:
-                return f"{n/1e3:.3f} K"
-            if n < 1e9:
-                return f"{n/1e6:.3f} M"
-            if n < 1e12:
-                return f"{n/1e9:.3f} G"
-            return f"{n/1e12:.3f} T"
-
-        # Op I/O shapes + rough cost model
-        try:
-            dtype_bytes = int(torch.tensor([], dtype=self.dtype).element_size())
-        except Exception:
-            dtype_bytes = 0
-
-        def _op_io(op: str, sh: OpShape) -> Tuple[List[Tuple[str, Tuple[int, ...]]], Tuple[str, Tuple[int, ...]]]:
-            D = int(sh.dim)
-            Sd = int(sh.shard_dim)
-            Fsd = int(sh.ffn_shard_dim)
-            T = int(sh.query_len)
-            H = int(sh.heads_per_shard)
-            Hd = int(sh.head_dim)
-            K = int(sh.key_len)
-            B = int(getattr(self.cfg, "batch", 1) or 1)
-
-            if op == "LN":
-                return [("x", (B, T, D)), ("w", (D,))], ("y", (B, T, D))
-            if op in ("Q", "K", "V"):
-                return [("x", (B, T, D)), ("w", (Sd, D))], ("y", (B, T, Sd))
-            if op == "O":
-                return [("x", (B, T, Sd)), ("w", (D, Sd))], ("y", (B, T, D))
-            if op in ("FFN_W1", "FFN_W3"):
-                return [("x", (B, T, D)), ("w", (Fsd, D))], ("y", (B, T, Fsd))
-            if op == "SwiGLU":
-                return [("a", (B, T, Fsd)), ("b", (B, T, Fsd))], ("y", (B, T, Fsd))
-            if op == "FFN_W2":
-                return [("x", (B, T, Fsd)), ("w", (D, Fsd))], ("y", (B, T, D))
-            if op == "Add":
-                return [("a", (B, T, D)), ("b", (B, T, D))], ("y", (B, T, D))
-            if op == "QK":
-                return [("q", (B, H, T, Hd)), ("k", (B, H, Hd, K))], ("y", (B, H, T, K))
-            if op == "Softmax":
-                return [("scores", (B, H, T, K))], ("y", (B, H, T, K))
-            if op == "SV":
-                return [("p", (B, H, T, K)), ("v", (B, H, K, Hd))], ("y", (B, H, T, Hd))
-            return [("?", tuple())], ("?", tuple())
-
-        def _op_flops(op: str, sh: OpShape) -> float:
-            """Very rough FLOPs estimate (multiply-add counted as 2 FLOPs)."""
-            D = float(sh.dim)
-            Sd = float(sh.shard_dim)
-            Fsd = float(sh.ffn_shard_dim)
-            T = float(sh.query_len)
-            H = float(sh.heads_per_shard)
-            Hd = float(sh.head_dim)
-            K = float(sh.key_len)
-            B = float(int(getattr(self.cfg, "batch", 1) or 1))
-
-            if op == "LN":
-                # mean(x^2), rsqrt, mul: ~5 ops per element (rough)
-                return 5.0 * B * T * D
-            if op in ("Q", "K", "V"):
-                return 2.0 * B * T * Sd * D
-            if op == "O":
-                return 2.0 * B * T * D * Sd
-            if op in ("FFN_W1", "FFN_W3"):
-                return 2.0 * B * T * Fsd * D
-            if op == "SwiGLU":
-                # silu + mul: very rough
-                return 6.0 * B * T * Fsd
-            if op == "FFN_W2":
-                return 2.0 * B * T * D * Fsd
-            if op == "Add":
-                return 1.0 * B * T * D
-            if op == "QK":
-                return 2.0 * B * H * T * K * Hd
-            if op == "Softmax":
-                # exp + sum + div ~ 5 ops per element (rough)
-                return 5.0 * B * H * T * K
-            if op == "SV":
-                return 2.0 * B * H * T * K * Hd
-            return 0.0
-
-        def _op_bytes(op: str, sh: OpShape) -> float:
-            ins, out = _op_io(op, sh)
-            total_elems = 0.0
-            for _, shape in ins:
-                if shape:
-                    elems = 1
-                    for v in shape:
-                        elems *= int(v)
-                    total_elems += float(elems)
-            _, oshape = out
-            if oshape:
-                elems = 1
-                for v in oshape:
-                    elems *= int(v)
-                total_elems += float(elems)
-            return float(total_elems) * float(dtype_bytes)
-
-        # Print op list + inferred shapes
-        log("[gpu-debug] op plan (with inferred tensor shapes):")
-        for j, (sig, sh) in enumerate(plan):
-            ins, out = _op_io(sig.op, sh)
-            ins_s = " + ".join([f"{n}=[{_fmt_shape(shape)}]" for n, shape in ins if shape])
-            out_s = f"{out[0]}=[{_fmt_shape(out[1])}]" if out[1] else out[0]
-            log(f"  - op#{j:02d}  op={sig.op:<8} shard={sig.shard:<2d}  {ins_s}  ->  {out_s}  (T={sh.query_len}, K={sh.key_len})")
-
-        # GPU memory stats (best effort)
-        mem_before = None
-        if self.device.type == "cuda":
-            try:
-                mem_before = {
-                    "alloc": int(torch.cuda.memory_allocated()),
-                    "reserved": int(torch.cuda.memory_reserved()),
-                }
-            except Exception:
-                mem_before = None
-
-        # Warmup once (avoid re-alloc / cuBLAS autotune costs in timing loops)
-        if warmup and warmup > 0:
-            with torch.no_grad():
-                for _ in range(int(warmup)):
-                    for sig, sh in plan:
-                        self.execute_one(sig, sh)
-            if self.device.type == "cuda":
-                self._cuda_sync()
-
-        mem_after_warmup = None
-        if self.device.type == "cuda":
-            try:
-                mem_after_warmup = {
-                    "alloc": int(torch.cuda.memory_allocated()),
-                    "reserved": int(torch.cuda.memory_reserved()),
-                }
-            except Exception:
-                mem_after_warmup = None
-
-        # Accurate segment timing (no extra per-op events)
-        seg_s = self._bench(fn, warmup=0, iters=iters)
-
-        # Per-op timing breakdown
-        per_op_s: List[float] = [0.0 for _ in range(len(plan))]
-        if len(plan) == 0:
-            log("[gpu-debug] empty plan; segment time is 0")
-            return float(seg_s)
-
-        if self.device.type == "cuda":
-            try:
-                # Reset peak stats so we can report per-segment peaks
-                try:
-                    torch.cuda.reset_peak_memory_stats()
-                except Exception:
-                    pass
-
-                # Allocate events once (reused each iter)
-                ev_s = [torch.cuda.Event(enable_timing=True) for _ in range(len(plan))]
-                ev_e = [torch.cuda.Event(enable_timing=True) for _ in range(len(plan))]
-
-                it = max(1, int(iters))
-                with torch.no_grad():
-                    for _ in range(it):
-                        for j, (sig, sh) in enumerate(plan):
-                            ev_s[j].record()
-                            self.execute_one(sig, sh)
-                            ev_e[j].record()
-                        self._cuda_sync()
-                        for j in range(len(plan)):
-                            per_op_s[j] += float(ev_s[j].elapsed_time(ev_e[j])) / 1000.0
-                per_op_s = [float(x) / float(it) for x in per_op_s]
-
-                mem_peak = None
-                try:
-                    mem_peak = {
-                        "max_alloc": int(torch.cuda.max_memory_allocated()),
-                        "max_reserved": int(torch.cuda.max_memory_reserved()),
-                    }
-                except Exception:
-                    mem_peak = None
-
-            except Exception as e:
-                log(f"[gpu-debug] per-op CUDA timing failed: {e}")
-                mem_peak = None
-        else:
-            import time as _time
-            it = max(1, int(iters))
-            with torch.no_grad():
-                for _ in range(it):
-                    for j, (sig, sh) in enumerate(plan):
-                        t0 = _time.perf_counter()
-                        self.execute_one(sig, sh)
-                        t1 = _time.perf_counter()
-                        per_op_s[j] += float(t1 - t0)
-            per_op_s = [float(x) / float(it) for x in per_op_s]
-            mem_peak = None
-
-        # Print per-op timing table
-        log("[gpu-debug] per-op timing breakdown (avg over iters):")
-        hdr = f"  {'idx':>3}  {'op':<8} {'sh':>2}  {'io':<46}  {'time':>10}  {'est_flops':>10}  {'TFLOPs':>8}  {'bytes':>10}  {'GB/s':>8}"
-        log(hdr)
-        log("  " + "-" * (len(hdr) - 2))
-        total_ops_s = float(sum(per_op_s))
-        for j, ((sig, sh), t_s) in enumerate(zip(plan, per_op_s)):
-            ins, out = _op_io(sig.op, sh)
-            ins_s = "+".join([f"{n}[{_fmt_shape(shape)}]" for n, shape in ins if shape])
-            out_s = f"{out[0]}[{_fmt_shape(out[1])}]" if out[1] else out[0]
-            io_s = f"{ins_s}->{out_s}"
-            if len(io_s) > 46:
-                io_s = io_s[:43] + "..."
-
-            fl = _op_flops(sig.op, sh)
-            by = _op_bytes(sig.op, sh)
-            t_ms = float(t_s) * 1000.0
-            tflops = (fl / float(t_s) / 1e12) if (t_s and t_s > 0 and fl > 0) else 0.0
-            gbs = (by / float(t_s) / 1e9) if (t_s and t_s > 0 and by > 0) else 0.0
-
-            log(
-                f"  {j:3d}  {sig.op:<8} {sig.shard:2d}  {io_s:<46}  {t_ms:9.3f}ms  {_fmt_flops(fl):>10}  {tflops:8.2f}  {_fmt_bytes(by):>10}  {gbs:8.2f}"
-            )
-
-        # Optional structured debug payload (stored into gpu_results.json when enabled)
-        if isinstance(debug_store, dict):
-            try:
-                per_op_dbg: List[Dict[str, Any]] = []
-                for j, ((sig, sh), t_s) in enumerate(zip(plan, per_op_s)):
-                    ins, out = _op_io(sig.op, sh)
-                    per_op_dbg.append(
-                        {
-                            "idx": int(j),
-                            "op": str(sig.op),
-                            "shard": int(sig.shard),
-                            "phase": str(seg.phase),
-                            "step": int(seg.step),
-                            "T": int(sh.query_len),
-                            "K": int(sh.key_len),
-                            "dim": int(sh.dim),
-                            "shard_dim": int(sh.shard_dim),
-                            "ffn_shard_dim": int(sh.ffn_shard_dim),
-                            "heads_per_shard": int(sh.heads_per_shard),
-                            "head_dim": int(sh.head_dim),
-                            "inputs": [{"name": n, "shape": [int(x) for x in shape]} for n, shape in ins if shape],
-                            "output": {"name": out[0], "shape": [int(x) for x in out[1]]} if out[1] else {"name": out[0], "shape": []},
-                            "latency_s": float(t_s),
-                            "est_flops": float(_op_flops(sig.op, sh)),
-                            "est_bytes": float(_op_bytes(sig.op, sh)),
-                        }
-                    )
-
-                debug_store[str(key_s)] = {
-                    "segment_key": str(key_s),
-                    "device_type": str(seg.device_type),
-                    "phase": str(seg.phase),
-                    "step": int(seg.step),
-                    "count_hint": int(cnt),
-                    "ops_repr": str(ops_repr) if ops_repr is not None else seg.ops_repr(),
-                    "segment_latency_s": float(seg_s),
-                    "sum_per_op_s": float(total_ops_s),
-                    "per_op": per_op_dbg,
-                }
-            except Exception:
-                pass
-
-        lbl = "cuda_events" if self.device.type == "cuda" else "wall_time"
-        log(f"[gpu-debug] segment avg latency ({lbl}): {seg_s*1000.0:.3f} ms")
-        log(f"[gpu-debug] sum(per-op)               : {total_ops_s*1000.0:.3f} ms (ratio={total_ops_s/seg_s if seg_s>0 else 0.0:.3f})")
-        log("[gpu-debug] NOTE: sum(per-op) may differ from segment latency due to Python overhead, event/launch overhead, and allocator/cache effects.")
-
-        if mem_before is not None or mem_after_warmup is not None:
-            if mem_before is not None:
-                log(f"[gpu-debug] cuda mem before warmup: alloc={_fmt_bytes(mem_before['alloc'])} reserved={_fmt_bytes(mem_before['reserved'])}")
-            if mem_after_warmup is not None:
-                log(f"[gpu-debug] cuda mem after warmup : alloc={_fmt_bytes(mem_after_warmup['alloc'])} reserved={_fmt_bytes(mem_after_warmup['reserved'])}")
-        if self.device.type == "cuda" and 'mem_peak' in locals() and mem_peak is not None:
-            log(f"[gpu-debug] cuda mem peak (this segment): max_alloc={_fmt_bytes(mem_peak['max_alloc'])} max_reserved={_fmt_bytes(mem_peak['max_reserved'])}")
-
-        return float(seg_s)
-
-
+# coarse-majority verification path removed; only fine-grained shard placement is supported now.
 
 class _DebugLogger:
     """Lightweight logger for verbose debug runs.
@@ -2414,7 +1516,7 @@ class PIMBackendViaCostModel:
         self._dbg = debug_logger
         self.use_cache = bool(use_cache)
 
-        # Lazy import so GPU-only flows don't depend on CostModel modules.
+        # Lazy import so accelerator-only flows don't depend on CostModel modules.
         try:
             # Make import robust even when invoked from ./verify.
             try:
@@ -2668,6 +1770,8 @@ class PIMBackendViaCostModel:
             )
             op_norm = self.cm._normalize_pim_op(str(op))
 
+            pim_freq_ghz = float(getattr(self.cfg, 'pim_freq_ghz', 0.0) or 0.0)
+
             cache_hit = None
             if self.debug and self.use_cache:
                 try:
@@ -2694,6 +1798,7 @@ class PIMBackendViaCostModel:
                         self.pim_config,
                         self.ramulator_config,
                         batch=int(cache_batch),
+                        pim_freq_ghz=float(pim_freq_ghz),
                     )
                 except Exception:
                     cache_hit = None
@@ -2727,17 +1832,9 @@ class PIMBackendViaCostModel:
                     keep_traces=bool(getattr(self.cfg, 'pim_keep_traces', False)),
                     trace_dir=(Path(self.cfg.pim_trace_dir).expanduser().resolve() if getattr(self.cfg, 'pim_trace_dir', None) else None),
                     trace_prefix=trace_prefix,
+                    pim_freq_ghz=float(pim_freq_ghz),
                 )
             )
-            try:
-                from config import PIM_FREQ_GHZ as CM_PIM_FREQ_GHZ  # same as in _print_debug_header
-            except Exception:
-                CM_PIM_FREQ_GHZ = None
-
-            cfg_freq = float(getattr(self.cfg, "pim_freq_ghz", 0.0) or 0.0)
-
-            if CM_PIM_FREQ_GHZ is not None and float(CM_PIM_FREQ_GHZ) > 0.0 and cfg_freq > 0.0:
-                sec = float(sec) * float(CM_PIM_FREQ_GHZ) / float(cfg_freq)
             total += sec
 
             per_op_dbg.append(
@@ -3014,37 +2111,43 @@ def export_tasks(
         print(f"[export] inferred shards={inferred} from schedule (max_shard={max_shard_seen}), override cfg.shards={cfg.shards}")
     cfg.shards = inferred
 
-    # optional comms traces (for weight_load accounting)
+    # optional comms traces (kept for kv_load / fallback accounting)
     resolved_comms: List[Path] = []
     if comms_paths:
         for cp in comms_paths:
             if not cp:
                 continue
             resolved_comms.append(resolve_existing_path(cp))
-    # Global sum across all provided comms traces.
-    wl = extract_weight_load_seconds(
-        [str(p) for p in resolved_comms],
-        decode_stride=int(getattr(cfg, "decode_stride", 1) or 1),
-    )
-    weight_load_gpu_s = float(wl.get("gpu_s", 0.0))
-    weight_load_pim_s = float(wl.get("pim_s", 0.0))
-    weight_load_unknown_s = float(wl.get("unknown_s", 0.0))
 
-    # Optional per-schedule mapping when user provides paired schedules + comms traces.
-    # This avoids over/under-counting when merge() is called with multiple schedules.
+    wl_phase = extract_weight_load_seconds_by_phase([str(p) for p in resolved_comms])
+    wl = wl_phase.get("all", {}) if isinstance(wl_phase, dict) else {}
+    weight_load_npu_s = float(wl.get("npu_s", 0.0) or 0.0)
+    weight_load_pim_s = float(wl.get("pim_s", 0.0) or 0.0)
+    weight_load_unknown_s = float(wl.get("unknown_s", 0.0) or 0.0)
+
     weight_load_by_schedule: Dict[str, Dict[str, float]] = {}
+    weight_load_phase_by_schedule: Dict[str, Dict[str, Dict[str, float]]] = {}
     if comms_paths and len(resolved_comms) == len(resolved_paths):
-        stride = int(getattr(cfg, "decode_stride", 1) or 1)
         for sp, cp in zip(resolved_paths, resolved_comms):
-            w = extract_weight_load_seconds([str(cp)], decode_stride=stride)
+            by_phase = extract_weight_load_seconds_by_phase([str(cp)])
+            w = by_phase.get("all", {}) if isinstance(by_phase, dict) else {}
             weight_load_by_schedule[str(sp)] = {
-                "gpu_s": float(w.get("gpu_s", 0.0)),
-                "pim_s": float(w.get("pim_s", 0.0)),
-                "unknown_s": float(w.get("unknown_s", 0.0)),
-                "total_s": float(w.get("total_s", 0.0)),
+                "npu_s": float(w.get("npu_s", 0.0) or 0.0),
+                "pim_s": float(w.get("pim_s", 0.0) or 0.0),
+                "unknown_s": float(w.get("unknown_s", 0.0) or 0.0),
+                "total_s": float(w.get("total_s", 0.0) or 0.0),
+            }
+            weight_load_phase_by_schedule[str(sp)] = {
+                str(ph): {
+                    "npu_s": float((rec or {}).get("npu_s", 0.0) or 0.0),
+                    "pim_s": float((rec or {}).get("pim_s", 0.0) or 0.0),
+                    "unknown_s": float((rec or {}).get("unknown_s", 0.0) or 0.0),
+                    "total_s": float((rec or {}).get("total_s", 0.0) or 0.0),
+                }
+                for ph, rec in (by_phase or {}).items()
+                if str(ph) != "all"
             }
 
-    # auto-fill decode_context_lens if None
     if cfg.decode_context_lens is None:
         stride = int(getattr(cfg, "decode_stride", 1) or 1)
         if stride <= 0:
@@ -3066,22 +2169,15 @@ def export_tasks(
                 else []
             )
 
-    # collect unique segments over all schedules
     uniq: Dict[str, SegmentSig] = {}
     ctr: Counter = Counter()
 
-    shard_policy = str(getattr(cfg, "shard_policy", "fine")).strip().lower()
-    use_coarse = shard_policy in ("coarse", "coarse_majority", "coarse-majority", "majority", "coarsemajority")
-
-    for df in dfs:  # all schedules merge into one uniq dict and update counter
-        if use_coarse:
-            u, c = extract_segments_coarse_majority(df, cfg.segment_scope, total_shards=int(cfg.shards))
-        else:
-            u, c = extract_segments(df, cfg.segment_scope)
+    for df in dfs:
+        u, c = extract_segments(df, cfg.segment_scope)
         uniq.update(u)
         ctr.update(c)
 
-    gpu_tasks: List[Dict[str, Any]] = []
+    npu_tasks: List[Dict[str, Any]] = []
     pim_tasks: List[Dict[str, Any]] = []
     skipped_tasks: List[Dict[str, Any]] = []
     for k, seg in uniq.items():
@@ -3094,32 +2190,32 @@ def export_tasks(
         }
         dev_type = str(seg.device_type).strip().lower()
         if dev_type == "npu":
-            gpu_tasks.append(item)
+            npu_tasks.append(item)
         elif dev_type == "pim":
             pim_tasks.append(item)
         else:
             skipped_tasks.append(item)
 
-
-    gpu_json = {
-        "version": 3,
+    npu_json = {
+        "version": 4,
         "task_type": "segment",
-        "backend": "gpu",
+        "backend": "npu",
         "segment_scope": cfg.segment_scope,
         "schedules": [str(p) for p in resolved_paths],
-        "weight_load_s": float(weight_load_gpu_s),
+        "weight_load_s": float(weight_load_npu_s),
         "weight_load_meta": {
-            "gpu_s": float(weight_load_gpu_s),
+            "npu_s": float(weight_load_npu_s),
             "pim_s": float(weight_load_pim_s),
             "unknown_s": float(weight_load_unknown_s),
-            "total_s": float(weight_load_gpu_s + weight_load_pim_s),
+            "total_s": float(weight_load_npu_s + weight_load_pim_s),
         },
         "weight_load_by_schedule": weight_load_by_schedule,
+        "weight_load_phase_by_schedule": weight_load_phase_by_schedule,
         "config": cfg.to_dict(),
-        "tasks": sorted(gpu_tasks, key=lambda x: x["key"]),
+        "tasks": sorted(npu_tasks, key=lambda x: x["key"]),
     }
     pim_json = {
-        "version": 3,
+        "version": 4,
         "task_type": "segment",
         "backend": "pim",
         "segment_scope": cfg.segment_scope,
@@ -3127,28 +2223,29 @@ def export_tasks(
         "comms_traces": [str(p) for p in resolved_comms],
         "weight_load_s": float(weight_load_pim_s),
         "weight_load_meta": {
-            "gpu_s": float(weight_load_gpu_s),
+            "npu_s": float(weight_load_npu_s),
             "pim_s": float(weight_load_pim_s),
             "unknown_s": float(weight_load_unknown_s),
-            "total_s": float(weight_load_gpu_s + weight_load_pim_s),
+            "total_s": float(weight_load_npu_s + weight_load_pim_s),
         },
         "weight_load_by_schedule": weight_load_by_schedule,
+        "weight_load_phase_by_schedule": weight_load_phase_by_schedule,
         "config": cfg.to_dict(),
         "tasks": sorted(pim_tasks, key=lambda x: x["key"]),
     }
 
-    gpu_path = outp / f"{prefix}.gpu_tasks.json"
+    npu_path = outp / f"{prefix}.npu_tasks.json"
     pim_path = outp / f"{prefix}.pim_tasks.json"
-    _save_json(gpu_path, gpu_json)
+    _save_json(npu_path, npu_json)
     _save_json(pim_path, pim_json)
 
     print(f"[export] segment_scope={cfg.segment_scope}")
     if resolved_comms:
         print(
-            f"[export] weight_load_s: gpu={weight_load_gpu_s:.6f}s pim={weight_load_pim_s:.6f}s "
+            f"[export] weight_load_s: npu={weight_load_npu_s:.6f}s pim={weight_load_pim_s:.6f}s "
             f"(unknown={weight_load_unknown_s:.6f}s) from {len(resolved_comms)} comms trace(s)"
         )
-    print(f"[export] wrote {gpu_path} ({len(gpu_tasks)} segments)")
+    print(f"[export] wrote {npu_path} ({len(npu_tasks)} segments)")
     print(f"[export] wrote {pim_path} ({len(pim_tasks)} segments)")
     if skipped_tasks:
         by_type: Counter = Counter([str(t.get("sig", {}).get("device_type", "")).strip().lower() for t in skipped_tasks])
@@ -3157,142 +2254,7 @@ def export_tasks(
             f"[export] skipped {len(skipped_tasks)} trace-only segment(s) (not npu/pim). "
             f"They will be kept via schedule durations in merge(). by_device_type: {by_type_s}"
         )
-    return gpu_path, pim_path
-
-
-
-def run_gpu(
-    tasks_json: str,
-    out_json: str,
-    warmup: int = 3,
-    iters: int = 10,
-    device: Optional[str] = None,
-    gpu_dtype: Optional[str] = None,
-    batch: Optional[int] = None,
-    *,
-    debug: bool = False,
-    debug_txt: Optional[str] = None,
-) -> Path:
-    data = _load_json(tasks_json)
-    cfg = WorkloadConfig.from_dict(data.get("config", {}))
-    # Apply CLI/runtime overrides (take precedence over gpu_tasks.json config)
-    if device:
-        cfg.device = device
-    if gpu_dtype:
-        cfg.gpu_dtype = gpu_dtype
-    if batch is not None:
-        try:
-            cfg.batch = int(batch)
-        except Exception as e:
-            raise ValueError(f"--batch must be an integer, got {batch!r}") from e
-    seg_scope = data.get("segment_scope", cfg.segment_scope)
-
-    try:
-        weight_load_s = float(data.get("weight_load_s", 0.0) or 0.0)
-    except Exception:
-        weight_load_s = 0.0
-
-    weight_load_by_schedule = data.get("weight_load_by_schedule", {}) or {}
-
-    tasks = data.get("tasks", [])
-
-    # Debug output + (optional) tee to file
-    cfg.debug = bool(debug or getattr(cfg, "debug", False))
-    dbg = _DebugLogger(enabled=bool(cfg.debug), out_path=debug_txt)
-    log = dbg.log if dbg.enabled else print
-
-    gpu_info = collect_gpu_info(cfg.device)
-
-    results: Dict[str, float] = {}
-    log(
-        f"[run-gpu] tasks={len(tasks)} warmup={warmup} iters={iters} "
-        f"device={cfg.device} dtype={cfg.gpu_dtype} batch={getattr(cfg,'batch',1)} segment_scope={seg_scope}"
-    )
-    if weight_load_s:
-        log(f"[run-gpu] extra weight_load_s={weight_load_s:.6f}s (will be added in merge)")
-    print_gpu_info(gpu_info, print_fn=log)
-
-    # Extra backend/flags snapshot (debug only)
-    if dbg.enabled and torch is not None:
-        try:
-            log(f"[run-gpu][debug] torch_default_dtype={torch.get_default_dtype()}")
-        except Exception:
-            pass
-        try:
-            # matmul / TF32 knobs (may not exist on some builds)
-            mm = getattr(getattr(torch.backends, "cuda", None), "matmul", None)
-            if mm is not None and hasattr(mm, "allow_tf32"):
-                log(f"[run-gpu][debug] torch.backends.cuda.matmul.allow_tf32={mm.allow_tf32}")
-        except Exception:
-            pass
-        try:
-            cd = getattr(torch.backends, "cudnn", None)
-            if cd is not None:
-                log(
-                    f"[run-gpu][debug] cudnn.enabled={getattr(cd,'enabled',None)} "
-                    f"benchmark={getattr(cd,'benchmark',None)} deterministic={getattr(cd,'deterministic',None)} "
-                    f"allow_tf32={getattr(cd,'allow_tf32',None)}"
-                )
-        except Exception:
-            pass
-
-        # One-time nvidia-smi snapshot (utilization / mem usage) if available.
-        smi_path = shutil.which("nvidia-smi")
-        if smi_path:
-            ok, out = _try_run([
-                smi_path,
-                "--query-gpu=index,utilization.gpu,utilization.memory,memory.used,memory.total,temperature.gpu,power.draw,power.limit",
-                "--format=csv,noheader,nounits",
-            ])
-            if ok and out:
-                log(f"[run-gpu][debug] nvidia-smi snapshot: {out}")
-
-    backend = GPUBackend(cfg)
-    debug_segments: Optional[Dict[str, Any]] = {} if dbg.enabled else None
-    try:
-        for i, t in enumerate(tasks):
-            key = t["key"]
-            ops = tuple((x["op"], int(x.get("shard", -1))) for x in t.get("ops", []))
-            sig = SegmentSig(device_type="npu", phase=str(t["sig"]["phase"]), step=int(t["sig"]["step"]), ops=ops)
-
-            sec = backend.benchmark_segment(
-                sig,
-                warmup=warmup,
-                iters=iters,
-                debug=bool(dbg.enabled),
-                debug_logger=dbg,
-                seg_key=key,
-                task_meta=t,
-                debug_store=debug_segments,
-            )
-            results[key] = float(sec)
-
-            if (i + 1) % 20 == 0 or (i + 1) == len(tasks):
-                log(f"  progress {i+1}/{len(tasks)}")
-    finally:
-        try:
-            dbg.close()
-        except Exception:
-            pass
-
-    outp = Path(out_json).expanduser().resolve()
-    out = {
-        "version": 3,
-        "task_type": "segment",
-        "backend": "gpu",
-        "segment_scope": seg_scope,
-        "config": cfg.to_dict(),
-        "weight_load_s": float(weight_load_s),
-        "weight_load_by_schedule": weight_load_by_schedule,
-        "env": {"gpu": gpu_info},
-        "results": results,
-    }
-    if dbg.enabled and debug_segments:
-        out["debug_segments"] = debug_segments
-    _save_json(outp, out)
-    log(f"[run-gpu] wrote {outp}")
-    return outp
-
+    return npu_path, pim_path
 
 
 # ==========================================================
@@ -3301,7 +2263,7 @@ def run_gpu(
 _NPU_LUT_BACKEND = None
 
 def _get_npu_lut_backend():
-    """Lazy import for cost_model_npu_ascend_backend (keep default GPU flow unaffected)."""
+    """Lazy import for cost_model_npu_ascend_backend (keep default npu flow unaffected)."""
     global _NPU_LUT_BACKEND
     if _NPU_LUT_BACKEND is not None:
         return _NPU_LUT_BACKEND
@@ -3393,7 +2355,6 @@ def _set_npu_lut_env(
 
 
 def infer_compute_backend_from_schedules(schedule_paths: List[str]) -> str:
-    has_gpu = False
     has_npu = False
     for sp in schedule_paths:
         try:
@@ -3416,22 +2377,14 @@ def infer_compute_backend_from_schedules(schedule_paths: List[str]) -> str:
             s = pd.Series([str(x).lower() for x in list(devs)])
 
         try:
-            if bool(s.str.contains("gpu", regex=False).any()):
-                has_gpu = True
             if bool(s.str.contains("npu", regex=False).any()):
                 has_npu = True
         except Exception:
-            # last-resort fallback
             joined = " ".join(list(map(str, list(devs)))).lower()
-            if "gpu" in joined:
-                has_gpu = True
             if "npu" in joined:
                 has_npu = True
-
-    if has_gpu and has_npu:
-        return "mixed"
-    if has_gpu:
-        return "gpu"
+    if has_npu:
+        return "npu"
     if has_npu:
         return "npu"
     return "unknown"
@@ -3460,8 +2413,19 @@ class _NpuOpParams:
     o_dim: int
     batch: int
 
+
 class NPUBackendViaCostModel:
-    """NPU segment latency backend that reuses algorithms/cost_model.py."""
+    """NPU segment latency backend that reuses algorithms/cost_model.py.
+
+    Weighted linear ops are re-evaluated from the shared CostModel after segment
+    extraction. Their contribution is the algorithm-side B-stage time:
+        max(b1, b2)
+
+    `weight_load` is NOT reconstructed here. It is taken directly from comms.csv
+    during merge() and combined with B-stage using the merge-time overlap knob.
+    """
+
+    _WEIGHTED_LINEAR_OPS = {"Q", "K", "V", "O", "FFN_W1", "FFN_W2", "FFN_W3"}
 
     def __init__(
         self,
@@ -3483,7 +2447,7 @@ class NPUBackendViaCostModel:
         self.npu_mem_bw_gbs = float(npu_mem_bw_gbs)
         if self.npu_mem_bw_gbs <= 0.0:
             raise ValueError(
-                "Memory BW (mem bound) is mandatory for NPU weight-load modeling. "
+                "Memory BW (mem bound) is mandatory for NPU verification. "
                 "Please provide a positive --npu-mem-bw-gbs (GB/s)."
             )
         self.op_overhead_us = float(op_overhead_us)
@@ -3509,6 +2473,12 @@ class NPUBackendViaCostModel:
         self._label = SimpleNamespace(kv_in_pim=False)
         self.debug_segments: Optional[Dict[str, Any]] = {} if self.debug else None
 
+        shard_policy = str(getattr(self.cfg, "shard_policy", "fine") or "").strip().lower()
+        if shard_policy not in ("", "fine"):
+            raise ValueError(
+                f"Only shard_policy='fine' is supported in verify (got {getattr(self.cfg, 'shard_policy', None)!r})."
+            )
+
         if self.debug:
             self._print_debug_header()
 
@@ -3521,6 +2491,7 @@ class NPUBackendViaCostModel:
 
         self._dbg.log("=" * 80)
         self._dbg.log("[run-npu][debug] Using shared algorithms/cost_model.py Ascend LUT backend")
+        self._dbg.log("[run-npu][debug] weighted linear ops use B-stage = max(b1, b2); weight_load is merged later from comms.csv")
         if backend_file:
             self._dbg.log(f"[run-npu][debug] lut_backend_file={backend_file}")
         self._dbg.log(
@@ -3529,7 +2500,7 @@ class NPUBackendViaCostModel:
         self._dbg.log(
             f"[run-npu][debug] model: dim={int(self.cfg.dim)} ffn_dim={int(self.cfg.ffn_dim)} n_heads={int(self.cfg.n_heads)} "
             f"n_kv_heads={(int(self.cfg.n_kv_heads) if getattr(self.cfg,'n_kv_heads',None) is not None else 'auto->n_heads')} "
-            f"shards={int(self.cfg.shards)} shard_policy={str(getattr(self.cfg,'shard_policy','')).lower()} batch={int(getattr(self.cfg,'batch',1) or 1)}"
+            f"shards={int(self.cfg.shards)} shard_policy=fine batch={int(getattr(self.cfg,'batch',1) or 1)}"
         )
         self._dbg.log("=" * 80)
 
@@ -3539,8 +2510,6 @@ class NPUBackendViaCostModel:
         n_heads_total = int(getattr(self.cfg, "n_heads"))
         n_kv_total = int(getattr(self.cfg, "n_kv_heads", None) or n_heads_total)
         shards = int(max(1, getattr(self.cfg, "shards", 1) or 1))
-        shard_policy = str(getattr(self.cfg, "shard_policy", "coarse_majority") or "").strip().lower()
-        fine = shard_policy in ("fine",)
 
         q_len = int(max(1, getattr(sh, "query_len")))
         kv_len = int(max(1, getattr(sh, "key_len")))
@@ -3548,7 +2517,7 @@ class NPUBackendViaCostModel:
         head_dim = int(max(1, getattr(sh, "head_dim")))
         batch = int(max(1, getattr(self.cfg, "batch", 1) or 1))
 
-        if fine and int(shard) >= 0 and shards > 1:
+        if int(shard) >= 0 and shards > 1:
             q_heads = int(max(1, _split_count_across_shards(int(n_heads_total), int(shards), int(shard))))
             kv_heads = int(max(1, _split_count_across_shards(int(n_kv_total), int(shards), int(shard))))
             ffn_dim = int(max(1, getattr(sh, "ffn_shard_dim")))
@@ -3599,6 +2568,127 @@ class NPUBackendViaCostModel:
         )
         return node, p
 
+    def resolve_weight_resident_fmt(
+        self,
+        *,
+        resident_fmt: Optional[str] = None,
+        host_src_fmt: Optional[str] = None,
+        host_storage_fmt: Optional[str] = None,
+    ) -> str:
+        rf = str(resident_fmt or "").strip()
+        if rf and rf.lower() != "nan":
+            return rf
+
+        hs = str(host_src_fmt or "").strip()
+        if hs and hs.lower() != "nan":
+            try:
+                rf = str(self.cm.weight_resident_format(str(hs), self.dev))
+                if rf:
+                    return rf
+            except Exception:
+                pass
+
+        src = str(host_storage_fmt or "").strip()
+        if src and src.lower() != "nan":
+            try:
+                hs2 = str(self.cm.weight_host_source_format(str(src), self.dev))
+                rf2 = str(self.cm.weight_resident_format(str(hs2), self.dev))
+                if rf2:
+                    return rf2
+            except Exception:
+                pass
+
+        try:
+            hs3 = str(self.cm.weight_host_source_format("ND", self.dev))
+            rf3 = str(self.cm.weight_resident_format(str(hs3), self.dev))
+            if rf3:
+                return rf3
+        except Exception:
+            pass
+        return "ND"
+
+    def _is_weighted_linear_op(self, op: str) -> bool:
+        return str(op).strip().upper() in self._WEIGHTED_LINEAR_OPS
+
+    def _infer_weight_size_nd(self, sig: OpSig, sh: OpShape) -> int:
+        op_u = str(sig.op).strip().upper()
+        dim = int(getattr(self.cfg, "dim"))
+        ffn_dim = int(getattr(self.cfg, "ffn_dim"))
+        n_heads_total = int(getattr(self.cfg, "n_heads"))
+        n_kv_total = int(getattr(self.cfg, "n_kv_heads", None) or n_heads_total)
+        head_dim = int(max(1, getattr(sh, "head_dim")))
+
+        q_dim_total = int(n_heads_total * head_dim)
+        kv_dim_total = int(n_kv_total * head_dim)
+        o_dim_total = int(q_dim_total)
+
+        if op_u == "Q":
+            return int(dim * q_dim_total)
+        if op_u in ("K", "V"):
+            return int(dim * kv_dim_total)
+        if op_u == "O":
+            return int(o_dim_total * dim)
+        if op_u in ("FFN_W1", "FFN_W3"):
+            return int(dim * ffn_dim)
+        if op_u == "FFN_W2":
+            return int(ffn_dim * dim)
+        return 0
+
+    def estimate_weighted_b_stage_s(
+        self,
+        *,
+        sig: OpSig,
+        sh: OpShape,
+    ) -> Tuple[float, Dict[str, Any]]:
+        if not self._is_weighted_linear_op(str(sig.op)):
+            raise ValueError(f"{sig.op!r} is not a weighted linear op")
+
+        node, p = self._make_node(sig, sh)
+        weight_size_nd = int(max(0, self._infer_weight_size_nd(sig, sh)))
+        node.weight_size = int(weight_size_nd)
+        node.weight_id = f"W::{str(sig.op).upper()}"
+
+        resident_fmt = self.resolve_weight_resident_fmt(host_storage_fmt="ND")
+        seq_len = int(max(1, p.seq_len))
+
+        stage = self.cm.weighted_compute_stage(
+            node,
+            self.dev,
+            self._label,
+            int(p.batch),
+            int(seq_len),
+            str(sig.phase),
+            resident_weight_fmt=str(resident_fmt),
+        )
+
+        b1_s = float(getattr(stage, "b1_s", 0.0) or 0.0)
+        b2_s = float(getattr(stage, "b2_s", 0.0) or 0.0)
+        b_s = float(max(b1_s, b2_s))
+
+        return float(b_s), {
+            "op": str(sig.op),
+            "op_key": str(self.cm_mod._normalize_npu_op_key(str(sig.op))),
+            "b1_s": float(b1_s),
+            "b2_s": float(b2_s),
+            "b_stage_s": float(b_s),
+            "weight_size_nd": int(weight_size_nd),
+            "resident_fmt": str(resident_fmt),
+            "compute_rule": "max_b1_b2",
+            "params": {
+                "dim": int(p.dim),
+                "ffn_dim": int(p.ffn_dim),
+                "q_heads": int(p.q_heads),
+                "kv_heads": int(p.kv_heads),
+                "head_dim": int(p.head_dim),
+                "q_len": int(p.q_len),
+                "kv_len": int(p.kv_len),
+                "q_dim": int(p.q_dim),
+                "kv_dim": int(p.kv_dim),
+                "o_dim": int(p.o_dim),
+                "batch": int(p.batch),
+            },
+        }
+
     def estimate_op_s(
         self,
         *,
@@ -3621,6 +2711,7 @@ class NPUBackendViaCostModel:
             "mem_s": float(mem_s),
             "overhead_us": float(self.op_overhead_us),
             "lat_s": float(sec),
+            "source": "plain_cost_model",
             "params": {
                 "dim": int(p.dim),
                 "ffn_dim": int(p.ffn_dim),
@@ -3642,11 +2733,12 @@ class NPUBackendViaCostModel:
         *,
         seg_key: Optional[str] = None,
         task_meta: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[float, Optional[Dict[str, Any]]]:
+    ) -> Tuple[float, float, Optional[Dict[str, Any]]]:
         key_s = seg_key or seg.to_key()
         meta = task_meta or {}
 
         total_s = 0.0
+        total_b_stage_s = 0.0
         per_op: List[Dict[str, Any]] = []
 
         if self.debug:
@@ -3715,7 +2807,13 @@ class NPUBackendViaCostModel:
                 self._dbg.log(f"  - op op={str(op):<8} shard={int(shard):<2d}  {ins_s}  ->  {out_s}  (T={int(T)}, K={int(K)})")
 
         for j, (sig, sh) in enumerate(plan):
-            sec, dbg = self.estimate_op_s(sig=sig, sh=sh)
+            if self._is_weighted_linear_op(str(sig.op)):
+                sec, dbg = self.estimate_weighted_b_stage_s(sig=sig, sh=sh)
+                dbg["source"] = "weighted_b_stage"
+                total_b_stage_s += float(sec)
+            else:
+                sec, dbg = self.estimate_op_s(sig=sig, sh=sh)
+
             total_s += float(sec)
             if self.debug:
                 dbg["idx"] = int(j)
@@ -3723,13 +2821,18 @@ class NPUBackendViaCostModel:
                 dbg["step"] = int(sig.step)
                 dbg["shard"] = int(sig.shard)
                 per_op.append(dbg)
-                self._dbg.log(
-                    f"[npu-debug] op#{j:02d} op={dbg.get('op'):<8} key={dbg.get('op_key'):<10} "
-                    f"mem={dbg.get('mem_s',0)*1e3:.3f}ms lat={dbg.get('lat_s',0)*1e3:.3f}ms"
-                )
+                if dbg.get("source") == "weighted_b_stage":
+                    self._dbg.log(
+                        f"[npu-debug] op#{j:02d} op={dbg.get('op'):<8} B=max({dbg.get('b1_s',0)*1e3:.3f},{dbg.get('b2_s',0)*1e3:.3f})ms -> {dbg.get('b_stage_s',0)*1e3:.3f}ms"
+                    )
+                else:
+                    self._dbg.log(
+                        f"[npu-debug] op#{j:02d} op={dbg.get('op'):<8} key={dbg.get('op_key'):<10} "
+                        f"mem={dbg.get('mem_s',0)*1e3:.3f}ms lat={dbg.get('lat_s',0)*1e3:.3f}ms"
+                    )
 
         if self.debug:
-            self._dbg.log(f"[npu-debug] segment total latency: {total_s*1e3:.3f} ms")
+            self._dbg.log(f"[npu-debug] segment total latency: {total_s*1e3:.3f} ms (weighted_b_total={total_b_stage_s*1e3:.3f} ms)")
 
         seg_dbg = None
         if self.debug:
@@ -3741,9 +2844,10 @@ class NPUBackendViaCostModel:
                 "count_hint": int(meta.get("count_hint", 0) or 0),
                 "ops_repr": str(meta.get("ops_repr", "")),
                 "total_s": float(total_s),
+                "b_stage_s": float(total_b_stage_s),
                 "per_op": per_op,
             }
-        return float(total_s), seg_dbg
+        return float(total_s), float(total_b_stage_s), seg_dbg
 
 
 def run_npu(
@@ -3771,6 +2875,7 @@ def run_npu(
         weight_load_s = 0.0
 
     weight_load_by_schedule = data.get("weight_load_by_schedule", {}) or {}
+    weight_load_phase_by_schedule = data.get("weight_load_phase_by_schedule", {}) or {}
 
     if batch is not None:
         cfg.batch = int(batch)
@@ -3778,9 +2883,8 @@ def run_npu(
     if debug:
         setattr(cfg, "debug", True)
 
-    # Determine dtype used for bytes (default: follow cfg.gpu_dtype)
     if npu_dtype is None:
-        npu_dtype = str(getattr(cfg, "gpu_dtype", "fp16"))
+        npu_dtype = str(getattr(cfg, "npu_dtype", "fp16"))
 
     outp = Path(out_json).expanduser().resolve()
     outp.parent.mkdir(parents=True, exist_ok=True)
@@ -3796,6 +2900,7 @@ def run_npu(
     )
 
     results: Dict[str, float] = {}
+    b_stage_results: Dict[str, float] = {}
     debug_segments: Optional[Dict[str, Any]] = {} if bool(debug) else None
 
     for t in tasks:
@@ -3808,8 +2913,9 @@ def run_npu(
             step=int(sig_d.get("step", 0)),
             ops=tuple((str(x.get("op")), int(x.get("shard", -1))) for x in ops_l),
         )
-        seg_s, seg_dbg = backend.benchmark_segment(seg, seg_key=key, task_meta=t)
+        seg_s, seg_b_s, seg_dbg = backend.benchmark_segment(seg, seg_key=key, task_meta=t)
         results[key] = float(seg_s)
+        b_stage_results[key] = float(seg_b_s)
         if debug_segments is not None and seg_dbg is not None:
             debug_segments[key] = seg_dbg
 
@@ -3821,6 +2927,7 @@ def run_npu(
         "config": cfg.to_dict(),
         "weight_load_s": float(weight_load_s),
         "weight_load_by_schedule": weight_load_by_schedule,
+        "weight_load_phase_by_schedule": weight_load_phase_by_schedule,
         "env": {
             "TRIFORM_MMAD_LUT": os.environ.get("TRIFORM_MMAD_LUT"),
             "TRIFORM_SOFTMAX_LUT": os.environ.get("TRIFORM_SOFTMAX_LUT"),
@@ -3832,6 +2939,7 @@ def run_npu(
         "op_overhead_us": float(op_overhead_us),
         "use_mem_bound": bool(use_mem_bound),
         "results": results,
+        "b_stage_results": b_stage_results,
     }
 
     if debug_segments is not None:
@@ -3879,6 +2987,7 @@ def run_pim(
         weight_load_s = 0.0
 
     weight_load_by_schedule = data.get("weight_load_by_schedule", {}) or {}
+    weight_load_phase_by_schedule = data.get("weight_load_phase_by_schedule", {}) or {}
 
     if ramulator_config is not None:
         cfg.pim_ramulator_config = ramulator_config
@@ -3921,13 +3030,6 @@ def run_pim(
             raise ValueError(f"pim_num_devices must be > 0, got {iv}")
         cfg.pim_num_devices = iv
 
-    shard_policy = str(getattr(cfg, 'shard_policy', 'fine')).strip().lower()
-    use_coarse = shard_policy in ("coarse", "coarse_majority", "coarse-majority", "majority", "coarsemajority")
-    if (not use_coarse) and int(getattr(cfg, 'pim_num_devices', 1) or 1) != 1:
-        print(
-            f"[run-pim] shard_policy={cfg.shard_policy!r}: ignoring pim_num_devices={cfg.pim_num_devices} for trace generation; "
-            "fine-mode tracing always uses a single PIM device (FC_devices=1) and follows per-shard placement from the schedule."
-        )
 
     if not cfg.pim_ramulator_bin:
         raise ValueError(
@@ -3979,6 +3081,7 @@ def run_pim(
         "config": cfg.to_dict(),
         "weight_load_s": float(weight_load_s),
         "weight_load_by_schedule": weight_load_by_schedule,
+        "weight_load_phase_by_schedule": weight_load_phase_by_schedule,
         "results": results,
     }
     if getattr(cfg, "debug", False) and getattr(backend, "debug_segments", None):
@@ -4032,7 +3135,7 @@ def _try_lookup_segment_latency(seg: SegmentSig, res: Dict[str, float]) -> Optio
 def _build_row_durations_layer_scope(
     df: pd.DataFrame,
     *,
-    gpu_res: Dict[str, float],
+    npu_res: Dict[str, float],
     pim_res: Dict[str, float],
     comm_model: str,
     pcie_lanes: int,
@@ -4087,18 +3190,13 @@ def _build_row_durations_layer_scope(
             sig_step_i = int(step)
         seg = SegmentSig(device_type=dev_type, phase=str(phase), step=int(sig_step_i), ops=tuple(ops))
         if dev_type_n == "npu":
-            total_lat = _try_lookup_segment_latency(seg, gpu_res)
+            total_lat = _try_lookup_segment_latency(seg, npu_res)
         elif dev_type_n == "pim":
             total_lat = _try_lookup_segment_latency(seg, pim_res)
         else:
             total_lat = None
 
         extra_local = 0.0
-        try:
-            if "weight_extra_noncompute_s" in g.columns:
-                extra_local = float(pd.to_numeric(g["weight_extra_noncompute_s"], errors="coerce").fillna(0.0).sum())
-        except Exception:
-            extra_local = 0.0
 
         if total_lat is None:
             if allow_missing:
@@ -4250,94 +3348,16 @@ def compute_trace_times_from_ops_csv(df: pd.DataFrame, *, decode_stride: int = 1
         "trace_total_s": float(total),
     }
 
-def _prepare_weight_extra_noncompute_columns(
-    df: pd.DataFrame,
-    *,
-    include_weight_comm_fallback: bool,
-) -> pd.DataFrame:
-    """Prepare per-op non-compute weight overhead columns from ops_trace extras."""
-    out = df.copy()
-    numeric_cols = (
-        "weight_comm_s",
-        "weight_local_total_s",
-        "weight_local_serial_s",
-        "weight_local_overlap_s",
-        "weight_compute_s",
-        "weight_overlap_gate_s",
-    )
-    for c in numeric_cols:
-        if c not in out.columns:
-            out[c] = 0.0
-        out[c] = pd.to_numeric(out[c], errors="coerce").fillna(0.0).astype(float)
-
-    overlap_tail = (out["weight_overlap_gate_s"] - out["weight_compute_s"]).clip(lower=0.0)
-    weight_extra = out["weight_local_serial_s"] + overlap_tail
-
-    # Fallback for older traces that do not carry the gate/compute fields yet.
-    fallback_mask = (out["weight_overlap_gate_s"].abs() + out["weight_compute_s"].abs()) <= 0.0
-    if bool(fallback_mask.any()):
-        weight_extra = weight_extra.where(~fallback_mask, out["weight_local_total_s"])
-
-    if include_weight_comm_fallback:
-        weight_extra = weight_extra + out["weight_comm_s"]
-
-    out["weight_extra_noncompute_s"] = pd.to_numeric(weight_extra, errors="coerce").fillna(0.0).astype(float)
-    return out
-
-
-def _build_coarse_majority_weight_extra_map(
-    df: pd.DataFrame,
-    *,
-    total_shards: int,
-    extra_col: str = "weight_extra_noncompute_s",
-) -> Dict[Tuple[str, int, int, str], float]:
-    """Aggregate per-(phase,step,layer,device_type) weight extra in coarse-majority mode."""
-    total_shards = int(total_shards)
-    if total_shards <= 0:
-        total_shards = 1
-
-    comp = df[df["device_type"].astype(str).str.lower().isin(["npu", "pim"])].copy()
-    if comp.empty:
-        return {}
-    op_l = comp["op"].astype(str).str.strip().str.lower()
-    comp = comp[~op_l.isin(_COMM_OPS)].copy()
-    if comp.empty:
-        return {}
-
-    comp["_base_node"] = comp["node_id"].apply(strip_shard_suffix)
-    if extra_col not in comp.columns:
-        comp[extra_col] = 0.0
-    comp[extra_col] = pd.to_numeric(comp[extra_col], errors="coerce").fillna(0.0).astype(float)
-
-    out: Dict[Tuple[str, int, int, str], float] = {}
-    for (phase, step, layer), g_layer in comp.groupby(["phase", "step", "layer"], sort=False):
-        for _base, g_op in g_layer.groupby("_base_node", sort=False):
-            dev0 = str(g_op["device_type"].iloc[0]).strip().lower()
-            sh_series = pd.to_numeric(g_op.get("shard"), errors="coerce").fillna(-1).astype(int)
-            is_sharded = bool((sh_series >= 0).any())
-
-            chosen = dev0
-            if is_sharded:
-                gtmp = g_op.copy()
-                gtmp["_shard_i"] = sh_series.values
-                gpu_mask = gtmp["device_type"].astype(str).str.lower().eq("npu") & (gtmp["_shard_i"] >= 0)
-                gpu_shards = set(gtmp.loc[gpu_mask, "_shard_i"].tolist())
-                num_gpu = len(gpu_shards)
-                chosen = "npu" if num_gpu > (float(total_shards) / 2.0) else "pim"
-
-            kk = (str(phase), int(step), int(layer), str(chosen))
-            out[kk] = float(out.get(kk, 0.0)) + float(g_op[extra_col].sum())
-
-    return out
+# legacy weight-stage reconstruction helpers removed; merge() now uses direct weight_load from comms.csv.
 
 
 def merge(
     schedule_paths: List[str],
-    gpu_results_json: Optional[str],
+    npu_results_json: Optional[str],
     pim_results_json: Optional[str],
     *,
     comms_paths: Optional[List[str]] = None,
-    non_overlap: float = 0.0,
+    overlap: float = 0.0,
     comm_model: str = "schedule",
     pcie_lanes: int = 16,
     decode_stride: int = 1,
@@ -4354,22 +3374,16 @@ def merge(
     debug: bool = False,
     debug_txt: Optional[str] = None,
 ) -> None:
-    """Merge schedule trace(s) + measured segment latencies into a layer-scope estimate.
+    """Merge schedule trace(s) with NPU/PIM segment latencies.
 
-    verification logic:
-      1) Schedule comm ops such as K_write/V_write, allreduce, reduce, scatter, etc are NOT exported.
-         During merge we account for them directly from the schedule, combined using the schedule overlap
-         dimension (device-wise max within a layer).
-      2) From comms trace(s) (optional):
-           - weight_load: added directly into its corresponding phase time (prefill/decode); treated as non-overlapped time.
-           - kv_load: accumulated per (phase,step,layer) and added with coarse-grained overlap:
-                 layer_time = base_layer_time + NON_OVERLAP * kv_load_time
-         where base_layer_time is the overlapped makespan across compute + schedule comm ops inside that layer.
-         If comm traces are not provided (or do not contain kv_load), we can optionally *estimate* kv_load from
-         the schedule's QK/SV ops using cfg.kv_load_bw_gbs/kv_dtype_bytes/kv_load_overhead_us.
-      3) GPU and PIM compute are not summed. For each layer, compute time is the maximum across devices
-         (typically max(GPU, PIM)).
-    decode_stride is applied as the sampling stride: each sampled decode step represents decode_stride tokens.
+    Simplified verify logic:
+      1) Segment NPU/PIM compute is recomputed from CostModel after segment split.
+      2) For NPU weighted linear ops, the segment contribution is `max(b1, b2)`.
+      3) `weight_load` time is taken directly from comms.csv and added per phase.
+      4) B-stage and `weight_load` can overlap via:
+            added_weight_load = total_weight_load - overlap * min(npu_b_stage, npu_weight_load)
+         PIM / unknown-class weight_load stays serial.
+      5) No per-load matching, subtraction, 补足, or coarse placement path.
     """
 
     slack_model = str(slack_model or "none").strip().lower()
@@ -4378,10 +3392,9 @@ def merge(
 
     if decode_stride < 1:
         raise ValueError(f"decode_stride must be >=1 (got {decode_stride})")
-    if non_overlap < 0.0:
-        raise ValueError(f"non_overlap must be >=0 (got {non_overlap})")
+    if overlap < 0.0 or overlap > 1.0:
+        raise ValueError(f"overlap must be within [0,1] (got {overlap})")
 
-    # If caller enabled --debug but did not provide --debug-txt, default to <out_csv>.debug.txt
     if debug and (not debug_txt):
         try:
             oc = Path(out_csv).expanduser()
@@ -4392,81 +3405,49 @@ def merge(
         except Exception:
             debug_txt = str(out_csv) + ".debug.txt"
 
-    # ---------- load benchmark results ----------
-    gpu_res: Dict[str, float] = {}
-    pim_res: Dict[str, float] = {}
-    cfg_meta: Dict[str, Any] = {}
+    def _load_optional_json(path_str: Optional[str]) -> Dict[str, Any]:
+        if not path_str or str(path_str).strip() in ("", "-"):
+            return {}
+        return _load_json(path_str)
 
-    gpu_data = _load_json(gpu_results_json)
-    pim_data = _load_json(pim_results_json)
+    npu_data = _load_optional_json(npu_results_json)
+    pim_data = _load_optional_json(pim_results_json)
 
-    # Optional structured debug payloads from run-gpu/run-pim
-    gpu_dbg_map: Dict[str, Any] = {}
-    pim_dbg_map: Dict[str, Any] = {}
-    try:
-        if isinstance(gpu_data.get("debug_segments"), dict):
-            gpu_dbg_map = gpu_data.get("debug_segments") or {}
-    except Exception:
-        gpu_dbg_map = {}
-    try:
-        if isinstance(pim_data.get("debug_segments"), dict):
-            pim_dbg_map = pim_data.get("debug_segments") or {}
-    except Exception:
-        pim_dbg_map = {}
-
-    def _coerce_results(d: Dict[str, Any]) -> Dict[str, float]:
+    def _coerce_results(d: Dict[str, Any], field: str = "results") -> Dict[str, float]:
         out: Dict[str, float] = {}
-        for k, v in (d.get("results") or {}).items():
+        if not isinstance(d, dict):
+            return out
+        for k, v in (d.get(field) or {}).items():
             try:
                 out[str(k)] = float(v)
             except Exception:
                 continue
         return out
 
-    gpu_res = _coerce_results(gpu_data)
-    pim_res = _coerce_results(pim_data)
+    npu_res = _coerce_results(npu_data, "results")
+    npu_b_stage_res = _coerce_results(npu_data, "b_stage_results")
+    pim_res = _coerce_results(pim_data, "results")
 
-    # Prefer config from whichever results file exists.
-    if isinstance(gpu_data.get("config"), dict):
-        cfg_meta = gpu_data["config"]
+    cfg_meta: Dict[str, Any] = {}
+    if isinstance(npu_data.get("config"), dict):
+        cfg_meta = dict(npu_data["config"])
     elif isinstance(pim_data.get("config"), dict):
-        cfg_meta = pim_data["config"]
+        cfg_meta = dict(pim_data["config"])
 
     dim = int(cfg_meta.get("dim", 4096))
     shards = int(cfg_meta.get("shards", 1))
-    shard_policy = str(cfg_meta.get("shard_policy", "fine")).strip().lower()
-    use_coarse = shard_policy in ("coarse", "coarse_majority", "coarse-majority", "majority", "coarsemajority")
 
-    # Optional merge-time overrides for kv_load estimate knobs.
-    # These are useful when you want to re-merge with a different KV load bandwidth/dtype
-    # without regenerating benchmark results.
     if kv_load_bw_gbs_override is not None:
-        try:
-            cfg_meta["kv_load_bw_gbs"] = float(kv_load_bw_gbs_override)
-        except Exception:
-            pass
+        cfg_meta["kv_load_bw_gbs"] = float(kv_load_bw_gbs_override)
     if kv_dtype_bytes_override is not None:
-        try:
-            cfg_meta["kv_dtype_bytes"] = float(kv_dtype_bytes_override)
-        except Exception:
-            pass
+        cfg_meta["kv_dtype_bytes"] = float(kv_dtype_bytes_override)
     if kv_load_overhead_us_override is not None:
-        try:
-            cfg_meta["kv_load_overhead_us"] = float(kv_load_overhead_us_override)
-        except Exception:
-            pass
+        cfg_meta["kv_load_overhead_us"] = float(kv_load_overhead_us_override)
     if n_kv_heads_override is not None:
-        try:
-            cfg_meta["n_kv_heads"] = int(n_kv_heads_override)
-        except Exception:
-            pass
+        cfg_meta["n_kv_heads"] = int(n_kv_heads_override)
     if batch_override is not None:
-        try:
-            cfg_meta["batch"] = int(batch_override)
-        except Exception:
-            pass
+        cfg_meta["batch"] = int(batch_override)
 
-    # ---------- helpers ----------
     comms_paths = [p for p in (comms_paths or []) if p]
 
     def _pick_comms_for_schedule(i: int) -> List[str]:
@@ -4476,287 +3457,160 @@ def merge(
             return comms_paths
         if len(comms_paths) == len(schedule_paths):
             return [comms_paths[i]]
-        # fallback: apply all
         return comms_paths
-    def _lookup_weight_load_from_results(schedule_abs: str) -> float:
-        """Best-effort total weight_load seconds for a given schedule, from results JSON meta."""
-        for d in (gpu_data, pim_data):
+
+    def _lookup_weight_load_phase_from_results(schedule_abs: str) -> Dict[str, Dict[str, float]]:
+        zero = {"npu_s": 0.0, "pim_s": 0.0, "unknown_s": 0.0, "total_s": 0.0}
+        out: Dict[str, Dict[str, float]] = {"prefill": dict(zero), "decode": dict(zero)}
+        found = False
+        for d in (npu_data, pim_data):
             try:
-                m = d.get("weight_load_by_schedule") or {}
+                m = d.get("weight_load_phase_by_schedule") or {}
             except Exception:
                 m = {}
             rec = m.get(schedule_abs)
             if isinstance(rec, dict):
-                try:
-                    if rec.get("total_s") is not None:
-                        return float(rec["total_s"])
-                except Exception:
-                    pass
-                try:
-                    return float(float(rec.get("gpu_s", 0.0) or 0.0) + float(rec.get("pim_s", 0.0) or 0.0))
-                except Exception:
-                    return 0.0
+                found = True
+                for ph, v in rec.items():
+                    if str(ph) == "all" or not isinstance(v, dict):
+                        continue
+                    out[str(ph)] = {
+                        "npu_s": float(v.get("npu_s", 0.0) or 0.0),
+                        "pim_s": float(v.get("pim_s", 0.0) or 0.0),
+                        "unknown_s": float(v.get("unknown_s", 0.0) or 0.0),
+                        "total_s": float(v.get("total_s", 0.0) or 0.0),
+                    }
+        if found:
+            return out
 
-        g = 0.0
-        p = 0.0
-        try:
-            g = float(gpu_data.get("weight_load_s", 0.0) or 0.0)
-        except Exception:
-            g = 0.0
-        try:
-            p = float(pim_data.get("weight_load_s", 0.0) or 0.0)
-        except Exception:
-            p = 0.0
-        return float(g + p)
+        total = 0.0
+        for d in (npu_data, pim_data):
+            try:
+                m = d.get("weight_load_by_schedule") or {}
+                rec = m.get(schedule_abs)
+                if isinstance(rec, dict):
+                    total = float(rec.get("total_s", 0.0) or 0.0)
+                    break
+            except Exception:
+                pass
+        if total > 0.0:
+            out["prefill"]["total_s"] = float(total)
+            out["prefill"]["npu_s"] = float(total)
+        return out
 
-    def _lookup_latency(dev_type: str, phase: str, step_sample: int, ops: Tuple[Tuple[str, int], ...],) -> Optional[float]:
+    def _lookup_latency(dev_type: str, phase: str, step_sample: int, ops: Tuple[Tuple[str, int], ...]) -> Tuple[Optional[float], Optional[str]]:
         dev = dev_type.strip().lower()
         if dev == "npu":
-            table = gpu_res
+            table = npu_res
         elif dev == "pim":
             table = pim_res
         else:
-            return None
+            return None, None
 
         k = SegmentSig(device_type=dev, phase=phase, step=int(step_sample), ops=ops).to_key()
         if k in table:
-            return float(table[k])
-        return None
+            return float(table[k]), str(k)
+        return None, None
 
-    def _lookup_latency_with_key(
-        dev_type: str,
-        phase: str,
-        step_sample: int,
-        ops: Tuple[Tuple[str, int], ...],
-    ) -> Tuple[Optional[float], Optional[str], Optional[int], str]:
-        """Like _lookup_latency(), but also returns the matched key + matched step.
-
-        Returns: (lat_s, key, step_used, mode)
-          mode in {'sample_step','miss','unknown_dev'}
-        """
-        dev = dev_type.strip().lower()
-        if dev == "npu":
-            table = gpu_res
-        elif dev == "pim":
-            table = pim_res
-        else:
-            return (None, None, None, "unknown_dev")
-
-        k = SegmentSig(device_type=dev, phase=phase, step=int(step_sample), ops=ops).to_key()
-        if k in table:
-            return (float(table[k]), str(k), int(step_sample), "sample_step")
-        return (None, None, None, "miss")
-
-    def _devicewise_max_sum(g: pd.DataFrame, value_col: str, *, group_cols: List[str], device_col: str = "device",) -> Dict[Tuple[str, int, int], float]:
-        """Sum within each device, then take max across devices for each (phase,step,layer)."""
+    def _devicewise_max_sum(
+        g: pd.DataFrame,
+        value_col: str,
+        *,
+        group_cols: List[str],
+        device_col: str = "device",
+    ) -> Dict[Tuple[str, int, int], float]:
         if g.empty:
             return {}
-        by_dev = (g.groupby(group_cols + [device_col], sort=False)[value_col].sum().reset_index())
+        by_dev = g.groupby(group_cols + [device_col], sort=False)[value_col].sum().reset_index()
         by_key = by_dev.groupby(group_cols, sort=False)[value_col].max()
         return {(ph, int(st), int(ly)): float(v) for (ph, st, ly), v in by_key.items()}
 
-    # ---------- main loop ----------
     rows_out: List[Dict[str, Any]] = []
     step_rows: List[Dict[str, Any]] = []
-
-    # Optional: debug CSV outputs (segment-level + row-level) emitted when --debug.
-    seg_debug_frames: List[pd.DataFrame] = []
-    row_debug_frames: List[pd.DataFrame] = []
 
     dbg_f = None
     if debug and debug_txt:
         dbg_f = open(debug_txt, "w", encoding="utf-8")
 
-    for i, sp in enumerate(schedule_paths):
-        p = resolve_existing_path(sp)
-        df = load_schedule_csv(str(p))
-        df = annotate_decode_sampling(df, decode_stride=int(decode_stride))
+    try:
+        for i, sp in enumerate(schedule_paths):
+            p = resolve_existing_path(sp)
+            df = load_schedule_csv(str(p))
+            df = annotate_decode_sampling(df, decode_stride=int(decode_stride))
 
-        # Decode stride expansion policy (matches simulator token0 special-case when present)
-        decode_scale_by_step, decode_scale_mode, decode_len_hint = compute_decode_step_scale_map(
-            df, str(p), int(decode_stride)
-        )
-        actual_token_index_by_step = build_actual_step_token_index_map(df, decode_stride=int(decode_stride))
-
-        comms_for_sched = _pick_comms_for_schedule(i)
-        df = _prepare_weight_extra_noncompute_columns(
-            df,
-            include_weight_comm_fallback=(not bool(comms_for_sched)),
-        )
-        wl_total = _lookup_weight_load_from_results(str(p))
-        weight_load_prefill_s = 0.0
-        weight_load_decode_s = 0.0
-
-        weight_load_prefill_gpu_s = 0.0
-        weight_load_prefill_pim_s = 0.0
-        weight_load_prefill_unknown_s = 0.0
-
-        weight_load_decode_gpu_s = 0.0
-        weight_load_decode_pim_s = 0.0
-        weight_load_decode_unknown_s = 0.0
-
-        if comms_for_sched:
-            wl_step_df = extract_weight_load_seconds_by_step(comms_for_sched, schedule_df=df)
-
-            if wl_step_df is not None and (not wl_step_df.empty):
-                wl_step_df = wl_step_df.copy()
-                wl_step_df["phase"] = wl_step_df["phase"].astype(str).str.strip().str.lower()
-
-                # Any other/unknown phases are conservatively charged to prefill (same as old logic).
-                other_mask = ~wl_step_df["phase"].isin(["prefill", "decode"])
-                if other_mask.any():
-                    wl_step_df.loc[other_mask, "phase"] = "prefill"
-                    wl_step_df.loc[other_mask, "step"] = -1
-
-                # Prefill: not sampled -> direct sum
-                pref = wl_step_df[wl_step_df["phase"] == "prefill"]
-                if not pref.empty:
-                    weight_load_prefill_gpu_s = float(pref["gpu_s"].sum())
-                    weight_load_prefill_pim_s = float(pref["pim_s"].sum())
-                    weight_load_prefill_unknown_s = float(pref["unknown_s"].sum())
-                    weight_load_prefill_s = float(pref["total_s"].sum())
-
-                # Decode: sampled -> scale per decode step using decode_scale_by_step (step0 will be scale=1)
-                decw = wl_step_df[wl_step_df["phase"] == "decode"]
-                if not decw.empty:
-                    for r in decw.itertuples(index=False):
-                        st0 = int(getattr(r, "step"))
-                        scale_tokens = int(decode_scale_by_step.get(int(st0), int(decode_stride)))
-                        if scale_tokens <= 0:
-                            continue
-                        weight_load_decode_gpu_s += float(getattr(r, "gpu_s")) * float(scale_tokens)
-                        weight_load_decode_pim_s += float(getattr(r, "pim_s")) * float(scale_tokens)
-                        weight_load_decode_unknown_s += float(getattr(r, "unknown_s")) * float(scale_tokens)
-                        weight_load_decode_s += float(getattr(r, "total_s")) * float(scale_tokens)
-            else:
-                # Fallback: keep previous behavior if we can't extract step-aware weight_load
-                weight_load_prefill_s = float(wl_total)
-                weight_load_prefill_gpu_s = float(wl_total)
-        else:
-            weight_load_prefill_s = float(wl_total)
-            weight_load_prefill_gpu_s = float(wl_total)
-
-        # kv_load: per-layer comm; overlap controlled by NON_OVERLAP
-        comm_tbl = extract_layer_comm_seconds(comms_for_sched, df, tags=("kv_load",))
-        kv_map_trace = {
-            (str(r.phase), int(r.step), int(r.layer)): float(getattr(r, "kv_load_s", 0.0))
-            for r in comm_tbl.itertuples(index=False)
-        }
-
-        # Optional: estimate kv_load from QK/SV ops when comm trace is missing.
-        kv_map_est: Dict[Tuple[str, int, int], float] = {}
-        try:
-            cfg_kv = WorkloadConfig.from_dict(cfg_meta or {})
-            cfg_kv.decode_stride = int(decode_stride)
-            kv_map_est = estimate_kv_load_seconds_from_ops_csv(df, cfg_kv, decode_stride=int(decode_stride))
-        except Exception:
-            kv_map_est = {}
-
-        # Merge policy: use comm-trace kv_load when present (>0), otherwise fall back to estimate.
-        kv_map: Dict[Tuple[str, int, int], float] = dict(kv_map_trace)
-        if kv_map_est:
-            for kk, vv in kv_map_est.items():
-                if float(kv_map.get(kk, 0.0)) <= 0.0:
-                    kv_map[kk] = float(vv)
-
-        # ------------------------------------------------------------------
-        # Slack model: capture device-idle gaps inside each
-        # (phase,step,layer,device) timeline that exist in the schedule makespan
-        # but are not represented by summing op durations.
-        # ------------------------------------------------------------------
-        slack_by_group: Dict[Tuple[str, int, int, str, str], float] = {}
-        slack_max_by_type: Dict[Tuple[str, int, int, str], float] = {}
-        if slack_model == "span":
-            try:
-                df_sl = df[df["device_type"].astype(str).str.lower().isin(["npu", "pim"])].copy()
-                if not df_sl.empty:
-                    op_l2 = df_sl["op"].astype(str).str.strip().str.lower()
-                    df_sl = df_sl[~op_l2.isin(_COMM_OPS)].copy()
-                if not df_sl.empty:
-                    df_sl["_st"] = pd.to_numeric(df_sl.get("start"), errors="coerce")
-                    df_sl["_en"] = pd.to_numeric(df_sl.get("end"), errors="coerce")
-                    df_sl["_du"] = pd.to_numeric(df_sl.get("duration"), errors="coerce").fillna(0.0).astype(float)
-                    for (ph0, st0, ly0, dev0, dt0), gg in df_sl.groupby(
-                        ["phase", "step", "layer", "device", "device_type"], sort=False
-                    ):
-                        try:
-                            st_i = int(st0)
-                        except Exception:
-                            st_i = int(pd.to_numeric(pd.Series([st0]), errors="coerce").fillna(-1).iloc[0])
-                        try:
-                            ly_i = int(ly0)
-                        except Exception:
-                            ly_i = int(pd.to_numeric(pd.Series([ly0]), errors="coerce").fillna(-1).iloc[0])
-
-                        st_min = float(np.nanmin(gg["_st"].to_numpy(dtype=np.float64)))
-                        en_max = float(np.nanmax(gg["_en"].to_numpy(dtype=np.float64)))
-                        if (not np.isfinite(st_min)) or (not np.isfinite(en_max)):
-                            continue
-                        span = float(max(0.0, en_max - st_min))
-                        sum_dur = float(np.nansum(gg["_du"].to_numpy(dtype=np.float64)))
-                        slack = float(span - sum_dur)
-                        if slack_clamp_negative and slack < 0.0:
-                            slack = 0.0
-                        dt = str(dt0).strip().lower()
-                        ph = str(ph0)
-                        dev = str(dev0)
-                        slack_by_group[(ph, st_i, ly_i, dev, dt)] = float(slack)
-                        k2 = (ph, st_i, ly_i, dt)
-                        if float(slack) > float(slack_max_by_type.get(k2, 0.0)):
-                            slack_max_by_type[k2] = float(slack)
-            except Exception:
-                slack_by_group = {}
-                slack_max_by_type = {}
-
-        # Compute times per (phase,step,layer) for GPU/PIM.
-        gpu_layer_busy: Dict[Tuple[str, int, int], float] = {}
-        pim_layer_busy: Dict[Tuple[str, int, int], float] = {}
-        gpu_layer_slack: Dict[Tuple[str, int, int], float] = {}
-        pim_layer_slack: Dict[Tuple[str, int, int], float] = {}
-        gpu_layer_eff: Dict[Tuple[str, int, int], float] = {}
-        pim_layer_eff: Dict[Tuple[str, int, int], float] = {}
-        missing_segments = 0
-        coarse_weight_extra_map: Dict[Tuple[str, int, int, str], float] = {}
-        if use_coarse:
-            coarse_weight_extra_map = _build_coarse_majority_weight_extra_map(
-                df,
-                total_shards=int(shards),
-                extra_col="weight_extra_noncompute_s",
+            decode_scale_by_step, decode_scale_mode, decode_len_hint = compute_decode_step_scale_map(
+                df, str(p), int(decode_stride)
             )
+            actual_token_index_by_step = build_actual_step_token_index_map(df, decode_stride=int(decode_stride))
 
-        if use_coarse:
-            # Coarse-grained shard placement: decide GPU vs PIM per sharded op by majority,
-            # then build one GPU segment and/or one PIM segment per (phase,step,layer).
-            for phase, step, sig_step, layer, dev_type, ops in _iter_layer_segments_coarse_majority(df, total_shards=int(shards)):
-                lat = _lookup_latency(str(dev_type), str(phase), int(sig_step), tuple(ops))
-                extra_local = float(coarse_weight_extra_map.get((str(phase), int(step), int(layer), str(dev_type).strip().lower()), 0.0))
-                if lat is None:
-                    missing_segments += 1
-                    if not allow_missing and dbg_f:
-                        dbg_f.write(
-                            f"[MISSING] {p.name} phase={phase} step={step} layer={layer} dev={dev_type} ops={len(ops)} (coarse)\n"
-                        )
-                    lat = 0.0
+            comms_for_sched = _pick_comms_for_schedule(i)
+            if comms_for_sched:
+                weight_load_phase = extract_weight_load_seconds_by_phase(comms_for_sched)
+            else:
+                weight_load_phase = _lookup_weight_load_phase_from_results(str(p))
 
-                lat = float(lat) + float(extra_local)
+            def _phase_wl(phase_name: str) -> Dict[str, float]:
+                rec = weight_load_phase.get(str(phase_name), {}) if isinstance(weight_load_phase, dict) else {}
+                return {
+                    "npu_s": float((rec or {}).get("npu_s", 0.0) or 0.0),
+                    "pim_s": float((rec or {}).get("pim_s", 0.0) or 0.0),
+                    "unknown_s": float((rec or {}).get("unknown_s", 0.0) or 0.0),
+                    "total_s": float((rec or {}).get("total_s", 0.0) or 0.0),
+                }
 
-                key = (str(phase), int(step), int(layer))
-                dt = str(dev_type).strip().lower()
-                slack = 0.0
-                if slack_model != "none":
-                    slack = float(slack_max_by_type.get((str(phase), int(step), int(layer), dt), 0.0))
-                eff = float(lat) + float(slack)
-                if dt == "npu":
-                    if eff > float(gpu_layer_eff.get(key, 0.0)):
-                        gpu_layer_eff[key] = float(eff)
-                        gpu_layer_busy[key] = float(lat)
-                        gpu_layer_slack[key] = float(slack)
-                elif dt == "pim":
-                    if eff > float(pim_layer_eff.get(key, 0.0)):
-                        pim_layer_eff[key] = float(eff)
-                        pim_layer_busy[key] = float(lat)
-                        pim_layer_slack[key] = float(slack)
-        else:
+            wl_pref = _phase_wl("prefill")
+            wl_dec = _phase_wl("decode")
+
+            op_l = df["op"].astype(str).str.strip().str.lower()
+
+            slack_by_group: Dict[Tuple[str, int, int, str, str], float] = {}
+            if slack_model == "span":
+                try:
+                    df_sl = df[df["device_type"].astype(str).str.lower().isin(["npu", "pim"])].copy()
+                    if not df_sl.empty:
+                        op_l2 = df_sl["op"].astype(str).str.strip().str.lower()
+                        df_sl = df_sl[~op_l2.isin(_COMM_OPS)].copy()
+                    if not df_sl.empty:
+                        df_sl["_st"] = pd.to_numeric(df_sl.get("start"), errors="coerce")
+                        df_sl["_en"] = pd.to_numeric(df_sl.get("end"), errors="coerce")
+                        df_sl["_du"] = pd.to_numeric(df_sl.get("duration"), errors="coerce").fillna(0.0).astype(float)
+                        for (ph0, st0, ly0, dev0, dt0), gg in df_sl.groupby(
+                            ["phase", "step", "layer", "device", "device_type"], sort=False
+                        ):
+                            try:
+                                st_i = int(st0)
+                            except Exception:
+                                st_i = int(pd.to_numeric(pd.Series([st0]), errors="coerce").fillna(-1).iloc[0])
+                            try:
+                                ly_i = int(ly0)
+                            except Exception:
+                                ly_i = int(pd.to_numeric(pd.Series([ly0]), errors="coerce").fillna(-1).iloc[0])
+
+                            st_min = float(np.nanmin(gg["_st"].to_numpy(dtype=np.float64)))
+                            en_max = float(np.nanmax(gg["_en"].to_numpy(dtype=np.float64)))
+                            if (not np.isfinite(st_min)) or (not np.isfinite(en_max)):
+                                continue
+                            span = float(max(0.0, en_max - st_min))
+                            sum_dur = float(np.nansum(gg["_du"].to_numpy(dtype=np.float64)))
+                            slack = float(span - sum_dur)
+                            if slack_clamp_negative and slack < 0.0:
+                                slack = 0.0
+                            dt = str(dt0).strip().lower()
+                            ph = str(ph0)
+                            dev = str(dev0)
+                            slack_by_group[(ph, st_i, ly_i, dev, dt)] = float(slack)
+                except Exception:
+                    slack_by_group = {}
+
+            npu_layer_busy: Dict[Tuple[str, int, int], float] = {}
+            pim_layer_busy: Dict[Tuple[str, int, int], float] = {}
+            npu_layer_slack: Dict[Tuple[str, int, int], float] = {}
+            pim_layer_slack: Dict[Tuple[str, int, int], float] = {}
+            npu_layer_eff: Dict[Tuple[str, int, int], float] = {}
+            pim_layer_eff: Dict[Tuple[str, int, int], float] = {}
+            npu_b_layer_sum: Dict[Tuple[str, int, int], float] = {}
+            missing_segments = 0
+
             comp = df[df["device_type"].astype(str).str.lower().isin(["npu", "pim"])].copy()
             for (phase, step, layer, device), g in comp.groupby(["phase", "step", "layer", "device"], sort=False):
                 dev_type = str(g["device_type"].iloc[0]).strip().lower()
@@ -4765,6 +3619,7 @@ def merge(
                     sig_step = int(pd.to_numeric(g.get("sig_step"), errors="coerce").fillna(step).iloc[0]) if "sig_step" in g.columns else int(step)
                 except Exception:
                     sig_step = int(step)
+
                 ops: List[Tuple[str, int]] = []
                 for _, r in g.iterrows():
                     op = str(r["op"]).strip()
@@ -4774,654 +3629,249 @@ def merge(
                 if not ops:
                     continue
 
-                lat = _lookup_latency(dev_type, str(phase), int(sig_step), tuple(ops))
-                extra_local = 0.0
-                try:
-                    if "weight_extra_noncompute_s" in g.columns:
-                        extra_local = float(pd.to_numeric(g["weight_extra_noncompute_s"], errors="coerce").fillna(0.0).sum())
-                except Exception:
-                    extra_local = 0.0
+                lat, seg_key = _lookup_latency(dev_type, str(phase), int(sig_step), tuple(ops))
                 if lat is None:
                     missing_segments += 1
-                    if not allow_missing and dbg_f:
-                        dbg_f.write(f"[MISSING] {p.name} phase={phase} step={step} layer={layer} dev={dev_type} ops={len(ops)}\n")
+                    if dbg_f:
+                        dbg_f.write(
+                            f"[missing] schedule={p.name} phase={phase} step={step} sig_step={sig_step} layer={layer} device={device} device_type={dev_type} n_ops={len(ops)}\n"
+                        )
                     lat = 0.0
 
-                lat = float(lat) + float(extra_local)
+                lat = float(lat)
 
-                slack = 0.0
-                if slack_model != "none":
-                    slack = float(
-                        slack_by_group.get((str(phase), int(step), int(layer), str(device), str(dev_type)), 0.0)
-                    )
+                slack = float(
+                    slack_by_group.get((str(phase), int(step), int(layer), str(device), str(dev_type)), 0.0)
+                ) if slack_model != "none" else 0.0
                 eff = float(lat) + float(slack)
 
                 key = (str(phase), int(step), int(layer))
                 if dev_type == "npu":
-                    if eff > float(gpu_layer_eff.get(key, 0.0)):
-                        gpu_layer_eff[key] = float(eff)
-                        gpu_layer_busy[key] = float(lat)
-                        gpu_layer_slack[key] = float(slack)
+                    if eff > float(npu_layer_eff.get(key, 0.0)):
+                        npu_layer_eff[key] = float(eff)
+                        npu_layer_busy[key] = float(lat)
+                        npu_layer_slack[key] = float(slack)
+                    if seg_key is not None:
+                        npu_b_layer_sum[key] = float(npu_b_layer_sum.get(key, 0.0)) + float(npu_b_stage_res.get(seg_key, 0.0) or 0.0)
                 elif dev_type == "pim":
                     if eff > float(pim_layer_eff.get(key, 0.0)):
                         pim_layer_eff[key] = float(eff)
                         pim_layer_busy[key] = float(lat)
                         pim_layer_slack[key] = float(slack)
 
-        # ---------- debug: segment-level and row-level diffs ----------
-        if debug:
-            try:
-                # Segment-level diff: compare schedule's own compute durations (ops.csv) vs measured latency.
-                # Note: schedule durations are for sampled decode steps; we include both raw and scaled (x decode_stride).
-                op_l = df["op"].astype(str).str.strip().str.lower()
-                is_comm = op_l.isin(_COMM_OPS)
-                comp_all = df[~is_comm].copy()
-                comp_all["duration_s"] = pd.to_numeric(comp_all["duration"], errors="coerce").fillna(0.0).astype(float)
-
-                seg_rows: List[Dict[str, Any]] = []
-
-                if use_coarse:
-                    # Rebuild coarse-majority segments with trace sums.
-                    total_shards = int(shards)
-                    comp_np = comp_all[comp_all["device_type"].astype(str).str.lower().isin(["npu", "pim"])].copy()
-                    for (phase, step, layer), g_all in comp_np.groupby(["phase", "step", "layer"], sort=False):
-                        # Group by (node_id, op) to find per-op majority device.
-                        g_all = g_all.sort_values(["start", "_row"], kind="mergesort")
-                        items: List[Tuple[Tuple[Any, Any], pd.DataFrame, int, int]] = []
-                        for (nid, op), gg in g_all.groupby(["node_id", "op"], sort=False):
-                            dtypes = gg["device_type"].astype(str).str.lower().tolist()
-                            npu_ct = sum(1 for x in dtypes if x == "npu")
-                            pim_ct = sum(1 for x in dtypes if x == "pim")
-                            items.append(((nid, op), gg, npu_ct, pim_ct))
-
-                        # Accumulate per pseudo segment.
-                        gpu_ops: List[Tuple[str, int]] = []
-                        pim_ops: List[Tuple[str, int]] = []
-                        gpu_trace_s = 0.0
-                        pim_trace_s = 0.0
-                        for (nid_op, gg, npu_ct, pim_ct) in items:
-                            # Choose by majority: GPU if > half shards, else PIM.
-                            chosen = "npu" if npu_ct > (total_shards / 2.0) else "pim"
-                            gg = gg.sort_values(["start", "_row"], kind="mergesort")
-                            op_name = str(gg["op"].iloc[0]).strip()
-                            # In coarse mode, we attribute the *sum across shards* to the chosen device.
-                            trace_sum = float(pd.to_numeric(gg["duration"], errors="coerce").fillna(0.0).sum())
-                            shard_vals = gg["shard"].tolist()
-                            shard_set = sorted({int(s) for s in shard_vals if pd.notna(s)})
-                            is_sharded = (len(shard_set) >= 2)
-                            if chosen == "npu":
-                                gpu_trace_s += trace_sum
-                                if is_sharded:
-                                    for s in range(total_shards):
-                                        gpu_ops.append((op_name, int(s)))
-                                else:
-                                    gpu_ops.append((op_name, -1))
-                            else:
-                                pim_trace_s += trace_sum
-                                pim_ops.append((op_name, -1))
-
-                        try:
-                            sig_step_dbg = int(pd.to_numeric(g_all.get("sig_step"), errors="coerce").fillna(step).iloc[0]) if "sig_step" in g_all.columns else int(step)
-                        except Exception:
-                            sig_step_dbg = int(step)
-                        for dev_type, ops, trace_s in (("npu", gpu_ops, gpu_trace_s), ("pim", pim_ops, pim_trace_s)):
-                            if not ops:
-                                continue
-                            ops_t = tuple(ops)
-                            lat_s, lat_key, step_used, mode = _lookup_latency_with_key(dev_type, str(phase), int(sig_step_dbg), ops_t)
-                            extra_local = float(coarse_weight_extra_map.get((str(phase), int(step), int(layer), str(dev_type).strip().lower()), 0.0))
-                            if lat_s is not None:
-                                lat_s = float(lat_s) + float(extra_local)
-
-                            slack_s = 0.0
-                            span_s = None
-                            if slack_model != "none":
-                                slack_s = float(slack_max_by_type.get((str(phase), int(step), int(layer), str(dev_type)), 0.0))
-                                span_s = float(trace_s) + float(slack_s)
-                            if str(phase) == "decode":
-                                scale = float(decode_scale_by_step.get(int(step), int(decode_stride)))
-                                tok_idx = int(actual_token_index_by_step.get(int(step), decode_token_block_start_from_sample_step(int(step), int(decode_stride))))
-                            else:
-                                scale = 1.0
-                                tok_idx = int(step)
-                            tok_scale_i = int(scale) if float(scale) >= 1.0 else 1
-                            tok_label = str(tok_idx) if tok_scale_i == 1 else f"{tok_idx}*{tok_scale_i}"
-                            seg_rows.append(
-                                {
-                                    "schedule": p.name,
-                                    "phase": str(phase),
-                                    "sample_step": int(step),
-                                    "sig_step": int(sig_step_dbg),
-                                    "token_index": int(tok_idx),
-                                    "token_scale": int(tok_scale_i),
-                                    "token_label": str(tok_label),
-                                    "layer": int(layer),
-                                    "device": "<coarse>",
-                                    "device_type": str(dev_type),
-                                    "n_ops": int(len(ops_t)),
-                                    "ops_repr": SegmentSig(device_type=str(dev_type), phase=str(phase), step=int(sig_step_dbg), ops=ops_t).ops_repr(),
-                                    "schedule_sum_s": float(trace_s),
-                                    "schedule_span_s": float(span_s) if span_s is not None else None,
-                                    "schedule_slack_s": float(slack_s),
-                                    "weight_extra_noncompute_s": float(extra_local),
-                                    "measured_s": float(lat_s) if lat_s is not None else None,
-                                    "measured_key": lat_key,
-                                    "measured_step": step_used,
-                                    "measured_mode": mode,
-                                    "schedule_sum_scaled_s": float(trace_s) * scale,
-                                    "schedule_span_scaled_s": (float(span_s) * scale) if span_s is not None else None,
-                                    "schedule_slack_scaled_s": float(slack_s) * scale,
-                                    "measured_scaled_s": float(lat_s) * scale if lat_s is not None else None,
-                                    "measured_plus_slack_s": (float(lat_s) + float(slack_s)) if lat_s is not None else None,
-                                    "measured_plus_slack_scaled_s": ((float(lat_s) + float(slack_s)) * scale) if lat_s is not None else None,
-                                }
-                            )
-                else:
-                    # Fine mode: one segment per (phase,step,layer,device) for npu/pim
-                    comp_np = comp_all[comp_all["device_type"].astype(str).str.lower().isin(["npu", "pim"])].copy()
-                    for (phase, step, layer, device), g in comp_np.groupby(["phase", "step", "layer", "device"], sort=False):
-                        dev_type = str(g["device_type"].iloc[0]).strip().lower()
-                        g = g.sort_values(["start", "_row"], kind="mergesort")
-                        ops: List[Tuple[str, int]] = []
-                        for _, r in g.iterrows():
-                            op = str(r["op"]).strip()
-                            if op.lower() in _COMM_OPS:
-                                continue
-                            ops.append((op, int(r["shard"]) if pd.notna(r["shard"]) else -1))
-                        if not ops:
-                            continue
-                        ops_t = tuple(ops)
-                        trace_s = float(pd.to_numeric(g["duration"], errors="coerce").fillna(0.0).sum())
-
-                        slack_s = 0.0
-                        span_s = None
-                        try:
-                            st_arr = pd.to_numeric(g.get("start"), errors="coerce").to_numpy(dtype=float)
-                            en_arr = pd.to_numeric(g.get("end"), errors="coerce").to_numpy(dtype=float)
-                            st_min = float(np.nanmin(st_arr))
-                            en_max = float(np.nanmax(en_arr))
-                            if np.isfinite(st_min) and np.isfinite(en_max):
-                                span_s = float(max(0.0, en_max - st_min))
-                                if slack_model != "none":
-                                    slack_s = float(span_s - trace_s)
-                                    if slack_clamp_negative and slack_s < 0.0:
-                                        slack_s = 0.0
-                        except Exception:
-                            span_s = None
-                            slack_s = 0.0
-
-                        try:
-                            sig_step_dbg = int(pd.to_numeric(g.get("sig_step"), errors="coerce").fillna(step).iloc[0]) if "sig_step" in g.columns else int(step)
-                        except Exception:
-                            sig_step_dbg = int(step)
-                        lat_s, lat_key, step_used, mode = _lookup_latency_with_key(dev_type, str(phase), int(sig_step_dbg), ops_t)
-                        extra_local = 0.0
-                        try:
-                            if "weight_extra_noncompute_s" in g.columns:
-                                extra_local = float(pd.to_numeric(g["weight_extra_noncompute_s"], errors="coerce").fillna(0.0).sum())
-                        except Exception:
-                            extra_local = 0.0
-                        if lat_s is not None:
-                            lat_s = float(lat_s) + float(extra_local)
-                        if str(phase) == "decode":
-                            scale = float(decode_scale_by_step.get(int(step), int(decode_stride)))
-                            tok_idx = int(actual_token_index_by_step.get(int(step), decode_token_block_start_from_sample_step(int(step), int(decode_stride))))
-                        else:
-                            scale = 1.0
-                            tok_idx = int(step)
-                        tok_scale_i = int(scale) if float(scale) >= 1.0 else 1
-                        tok_label = str(tok_idx) if tok_scale_i == 1 else f"{tok_idx}*{tok_scale_i}"
-                        seg_rows.append(
-                            {
-                                "schedule": p.name,
-                                "phase": str(phase),
-                                "sample_step": int(step),
-                                "sig_step": int(sig_step_dbg),
-                                "token_index": int(tok_idx),
-                                "token_scale": int(tok_scale_i),
-                                "token_label": str(tok_label),
-                                "layer": int(layer),
-                                "device": str(device),
-                                "device_type": str(dev_type),
-                                "n_ops": int(len(ops_t)),
-                                "ops_repr": SegmentSig(device_type=str(dev_type), phase=str(phase), step=int(sig_step_dbg), ops=ops_t).ops_repr(),
-                                "schedule_sum_s": float(trace_s),
-                                "schedule_span_s": float(span_s) if span_s is not None else None,
-                                "schedule_slack_s": float(slack_s),
-                                "measured_s": float(lat_s) if lat_s is not None else None,
-                                "measured_key": lat_key,
-                                "measured_step": step_used,
-                                "measured_mode": mode,
-                                "schedule_sum_scaled_s": float(trace_s) * scale,
-                                "schedule_span_scaled_s": (float(span_s) * scale) if span_s is not None else None,
-                                "schedule_slack_scaled_s": float(slack_s) * scale,
-                                "measured_scaled_s": float(lat_s) * scale if lat_s is not None else None,
-                                "measured_plus_slack_s": (float(lat_s) + float(slack_s)) if lat_s is not None else None,
-                                "measured_plus_slack_scaled_s": ((float(lat_s) + float(slack_s)) * scale) if lat_s is not None else None,
-                            }
-                        )
-
-                if seg_rows:
-                    seg_df = pd.DataFrame(seg_rows)
-                    # Derived deltas/ratios
-                    seg_df["delta_s"] = seg_df["measured_s"] - seg_df["schedule_sum_s"]
-                    seg_df["ratio"] = seg_df["measured_s"] / seg_df["schedule_sum_s"].replace({0.0: np.nan})
-                    seg_df["delta_scaled_s"] = seg_df["measured_scaled_s"] - seg_df["schedule_sum_scaled_s"]
-                    seg_df["ratio_scaled"] = seg_df["measured_scaled_s"] / seg_df["schedule_sum_scaled_s"].replace({0.0: np.nan})
-
-                    # Optional: compare (measured + schedule_slack) vs schedule_span.
-                    if ("schedule_span_s" in seg_df.columns) and ("measured_plus_slack_s" in seg_df.columns):
-                        seg_df["delta_span_s"] = seg_df["measured_plus_slack_s"] - seg_df["schedule_span_s"]
-                        seg_df["ratio_span"] = seg_df["measured_plus_slack_s"] / seg_df["schedule_span_s"].replace({0.0: np.nan})
-                    if ("schedule_span_scaled_s" in seg_df.columns) and ("measured_plus_slack_scaled_s" in seg_df.columns):
-                        seg_df["delta_span_scaled_s"] = seg_df["measured_plus_slack_scaled_s"] - seg_df["schedule_span_scaled_s"]
-                        seg_df["ratio_span_scaled"] = seg_df["measured_plus_slack_scaled_s"] / seg_df["schedule_span_scaled_s"].replace({0.0: np.nan})
-                    seg_debug_frames.append(seg_df)
-
-                    if dbg_f:
-                        dbg_f.write(f"[DEBUG] {p.name}: segment diff (top 20 by |delta_scaled_s|)\n")
-                        tmp = seg_df.copy()
-                        tmp = tmp[tmp["measured_scaled_s"].notna() & (tmp["schedule_sum_scaled_s"] > 0.0)]
-                        tmp["abs_delta"] = (tmp["delta_scaled_s"]).abs()
-                        tmp = tmp.sort_values(["abs_delta"], ascending=False).head(20)
-
-                        def _summ_ops_breakdown(dev: str, key: Optional[str]) -> str:
-                            if not key:
-                                return ""
-                            m = gpu_dbg_map if str(dev).lower() == "npu" else pim_dbg_map
-                            rec = m.get(str(key)) if isinstance(m, dict) else None
-                            if not isinstance(rec, dict):
-                                return ""
-                            per = rec.get("per_op")
-                            if not isinstance(per, list) or not per:
-                                return ""
-                            agg: Dict[str, float] = {}
-                            for it in per:
-                                try:
-                                    nm = str(it.get("op_norm") or it.get("op") or "?")
-                                    agg[nm] = agg.get(nm, 0.0) + float(it.get("latency_s", 0.0) or 0.0)
-                                except Exception:
-                                    continue
-                            top = sorted(agg.items(), key=lambda kv: kv[1], reverse=True)[:5]
-                            return ", ".join([f"{k}={v*1e3:.2f}ms" for k, v in top])
-
-                        for _, rr in tmp.iterrows():
-                            dbg_f.write(
-                                f"  phase={rr['phase']} step={int(rr['sample_step'])} tok={str(rr.get('token_label', rr.get('token_index')))} layer={int(rr['layer'])} "
-                                f"dev={rr['device_type']} device={rr['device']} n_ops={int(rr['n_ops'])} "
-                                f"sched={float(rr['schedule_sum_scaled_s']):.6f}s meas={(float(rr['measured_scaled_s']) if pd.notna(rr['measured_scaled_s']) else float('nan')):.6f}s "
-                                f"delta={float(rr['delta_scaled_s']):+.6f}s ratio={float(rr['ratio_scaled'] if pd.notna(rr['ratio_scaled']) else float('nan')):.3f} "
-                                f"mode={rr['measured_mode']}\n"
-                            )
-                            bd = _summ_ops_breakdown(str(rr["device_type"]), rr.get("measured_key"))
-                            if bd:
-                                dbg_f.write(f"    per-op(top5): {bd}\n")
-
-                # Row-level diff (fine only): compare each ops.csv row duration vs merged row duration.
-                if (not use_coarse):
-                    try:
-                        dur_s, missing_row = _build_row_durations_layer_scope(
-                            df,
-                            gpu_res=gpu_res,
-                            pim_res=pim_res,
-                            comm_model=str(comm_model),
-                            pcie_lanes=int(pcie_lanes),
-                            decode_stride=int(decode_stride),
-                            dim=int(dim),
-                            shards=int(shards),
-                            allow_missing=True,
-                        )
-                        raw_s = pd.to_numeric(df["duration"], errors="coerce").fillna(0.0).astype(float)
-                        phase_s = df["phase"].astype(str)
-                        step_s = pd.to_numeric(df.get("step"), errors="coerce").fillna(-1).astype(int)
-                        scale = np.ones(len(df), dtype=float)
-                        dec_mask = (phase_s == "decode").to_numpy(dtype=bool)
-                        if dec_mask.any():
-                            st_arr = step_s.to_numpy(dtype=int)
-                            scale[dec_mask] = np.array([
-                                float(decode_scale_by_step.get(int(s), int(decode_stride))) for s in st_arr[dec_mask]
-                            ], dtype=float)
-                        sched_scaled = raw_s.to_numpy(dtype=float) * scale
-                        merged_scaled = np.asarray(dur_s, dtype=float) * scale
-
-                        row_df = df.copy()
-                        row_df["schedule"] = p.name
-                        row_df["schedule_duration_s"] = raw_s
-                        row_df["schedule_duration_scaled_s"] = sched_scaled
-                        row_df["merged_duration_scaled_s"] = merged_scaled
-                        row_df["delta_scaled_s"] = row_df["merged_duration_scaled_s"] - row_df["schedule_duration_scaled_s"]
-                        denom = row_df["schedule_duration_scaled_s"].replace({0.0: np.nan})
-                        row_df["ratio_scaled"] = row_df["merged_duration_scaled_s"] / denom
-                        row_df["missing_segments_row_scope"] = int(missing_row)
-                        row_debug_frames.append(row_df)
-
-                        if dbg_f:
-                            dbg_f.write(
-                                f"[DEBUG] {p.name}: row diff (top 20 by |delta_scaled_s|, fine mode only; missing_segments_row_scope={int(missing_row)})\n"
-                            )
-                            tmp2 = row_df.copy()
-                            tmp2["abs_delta"] = tmp2["delta_scaled_s"].abs()
-                            tmp2 = tmp2.sort_values(["abs_delta"], ascending=False).head(20)
-                            for _, rr in tmp2.iterrows():
-                                dbg_f.write(
-                                    f"  phase={rr['phase']} step={int(rr['step'])} layer={int(rr['layer'])} dev={rr['device_type']} device={rr['device']} "
-                                    f"op={str(rr['op']).strip()} shard={int(rr['shard']) if pd.notna(rr['shard']) else -1} "
-                                    f"sched={float(rr['schedule_duration_scaled_s']):.6f}s merged={float(rr['merged_duration_scaled_s']):.6f}s "
-                                    f"delta={float(rr['delta_scaled_s']):+.6f}s ratio={float(rr['ratio_scaled'] if pd.notna(rr['ratio_scaled']) else float('nan')):.3f}\n"
-                                )
-                    except Exception as e:
-                        if dbg_f:
-                            dbg_f.write(f"[DEBUG] {p.name}: row diff skipped due to error: {e}\n")
-            except Exception as e:
-                if dbg_f:
-                    dbg_f.write(f"[DEBUG] {p.name}: segment/row diff generation failed: {e}\n")
-
-        # Schedule comm ops (kv_write / allreduce / reduce / scatter / etc)
-        op_l = df["op"].astype(str).str.strip().str.lower()
-        comm_ops_df = df[op_l.isin(_COMM_OPS)].copy()
-        if comm_model.lower() == "none" or comm_ops_df.empty:
-            comm_ops_df["lat_s"] = 0.0
-        elif comm_model.lower() == "schedule":
-            comm_ops_df["lat_s"] = pd.to_numeric(comm_ops_df["duration"], errors="coerce").fillna(0.0).astype(float)
-        else:
-            raise ValueError(f"unknown comm_model: {comm_model}")
-        comm_ops_layer = _devicewise_max_sum(comm_ops_df, "lat_s", group_cols=["phase", "step", "layer"])
-
-        # Schedule other (non-GPU/PIM) ops that are NOT classified as comm ops.
-        other_df = df[(~df["device_type"].astype(str).str.lower().isin(["npu", "pim"])) & (~op_l.isin(_COMM_OPS))].copy()
-        other_layer = _devicewise_max_sum(other_df, "duration", group_cols=["phase", "step", "layer"])
-
-        # Aggregate per-phase/per-step times by summing layers (layers are sequential).
-        prefill_time_s = 0.0
-        decode_time_s = 0.0
-
-        gpu_busy_s = 0.0
-        pim_busy_s = 0.0
-        gpu_slack_s = 0.0
-        pim_slack_s = 0.0
-        gpu_slack_prefill_s = 0.0
-        pim_slack_prefill_s = 0.0
-        gpu_slack_decode_s = 0.0
-        pim_slack_decode_s = 0.0
-        compute_slack_used_s = 0.0
-        compute_slack_used_prefill_s = 0.0
-        compute_slack_used_decode_s = 0.0
-        sched_comm_s = 0.0
-        sched_other_s = 0.0
-        comm_added_s = 0.0  # after NON_OVERLAP and scaling
-        comm_kv_s = 0.0
-
-        # Prefill (step = -1)
-        pre_layers = sorted(df[df["phase"] == "prefill"]["layer"].unique())
-        for ly in pre_layers:
-            k = ("prefill", -1, int(ly))
-            gpu_busy = float(gpu_layer_busy.get(k, 0.0))
-            pim_busy = float(pim_layer_busy.get(k, 0.0))
-            gpu_sl = float(gpu_layer_slack.get(k, 0.0)) if slack_model != "none" else 0.0
-            pim_sl = float(pim_layer_slack.get(k, 0.0)) if slack_model != "none" else 0.0
-            gpu_eff = float(gpu_layer_eff.get(k, gpu_busy + gpu_sl))
-            pim_eff = float(pim_layer_eff.get(k, pim_busy + pim_sl))
-            compute_max = max(gpu_eff, pim_eff)
-            comm_s = float(comm_ops_layer.get(k, 0.0))
-            oth_s = float(other_layer.get(k, 0.0))
-            base = max(compute_max, comm_s, oth_s)
-            kv_trace = float(kv_map.get(k, 0.0))
-            add_s = non_overlap * kv_trace
-
-            layer_s = base + add_s
-            prefill_time_s += layer_s
-
-            gpu_busy_s += gpu_busy
-            pim_busy_s += pim_busy
-            gpu_slack_s += gpu_sl
-            pim_slack_s += pim_sl
-            gpu_slack_prefill_s += gpu_sl
-            pim_slack_prefill_s += pim_sl
-            if gpu_eff >= pim_eff:
-                compute_slack_used_s += gpu_sl
-                compute_slack_used_prefill_s += gpu_sl
+            comm_ops_df = df[op_l.isin(_COMM_OPS)].copy()
+            if comm_model.lower() == "none" or comm_ops_df.empty:
+                comm_ops_df["lat_s"] = 0.0
+            elif comm_model.lower() == "schedule":
+                comm_ops_df["lat_s"] = pd.to_numeric(comm_ops_df["duration"], errors="coerce").fillna(0.0).astype(float)
             else:
-                compute_slack_used_s += pim_sl
-                compute_slack_used_prefill_s += pim_sl
-            sched_comm_s += comm_s
-            sched_other_s += oth_s
-            comm_added_s += add_s
-            comm_kv_s += add_s
+                raise ValueError(f"unknown comm_model: {comm_model}")
+            comm_ops_layer = _devicewise_max_sum(comm_ops_df, "lat_s", group_cols=["phase", "step", "layer"])
 
-                # weight_load: charge each phase separately 
-        prefill_time_s += weight_load_prefill_s
-        gpu_busy_s += weight_load_prefill_gpu_s
-        pim_busy_s += weight_load_prefill_pim_s
+            other_df = df[(~df["device_type"].astype(str).str.lower().isin(["npu", "pim"])) & (~op_l.isin(_COMM_OPS))].copy()
+            other_layer = _devicewise_max_sum(other_df, "duration", group_cols=["phase", "step", "layer"])
 
-        dec = df[df["phase"] == "decode"]
-        dec_steps = sorted(dec["step"].unique())
-        dec_layers = sorted(dec["layer"].unique())
+            prefill_time_s = 0.0
+            decode_time_s = 0.0
 
-        for st in dec_steps:
-            step_s_per_token = 0.0
-            gpu_step = 0.0
-            pim_step = 0.0
-            gpu_step_slack = 0.0
-            pim_step_slack = 0.0
-            step_slack_used = 0.0
-            comm_step = 0.0
-            oth_step = 0.0
-            add_step = 0.0
+            npu_busy_s = 0.0
+            pim_busy_s = 0.0
+            npu_b_prefill_s = 0.0
+            npu_b_decode_s = 0.0
+            npu_slack_s = 0.0
+            pim_slack_s = 0.0
+            npu_slack_prefill_s = 0.0
+            pim_slack_prefill_s = 0.0
+            npu_slack_decode_s = 0.0
+            pim_slack_decode_s = 0.0
+            compute_slack_used_s = 0.0
+            compute_slack_used_prefill_s = 0.0
+            compute_slack_used_decode_s = 0.0
+            sched_comm_s = 0.0
+            sched_other_s = 0.0
 
-            for ly in dec_layers:
-                k = ("decode", int(st), int(ly))
-                gpu_busy = float(gpu_layer_busy.get(k, 0.0))
+            pre_layers = sorted(df[df["phase"] == "prefill"]["layer"].unique())
+            for ly in pre_layers:
+                k = ("prefill", -1, int(ly))
+                npu_busy = float(npu_layer_busy.get(k, 0.0))
                 pim_busy = float(pim_layer_busy.get(k, 0.0))
-                gpu_sl = float(gpu_layer_slack.get(k, 0.0)) if slack_model != "none" else 0.0
+                npu_sl = float(npu_layer_slack.get(k, 0.0)) if slack_model != "none" else 0.0
                 pim_sl = float(pim_layer_slack.get(k, 0.0)) if slack_model != "none" else 0.0
-                gpu_eff = float(gpu_layer_eff.get(k, gpu_busy + gpu_sl))
+                npu_eff = float(npu_layer_eff.get(k, npu_busy + npu_sl))
                 pim_eff = float(pim_layer_eff.get(k, pim_busy + pim_sl))
-                compute_max = max(gpu_eff, pim_eff)
+                compute_max = max(npu_eff, pim_eff)
                 comm_s = float(comm_ops_layer.get(k, 0.0))
                 oth_s = float(other_layer.get(k, 0.0))
-                base = max(compute_max, comm_s, oth_s)
+                layer_s = max(compute_max, comm_s, oth_s)
+                prefill_time_s += layer_s
 
-                kv_trace = float(kv_map.get(k, 0.0))
-                add_s = non_overlap * kv_trace
-
-                layer_s = base + add_s
-                step_s_per_token += layer_s
-
-                gpu_step += gpu_busy
-                pim_step += pim_busy
-                gpu_step_slack += gpu_sl
-                pim_step_slack += pim_sl
-                if gpu_eff >= pim_eff:
-                    step_slack_used += gpu_sl
+                npu_busy_s += npu_busy
+                pim_busy_s += pim_busy
+                npu_b_prefill_s += float(npu_b_layer_sum.get(k, 0.0))
+                npu_slack_s += npu_sl
+                pim_slack_s += pim_sl
+                npu_slack_prefill_s += npu_sl
+                pim_slack_prefill_s += pim_sl
+                if npu_eff >= pim_eff:
+                    compute_slack_used_s += npu_sl
+                    compute_slack_used_prefill_s += npu_sl
                 else:
-                    step_slack_used += pim_sl
-                comm_step += comm_s
-                oth_step += oth_s
-                add_step += add_s
+                    compute_slack_used_s += pim_sl
+                    compute_slack_used_prefill_s += pim_sl
+                sched_comm_s += comm_s
+                sched_other_s += oth_s
 
-                # per-tag breakdown (after NON_OVERLAP, before scaling)
-                comm_kv_s += add_s
+            dec = df[df["phase"] == "decode"]
+            dec_steps = sorted(dec["step"].unique())
+            dec_layers = sorted(dec["layer"].unique())
 
-            scale_tokens = int(decode_scale_by_step.get(int(st), int(decode_stride)))
-            step_s = step_s_per_token * float(scale_tokens)
-            decode_time_s += step_s
+            for st in dec_steps:
+                step_s_per_token = 0.0
+                npu_step = 0.0
+                pim_step = 0.0
+                npu_step_b = 0.0
+                npu_step_slack = 0.0
+                pim_step_slack = 0.0
+                step_slack_used = 0.0
+                comm_step = 0.0
+                oth_step = 0.0
 
-            gpu_busy_s += gpu_step * float(scale_tokens)
-            pim_busy_s += pim_step * float(scale_tokens)
-            gpu_slack_s += gpu_step_slack * float(scale_tokens)
-            pim_slack_s += pim_step_slack * float(scale_tokens)
-            gpu_slack_decode_s += gpu_step_slack * float(scale_tokens)
-            pim_slack_decode_s += pim_step_slack * float(scale_tokens)
-            compute_slack_used_s += step_slack_used * float(scale_tokens)
-            compute_slack_used_decode_s += step_slack_used * float(scale_tokens)
-            sched_comm_s += comm_step * float(scale_tokens)
-            sched_other_s += oth_step * float(scale_tokens)
-            comm_added_s += add_step * float(scale_tokens)
+                for ly in dec_layers:
+                    k = ("decode", int(st), int(ly))
+                    npu_busy = float(npu_layer_busy.get(k, 0.0))
+                    pim_busy = float(pim_layer_busy.get(k, 0.0))
+                    npu_sl = float(npu_layer_slack.get(k, 0.0)) if slack_model != "none" else 0.0
+                    pim_sl = float(pim_layer_slack.get(k, 0.0)) if slack_model != "none" else 0.0
+                    npu_eff = float(npu_layer_eff.get(k, npu_busy + npu_sl))
+                    pim_eff = float(pim_layer_eff.get(k, pim_busy + pim_sl))
+                    compute_max = max(npu_eff, pim_eff)
+                    comm_s = float(comm_ops_layer.get(k, 0.0))
+                    oth_s = float(other_layer.get(k, 0.0))
+                    layer_s = max(compute_max, comm_s, oth_s)
 
-            step_rows.append(
-                {
-                    "schedule": p.name,
-                    "phase": "decode",
-                    "sample_step": int(st),
-                    "token_index": int(actual_token_index_by_step.get(int(st), decode_token_block_start_from_sample_step(int(st), int(decode_stride)))),
-                    "tokens": int(scale_tokens),
-                    "step_time_s": float(step_s),
-                    "step_time_per_token_s": float(step_s_per_token),
-                }
-            )
+                    step_s_per_token += layer_s
+                    npu_step += npu_busy
+                    pim_step += pim_busy
+                    npu_step_b += float(npu_b_layer_sum.get(k, 0.0))
+                    npu_step_slack += npu_sl
+                    pim_step_slack += pim_sl
+                    if npu_eff >= pim_eff:
+                        step_slack_used += npu_sl
+                    else:
+                        step_slack_used += pim_sl
+                    comm_step += comm_s
+                    oth_step += oth_s
 
-        # weight_load during decode phase (no GPU-vs-PIM overlap)
-        decode_time_s += weight_load_decode_s
-        gpu_busy_s += weight_load_decode_gpu_s
-        pim_busy_s += weight_load_decode_pim_s
+                scale_tokens = int(decode_scale_by_step.get(int(st), int(decode_stride)))
+                step_s = step_s_per_token * float(scale_tokens)
+                decode_time_s += step_s
 
-        total_time_s = prefill_time_s + decode_time_s
+                npu_busy_s += npu_step * float(scale_tokens)
+                pim_busy_s += pim_step * float(scale_tokens)
+                npu_b_decode_s += npu_step_b * float(scale_tokens)
+                npu_slack_s += npu_step_slack * float(scale_tokens)
+                pim_slack_s += pim_step_slack * float(scale_tokens)
+                npu_slack_decode_s += npu_step_slack * float(scale_tokens)
+                pim_slack_decode_s += pim_step_slack * float(scale_tokens)
+                compute_slack_used_s += step_slack_used * float(scale_tokens)
+                compute_slack_used_decode_s += step_slack_used * float(scale_tokens)
+                sched_comm_s += comm_step * float(scale_tokens)
+                sched_other_s += oth_step * float(scale_tokens)
 
-        trace_t = compute_trace_times_from_ops_csv(df, decode_stride=decode_stride)
-        trace_prefill_s = float(trace_t.get("trace_prefill_s", 0.0))
-        trace_decode_s = float(trace_t.get("trace_decode_scaled_s", trace_t.get("trace_decode_s", 0.0)))
-        trace_total_s = float(trace_t.get("trace_total_scaled_s", trace_t.get("trace_total_s", 0.0)))
+                step_rows.append(
+                    {
+                        "schedule": p.name,
+                        "phase": "decode",
+                        "sample_step": int(st),
+                        "token_index": int(actual_token_index_by_step.get(int(st), decode_token_block_start_from_sample_step(int(st), int(decode_stride)))),
+                        "tokens": int(scale_tokens),
+                        "step_time_s": float(step_s),
+                        "step_time_per_token_s": float(step_s_per_token),
+                    }
+                )
 
-        try:
-            st_i = int(decode_stride) if decode_stride is not None else 1
-            if st_i > 1 and (df is not None) and (not df.empty) and ("step" in df.columns) and ("phase" in df.columns):
-                ph_s = df["phase"].astype(str)
-                dec_mask = (ph_s == "decode").to_numpy(dtype=bool)
-                if dec_mask.any():
-                    step_arr = pd.to_numeric(df["step"], errors="coerce").fillna(-1).astype(int).to_numpy(dtype=int)
-                    start_arr = pd.to_numeric(df["start"], errors="coerce").to_numpy(dtype=float)
-                    end_arr = pd.to_numeric(df["end"], errors="coerce").to_numpy(dtype=float)
-                    dec_start = float(np.nanmin(start_arr[dec_mask]))
-                    raw_dec_end = float(np.nanmax(end_arr[dec_mask]))
+            prefill_overlap_saved_s = float(overlap) * min(float(wl_pref["npu_s"]), float(npu_b_prefill_s))
+            decode_overlap_saved_s = float(overlap) * min(float(wl_dec["npu_s"]), float(npu_b_decode_s))
 
-                    last_step = int(np.nanmax(step_arr[dec_mask]))
-                    scale_last = int(decode_scale_by_step.get(int(last_step), int(st_i)))
-                    if scale_last > 1:
-                        last_mask = dec_mask & (step_arr == int(last_step))
-                        if last_mask.any():
-                            last_st = float(np.nanmin(start_arr[last_mask]))
-                            last_en = float(np.nanmax(end_arr[last_mask]))
-                            span_last = float(max(0.0, last_en - last_st))
+            prefill_time_s += float(wl_pref["total_s"]) - float(prefill_overlap_saved_s)
+            decode_time_s += float(wl_dec["total_s"]) - float(decode_overlap_saved_s)
 
-                            # Heuristic safety: if the last-step span already looks *scaled*
-                            # (i.e., much larger than typical per-token spans), do NOT apply
-                            # an extra scale_last multiplier.
-                            span_ref = None
-                            try:
-                                ref_spans: List[float] = []
-                                for ss in np.unique(step_arr[dec_mask]):
-                                    s_int = int(ss)
-                                    if s_int == int(last_step):
-                                        continue
-                                    sc = int(decode_scale_by_step.get(int(s_int), int(st_i)))
-                                    if sc <= 1:
-                                        continue
-                                    m = dec_mask & (step_arr == int(s_int))
-                                    if not m.any():
-                                        continue
-                                    st0 = float(np.nanmin(start_arr[m]))
-                                    en0 = float(np.nanmax(end_arr[m]))
-                                    ref_spans.append(float(max(0.0, en0 - st0)))
-                                if ref_spans:
-                                    span_ref = float(np.median(np.asarray(ref_spans, dtype=float)))
-                            except Exception:
-                                span_ref = None
+            total_time_s = prefill_time_s + decode_time_s
 
-                            already_scaled = False
-                            if span_ref is not None and span_ref > 0.0:
-                                # If span_last is on the order of scale_last * span_ref, we assume it's already scaled.
-                                if span_last >= float(span_ref) * float(max(2.0, 0.8 * float(scale_last))):
-                                    already_scaled = True
+            trace_t = compute_trace_times_from_ops_csv(df, decode_stride=decode_stride)
+            trace_prefill_s = float(trace_t.get("trace_prefill_s", 0.0))
+            trace_decode_s = float(trace_t.get("trace_decode_scaled_s", trace_t.get("trace_decode_s", 0.0)))
+            trace_total_s = float(trace_t.get("trace_total_scaled_s", trace_t.get("trace_total_s", 0.0)))
 
-                            if not already_scaled:
-                                pred_end = float(last_st + span_last * float(scale_last))
-                                # Only extend if trace currently ends too early.
-                                if np.isfinite(pred_end) and (pred_end > raw_dec_end + 1e-12):
-                                    trace_decode_s = float(max(0.0, pred_end - dec_start))
-                                    trace_total_s = float(trace_prefill_s + trace_decode_s)
-        except Exception:
-            pass
+            row = {
+                "schedule": p.name,
+                "dim": dim,
+                "shards": shards,
+                "decode_stride": int(decode_stride),
+                "overlap": float(overlap),
+                "slack_model": str(slack_model),
 
-        row = {
-            "schedule": p.name,
-            "dim": dim,
-            "shards": shards,
-            "decode_stride": int(decode_stride),
-            "non_overlap": float(non_overlap),
-            "slack_model": str(slack_model),
-            "prefill_time_s": float(prefill_time_s),
-            "decode_time_s": float(decode_time_s),
-            "total_time_s": float(total_time_s),
-            "trace_prefill_s": float(trace_prefill_s),
-            "trace_decode_s": float(trace_decode_s),
-            "trace_total_s": float(trace_total_s),
-            "delta_prefill_s": float(prefill_time_s - trace_prefill_s),
-            "delta_decode_s": float(decode_time_s - trace_decode_s),
-            "delta_total_s": float(total_time_s - trace_total_s),
-            "gpu_busy_s": float(gpu_busy_s),
-            "pim_busy_s": float(pim_busy_s),
-            "gpu_slack_s": float(gpu_slack_s),
-            "pim_slack_s": float(pim_slack_s),
-            "gpu_slack_prefill_s": float(gpu_slack_prefill_s),
-            "pim_slack_prefill_s": float(pim_slack_prefill_s),
-            "gpu_slack_decode_s": float(gpu_slack_decode_s),
-            "pim_slack_decode_s": float(pim_slack_decode_s),
-            "compute_slack_used_s": float(compute_slack_used_s),
-            "compute_slack_used_prefill_s": float(compute_slack_used_prefill_s),
-            "compute_slack_used_decode_s": float(compute_slack_used_decode_s),
-            "schedule_comm_s": float(sched_comm_s),
-            "schedule_other_s": float(sched_other_s),
-            "comm_added_s": float(comm_added_s),
+                "prefill_time_s": float(prefill_time_s),
+                "decode_time_s": float(decode_time_s),
+                "total_time_s": float(total_time_s),
 
-            "weight_load_prefill_s": float(weight_load_prefill_s),
-            "weight_load_decode_s": float(weight_load_decode_s),
-            "weight_load_total_s": float(weight_load_prefill_s + weight_load_decode_s),
+                "trace_prefill_s": float(trace_prefill_s),
+                "trace_decode_s": float(trace_decode_s),
+                "trace_total_s": float(trace_total_s),
 
-            "weight_load_prefill_gpu_s": float(weight_load_prefill_gpu_s),
-            "weight_load_prefill_pim_s": float(weight_load_prefill_pim_s),
-            "weight_load_prefill_unknown_s": float(weight_load_prefill_unknown_s),
-            "weight_load_decode_gpu_s": float(weight_load_decode_gpu_s),
-            "weight_load_decode_pim_s": float(weight_load_decode_pim_s),
-            "weight_load_decode_unknown_s": float(weight_load_decode_unknown_s),
+                "delta_prefill_s": float(prefill_time_s - trace_prefill_s),
+                "delta_decode_s": float(decode_time_s - trace_decode_s),
+                "delta_total_s": float(total_time_s - trace_total_s),
 
-            "comm_kv_load_added_s": float(comm_kv_s),
-            "missing_segments": int(missing_segments),
-        }
-        rows_out.append(row)
+                "npu_busy_s": float(npu_busy_s),
+                "pim_busy_s": float(pim_busy_s),
+                "npu_b_prefill_s": float(npu_b_prefill_s),
+                "npu_b_decode_s": float(npu_b_decode_s),
+                "npu_b_total_s": float(npu_b_prefill_s + npu_b_decode_s),
 
+                "npu_slack_s": float(npu_slack_s),
+                "pim_slack_s": float(pim_slack_s),
+                "npu_slack_prefill_s": float(npu_slack_prefill_s),
+                "pim_slack_prefill_s": float(pim_slack_prefill_s),
+                "npu_slack_decode_s": float(npu_slack_decode_s),
+                "pim_slack_decode_s": float(pim_slack_decode_s),
+
+                "compute_slack_used_s": float(compute_slack_used_s),
+                "compute_slack_used_prefill_s": float(compute_slack_used_prefill_s),
+                "compute_slack_used_decode_s": float(compute_slack_used_decode_s),
+
+                "schedule_comm_s": float(sched_comm_s),
+                "schedule_other_s": float(sched_other_s),
+
+                "weight_load_prefill_s": float(wl_pref["total_s"]),
+                "weight_load_decode_s": float(wl_dec["total_s"]),
+                "weight_load_total_s": float(wl_pref["total_s"] + wl_dec["total_s"]),
+
+                "weight_load_prefill_npu_s": float(wl_pref["npu_s"]),
+                "weight_load_prefill_pim_s": float(wl_pref["pim_s"]),
+                "weight_load_prefill_unknown_s": float(wl_pref["unknown_s"]),
+                "weight_load_decode_npu_s": float(wl_dec["npu_s"]),
+                "weight_load_decode_pim_s": float(wl_dec["pim_s"]),
+                "weight_load_decode_unknown_s": float(wl_dec["unknown_s"]),
+
+                "weight_load_prefill_overlap_saved_s": float(prefill_overlap_saved_s),
+                "weight_load_decode_overlap_saved_s": float(decode_overlap_saved_s),
+                "weight_load_overlap_saved_total_s": float(prefill_overlap_saved_s + decode_overlap_saved_s),
+
+                "missing_segments": int(missing_segments),
+            }
+            rows_out.append(row)
+
+            if dbg_f:
+                dbg_f.write(
+                    f"[schedule] {p.name} prefill={prefill_time_s:.6f}s decode={decode_time_s:.6f}s total={total_time_s:.6f}s "
+                    f"wl_prefill={float(wl_pref['total_s']):.6f}s wl_decode={float(wl_dec['total_s']):.6f}s "
+                    f"ov_prefill={prefill_overlap_saved_s:.6f}s ov_decode={decode_overlap_saved_s:.6f}s "
+                    f"npu_b_prefill={npu_b_prefill_s:.6f}s npu_b_decode={npu_b_decode_s:.6f}s missing_segments={missing_segments}\n"
+                )
+    finally:
         if dbg_f:
-            dbg_f.write(
-                f"[SCHEDULE] {p.name} prefill={prefill_time_s:.6f} (wl_prefill={weight_load_prefill_s:.6f}, wl_decode={weight_load_decode_s:.6f}) decode={decode_time_s:.6f} total={total_time_s:.6f} "
-                f"missing_segments={missing_segments}\n"
-            )
-
-    if dbg_f:
-        dbg_f.close()
-
-    # Write debug CSV outputs (only when --debug)
-    if debug:
-        try:
-            out_base = str(Path(out_csv).expanduser())
-        except Exception:
-            out_base = str(out_csv)
-        if out_base.lower().endswith(".csv"):
-            seg_path = out_base[:-4] + ".seg_debug.csv"
-            row_path = out_base[:-4] + ".row_debug.csv"
-        else:
-            seg_path = out_base + ".seg_debug.csv"
-            row_path = out_base + ".row_debug.csv"
-        try:
-            if seg_debug_frames:
-                os.makedirs(os.path.dirname(seg_path) or ".", exist_ok=True)
-                pd.concat(seg_debug_frames, ignore_index=True).to_csv(seg_path, index=False)
-        except Exception:
-            pass
-        try:
-            if row_debug_frames:
-                os.makedirs(os.path.dirname(row_path) or ".", exist_ok=True)
-                pd.concat(row_debug_frames, ignore_index=True).to_csv(row_path, index=False)
-        except Exception:
-            pass
+            dbg_f.close()
 
     os.makedirs(os.path.dirname(out_csv) or ".", exist_ok=True)
     pd.DataFrame(rows_out).to_csv(out_csv, index=False)
@@ -5429,6 +3879,7 @@ def merge(
     if out_steps_csv:
         os.makedirs(os.path.dirname(out_steps_csv) or ".", exist_ok=True)
         pd.DataFrame(step_rows).to_csv(out_steps_csv, index=False)
+
 
 def collect_merge_csv(list_tsv: str, *, out_csv: str, skip_missing: bool = False) -> None:
     """Concatenate multiple per-run merge.csv files into one combined CSV."""
@@ -5508,11 +3959,8 @@ def add_common_model_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--prefill-len", type=int, default=128, dest="prefill_len")
     p.add_argument("--decode-context-lens", type=str, nargs="?", const="auto", default=None,)
 
-    p.add_argument("--shard-policy", type=str, default="coarse_majority", choices=["fine","coarse_majority"],
-                   help="shard placement policy for verification: fine keeps per-shard placement; coarse_majority chooses GPU if > half shards on GPU else PIM")
-
-    p.add_argument("--device", type=str, default="cuda", help="cuda or cpu (GPU benchmark side)")
-    p.add_argument("--gpu-dtype", type=str, default="fp16", dest="gpu_dtype")
+    p.add_argument("--shard-policy", type=str, default="fine", choices=["fine"],
+                   help="shard placement policy for verification (only fine is supported)")
 
     p.add_argument(
         "--kv-load-bw-gbs",
@@ -5571,6 +4019,7 @@ def add_common_model_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--segment-scope", type=str, default="layer", choices=["layer"],
                    help="segment granularity")
 
+
 def build_cfg_from_args(args: argparse.Namespace) -> WorkloadConfig:
     cfg = WorkloadConfig()
 
@@ -5591,7 +4040,7 @@ def build_cfg_from_args(args: argparse.Namespace) -> WorkloadConfig:
     cfg.prefill_len = int(getattr(args, "prefill_len", cfg.prefill_len))
     cfg.decode_context_lens = None
     cfg.device = str(getattr(args, "device", cfg.device))
-    cfg.gpu_dtype = str(getattr(args, "gpu_dtype", cfg.gpu_dtype))
+    cfg.npu_dtype = str(getattr(args, "npu_dtype", cfg.npu_dtype))
 
     cfg.kv_load_bw_gbs = float(getattr(args, "kv_load_bw_gbs", cfg.kv_load_bw_gbs))
     cfg.kv_dtype_bytes = float(getattr(args, "kv_dtype_bytes", cfg.kv_dtype_bytes))
@@ -5636,9 +4085,8 @@ def build_cfg_from_args(args: argparse.Namespace) -> WorkloadConfig:
 
 def main(argv: Optional[List[str]] = None) -> None:
     argv = list(argv) if argv is not None else sys.argv[1:]
-    subcmds = {"export","run-gpu","run-npu","run-pim","merge","collect-merge","all"}
+    subcmds = {"export", "run-npu", "run-pim", "merge", "collect-merge", "all"}
 
-    # Backward compatibility: if user calls without subcommand, treat as "all"
     if not argv or argv[0].startswith("-") or argv[0] not in subcmds:
         argv = ["all"] + argv
 
@@ -5646,7 +4094,7 @@ def main(argv: Optional[List[str]] = None) -> None:
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     # export
-    p_exp = sub.add_parser("export", help="export gpu_tasks.json and pim_tasks.json (segment-level) from schedule csv(s)")
+    p_exp = sub.add_parser("export", help="export npu_tasks.json and pim_tasks.json (segment-level) from schedule csv(s)")
     p_exp.add_argument("--schedule", type=str, default=None, help="single schedule csv path")
     p_exp.add_argument("--schedules", type=str, nargs="+", default=None, help="schedule csv paths (one or more)")
     p_exp.add_argument("--comms", type=str, default=None, help="(optional) single comms trace csv path (weight_load/kv_load, layer mapping)")
@@ -5657,77 +4105,51 @@ def main(argv: Optional[List[str]] = None) -> None:
     p_exp.add_argument("--decode-stride", type=int, default=1)
     add_common_model_args(p_exp)
 
-    # run-gpu
-    p_gpu = sub.add_parser("run-gpu", help="run GPU segment benchmark from gpu_tasks.json -> gpu_results.json")
-    p_gpu.add_argument("--tasks", type=str, required=True, help="gpu_tasks.json")
-    p_gpu.add_argument("--out", type=str, required=True, help="gpu_results.json")
-    p_gpu.add_argument("--warmup", type=int, default=3)
-    p_gpu.add_argument("--iters", type=int, default=10)
-    p_gpu.add_argument("--device", type=str, default=None, help="override device in tasks config (cuda|cpu)")
-    p_gpu.add_argument("--gpu-dtype", type=str, default=None, dest="gpu_dtype", help="override dtype (fp16|bf16|fp32)")
-    p_gpu.add_argument("--batch", type=int, default=None,
-                       help="override batch size in tasks config (affects GPU op tensor shapes; default uses tasks_json config.batch)")
-
-    p_gpu.add_argument("--debug", action="store_true",
-                       help="Verbose GPU debug: print per-segment per-op shapes/timings/memory stats (very noisy)")
-    p_gpu.add_argument("--debug-txt", type=str, default=None,
-                       help="(optional) also write the --debug log to this file")
-
     # run-npu
-    p_npu = sub.add_parser("run-npu", help="run NPU LUT lookup (Ascend) from gpu_tasks.json -> npu_results.json")
-    p_npu.add_argument("--tasks", type=str, required=True, help="gpu_tasks.json (compute segments)")
+    p_npu = sub.add_parser("run-npu", help="run NPU LUT lookup from npu_tasks.json -> npu_results.json")
+    p_npu.add_argument("--tasks", type=str, required=True, help="npu_tasks.json")
     p_npu.add_argument("--out", type=str, required=True, help="npu_results.json")
-
-    # LUT overrides (forwarded via env vars for the cost_model backend)
     p_npu.add_argument("--mmad-lut", type=str, default=None, help="Override MMAD LUT path (sets env TRIFORM_MMAD_LUT)")
     p_npu.add_argument("--softmax-lut", type=str, default=None, help="Override Softmax LUT path (sets env TRIFORM_SOFTMAX_LUT)")
     p_npu.add_argument("--gelu-lut", type=str, default=None, help="Override GELU LUT path (sets env TRIFORM_GELU_LUT)")
     p_npu.add_argument("--norm-lut", type=str, default=None, help="Override Norm/LN LUT path (sets env TRIFORM_NORM_LUT)")
-
-    # Activation RW (mem bound) is mandatory for NPU LUT runs.
     p_npu.add_argument("--npu-dtype", type=str, default=None, help="dtype for activation RW model (fp16|bf16|fp32|int8)")
     p_npu.add_argument("--npu-mem-bw-gbs", type=float, default=0.0, help="REQUIRED: activation bandwidth in GB/s (must be >0)")
     p_npu.add_argument("--npu-op-overhead-us", type=float, default=0.0, help="Constant overhead per op (us)")
     p_npu.add_argument("--npu-no-mem-bound", action="store_true", help="(DEPRECATED/unsupported) Activation RW is mandatory; this flag will error")
     p_npu.add_argument("--batch", type=int, default=None, help="override batch size in tasks config (affects LUT dims)")
-
     p_npu.add_argument("--debug", action="store_true", help="Verbose per-op debug for NPU lookup")
     p_npu.add_argument("--debug-txt", type=str, default=None, help="Also write debug log to this file")
 
-
     # run-pim
-    # Only requires two files to drive ramulator:
-    #   1) ramulator config (YAML/JSON) e.g. example.yaml
-    #   2) PIM HW spec JSON           e.g. PIM_AiM.json
     p_pim = sub.add_parser("run-pim", help="run PIM segment simulation from pim_tasks.json -> pim_results.json")
     p_pim.add_argument("--tasks", type=str, required=True, help="pim_tasks.json")
     p_pim.add_argument("--out", type=str, required=True, help="pim_results.json")
     p_pim.add_argument("--cent-sim-root", type=str, default=None,
                        help="path to .../submodules/CENT/cent_simulation (or set env CENT_SIM_ROOT)")
-    p_pim.add_argument("--pim-ramulator-bin",type=str, default=None, help="path/name of AiM-enabled ramulator2 executable (required unless present in pim_tasks.json config)",)
+    p_pim.add_argument("--pim-ramulator-bin", type=str, default=None, help="path/name of AiM-enabled ramulator2 executable (required unless present in pim_tasks.json config)")
     p_pim.add_argument("--pim-ramulator-config", type=str, required=True,
                        help="ramulator2 config file (YAML/JSON), e.g. example.yaml")
     p_pim.add_argument("--pim-hw-json", type=str, required=True,
                        help="PIM HW spec JSON, e.g. PIM_AiM.json")
     p_pim.add_argument("--pim-num-devices", type=int, default=None,
-                       help="Override PIM device/DIMM count (used as FC_devices for model-parallel mapping). "
-                            "This overrides the value stored in pim_tasks.json.")
+                       help="Override PIM device/DIMM count (used as FC_devices for model-parallel mapping). This overrides the value stored in pim_tasks.json.")
     p_pim.add_argument("--batch", type=int, default=None,
                        help="override batch size in tasks config (affects PIM trace generation; default uses pim_tasks.json config.batch)")
-
     p_pim.add_argument("--debug", action="store_true",
                        help="Verbose debug: print all resolved configs + per-op parameters/latencies (very noisy)")
     p_pim.add_argument("--debug-txt", type=str, default=None,
                        help="(optional) also write the --debug log to this file")
     p_pim.add_argument("--no-cache", action="store_true",
                        help="Disable CostModel PIM latency cache (force ramulator runs for every op)")
+
     # merge
-    p_m = sub.add_parser("merge", help="merge schedule(s) with gpu_results.json + pim_results.json (segment-level)")
+    p_m = sub.add_parser("merge", help="merge schedule(s) with npu_results.json + pim_results.json (segment-level)")
     p_m.add_argument("--schedule", type=str, default=None, help="single schedule csv path")
     p_m.add_argument("--schedules", type=str, nargs="+", default=None)
-    p_m.add_argument("--gpu-results", type=str, default=None)
+    p_m.add_argument("--npu-results", type=str, default=None)
     p_m.add_argument("--pim-results", type=str, default=None)
-    p_m.add_argument("--comm-model", type=str, default="schedule", choices=["schedule","cxl","none"])
+    p_m.add_argument("--comm-model", type=str, default="schedule", choices=["schedule", "cxl", "none"])
     p_m.add_argument("--pcie-lanes", type=int, default=16)
     p_m.add_argument("--decode-stride", type=int, required=True,
                      help="decode stride used in simulation; decode_token_index = 1 + step*stride")
@@ -5735,9 +4157,10 @@ def main(argv: Optional[List[str]] = None) -> None:
                      help="(optional) single comms trace csv path; used for weight_load/kv_load accumulation")
     p_m.add_argument("--comms-traces", type=str, nargs="+", default=None,
                      help="(optional) comms trace csv paths; if same count as --schedules, treated as paired")
-    p_m.add_argument("--non-overlap", type=float, default=1.0,
-                     help="NON_OVERLAP factor for kv_load comm time per layer: layer = base_layer_time + NON_OVERLAP*kv_load_time (weight_load is always added to prefill)")
-    # KV-load estimate override knobs (optional). If provided, they override the values stored in *_results.json config.
+    p_m.add_argument("--overlap", type=float, default=None,
+                     help="Allow overlap between NPU B-stage and comms.csv weight_load. 0=no overlap, 1=full overlap.")
+    p_m.add_argument("--non-overlap", type=float, default=None,
+                     help=argparse.SUPPRESS)
     p_m.add_argument("--kv-load-bw-gbs", type=float, default=None,
                      help="Override config.kv_load_bw_gbs for implicit kv_load estimate (GB/s).")
     p_m.add_argument("--kv-dtype-bytes", type=float, default=None, dest="kv_dtype_bytes",
@@ -5755,8 +4178,7 @@ def main(argv: Optional[List[str]] = None) -> None:
     p_m.add_argument("--allow-missing", action="store_true",
                      help="if a segment key is missing in results, treat its cost as 0 instead of error")
     p_m.add_argument("--slack-model", type=str, default="span", choices=["span", "none"],
-                     help="Slack modeling for npu/pim device timelines inside each (phase,step,layer,device): "
-                          "'span' adds slack=(max(end)-min(start))-sum(duration) after dropping COMM ops; 'none' disables.")
+                     help="Slack modeling for npu/pim device timelines inside each (phase,step,layer,device): 'span' adds schedule slack; 'none' disables.")
     p_m.add_argument("--slack-no-clamp-negative", action="store_true",
                      help="Do not clamp negative slack to 0 (advanced; default clamps).")
     p_m.add_argument("--debug", action="store_true",
@@ -5773,8 +4195,8 @@ def main(argv: Optional[List[str]] = None) -> None:
     p_c.add_argument("--skip-missing", action="store_true",
                      help="skip missing merge csvs instead of failing")
 
-    # all (single-machine end-to-end)
-    p_all = sub.add_parser("all", help="single-machine mode: export -> run both -> merge")
+    # all
+    p_all = sub.add_parser("all", help="single-machine mode: export -> run-npu -> run-pim -> merge")
     p_all.add_argument("--schedule", type=str, default=None, help="single schedule csv path")
     p_all.add_argument("--schedules", type=str, nargs="+", default=None)
     p_all.add_argument("--comms", type=str, default=None, help="(optional) single comms trace csv path (weight_load/kv_load, layer-scope)")
@@ -5782,32 +4204,26 @@ def main(argv: Optional[List[str]] = None) -> None:
                        help="(optional) comms trace csv paths (one or more); if same count as --schedules, treated as paired")
     p_all.add_argument("--out-dir", type=str, default=".", help="where to place tasks/results")
     p_all.add_argument("--prefix", type=str, default="run", help="prefix for tasks/results files")
-    p_all.add_argument("--warmup", type=int, default=3)
-    p_all.add_argument("--iters", type=int, default=10)
-    # Compute backend: GPU torch benchmark vs NPU LUT (auto by dev.name in schedule CSV)
-    p_all.add_argument("--compute-backend", type=str, default="auto", choices=["auto","gpu","npu"],
-                       help="Which compute backend to run for the non-PIM segments. 'auto' decides by inspecting the schedule CSV 'device' column for 'gpu'/'npu'.")
-
-    # NPU LUT overrides (only used when compute-backend is npu/auto->npu)
     p_all.add_argument("--mmad-lut", type=str, default=None, help="Override MMAD LUT path (sets env TRIFORM_MMAD_LUT)")
     p_all.add_argument("--softmax-lut", type=str, default=None, help="Override Softmax LUT path (sets env TRIFORM_SOFTMAX_LUT)")
     p_all.add_argument("--gelu-lut", type=str, default=None, help="Override GELU LUT path (sets env TRIFORM_GELU_LUT)")
     p_all.add_argument("--norm-lut", type=str, default=None, help="Override Norm/LN LUT path (sets env TRIFORM_NORM_LUT)")
-
     p_all.add_argument("--npu-dtype", type=str, default=None, help="dtype for activation RW model (fp16|bf16|fp32|int8)")
-    p_all.add_argument("--npu-mem-bw-gbs", type=float, default=0.0, help="REQUIRED when backend=npu: activation bandwidth in GB/s (must be >0)")
+    p_all.add_argument("--npu-mem-bw-gbs", type=float, default=0.0, help="REQUIRED: activation bandwidth in GB/s (must be >0)")
     p_all.add_argument("--npu-op-overhead-us", type=float, default=0.0, help="Constant overhead per op (us)")
     p_all.add_argument("--npu-no-mem-bound", action="store_true", help="(DEPRECATED/unsupported) Activation RW is mandatory; this flag will error")
     p_all.add_argument("--npu-debug", action="store_true", help="Verbose per-op debug for NPU lookup (separate from merge --debug)")
     p_all.add_argument("--npu-debug-txt", type=str, default=None, help="Also write NPU debug log to this file")
-
     p_all.add_argument("--cent-sim-root", type=str, default=None)
-    p_all.add_argument("--comm-model", type=str, default="schedule", choices=["schedule","cxl","none"])
+    p_all.add_argument("--pim-hw-json", type=str, default=None)
+    p_all.add_argument("--comm-model", type=str, default="schedule", choices=["schedule", "cxl", "none"])
     p_all.add_argument("--pcie-lanes", type=int, default=16)
     p_all.add_argument("--decode-stride", type=int, required=True,
                        help="decode stride used in simulation; decode_token_index = 1 + step*stride")
-    p_all.add_argument("--non-overlap", type=float, default=1.0,
-                       help="NON_OVERLAP factor for kv_load comm time per layer (weight_load is always added to prefill)")
+    p_all.add_argument("--overlap", type=float, default=None,
+                       help="Allow overlap between NPU B-stage and comms.csv weight_load. 0=no overlap, 1=full overlap.")
+    p_all.add_argument("--non-overlap", type=float, default=None,
+                       help=argparse.SUPPRESS)
     p_all.add_argument("--merge-out-csv", type=str, default=None,
                        help="where to save merged latency report (csv); default: <out-dir>/<prefix>.merge.csv")
     p_all.add_argument("--merge-out-steps-csv", type=str, default=None,
@@ -5832,20 +4248,6 @@ def main(argv: Optional[List[str]] = None) -> None:
         if not schedule_paths:
             raise SystemExit("export requires --schedule or --schedules")
         export_tasks(schedule_paths, cfg, args.out_dir, args.prefix, comms_paths=comms_paths)
-        return
-
-    if args.cmd == "run-gpu":
-        run_gpu(
-            args.tasks,
-            args.out,
-            warmup=args.warmup,
-            iters=args.iters,
-            device=args.device,
-            gpu_dtype=args.gpu_dtype,
-            batch=getattr(args, "batch", None),
-            debug=bool(getattr(args, "debug", False)),
-            debug_txt=getattr(args, "debug_txt", None),
-        )
         return
 
     if args.cmd == "run-npu":
@@ -5885,27 +4287,34 @@ def main(argv: Optional[List[str]] = None) -> None:
         return
 
     if args.cmd == "merge":
-        if (args.gpu_results is None and args.pim_results is None):
-            raise SystemExit("merge requires --gpu-results and/or --pim-results")
+        if (args.npu_results is None and args.pim_results is None):
+            raise SystemExit("merge requires --npu-results and/or --pim-results")
         schedule_paths = ([args.schedule] if getattr(args, "schedule", None) else (args.schedules or []))
         if not schedule_paths:
             raise SystemExit("merge requires --schedule or --schedules")
         comms_paths = ([args.comms] if getattr(args, "comms", None) else (getattr(args, "comms_traces", None) or []))
-        merge(schedule_paths, args.gpu_results, args.pim_results,
-              comms_paths=comms_paths, non_overlap=args.non_overlap,
-              comm_model=args.comm_model, pcie_lanes=args.pcie_lanes,
-              decode_stride=args.decode_stride,
-              kv_load_bw_gbs_override=getattr(args, "kv_load_bw_gbs", None),
-              kv_dtype_bytes_override=getattr(args, "kv_dtype_bytes", None),
-              kv_load_overhead_us_override=getattr(args, "kv_load_overhead_us", None),
-              n_kv_heads_override=getattr(args, "n_kv_heads", None),
-              batch_override=getattr(args, "batch", None),
-              out_csv=args.out_csv,
-              out_steps_csv=args.out_steps_csv,
-              allow_missing=args.allow_missing,
-              slack_model=getattr(args, "slack_model", "span"),
-              slack_clamp_negative=(not bool(getattr(args, "slack_no_clamp_negative", False))),
-              debug=args.debug, debug_txt=args.debug_txt)
+        merge(
+            schedule_paths,
+            args.npu_results,
+            args.pim_results,
+            comms_paths=comms_paths,
+            overlap=(args.overlap if args.overlap is not None else (args.non_overlap if args.non_overlap is not None else 0.0)),
+            comm_model=args.comm_model,
+            pcie_lanes=args.pcie_lanes,
+            decode_stride=args.decode_stride,
+            kv_load_bw_gbs_override=getattr(args, "kv_load_bw_gbs", None),
+            kv_dtype_bytes_override=getattr(args, "kv_dtype_bytes", None),
+            kv_load_overhead_us_override=getattr(args, "kv_load_overhead_us", None),
+            n_kv_heads_override=getattr(args, "n_kv_heads", None),
+            batch_override=getattr(args, "batch", None),
+            out_csv=args.out_csv,
+            out_steps_csv=args.out_steps_csv,
+            allow_missing=args.allow_missing,
+            slack_model=getattr(args, "slack_model", "span"),
+            slack_clamp_negative=(not bool(getattr(args, "slack_no_clamp_negative", False))),
+            debug=args.debug,
+            debug_txt=args.debug_txt,
+        )
         return
 
     if args.cmd == "collect-merge":
@@ -5921,87 +4330,66 @@ def main(argv: Optional[List[str]] = None) -> None:
         if not schedule_paths:
             raise SystemExit("all requires --schedule or --schedules")
 
-        # 1) export
-        gpu_tasks, pim_tasks = export_tasks(schedule_paths, cfg, out_dir, prefix, comms_paths=comms_paths)
+        npu_tasks, pim_tasks = export_tasks(schedule_paths, cfg, out_dir, prefix, comms_paths=comms_paths)
 
-        # 2) run compute (GPU or NPU LUT) + run PIM
-        compute_res_path = None
+        _set_npu_lut_env(
+            mmad_lut=getattr(args, "mmad_lut", None),
+            softmax_lut=getattr(args, "softmax_lut", None),
+            gelu_lut=getattr(args, "gelu_lut", None),
+            norm_lut=getattr(args, "norm_lut", None),
+        )
+
+        npu_res_path = None
         pim_res_path = None
 
-        # Decide compute backend. Do NOT use device_type from the trace (it may always be 'npu').
-        compute_backend = str(getattr(args, "compute_backend", "auto") or "auto").strip().lower()
-        if compute_backend == "auto":
-            inferred = infer_compute_backend_from_schedules(schedule_paths)
-            if inferred == "gpu":
-                compute_backend = "gpu"
-            elif inferred == "npu":
-                compute_backend = "npu"
-            elif inferred == "mixed":
-                raise SystemExit(
-                    "Detected both 'gpu' and 'npu' in schedule dev.name ('device' column). "
-                    "Please set --compute-backend to 'gpu' or 'npu' explicitly."
-                )
-            else:
-                # Backward-compatible fallback: default to GPU benchmark if we can't infer.
-                compute_backend = "gpu"
+        npu_data = _load_json(str(npu_tasks))
+        if len(npu_data.get("tasks", [])) > 0:
+            npu_res_path = run_npu(
+                str(npu_tasks),
+                str(Path(out_dir) / f"{prefix}.npu_results.json"),
+                npu_dtype=getattr(args, "npu_dtype", None),
+                npu_mem_bw_gbs=float(getattr(args, "npu_mem_bw_gbs", 0.0) or 0.0),
+                op_overhead_us=float(getattr(args, "npu_op_overhead_us", 0.0) or 0.0),
+                use_mem_bound=not bool(getattr(args, "npu_no_mem_bound", False)),
+                batch=getattr(args, "batch", None),
+                debug=bool(getattr(args, "npu_debug", False)),
+                debug_txt=getattr(args, "npu_debug_txt", None),
+            )
 
-        # Compute segments live in gpu_tasks.json (device_type='npu' in our verifier naming).
-        compute_data = _load_json(str(gpu_tasks))
-        if len(compute_data.get("tasks", [])) > 0:
-            if compute_backend == "gpu":
-                compute_res_path = run_gpu(
-                    str(gpu_tasks),
-                    str(Path(out_dir) / f"{prefix}.gpu_results.json"),
-                    warmup=args.warmup,
-                    iters=args.iters,
-                    device=cfg.device,
-                    gpu_dtype=cfg.gpu_dtype,
-                )
-            elif compute_backend == "npu":
-                # Forward LUT overrides via env vars
-                _set_npu_lut_env(
-                    mmad_lut=getattr(args, "mmad_lut", None),
-                    softmax_lut=getattr(args, "softmax_lut", None),
-                    gelu_lut=getattr(args, "gelu_lut", None),
-                    norm_lut=getattr(args, "norm_lut", None),
-                )
-                compute_res_path = run_npu(
-                    str(gpu_tasks),
-                    str(Path(out_dir) / f"{prefix}.npu_results.json"),
-                    npu_dtype=getattr(args, "npu_dtype", None),
-                    npu_mem_bw_gbs=float(getattr(args, "npu_mem_bw_gbs", 0.0) or 0.0),
-                    op_overhead_us=float(getattr(args, "npu_op_overhead_us", 0.0) or 0.0),
-                    use_mem_bound=not bool(getattr(args, "npu_no_mem_bound", False)),
-                    batch=getattr(args, "batch", None),
-                    debug=bool(getattr(args, "npu_debug", False)),
-                    debug_txt=getattr(args, "npu_debug_txt", None),
-                )
-            else:
-                raise SystemExit(f"Unknown --compute-backend: {compute_backend!r} (expected gpu|npu|auto)")
-
-        # PIM side
         pim_data = _load_json(str(pim_tasks))
         if len(pim_data.get("tasks", [])) > 0:
+            if not getattr(args, "pim_ramulator_config", None):
+                raise SystemExit("all + run-pim requires --pim-ramulator-config")
+            if not getattr(args, "pim_hw_json", None):
+                raise SystemExit("all + run-pim requires --pim-hw-json")
             pim_res_path = run_pim(
                 str(pim_tasks),
                 str(Path(out_dir) / f"{prefix}.pim_results.json"),
                 cent_sim_root=args.cent_sim_root,
                 ramulator_bin=getattr(args, "pim_ramulator_bin", None),
+                ramulator_config=getattr(args, "pim_ramulator_config", None),
+                pim_hw_json=getattr(args, "pim_hw_json", None),
+                pim_num_devices=getattr(args, "pim_num_devices", None),
+                batch=getattr(args, "batch", None),
             )
 
-        # 3) merge
-        merge(schedule_paths,
-              str(compute_res_path) if compute_res_path else None,
-              str(pim_res_path) if pim_res_path else None,
-              comms_paths=comms_paths, non_overlap=args.non_overlap,
-              comm_model=args.comm_model, pcie_lanes=args.pcie_lanes,
-              decode_stride=args.decode_stride,
-              out_csv=(args.merge_out_csv or str(Path(out_dir)/f"{prefix}.merge.csv")),
-              out_steps_csv=(args.merge_out_steps_csv),
-              allow_missing=args.allow_missing,
-              slack_model=getattr(args, "slack_model", "span"),
-              slack_clamp_negative=(not bool(getattr(args, "slack_no_clamp_negative", False))),
-              debug=args.debug, debug_txt=args.debug_txt)
+        merge(
+            schedule_paths,
+            str(npu_res_path) if npu_res_path else None,
+            str(pim_res_path) if pim_res_path else None,
+            comms_paths=comms_paths,
+            overlap=(args.overlap if args.overlap is not None else (args.non_overlap if args.non_overlap is not None else 0.0)),
+            comm_model=args.comm_model,
+            pcie_lanes=args.pcie_lanes,
+            decode_stride=args.decode_stride,
+            out_csv=(args.merge_out_csv or str(Path(out_dir) / f"{prefix}.merge.csv")),
+            out_steps_csv=(args.merge_out_steps_csv),
+            allow_missing=args.allow_missing,
+            slack_model=getattr(args, "slack_model", "span"),
+            slack_clamp_negative=(not bool(getattr(args, "slack_no_clamp_negative", False))),
+            debug=args.debug,
+            debug_txt=args.debug_txt,
+        )
         return
 
     raise SystemExit(f"Unknown cmd: {args.cmd}")

@@ -20,7 +20,7 @@ conda activate "${CONDA_ENV_NAME}"
 
 : <<'COMMENT'
 export CONFIG=./examples/weight_suggest_sweep.json
-export OUTDIR=./output/ws_0p015_compare_adjust_strategy
+export OUTDIR=./output/ws_high_npu_bw
 export MODE=grid
 export OBJECTIVE=total
 export ALGOS="hefthint"
@@ -30,8 +30,6 @@ export MODELS="llama:7b"
 export PREFILLS="128 1024"
 export DECODES="128 512 1024"
 export BATCHES="1 4 8 16"
-export PIM_WEIGHT_LOAD_OVERLAP_RATIOS="1.0"
-export WEIGHT_LOAD_COMPUTE_OVERLAP_RATIOS="1.0"
 export DEBUG=1
 export FORMAT_ND_MARGIN_INIT=0.015
 
