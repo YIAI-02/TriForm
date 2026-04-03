@@ -1,25 +1,25 @@
 # DOPS: Dynamic OPerator Sorting for Heterogeneous NPU–PIM LLM Inference
 
-DOPS is a simulation-and-analysis framework for studying decoder-only LLM inference on heterogeneous **NPU–PIM** platforms. It accompanies the paper **Beyond Prefill-Decode Partition: Dissecting LLM Inference for Heterogeneous Platforms via Dynamic OPerator Sorting** and provides a practical code for graph construction, hardware abstraction, runtime modeling, scheduling, weight-layout search, trace export, and result analysis.
+DOPS is a simulation and analysis framework for studying decoder-only LLM inference on heterogeneous **NPU–PIM** platforms. It accompanies the paper **Beyond Prefill-Decode Partition: Dissecting LLM Inference for Heterogeneous Platforms via Dynamic OPerator Sorting** and provides a practical codebase for computation-graph construction, hardware abstraction, runtime modeling, scheduling, weight-layout search, trace export, and result analysis.
 
-**Quick links:** Demo video *(coming soon)* 
+**Quick links:** [Demo video](https://vimeo.com/1178735972) · [Configuration Reference](./docs/CONFIG_REFERENCE.md)
 
 ---
 
-## DOPS Framework
+## Overview
 
-DOPS is built around a closed loop that starts from three inputs:
+DOPS is built around a closed loop with three inputs:
 
-1. an **LLM model card**, 
+1. an **LLM model card**,
 2. a **hardware abstraction** of the target heterogeneous system, and
-3. a **workload configuration** (batch, prefill length, decode length, scheduling/search settings).
+3. a **workload configuration** (batch size, prefill length, decode length, and scheduling/search settings).
 
 From these inputs, DOPS:
 
 - builds a stage-aware execution DAG for prefill and decode,
 - instantiates **performance models** and **communication topology models**,
 - searches for a dynamic operator-to-device mapping using the **Bifocal scheduler**,
-- optionally searches for a blockwise persistent-weight layout using the **Weight Layout Arbiter**,
+- optionally searches for a blockwise persistent-weight layout using the **Weight Layout Arbiter**, and
 - exports schedules, traces, and summary JSON files for downstream comparison and visualization.
 
 At a high level, DOPS follows the workflow below.
@@ -44,54 +44,13 @@ flowchart LR
 
 ---
 
-## Repository layout
-
-```text
-.
-├── algorithms/      # Main implementation of DOPS
-│   ├── main.py                              # Main CLI entry point. Supports `evaluate` and `weight-suggest`.
-│   ├── model_parser.py                      # Loads shape cards, validates tensor-parallel settings, builds the DAG, and applies optimization annotations.
-│   ├── model_definition.py                  # Defines decoder-only graph construction logic, including attention/FFN subgraphs, TP sharding, and collectives such as reduce, scatter, and all-reduce.
-│   ├── task_graph.py                        # Core graph data structures.
-│   ├── hardware.py                          # Parses hardware JSON files, normalizes topology, builds device/link objects, and checks PIM capacity consistency against the address map.
-│   ├── cost_model.py                        # Unified runtime model. Handles compute, memory, communication, weight loading, format conversion, cache behavior, and backend dispatch.
-│   ├── cost_model_npu_ascend_backend.py     # LUT-based NPU backend for Ascend-style operator latency lookup/interpolation.
-│   ├── cost_model_npu_llmcompass_backend.py # Optional LLMCompass integration for NPU operator estimation.
-│   ├── cost_model_pim_backend.py            # PIM backend helpers, trace generation, Ramulator2 integration, and shared PIM model-dictionary construction.
-│   ├── scheduler.py                         # Aggregates available scheduler classes.
-│   ├── scheduler_heft.py                    # Baseline HEFT scheduler.
-│   ├── scheduler_heft_commaware.py          # Bifocal scheduling flow.
-│   ├── scheduler_naive.py                   # Simple topology/order baseline scheduler.
-│   ├── scheduler_common.py                  # Shared scheduling utilities, hint logic, buffer/cache interaction, communication accounting, and trace/stat collection.
-│   ├── scheduler_comm.py                    # Communication-related scheduling helpers.
-│   ├── comm_primitives.py                   # Collective communication primitives and topology-aware transfer helpers.
-│   ├── buffer_manager.py                    # Global memory manager and LRU-style cache abstractions.
-│   ├── plan_label.py                        # Metadata carrier for KV placement, PIM capacity, pinned weights, and trace artifacts.
-│   ├── optimizations.py                     # Optional graph annotations for quantization, weight sparsity, activation sparsity, and attention sparsity.
-│   ├── stats_recorder.py                    # Writes raw op/comm traces and overlap summaries.
-│   ├── weight_stage_trace_tools.py          # Post-processes op traces into weight-stage summaries grouped by phase, device type, or operator.
-│   ├── weight_stage_models.py               # Utility functions for overlap-ratio modeling.
-│   ├── runtime_models/                      # Packaged runtime tables.
-│   ├── examples/                            # Example configs and hardware descriptions used by `main.py evaluate` and `main.py weight-suggest`.
-│   ├── aim_simulator/                       # Example AiM/PIM config files used by the trace-based PIM path.
-│   ├── pkl/                                 # Cached latency/model artifacts for PIM trace execution.
-│   ├── sweep_*.py                           # Sweep-related scripts.
-│   ├── *.sh                                 # Shell scripts.
-│   └── *.slurm                              # Slurm job scripts.
-├── configs/         # model shape cards (Llama, Qwen, Mixtral, ...)
-├── experiment/      # paper-figure scripts and interactive schedule visualization
-├── measurements/    # microbenchmarks, profiling utilities, LUT-generation scripts
-└── submodules/      # external backends such as LLMCompass and CENT / Ramulator-based flows
-```
----
-
 ## Dependencies
 
 Recommended Python version: **3.10+**
 
-### Minimal installation for the current CLI path
+### Minimal installation for the core CLI flow
 
-If your goal is to reuse only the analytical/runtime-model part of the framework, the smallest practical subset is:
+If you only need the analytical/runtime-model path, the smallest practical dependency set is:
 
 ```bash
 pip install torch typing_extensions
@@ -99,37 +58,67 @@ pip install torch typing_extensions
 
 ### Optional external runtimes and toolchains
 
-These are only needed for specific backends or measurement pipelines.
+These are only needed for specific backends or reproduction workflows.
 
-- **Ramulator2 / trace-based PIM flow**
-  Needed when you want the trace-based PIM backend instead of the analytical fast path. Place the submodule under `submodules/CENT/` and install the dependencies required by that project.
+- **Ramulator2 / trace-based PIM flow**  
+  Needed when you want the trace-based PIM backend instead of the analytical fast path. Place the submodule under `submodules/CENT/` and install the dependencies required by it.
 
-- **Huawei CANN / Ascend-C / msprof**
+- **Huawei CANN / Ascend-C / msprof**  
   Needed for reproducing measured results.
 
-- **LLMCompass**
+- **LLMCompass**  
   Needed when `npu_backend=llmcompass`. Place the submodule under `submodules/LLMCompass/` and install the dependencies required by that project.
 
-- **Plotting / analysis stack**
-  The full paper-reproduction workflow may additionally use a standard scientific Python stack such as `numpy`, `pandas`, `matplotlib`, `scipy`, `seaborn`, and graph/IO helpers depending on the scripts you run.
+- **Plotting / analysis stack**  
+  The full paper-reproduction workflow may additionally use a standard scientific Python stack such as `numpy`, `pandas`, `matplotlib`, `scipy`, `seaborn`, and graph/IO helpers, depending on the scripts you run.
 
 ---
 
-## How to start
+## Quick Start
 
-The usual workflow is:
+### 1. Enter the main implementation directory
 
-1. prepare a **hardware JSON** under `algorithms/examples/`,
-2. prepare an **evaluation config** such as `evaluate_test_config.json`,
-3. run `evaluate` to compare DOPS/Bifocal against static baselines,
-4. run `weight-suggest` to search for a mixed persistent-weight layout.
+```bash
+cd algorithms
+```
+
+### 2. Run the example evaluation
+
+```bash
+python main.py evaluate \
+  --config ./examples/evaluate_test_config.json \
+  --npu_backend fast_mode \
+  --pim_fast_mode \
+  --debug
+```
+
+### 3. Inspect the outputs
+
+DOPS writes run artifacts under the output directory specified in the config, for example:
+
+```text
+output/evaluate_single_test/
+```
+
+Typical outputs include:
+
+- comparison summaries,
+- per-policy schedule exports,
+- operator traces, and
+- communication traces.
+
+For a field-by-field explanation of the hardware and evaluation JSON files, see the [Configuration Reference](./docs/CONFIG_REFERENCE.md).
+
+---
+
+## Complete Workflow
 
 ### Step 1. Prepare a hardware JSON
 
-The hardware JSON can be wrapped either as `{"hardware": ...}` or `{"cluster": ...}`. The parser accepts two major topology styles:
+The hardware JSON can be wrapped as either `{"hardware": ...}` or `{"cluster": ...}`. The parser accepts two major topology styles:
 
-- **`fc`**: fully connected fabric. You can either provide one shared bandwidth (`fc_bw_GBs`) or explicit `links`.
-- **`star`**: host-centric fabric. Use explicit links that connect all accelerators through the host.
+- **`fc`**: a fully connected fabric. You can provide either one shared bandwidth (`fc_bw_GBs`) or explicit `links`.
+- **`star`**: a host-centric fabric. Use explicit links that connect all accelerators through the host.
 
 A minimal example looks like this:
 
@@ -188,49 +177,12 @@ A minimal example looks like this:
 }
 ```
 
-#### Hardware JSON: top-level keys
-
-| Key         | Meaning                                                       | How to set it                                                                            |
-| ----------- | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `topology`  | Interconnect type.                                            | Use `fc` for a shared fully connected fabric, or `star` for host-mediated communication. |
-| `devices`   | List of device descriptors.                                   | Add one entry per concrete CPU/NPU/PIM device.                                           |
-| `fc_bw_GBs` | Default bandwidth for all unspecified pairs in `fc` topology. | Use when you want one shared link bandwidth instead of enumerating all pairs.            |
-| `links`     | Explicit point-to-point links.                                | Required for custom fabrics.                                                             |
-
-#### Hardware JSON: device fields
-
-| Key                                                   | Meaning                                                       | Notes                                                                                                                   |
-| ----------------------------------------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `name`                                                | Unique device name.                                           | Used throughout traces and schedule output.                                                                             |
-| `type`                                                | Device class.                                                 | Must be one of `cpu`, `npu`, or `pim`.                                                                                  |
-| `tflops`                                              | Peak compute throughput.                                      | Used by the analytical cost model.                                                                                      |
-| `mem_bw_GBs`                                          | Device memory bandwidth.                                      | For NPU/CPU this is off-chip bandwidth; for PIM it can represent the near-memory bandwidth model used by the simulator. |
-| `mem_capacity_GB`                                     | Device memory capacity.                                       | Used for feasibility checks, KV placement, and preload budgeting.                                                       |
-| `arch` / `llmcompass_kind`                            | Optional architecture tag.                                    | Useful when `npu_backend=llmcompass`.                                                                                   |
-| `cpu_read_latency_ns`, `cpu_write_latency_ns`         | Optional host-access latency parameters.                      | Meaningful for CPU/host modeling.                                                                                       |
-| `cpu_cacheline_B` / `cpu_access_bytes_B`              | Host access granularity.                                      | Defaults to 64 B if omitted.                                                                                            |
-| `pim_read_latency_ns`, `pim_write_latency_ns`         | PIM local memory latency parameters.                          | Used by the PIM backend.                                                                                                |
-| `freq_ghz`                                            | PIM operating frequency.                                      | Used by some trace-mode flows.                                                                                          |
-| `pim_memory`                                          | PIM address-map description.                                  | Required for strict capacity checking.                                                                                  |
-| `addr_map_unit`                                       | Whether `addr_map` values are address **bits** or **counts**. | The current examples use `"bits"`.                                                                                      |
-| `addr_map.row`, `channel`, `bank`, `column`, `offset` | PIM address-map decomposition.                                | The parser checks that this implied capacity matches `mem_capacity_GB`.                                                 |
-| `capacity_bytes` / `capacity_B`                       | Optional explicit capacity override.                          | Useful when the address map is unavailable.                                                                             |
-
-#### Hardware JSON: link fields
-
-| Key                                        | Meaning                                                     | Notes                                                        |
-| ------------------------------------------ | ----------------------------------------------------------- | ------------------------------------------------------------ |
-| `a`, `b`                                   | Source and destination device names.                        | Link direction is treated symmetrically in the parser.       |
-| `bw_GBs`                                   | Link bandwidth in GB/s.                                     | Required for explicit links.                                 |
-| `latency_s`, `latency_us`, `latency_ns`    | Optional fixed latency term.                                | Use whichever unit is most convenient.                       |
-| `overhead_s`, `overhead_us`, `overhead_ns` | Optional packet/message overhead term.                      | Useful when you want a LogGP/AHEAD-like communication model. |
-| `flit_size_B`                              | Packetization granularity.                                  | Optional.                                                    |
-| `max_payload_B`                            | Payload size before extra packet headers/flits are charged. | Optional.                                                    |
+For the meaning of each key, see the [Configuration Reference](./docs/CONFIG_REFERENCE.md).
 
 #### Practical guidance
 
-- Use **one CPU host** to model shared memory / host-side routing even if you do not schedule much work on CPU.
-- For every **PIM** device, make sure `mem_capacity_GB` matches the capacity implied by `pim_memory.addr_map`; the parser validates this and will raise an error if they disagree.
+- Use **one CPU host** to model shared memory or host-side routing even if you do not schedule much work on CPU.
+- For every **PIM** device, make sure `mem_capacity_GB` matches the capacity implied by `pim_memory.addr_map`; the parser validates this and raises an error if they disagree.
 
 ---
 
@@ -265,72 +217,7 @@ A representative config looks like this:
 }
 ```
 
-#### Core run keys
-
-| Key                          | Meaning                                                                                | How to set it                                                                                                                 |
-| ---------------------------- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `model_family`               | Model family name.                                                                     | Use a packaged family such as `llama`, `qwen`, or `mixtral`, unless you provide `shape_file`.                                 |
-| `model_variant`              | Model-card variant.                                                                    | Example: `7b`, `13b`, `70b`, `1.8b`, `8x7b`.                                                                                  |
-| `dtype`                      | Logical datatype used by the simulator.                                                | `fp16` is the common default.                                                                                                 |
-| `result_dir`                 | Base output directory.                                                                 | DOPS will append a run-specific folder name such as `<family>_<variant>_<dtype>_b<batch>[_s<stride>]`.                        |
-| `hardware_json`              | Path to the hardware description.                                                      | Usually a file under `algorithms/examples/`.                                                                                  |
-| `npu_backend`                | NPU operator-latency backend.                                                          | Use `fast`/`fast_mode` for analytical estimation, `lut` for LUT-backed Ascend-style modeling, or `llmcompass` for LLMCompass. |
-| `decode_plan_refresh_stride` | Re-run an exact decode search every `N` tokens and replay a fixed plan in between.     | Smaller values are more accurate but slower; larger values are faster. `0` means do not refresh after the warm-up plan.       |
-| `decode_sample_stride`       | Controls how densely per-token schedules are stored in the exported decode trace JSON. | This affects output detail rather than the simulated makespan itself. Tokens `0`, `1`, and the final token are always kept.   |
-| `debug`                      | Verbose logging flag.                                                                  | Can be enabled in JSON or with `--debug`.                                                                                     |
-
-#### Scheduler and baseline controls
-
-| Key         | Meaning                 | How to set it                                                                                                       |
-| ----------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `algo`      | Dynamic scheduler list. | Typical choices are `Bifocal`, `heft`.                                                                              |
-| `baselines` | Static policy list.     | Common choices are `pd`, `weights_on_pim`, `attn_on_pim`, `ianus`, `neupims`, `facil`, and `attacc`. （这里需要改） |
-
-#### Parallelism / graph-sharding controls
-
-| Key      | Meaning                                                                 | How to set it                                                                                                                          |
-| -------- | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `tp_qkv` | Tensor-parallel split for Q/K/V generation and attention head sharding. | Must divide both `n_heads` and `n_kv_heads`, unless you intentionally exceed `n_heads` and let the code fall back to KV-head sharding. |
-| `tp_ffn` | Tensor-parallel split for FFN.                                          | Must divide `ffn_dim`.                                                                                                                 |
-| `tp_moe` | Expert-parallel split for Mixtral/MoE.                                  | Only meaningful for MoE models and must divide the per-layer expert count.                                                             |
-
-#### Model-card override and graph annotations
-
-| Key                                        | Meaning                                                           | How to set it                                                                |
-| ------------------------------------------ | ----------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `shape_file`                               | Path to a custom model-card JSON.                                 | Use this instead of editing the packaged `configs/` mapping.                 |
-| `quantization`                             | Optional quantization annotation block.                           | Supports modes such as weight-only and W8A8-style annotations.               |
-| `weight_sparsity`                          | Optional weight sparsity annotation block.                        | Used to adjust bytes/FLOPs and annotate graph nodes.                         |
-| `activation_sparsity`                      | Optional activation sparsity block.                               | Can be phase-dependent.                                                      |
-| `attention_sparsity`                       | Optional sparse-attention block.                                  | Used to model reduced attention work.                                        |
-| `optimizations` / `optimization` / `optim` | Alternative root object containing the optimization blocks above. | Use whichever naming style is more convenient; the parser accepts all three. |
-
-#### Runtime-overlap controls
-
-| Key                                 | Meaning                                                                                 | How to set it                                   |
-| ----------------------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| `pim_weight_load_overlap_ratio`     | Overlap ratio between host-to-PIM transfer and local PIM-format conversion/programming. | Use values in `[0, 1]`; `0` means fully serial. |
-| `weight_load_compute_overlap_ratio` | Overlap ratio between weight loading and compute for weight-bearing operators.          | Use values in `[0, 1]`; `0` means fully serial. |
-
-
-
-#### Weight-layout search keys
-
-These keys are used by `weight-suggest`.
-
-| Key                                | Meaning                                                                     | How to set it                                                                                       |
-| ---------------------------------- | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `format_block_layer_span`          | Group the same weight across every `N` layers into one block.               | `4` or `8` are common. Larger values reduce search space; smaller values allow finer control.       |
-| `format_block_change_percent`      | Maximum fraction of blocks allowed to change in one outer iteration.        | Smaller values are more conservative.                                                               |
-| `format_outer_max_iters`           | Legacy compatibility knob.                                                  | If `format_block_change_percent` is not set, the code derives it from `1 / format_outer_max_iters`. |
-| `format_inner_max_blocks`          | Cap on inner refinement candidates.                                         | `0` means no cap.                                                                                   |
-| `format_nd_margin_init`            | Initial neutrality margin around the default dense layout `Linear` .        | Larger values keep more blocks in `Linear` early in the search.                                     |
-| `format_nd_margin_decay`           | Per-outer-iteration decay factor for the neutral band.                      | Controls how quickly the search becomes more aggressive.                                            |
-| `format_nd_margin_min`             | Lower bound on the neutral band.                                            | Prevents over-splitting late in the search.                                                         |
-| `format_inner_improve_eps`         | Minimum improvement required to accept an inner flip.                       | Helps reject noise-level changes.                                                                   |
-| `format_outer_stop_eps`            | Early-stop tolerance between outer iterations.                              | Stops when the outer-stage update is no longer beneficial enough.                                   |
-| `format_reload_count_mode`         | How block reload pressure is normalized when comparing NPU vs PIM pressure. | Use `raw`, `per_device`, or `soft_per_device`.                                                      |
-| `format_reload_device_count_alpha` | Soft normalization factor used by `soft_per_device`.                        | Tune this when you want to reduce device-count bias without fully averaging it out.                 |
+For the meaning of each key, see the [Configuration Reference](./docs/CONFIG_REFERENCE.md).
 
 ---
 
@@ -346,7 +233,7 @@ python main.py evaluate \
   --debug
 ```
 
-This command performs the full scheduling/evaluation flow. In order, it:
+This command runs the full scheduling and evaluation flow. In order, it:
 
 1. loads the model shape card (or your custom `shape_file`),
 2. validates tensor-parallel settings,
@@ -354,8 +241,8 @@ This command performs the full scheduling/evaluation flow. In order, it:
 4. loads the hardware JSON and instantiates the device/link topology,
 5. builds the cost model with the selected NPU backend and PIM mode,
 6. runs the requested dynamic scheduler(s) and static baseline(s),
-7. exports per-policy schedules, traces, and summaries,
-8. writes one combined comparison JSON for easy downstream plotting.
+7. exports per-policy schedules, traces, and summaries, and
+8. writes one combined comparison JSON for downstream plotting.
 
 #### Typical output layout
 
@@ -387,22 +274,22 @@ A representative `evaluate` output tree looks like this:
     └── pim_sim_<prefill>x<decode>.txt
 ```
 
-Exact filenames can vary slightly when you add custom artifact tags or storage-mode tags, but the structure stays the same.
+Exact filenames can vary slightly when you add custom artifact tags or storage-mode tags, but the overall structure stays the same.
 
 #### How to read the results
 
 - **`baseline_compare_*.json`** is the easiest file to consume in scripts. It stores the top-level config and a flat list of results, each with `prefill_time_s`, `decode_time_s`, and `total_time_s`.
-- **`algo_<policy>/best_summary_*.json`** contains the richer schedule export for one policy. It typically records the chosen KV policy, serialized prefill schedule, sampled decode schedules, and pointers to generated trace files.
-- **`*_ops_trace.csv`** contains operator execution events with device assignment, timing, and weight-stage details. It is the main input for timeline visualizers and overlap breakdown tools.
+- **`algo_<policy>/best_summary_*.json`** contains the richer schedule export for one policy. It typically records the chosen KV policy, the serialized prefill schedule, sampled decode schedules, and pointers to generated trace files.
+- **`*_ops_trace.csv`** contains operator execution events with device assignment, timing, and weight-stage details. It is the main input for timeline visualizers and overlap-breakdown tools.
 - **`*_comms_trace.csv`** contains inter-device communication events and is useful when studying topology bottlenecks or collective overhead.
 
 #### What you can do with `evaluate`
 
 `evaluate` is the right mode for:
 
-- comparing **Bifocal (`hefthint`)** against **PD**, **AF-style attention-offload**, **IANUS-inspired**, **FACIL-inspired**, **AttAcc-inspired**, and other baselines,
+- comparing **Bifocal (`hefthint`)** against **PD**, **AF-style attention offload**, **IANUS-inspired**, **FACIL-inspired**, **AttAcc-inspired**, and other baselines,
 - running **hardware-scaling studies** by swapping `hardware_json` files,
-- generating **schedule traces** for downstream visualization,
+- generating **schedule traces** for downstream visualization, and
 - studying how performance changes with **batch size**, **prefill length**, **decode length**, and **TP sharding**.
 
 ---
@@ -419,13 +306,13 @@ python main.py weight-suggest \
   --debug
 ```
 
-This mode runs the paper’s **Weight Layout Arbiter** on top of the scheduling flow. In broad terms, it:
+This mode runs the paper’s **Weight Layout Arbiter** on top of the scheduling flow. At a high level, it:
 
 1. groups persistent weights into stable blocks,
 2. starts from a default storage mode (the current implementation treats `ND` / Linear as the default),
 3. evaluates schedules under that layout,
 4. performs an **outer dominance-assignment** update using block reload pressure,
-5. performs an **inner targeted-refinement** update for blocks that still disagree with observed loading behavior,
+5. performs an **inner targeted-refinement** update for blocks that still disagree with observed loading behavior, and
 6. saves the best blockwise storage map and comparison reports.
 
 #### Typical output layout
@@ -443,10 +330,10 @@ This mode runs the paper’s **Weight Layout Arbiter** on top of the scheduling 
 
 #### How to read the results
 
-- **`all_passes_*.json`** records the entire search history. Use it when you want to inspect every outer/inner iteration, not just the final answer.
+- **`all_passes_*.json`** records the entire search history. Use it when you want to inspect every outer or inner iteration, not just the final answer.
 - **`best_summary_*.json`** stores the best pass, best times, best schedule exports, and the improvement relative to other passes.
 - **`weight_storage_suggestion_*.json`** stores the compact blockwise format map.
-- **`weight_storage_suggestion_*_full.json`** expands the blockwise decision to the per-weight map, which is convenient if you want to feed the result into another toolchain.
+- **`weight_storage_suggestion_*_full.json`** expands the blockwise decision to a per-weight map, which is convenient if you want to feed the result into another toolchain.
 - **`weight_storage_suggestion_*_compare.json`** compares the searched layout against built-in fixed references such as `PD + Linear`, `PD + DUAL`, `hefthint + Linear`, and `hefthint + DUAL`.
 - **`weight_suggest_al_debug.txt`** is the most useful file for debugging the arbiter itself. It logs initialization, outer-stage updates, accepted inner flips, and stop conditions.
 
@@ -454,14 +341,56 @@ This mode runs the paper’s **Weight Layout Arbiter** on top of the scheduling 
 
 This mode is the right choice when you want to study:
 
-- **Linear vs optimized weight-layout comparisons**,
-- **mixed blockwise layout search** instead of one single global storage rule,
-- **iteration traces** that show where the arbiter converges,
+- **Linear vs. optimized weight-layout comparisons**,
+- **mixed blockwise layout search** instead of a single global storage rule,
+- **iteration traces** that show where the arbiter converges, and
 - the interaction between **weight layout** and **dynamic scheduling** under the same workload/hardware setting.
 
 ---
 
-## How to extend the framework
+## Repository Layout
+
+```text
+.
+├── algorithms/      # Main implementation of DOPS
+│   ├── main.py                              # Main CLI entry point. Supports `evaluate` and `weight-suggest`.
+│   ├── model_parser.py                      # Loads shape cards, validates tensor-parallel settings, builds the DAG, and applies optimization annotations.
+│   ├── model_definition.py                  # Defines decoder-only graph construction logic, including attention/FFN subgraphs, TP sharding, and collectives such as reduce, scatter, and all-reduce.
+│   ├── task_graph.py                        # Core graph data structures.
+│   ├── hardware.py                          # Parses hardware JSON files, normalizes topology, builds device/link objects, and checks PIM capacity consistency against the address map.
+│   ├── cost_model.py                        # Unified runtime model. Handles compute, memory, communication, weight loading, format conversion, cache behavior, and backend dispatch.
+│   ├── cost_model_npu_ascend_backend.py     # LUT-based NPU backend for Ascend-style operator latency lookup/interpolation.
+│   ├── cost_model_npu_llmcompass_backend.py # Optional LLMCompass integration for NPU operator estimation.
+│   ├── cost_model_pim_backend.py            # PIM backend helpers, trace generation, Ramulator2 integration, and shared PIM model-dictionary construction.
+│   ├── scheduler.py                         # Aggregates available scheduler classes.
+│   ├── scheduler_heft.py                    # Baseline HEFT scheduler.
+│   ├── scheduler_heft_commaware.py          # Bifocal scheduling flow.
+│   ├── scheduler_naive.py                   # Simple topology/order baseline scheduler.
+│   ├── scheduler_common.py                  # Shared scheduling utilities, hint logic, buffer/cache interaction, communication accounting, and trace/stat collection.
+│   ├── scheduler_comm.py                    # Communication-related scheduling helpers.
+│   ├── comm_primitives.py                   # Collective communication primitives and topology-aware transfer helpers.
+│   ├── buffer_manager.py                    # Global memory manager and LRU-style cache abstractions.
+│   ├── plan_label.py                        # Metadata carrier for KV placement, PIM capacity, pinned weights, and trace artifacts.
+│   ├── optimizations.py                     # Optional graph annotations for quantization, weight sparsity, activation sparsity, and attention sparsity.
+│   ├── stats_recorder.py                    # Writes raw op/comm traces and overlap summaries.
+│   ├── weight_stage_trace_tools.py          # Post-processes op traces into weight-stage summaries grouped by phase, device type, or operator.
+│   ├── weight_stage_models.py               # Utility functions for overlap-ratio modeling.
+│   ├── runtime_models/                      # Packaged runtime tables.
+│   ├── examples/                            # Example configs and hardware descriptions used by `main.py evaluate` and `main.py weight-suggest`.
+│   ├── aim_simulator/                       # Example AiM/PIM config files used by the trace-based PIM path.
+│   ├── pkl/                                 # Cached latency/model artifacts for PIM trace execution.
+│   ├── sweep_*.py                           # Sweep-related scripts.
+│   ├── *.sh                                 # Shell scripts.
+│   └── *.slurm                              # Slurm job scripts.
+├── configs/         # Model shape cards (Llama, Qwen, Mixtral, ...)
+├── experiment/      # Paper-figure scripts and interactive schedule visualization
+├── measurements/    # Microbenchmarks, profiling utilities, LUT-generation scripts
+└── submodules/      # External backends such as LLMCompass and CENT / Ramulator-based flows
+```
+
+---
+
+## How to Extend the Framework
 
 ### Add a new model
 
@@ -504,7 +433,7 @@ This file already contains the parsing and graph-annotation flow for quantizatio
 
 These scripts generate the paper figures. Their headers are intended to document runnable examples and plotting assumptions.
 
-### Experiment 1: scheduling benefits
+### Experiment 1: Scheduling benefits
 
 - `plot_exp1_simulated.py`  
   Simulated latency and speedup comparison across policies.
@@ -515,7 +444,7 @@ These scripts generate the paper figures. Their headers are intended to document
 - `plot_exp1_gantt.py`  
   Case-study Gantt/timeline figure.
 
-### Experiment 2: hardware scaling
+### Experiment 2: Hardware scaling
 
 - `plot_exp2_heatmap.py`  
   Speedup heatmaps across prefill/decode/model/hardware axes.
@@ -542,7 +471,7 @@ cd experiment/demo
 python server.py
 ```
 
-The browser demo is designed to visualize **simulated CSV traces** generated by the framework, rather than live hardware telemetry. In practice, the most useful inputs are the exported files such as:
+The browser demo is designed to visualize **simulated CSV traces** generated by the framework rather than live hardware telemetry. In practice, the most useful inputs are exported files such as:
 
 - `*_ops_trace.csv`
 - `*_comms_trace.csv`
@@ -552,5 +481,4 @@ These files are generated by `evaluate`, so the typical workflow is to run a sim
 
 **Demo assets**
 
-- Demo video: *to be added*
-- Demo screenshot: *to be added*
+- [Demo video](https://vimeo.com/1178735972)
