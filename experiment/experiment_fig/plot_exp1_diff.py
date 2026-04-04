@@ -15,7 +15,7 @@ Changes in this version:
 
 Examples:
 python3 plot_exp1_diff.py \
-  --file-list  ../../verify/sst8_rst8/qwen_1.8b_fp16_b8_s8/files.txt ../../verify/sst8_rst8/llama_7b_fp16_b16_s8/files.txt  \
+  --file-list  ../../verify/sst2_rst2/llama_7b_fp16_b16_s2/files.txt ../../verify/sst2_rst2/qwen_1.8b_fp16_b8_s2/files.txt  \
   --output ../../figs/exp1/histogram.pdf \
   --panel-titles "Qwen 1.8b, Llama 7b" \
   --wspace 0.03

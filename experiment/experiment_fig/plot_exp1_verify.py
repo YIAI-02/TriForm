@@ -12,16 +12,19 @@ python3 plot_exp1_verify.py \
   --exclude "weights_on_pim" \
   --dims "128x128,128x512,128x1024,1024x128,1024x512,1024x1024" \
   --name-map "pd=PD,ianus=PD+FFN,facil=PD+Linear,attacc=PD+Attention,attn_on_pim=AF,hefthint=Bifocal" \
-  --output ../../figs/exp1/verify/sst2_rst2/llama_7b_fp16_b16_s8.pdf
+  --output ../../figs/exp1/verify/llama_7b_fp16_b16_s2.pdf
 
 Multiple models (one model per row, one shared legend at the top):
 python3 plot_exp1_verify.py \
+  --file-list ../../verify/sst2_rst2/llama_7b_fp16_b16_s2/files.txt \
   --file-list ../../verify/sst2_rst2/qwen_1.8b_fp16_b8_s2/files.txt \
-  --algo-order "pd,attn_on_pim, ianus,facil,attacc,hefthint" \
+  --model-label "Qwen-1.8B" \
+  --model-label "Llama-7B" \
+  --algo-order "pd,attn_on_pim,ianus,facil,attacc,hefthint" \
   --exclude "weights_on_pim" \
   --dims "128x128,128x512,128x1024,1024x128,1024x512,1024x1024" \
   --name-map "pd=PD,ianus=PD+FFN,facil=PD+Linear,attacc=PD+Attention,attn_on_pim=AF,hefthint=Bifocal" \
-  --output ../../figs/verify/sst2_rst2/multi_model_verify.pdf
+  --output ../../figs/exp1/verify/exp1_verify.pdf
 """
 
 from __future__ import annotations
@@ -589,6 +592,8 @@ def plot_results(
 
     trace_sp_color = "#8c8c8c"
     meas_sp_color = "k"
+    trace_text_color = deep_green
+    meas_text_color = deep_blue
 
     algo_order = list(DEFAULT_ALGO_ORDER if algo_order is None else algo_order)
     display_name_map = dict(DEFAULT_DISPLAY_NAME_MAP if display_name_map is None else display_name_map)
@@ -807,7 +812,7 @@ def plot_results(
                         ha="center",
                         va="bottom",
                         fontsize=SPEEDUP_TEXT_FONT_PT,
-                        color=trace_sp_color,
+                        color=trace_text_color,
                         zorder=11,
                         clip_on=True,
                     )
@@ -821,7 +826,7 @@ def plot_results(
                         ha="center",
                         va="bottom",
                         fontsize=SPEEDUP_TEXT_FONT_PT,
-                        color=meas_sp_color,
+                        color=meas_text_color,
                         zorder=11,
                         clip_on=True,
                     )
