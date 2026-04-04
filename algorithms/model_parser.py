@@ -7,7 +7,7 @@ import json
 import os
 import logging
 from model_definition import ModelShape, make_model_def
-from cost_model import DTYPE_BYTES
+from dtype_utils import dtype_bytes, normalize_dtype_token
 from optimizations import apply_optimizations_to_graph
 from task_graph import TaskGraph, TaskNode
 from config import attach_local_debug_filter
@@ -202,12 +202,15 @@ def load_shape_json(path: Path) -> Dict[str, Any]:
     with path.open("r", encoding="utf-8") as f:
         return json.load(f)
 
+
 def parse_model_shape_from_file(family: str, variant: str, batch: int, max_seq_len: int, override: Dict[str,Any]) -> ModelShape:
     shape_file = Path(override.get("shape_file", ""))
     if shape_file and shape_file.is_file():
         data = load_shape_json(shape_file)
     else:
-        fname = FILE_MAP.get((family.lower(), variant.lower()))
+        family_key = str(family or "").lower()
+        variant_key = str(variant or "").lower().replace("*", "x").replace("×", "x")
+        fname = FILE_MAP.get((family_key, variant_key))
         if fname is None:
             raise ValueError(f"No shape file mapping for ({family},{variant}). Provide --config with 'shape_file' explicitly.")
         data = load_shape_json(DEFAULT_SHAPE_DIR / fname)
@@ -263,6 +266,8 @@ def parse_model_shape_from_file(family: str, variant: str, batch: int, max_seq_l
 
     return shape
 
+
+
 def build_graph(cfg: Dict[str, Any]):
     """
     Build a unified task graph that works for both prefill and decode.
@@ -273,15 +278,21 @@ def build_graph(cfg: Dict[str, Any]):
     batch = cfg.get("batch", 1)
     # Use prefill_len + decode_len as max_seq_len for graph structure
     max_seq_len = cfg.get("prefill_len", 128) + cfg.get("decode_len", 32)
-    
+
     shape = parse_model_shape_from_file(family, variant, batch, max_seq_len, cfg)
     md = make_model_def(family)
-    dtype_bytes = DTYPE_BYTES.get(cfg.get('dtype','fp16'), 2)
+    cfg['dtype'] = normalize_dtype_token(cfg.get('dtype', 'fp16'), default='fp16')
+    dtype_bytes_value = dtype_bytes(cfg.get('dtype', 'fp16'), default='fp16')
 
     # ----------------------------
     # Validate TP sharding params
     # ----------------------------
+    family_key = str(family or "").lower()
+    is_mixtral = family_key == 'mixtral'
+
     # QKV TP (column parallel): shard by head groups to minimize cross-PIM traffic.
+    # For Mixtral, `tp` is reserved for MoE total shard count, so attention only
+    # follows an explicit `tp_qkv` override.
     try:
         Hq = int(getattr(shape, 'n_heads', getattr(shape, 'n_head', 0)) or 0)
     except Exception:
@@ -295,8 +306,7 @@ def build_graph(cfg: Dict[str, Any]):
     except Exception:
         Hf = 0
 
-    # tp_qkv: number of shards for Q/K/V and attention head-parallelism.
-    tp_qkv_raw = cfg.get('tp_qkv', cfg.get('tp', 1))
+    tp_qkv_raw = cfg.get('tp_qkv', 1 if is_mixtral else cfg.get('tp', 1))
     try:
         tp_qkv = max(1, int(tp_qkv_raw or 1))
     except Exception:
@@ -322,13 +332,13 @@ def build_graph(cfg: Dict[str, Any]):
             f"(Hq={Hq}, Hkv={Hkv})."
         )
 
-    # tp_ffn: shard ffn_dim (column parallel for W1/W3; row parallel for W2).
+    # Dense tp_ffn is only for non-MoE models. Mixtral uses `tp` to control MoE total shards.
     tp_ffn_raw = cfg.get('tp_ffn', 1)
     try:
         tp_ffn = max(1, int(tp_ffn_raw or 1))
     except Exception:
         tp_ffn = 1
-    if tp_ffn > 1:
+    if not is_mixtral and tp_ffn > 1:
         if Hf <= 0:
             raise ValueError(f"Invalid tp_ffn={tp_ffn}: unknown ffn_dim (Hf={Hf}).")
         if (Hf % tp_ffn) != 0:
@@ -336,44 +346,73 @@ def build_graph(cfg: Dict[str, Any]):
                 f"Invalid tp_ffn={tp_ffn}: require ffn_dim%tp_ffn==0 (ffn_dim={Hf})."
             )
 
-    # tp_moe: Mixtral/MoE expert-parallel shard count (route experts by expert id).
-    tp_moe_raw = cfg.get('tp_moe', cfg.get('tp_ffn', 1) if str(family).lower() == 'mixtral' else 1)
-    try:
-        tp_moe = max(1, int(tp_moe_raw or 1))
-    except Exception:
-        tp_moe = 1
-    if str(family).lower() == 'mixtral':
+    tp_moe_total = 1
+    tp_moe_expert_ffn = 1
+    if is_mixtral:
         try:
-            E = int(getattr(shape, 'experts_per_layer', 0) or 0)
+            top_k = int(getattr(shape, 'experts_top_k', 2) or 2)
         except Exception:
-            E = 0
-        if tp_moe > 1:
-            if E <= 0:
-                raise ValueError(f"Invalid tp_moe={tp_moe}: unknown experts_per_layer (E={E}).")
-            if tp_moe > E:
+            top_k = 2
+        top_k = max(1, int(top_k))
+
+        try:
+            experts_total = int(getattr(shape, 'experts_per_layer', 0) or 0)
+        except Exception:
+            experts_total = 0
+        if experts_total <= 0:
+            raise ValueError(f"Invalid Mixtral shape: unknown experts_per_layer (E={experts_total}).")
+        if top_k > experts_total:
+            raise ValueError(
+                f"Invalid Mixtral shape: experts_top_k={top_k} exceeds experts_per_layer={experts_total}."
+            )
+
+        # New Mixtral semantics:
+        # - `tp` = total number of MoE FFN shards across the selected top-k experts.
+        # - if tp <= top_k: selected experts are distributed across tp shards and each
+        #   expert FFN remains unsplit.
+        # - if tp > top_k: each selected expert is split into tp / top_k FFN shards.
+        tp_moe_total_raw = cfg.get('tp', cfg.get('tp_ffn', cfg.get('tp_moe', 1)))
+        try:
+            tp_moe_total = max(1, int(tp_moe_total_raw or 1))
+        except Exception:
+            tp_moe_total = 1
+
+        if tp_moe_total > top_k:
+            if (tp_moe_total % top_k) != 0:
                 raise ValueError(
-                    f"Invalid tp_moe={tp_moe}: require tp_moe <= experts_per_layer (experts_per_layer={E})."
+                    f"Invalid Mixtral tp={tp_moe_total}: when tp > top_k, require tp%top_k==0 "
+                    f"(top_k={top_k})."
                 )
-            if (E % tp_moe) != 0:
+            tp_moe_expert_ffn = int(tp_moe_total // top_k)
+            if Hf <= 0:
                 raise ValueError(
-                    f"Invalid tp_moe={tp_moe}: require experts_per_layer%tp_moe==0 "
-                    f"(experts_per_layer={E})."
+                    f"Invalid Mixtral tp={tp_moe_total}: unknown ffn_dim (Hf={Hf})."
                 )
+            if (Hf % tp_moe_expert_ffn) != 0:
+                raise ValueError(
+                    f"Invalid Mixtral tp={tp_moe_total}: require ffn_dim%(tp/top_k)==0 "
+                    f"(ffn_dim={Hf}, top_k={top_k}, per_expert_tp={tp_moe_expert_ffn})."
+                )
+        else:
+            tp_moe_expert_ffn = 1
     else:
-        tp_moe = 1
+        tp_moe_total = 1
+        tp_moe_expert_ffn = 1
 
     # Stash validated effective values for downstream components.
     cfg['tp_qkv_effective'] = int(tp_qkv_eff)
-    cfg['tp_ffn_effective'] = int(tp_ffn)
-    cfg['tp_moe_effective'] = int(tp_moe)
+    cfg['tp_ffn_effective'] = int(1 if is_mixtral else tp_ffn)
+    cfg['tp_moe_effective'] = int(tp_moe_total)
+    cfg['tp_moe_total_effective'] = int(tp_moe_total)
+    cfg['tp_moe_expert_ffn_effective'] = int(tp_moe_expert_ffn)
 
-    g = md.build(shape, dtype_bytes=dtype_bytes, cfg=cfg)
+    g = md.build(shape, dtype_bytes=float(dtype_bytes_value), cfg=cfg)
 
     try:
         apply_optimizations_to_graph(
             g,
             cfg,
-            base_weight_dtype_bytes=int(dtype_bytes),
+            base_weight_dtype_bytes=float(dtype_bytes_value),
             shape=shape,
         )
     except Exception as e:
@@ -390,8 +429,7 @@ def build_graph(cfg: Dict[str, Any]):
         )
         tag = str(
             cfg.get("dump_graph_tag")
-            or f"{family}_{variant}_"\
-               f"B{batch}_S{int(cfg.get('prefill_len', 0) or 0)}_T{int(cfg.get('decode_len', 0) or 0)}_"
+            or f"{family}_{variant}_"f"B{batch}_S{int(cfg.get('prefill_len', 0) or 0)}_T{int(cfg.get('decode_len', 0) or 0)}_"
                f"{cfg.get('dtype','fp16')}"
         ).replace(" ", "")
         written = dump_task_graph(g, out_dir=out_dir, tag=tag, shape=shape, cfg=cfg)
@@ -404,3 +442,4 @@ def build_graph(cfg: Dict[str, Any]):
             pass
 
     return g, shape
+

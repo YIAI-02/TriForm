@@ -19,6 +19,7 @@ import math
 from config import attach_local_debug_filter
 import config as _config
 from hardware import DeviceSpec
+from dtype_utils import normalize_dtype_token
 
 logger = logging.getLogger(__name__)
 attach_local_debug_filter(logger, lambda: False)
@@ -93,24 +94,20 @@ def _get_llmcompass_mods() -> Dict[str, Any]:
         _LLMCOMPASS_MODS = _initialize_llmcompass_modules()
     return _LLMCOMPASS_MODS
 
+def _llmcompass_dtype_key(dtype: str) -> str:
+    try:
+        key = normalize_dtype_token(dtype, default='fp16')
+    except Exception:
+        key = str(dtype or '').strip().lower()
+    return key
+
 def _llmcompass_dtype(dtype: str):
     mods = _get_llmcompass_mods()
     dt_dict = mods.get('data_type_dict', None)
     if not isinstance(dt_dict, dict) or not dt_dict:
         raise RuntimeError("LLMCompass data_type_dict not found or empty (software_model/utils.py).")
 
-    s = (dtype or '').strip().lower()
-    alias = {
-        'float16': 'fp16',
-        'f16': 'fp16',
-        'fp16': 'fp16',
-        'float32': 'fp32',
-        'f32': 'fp32',
-        'fp32': 'fp32',
-        'int8': 'int8',
-        'i8': 'int8',
-    }
-    key = alias.get(s, s)
+    key = _llmcompass_dtype_key(dtype)
     if key not in dt_dict:
         supported = ', '.join(sorted(dt_dict.keys()))
         raise RuntimeError(
@@ -224,7 +221,7 @@ def _llmcompass_simulate_matmul_s(
     M = int(M); N = int(N); K = int(K)
     batch = int(max(1, int(batch or 1)))
     batched = bool(batched)
-    key = ('matmul', device_key, str(dtype).lower(), compile_mode, int(M), int(N), int(K), int(batch), int(batched))
+    key = ('matmul', device_key, _llmcompass_dtype_key(dtype), compile_mode, int(M), int(N), int(K), int(batch), int(batched))
     if key in _LLMCOMPASS_LAT_CACHE_S:
         return _LLMCOMPASS_LAT_CACHE_S[key]
     mods = _get_llmcompass_mods()
@@ -264,7 +261,7 @@ def _llmcompass_simulate_matmul_s(
 def _llmcompass_simulate_softmax_s(device_key: str, dtype: str, M: int, N: int, compile_mode: Optional[str]=None) -> float:
     device_key = _llmcompass_normalize_device_key(device_key)
     compile_mode = str(compile_mode or _llmcompass_default_compile_mode(device_key))
-    key = ('softmax', device_key, str(dtype).lower(), compile_mode, int(M), int(N))
+    key = ('softmax', device_key, _llmcompass_dtype_key(dtype), compile_mode, int(M), int(N))
     if key in _LLMCOMPASS_LAT_CACHE_S:
         return _LLMCOMPASS_LAT_CACHE_S[key]
     mods = _get_llmcompass_mods()
@@ -291,7 +288,7 @@ def _llmcompass_simulate_softmax_s(device_key: str, dtype: str, M: int, N: int, 
 def _llmcompass_simulate_layernorm_s(device_key: str, dtype: str, M: int, N: int, compile_mode: Optional[str]=None) -> float:
     device_key = _llmcompass_normalize_device_key(device_key)
     compile_mode = str(compile_mode or _llmcompass_default_compile_mode(device_key))
-    key = ('layernorm', device_key, str(dtype).lower(), compile_mode, int(M), int(N))
+    key = ('layernorm', device_key, _llmcompass_dtype_key(dtype), compile_mode, int(M), int(N))
     if key in _LLMCOMPASS_LAT_CACHE_S:
         return _LLMCOMPASS_LAT_CACHE_S[key]
     mods = _get_llmcompass_mods()
@@ -316,7 +313,7 @@ def _llmcompass_simulate_layernorm_s(device_key: str, dtype: str, M: int, N: int
 def _llmcompass_simulate_gelu_s(device_key: str, dtype: str, data_len: int, compile_mode: Optional[str]=None) -> float:
     device_key = _llmcompass_normalize_device_key(device_key)
     compile_mode = str(compile_mode or _llmcompass_default_compile_mode(device_key))
-    key = ('gelu', device_key, str(dtype).lower(), compile_mode, int(data_len))
+    key = ('gelu', device_key, _llmcompass_dtype_key(dtype), compile_mode, int(data_len))
     if key in _LLMCOMPASS_LAT_CACHE_S:
         return _LLMCOMPASS_LAT_CACHE_S[key]
     mods = _get_llmcompass_mods()

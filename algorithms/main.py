@@ -34,6 +34,7 @@ import logging
 from task_graph import TaskGraph, TaskNode
 from stats_recorder import reset_simulation_logger
 from weight_stage_trace_tools import summarize_weight_stage_trace_csv
+from dtype_utils import dtype_bytes, normalize_dtype_token
 logger = logging.getLogger(__name__)
 attach_local_debug_filter(logger, lambda: True)
 
@@ -259,7 +260,7 @@ def _build_result_dir(cfg: Dict, default_root: str = './output') -> Path:
     base   = cfg.get('result_dir') or default_root
     family = cfg.get('model_family', 'unnamed')
     variant= cfg.get('model_variant', '')
-    dtype  = cfg.get('dtype', 'fp16')
+    dtype  = normalize_dtype_token(cfg.get('dtype', 'fp16'), default='fp16')
     batch  = int(cfg.get('batch', 1))
     stride = _result_stride_for_naming(cfg)
     stride_suffix = f"_s{int(stride)}" if stride not in (None, '') else ""
@@ -300,7 +301,7 @@ def _normalize_kv_place(kv_place: str) -> str:
 
 def _infer_kv_dtype_bytes_from_graph(cfg: Dict, graph: TaskGraph) -> float:
     """Infer KV-cache storage element size (bytes)."""
-    default_b = float(DTYPE_BYTES.get(cfg.get('dtype', 'fp16'), 2))
+    default_b = float(dtype_bytes(cfg.get('dtype', 'fp16'), default='fp16'))
     try:
         for n in graph.nodes.values():
             attrs = getattr(n, 'attrs', None) or {}
@@ -3059,6 +3060,8 @@ def main():
             val = getattr(args, key, None)
             if val is not None:
                 cfg[key] = val
+                
+        cfg['dtype'] = normalize_dtype_token(cfg.get('dtype', 'fp16'), default='fp16')
 
         runtime_cfg_overrides = _apply_runtime_config_overrides(cfg)
         if runtime_cfg_overrides:

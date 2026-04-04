@@ -61,7 +61,7 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
-
+from dtype_utils import normalize_dtype_token
 # Common JSON-level knobs we want easy first-class support for.
 COMMON_SWEEP_FIELDS: Tuple[str, ...] = (
     "model",
@@ -681,6 +681,8 @@ def apply_overrides(base_cfg: Dict[str, Any], fixed_overrides: Dict[str, Any], c
             applied["model_family"] = model_info["model_family"]
             applied["model_variant"] = model_info["model_variant"]
             return
+        if key == "dtype":
+            value = normalize_dtype_token(value, default="fp16")
         set_dotted(cfg, key, value)
         applied[key] = value
 
@@ -701,7 +703,7 @@ def effective_summary_fields(cfg: Dict[str, Any], params_json: str) -> Dict[str,
         "model": model,
         "model_family": family if family is not None else "",
         "model_variant": variant if variant is not None else "",
-        "dtype": cfg.get("dtype", ""),
+        "dtype": (normalize_dtype_token(cfg.get("dtype"), default="fp16") if cfg.get("dtype") not in (None, "") else ""),
         "batch": cfg.get("batch", ""),
         "prefill_len": cfg.get("prefill_len", ""),
         "decode_len": cfg.get("decode_len", ""),

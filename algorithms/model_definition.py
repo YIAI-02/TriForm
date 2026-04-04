@@ -33,6 +33,17 @@ def get_op_allowed(op_name: str) -> Dict[str, bool]:
     key = str(op_name).strip().upper()
     return OPERATOR_DEVICE_ALLOWED.get(key, {}).copy()
 
+def _weight_bytes(num_elems: int | float, dtype_bytes: float) -> int:
+    elems = max(0.0, float(num_elems))
+    return int(math.ceil(elems * float(dtype_bytes)))
+
+
+def _weight_attrs(base_attr: Dict, num_elems: int | float, dtype_bytes: float) -> Dict:
+    attrs = dict(base_attr)
+    attrs['weight_elements'] = int(max(0.0, float(num_elems)))
+    attrs['weight_dtype_bytes'] = float(dtype_bytes)
+    return attrs
+
 def _normalize_topology(topology: Optional[str]) -> str:
     """Normalize topology string to one of {'fc','star'} (default 'fc')."""
     if not topology:
@@ -81,7 +92,7 @@ def _add_attention_llama_style_unsplit(
     *,
     l: int,
     shape: ModelShape,
-    dtype_bytes: int,
+    dtype_bytes: float,
     base_attr: Dict,
     ln_nid: str,
     x_in: Optional[str],
@@ -107,8 +118,8 @@ def _add_attention_llama_style_unsplit(
             "Q",
             flops=0.0,
             weight_id=f"L{l}_WQ",
-            weight_size=int(dim * q_dim * dtype_bytes),
-            attrs=dict(base_attr),
+            weight_size=_weight_bytes(dim * q_dim, dtype_bytes),
+            attrs=_weight_attrs(base_attr, dim * q_dim, dtype_bytes),
             allowed=get_op_allowed("Q"),
         )
     )
@@ -118,8 +129,8 @@ def _add_attention_llama_style_unsplit(
             "K",
             flops=0.0,
             weight_id=f"L{l}_WK",
-            weight_size=int(dim * kv_dim * dtype_bytes),
-            attrs=dict(base_attr),
+            weight_size=_weight_bytes(dim * kv_dim, dtype_bytes),
+            attrs=_weight_attrs(base_attr, dim * kv_dim, dtype_bytes),
             allowed=get_op_allowed("K"),
         )
     )
@@ -129,8 +140,8 @@ def _add_attention_llama_style_unsplit(
             "V",
             flops=0.0,
             weight_id=f"L{l}_WV",
-            weight_size=int(dim * kv_dim * dtype_bytes),
-            attrs=dict(base_attr),
+            weight_size=_weight_bytes(dim * kv_dim, dtype_bytes),
+            attrs=_weight_attrs(base_attr, dim * kv_dim, dtype_bytes),
             allowed=get_op_allowed("V"),
         )
     )
@@ -162,8 +173,8 @@ def _add_attention_llama_style_unsplit(
             "O",
             flops=0.0,
             weight_id=f"L{l}_WO",
-            weight_size=int(o_in_dim * dim * dtype_bytes),
-            attrs=dict(base_attr),
+            weight_size=_weight_bytes(o_in_dim * dim, dtype_bytes),
+            attrs=_weight_attrs(base_attr, o_in_dim * dim, dtype_bytes),
             allowed=get_op_allowed("O"),
         )
     )
@@ -242,7 +253,7 @@ def _add_attention_llama_style_tp(
     *,
     l: int,
     shape: ModelShape,
-    dtype_bytes: int,
+    dtype_bytes: float,
     base_attr: Dict,
     ln_nid: str,
     x_in: Optional[str],
@@ -303,8 +314,8 @@ def _add_attention_llama_style_tp(
                 "Q",
                 flops=0.0,
                 weight_id=f"L{l}_WQ_s{si}",
-                weight_size=int(dim * q_dim * dtype_bytes),
-                attrs=dict(sh_attr),
+                weight_size=_weight_bytes(dim * q_dim, dtype_bytes),
+                attrs=_weight_attrs(sh_attr, dim * q_dim, dtype_bytes),
                 allowed=get_op_allowed("Q"),
             )
         )
@@ -314,8 +325,8 @@ def _add_attention_llama_style_tp(
                 "K",
                 flops=0.0,
                 weight_id=f"L{l}_WK_s{si}",
-                weight_size=int(dim * kv_dim * dtype_bytes),
-                attrs=dict(sh_attr),
+                weight_size=_weight_bytes(dim * kv_dim, dtype_bytes),
+                attrs=_weight_attrs(sh_attr, dim * kv_dim, dtype_bytes),
                 allowed=get_op_allowed("K"),
             )
         )
@@ -325,8 +336,8 @@ def _add_attention_llama_style_tp(
                 "V",
                 flops=0.0,
                 weight_id=f"L{l}_WV_s{si}",
-                weight_size=int(dim * kv_dim * dtype_bytes),
-                attrs=dict(sh_attr),
+                weight_size=_weight_bytes(dim * kv_dim, dtype_bytes),
+                attrs=_weight_attrs(sh_attr, dim * kv_dim, dtype_bytes),
                 allowed=get_op_allowed("V"),
             )
         )
@@ -360,8 +371,8 @@ def _add_attention_llama_style_tp(
                 flops=0.0,
                 weight_id=f"L{l}_WO_s{si}",
                 # WO is row-parallel: shard rows of the input dim (q_dim).
-                weight_size=int(q_dim * dim * dtype_bytes),
-                attrs=dict(sh_attr),
+                weight_size=_weight_bytes(q_dim * dim, dtype_bytes),
+                attrs=_weight_attrs(sh_attr, q_dim * dim, dtype_bytes),
                 allowed=get_op_allowed("O"),
             )
         )
@@ -402,7 +413,7 @@ def add_llama_block(
     g: TaskGraph,
     l: int,
     shape: ModelShape,
-    dtype_bytes: int,
+    dtype_bytes: float,
     cfg: Optional[Dict] = None,
 ):
     """LLaMA/Qwen style block."""
@@ -447,7 +458,7 @@ def add_llama_block(
             g,
             l=l,
             shape=shape,
-            dtype_bytes=int(dtype_bytes),
+            dtype_bytes=float(dtype_bytes),
             base_attr=base_attr,
             ln_nid=nid_LN,
             x_in=x_in,
@@ -460,7 +471,7 @@ def add_llama_block(
             g,
             l=l,
             shape=shape,
-            dtype_bytes=int(dtype_bytes),
+            dtype_bytes=float(dtype_bytes),
             base_attr=base_attr,
             ln_nid=nid_LN,
             x_in=x_in,
@@ -495,8 +506,8 @@ def add_llama_block(
                     "FFN_W1",
                     flops=0.0,
                     weight_id=f"L{l}_W1_s{si}",
-                    weight_size=int(dim * ffn_sh * dtype_bytes),
-                    attrs=dict(sh_attr),
+                    weight_size=_weight_bytes(dim * ffn_sh, dtype_bytes),
+                    attrs=_weight_attrs(sh_attr, dim * ffn_sh, dtype_bytes),
                     allowed=get_op_allowed("FFN_W1"),
                 )
             )
@@ -506,8 +517,8 @@ def add_llama_block(
                     "FFN_W3",
                     flops=0.0,
                     weight_id=f"L{l}_W3_s{si}",
-                    weight_size=int(dim * ffn_sh * dtype_bytes),
-                    attrs=dict(sh_attr),
+                    weight_size=_weight_bytes(dim * ffn_sh, dtype_bytes),
+                    attrs=_weight_attrs(sh_attr, dim * ffn_sh, dtype_bytes),
                     allowed=get_op_allowed("FFN_W3"),
                 )
             )
@@ -527,8 +538,8 @@ def add_llama_block(
                     flops=0.0,
                     weight_id=f"L{l}_W2_s{si}",
                     # FFN_W2 is row-parallel: shard rows of the ffn_dim.
-                    weight_size=int(ffn_sh * dim * dtype_bytes),
-                    attrs=dict(sh_attr),
+                    weight_size=_weight_bytes(ffn_sh * dim, dtype_bytes),
+                    attrs=_weight_attrs(sh_attr, ffn_sh * dim, dtype_bytes),
                     allowed=get_op_allowed("FFN_W2"),
                 )
             )
@@ -562,8 +573,8 @@ def add_llama_block(
                 "FFN_W1",
                 flops=0.0,
                 weight_id=f"L{l}_W1",
-                weight_size=int(dim * ffn * dtype_bytes),
-                attrs=dict(base_attr),
+                weight_size=_weight_bytes(dim * ffn, dtype_bytes),
+                attrs=_weight_attrs(base_attr, dim * ffn, dtype_bytes),
                 allowed=get_op_allowed("FFN_W1"),
             )
         )
@@ -573,8 +584,8 @@ def add_llama_block(
                 "FFN_W3",
                 flops=0.0,
                 weight_id=f"L{l}_W3",
-                weight_size=int(dim * ffn * dtype_bytes),
-                attrs=dict(base_attr),
+                weight_size=_weight_bytes(dim * ffn, dtype_bytes),
+                attrs=_weight_attrs(base_attr, dim * ffn, dtype_bytes),
                 allowed=get_op_allowed("FFN_W3"),
             )
         )
@@ -585,8 +596,8 @@ def add_llama_block(
                 "FFN_W2",
                 flops=0.0,
                 weight_id=f"L{l}_W2",
-                weight_size=int(ffn * dim * dtype_bytes),
-                attrs=dict(base_attr),
+                weight_size=_weight_bytes(ffn * dim, dtype_bytes),
+                attrs=_weight_attrs(base_attr, ffn * dim, dtype_bytes),
                 allowed=get_op_allowed("FFN_W2"),
             )
         )
@@ -605,7 +616,7 @@ def add_mpt_block(
     g: TaskGraph,
     l: int,
     shape: ModelShape,
-    dtype_bytes: int,
+    dtype_bytes: float,
     cfg: Optional[Dict] = None,
 ):
     """MPT style: attention + GELU MLP.
@@ -656,7 +667,7 @@ def add_mpt_block(
             g,
             l=l,
             shape=shape,
-            dtype_bytes=int(dtype_bytes),
+            dtype_bytes=float(dtype_bytes),
             base_attr=base_attr,
             ln_nid=nid_LN1,
             x_in=x_in,
@@ -669,7 +680,7 @@ def add_mpt_block(
             g,
             l=l,
             shape=shape,
-            dtype_bytes=int(dtype_bytes),
+            dtype_bytes=float(dtype_bytes),
             base_attr=base_attr,
             ln_nid=nid_LN1,
             x_in=x_in,
@@ -706,8 +717,8 @@ def add_mpt_block(
                     "FFN_W1",
                     flops=0.0,
                     weight_id=f"L{l}_W1_s{si}",
-                    weight_size=int(dim * ffn_sh * dtype_bytes),
-                    attrs=dict(sh_attr),
+                    weight_size=_weight_bytes(dim * ffn_sh, dtype_bytes),
+                    attrs=_weight_attrs(sh_attr, dim * ffn_sh, dtype_bytes),
                     allowed=get_op_allowed("FFN_W1"),
                 )
             )
@@ -719,8 +730,8 @@ def add_mpt_block(
                     flops=0.0,
                     weight_id=f"L{l}_W2_s{si}",
                     # FFN_W2 is row-parallel: shard rows of the ffn_dim.
-                    weight_size=int(ffn_sh * dim * dtype_bytes),
-                    attrs=dict(sh_attr),
+                    weight_size=_weight_bytes(ffn_sh * dim, dtype_bytes),
+                    attrs=_weight_attrs(sh_attr, ffn_sh * dim, dtype_bytes),
                     allowed=get_op_allowed("FFN_W2"),
                 )
             )
@@ -746,8 +757,8 @@ def add_mpt_block(
                 "FFN_W1",
                 flops=0.0,
                 weight_id=f"L{l}_W1",
-                weight_size=int(dim * ffn * dtype_bytes),
-                attrs=dict(base_attr),
+                weight_size=_weight_bytes(dim * ffn, dtype_bytes),
+                attrs=_weight_attrs(base_attr, dim * ffn, dtype_bytes),
                 allowed=get_op_allowed("FFN_W1"),
             )
         )
@@ -758,8 +769,8 @@ def add_mpt_block(
                 "FFN_W2",
                 flops=0.0,
                 weight_id=f"L{l}_W2",
-                weight_size=int(ffn * dim * dtype_bytes),
-                attrs=dict(base_attr),
+                weight_size=_weight_bytes(ffn * dim, dtype_bytes),
+                attrs=_weight_attrs(base_attr, ffn * dim, dtype_bytes),
                 allowed=get_op_allowed("FFN_W2"),
             )
         )
@@ -776,7 +787,7 @@ def add_palm_block(
     g: TaskGraph,
     l: int,
     shape: ModelShape,
-    dtype_bytes: int,
+    dtype_bytes: float,
     cfg: Optional[Dict] = None,
 ):
     """PaLM uses pre-LN and PARALLEL residual: x + Attn(LN(x)) + MLP(LN(x)).
@@ -824,7 +835,7 @@ def add_palm_block(
             g,
             l=l,
             shape=shape,
-            dtype_bytes=int(dtype_bytes),
+            dtype_bytes=float(dtype_bytes),
             base_attr=base_attr,
             ln_nid=nid_LN,
             x_in=x_in,
@@ -837,7 +848,7 @@ def add_palm_block(
             g,
             l=l,
             shape=shape,
-            dtype_bytes=int(dtype_bytes),
+            dtype_bytes=float(dtype_bytes),
             base_attr=base_attr,
             ln_nid=nid_LN,
             x_in=x_in,
@@ -866,8 +877,8 @@ def add_palm_block(
                     "FFN_W1",
                     flops=0.0,
                     weight_id=f"L{l}_W1_s{si}",
-                    weight_size=int(dim * ffn_sh * dtype_bytes),
-                    attrs=dict(sh_attr),
+                    weight_size=_weight_bytes(dim * ffn_sh, dtype_bytes),
+                    attrs=_weight_attrs(sh_attr, dim * ffn_sh, dtype_bytes),
                     allowed=get_op_allowed("FFN_W1"),
                 )
             )
@@ -878,8 +889,8 @@ def add_palm_block(
                     "FFN_W2",
                     flops=0.0,
                     weight_id=f"L{l}_W2_s{si}",
-                    weight_size=int(ffn_sh * dim * dtype_bytes),
-                    attrs=dict(sh_attr),
+                    weight_size=_weight_bytes(ffn_sh * dim, dtype_bytes),
+                    attrs=_weight_attrs(sh_attr, ffn_sh * dim, dtype_bytes),
                     allowed=get_op_allowed("FFN_W2"),
                 )
             )
@@ -905,8 +916,8 @@ def add_palm_block(
                 "FFN_W1",
                 flops=0.0,
                 weight_id=f"L{l}_W1",
-                weight_size=int(dim * ffn * dtype_bytes),
-                attrs=dict(base_attr),
+                weight_size=_weight_bytes(dim * ffn, dtype_bytes),
+                attrs=_weight_attrs(base_attr, dim * ffn, dtype_bytes),
                 allowed=get_op_allowed("FFN_W1"),
             )
         )
@@ -917,8 +928,8 @@ def add_palm_block(
                 "FFN_W2",
                 flops=0.0,
                 weight_id=f"L{l}_W2",
-                weight_size=int(ffn * dim * dtype_bytes),
-                attrs=dict(base_attr),
+                weight_size=_weight_bytes(ffn * dim, dtype_bytes),
+                attrs=_weight_attrs(base_attr, ffn * dim, dtype_bytes),
                 allowed=get_op_allowed("FFN_W2"),
             )
         )
@@ -940,42 +951,43 @@ def add_palm_block(
 class LLaMADef:
     name = "llama"
 
-    def build(self, shape: ModelShape, dtype_bytes: int, cfg: Optional[Dict] = None) -> TaskGraph:
+    def build(self, shape: ModelShape, dtype_bytes: float, cfg: Optional[Dict] = None) -> TaskGraph:
         g = TaskGraph()
         for l in range(int(shape.layer_num)):
-            add_llama_block(g, l, shape, int(dtype_bytes), cfg=cfg)
+            add_llama_block(g, l, shape, float(dtype_bytes), cfg=cfg)
         return g
 
 
 class MPTDef:
     name = "mpt"
 
-    def build(self, shape: ModelShape, dtype_bytes: int, cfg: Optional[Dict] = None) -> TaskGraph:
+    def build(self, shape: ModelShape, dtype_bytes: float, cfg: Optional[Dict] = None) -> TaskGraph:
         g = TaskGraph()
         for l in range(int(shape.layer_num)):
-            add_mpt_block(g, l, shape, int(dtype_bytes), cfg=cfg)
+            add_mpt_block(g, l, shape, float(dtype_bytes), cfg=cfg)
         return g
 
 
 class PaLMDef:
     name = "palm"
 
-    def build(self, shape: ModelShape, dtype_bytes: int, cfg: Optional[Dict] = None) -> TaskGraph:
+    def build(self, shape: ModelShape, dtype_bytes: float, cfg: Optional[Dict] = None) -> TaskGraph:
         g = TaskGraph()
         for l in range(int(shape.layer_num)):
-            add_palm_block(g, l, shape, int(dtype_bytes), cfg=cfg)
+            add_palm_block(g, l, shape, float(dtype_bytes), cfg=cfg)
         return g
 
 
 class QwenDef:
     name = "qwen"
 
-    def build(self, shape: ModelShape, dtype_bytes: int, cfg: Optional[Dict] = None) -> TaskGraph:
+    def build(self, shape: ModelShape, dtype_bytes: float, cfg: Optional[Dict] = None) -> TaskGraph:
         # Qwen is LLaMA-style for our graph purposes.
         g = TaskGraph()
         for l in range(int(shape.layer_num)):
-            add_llama_block(g, l, shape, int(dtype_bytes), cfg=cfg)
+            add_llama_block(g, l, shape, float(dtype_bytes), cfg=cfg)
         return g
+
 
 
 class MixtralDef:
@@ -987,54 +999,259 @@ class MixtralDef:
         return max(1, min(total_i, int(top_k or 1)))
 
     @staticmethod
-    def _resolve_active_experts(total: int, top_k: int, requested: Optional[int]) -> int:
+    def _select_first_k_experts(total: int, top_k: int) -> List[int]:
         total_i = max(1, int(total or 1))
         top_k_i = MixtralDef._resolve_top_k(total_i, top_k)
-        if requested is None:
-            return total_i
-        try:
-            req_i = int(requested)
-        except Exception:
-            req_i = total_i
-        if req_i <= 0:
-            return total_i
-        return max(top_k_i, min(total_i, req_i))
+        return [int(e) for e in range(top_k_i)]
 
     @staticmethod
-    def _expert_token_fractions(total: int, active: int, top_k: int, imbalance: float) -> List[float]:
-        total_i = max(1, int(total or 1))
-        top_k_i = MixtralDef._resolve_top_k(total_i, top_k)
-        active_i = max(top_k_i, min(total_i, int(active or total_i)))
-        skew = max(1.0, float(imbalance or 1.0))
+    def _plan_selected_expert_shards(selected_experts: List[int], tp_total: int) -> Dict[str, object]:
+        selected = [int(e) for e in (selected_experts or [])]
+        if not selected:
+            return {
+                "tp_total": 1,
+                "tp_expert_ffn": 1,
+                "experts_by_shard": [[]],
+                "shards_by_expert": {},
+            }
 
-        # Active experts receive a simple deterministic skew profile. Fractions are
-        # normalized so that the expected total expert selections per token remains top-k.
-        weights: List[float] = [0.0 for _ in range(total_i)]
-        if active_i == 1:
-            weights[0] = 1.0
+        top_k = len(selected)
+        tp_total_i = max(1, int(tp_total or 1))
+
+        if tp_total_i <= top_k:
+            experts_by_shard: List[List[int]] = [[] for _ in range(int(tp_total_i))]
+            shards_by_expert: Dict[int, List[int]] = {}
+            for rank, e in enumerate(selected):
+                # When tp <= top-k, we only distribute selected experts across total shards.
+                # Each expert FFN itself stays unsplit.
+                shard = int((int(rank) * int(tp_total_i)) // int(top_k))
+                experts_by_shard[shard].append(int(e))
+                shards_by_expert[int(e)] = [int(shard)]
+            tp_expert_ffn = 1
         else:
-            denom = max(1, active_i - 1)
-            for rank in range(active_i):
-                hotness = float(active_i - 1 - rank) / float(denom)
-                weights[rank] = 1.0 + (skew - 1.0) * hotness
+            # When tp > top-k, each selected expert is split evenly into tp / top-k shards.
+            if (tp_total_i % top_k) != 0:
+                raise ValueError(
+                    f"Invalid Mixtral tp={tp_total_i}: when tp > top_k, require tp%top_k==0 (top_k={top_k})."
+                )
+            tp_expert_ffn = int(tp_total_i // top_k)
+            experts_by_shard = [[] for _ in range(int(tp_total_i))]
+            shards_by_expert = {}
+            gid = 0
+            for e in selected:
+                shard_ids: List[int] = []
+                for _ in range(int(tp_expert_ffn)):
+                    experts_by_shard[gid].append(int(e))
+                    shard_ids.append(int(gid))
+                    gid += 1
+                shards_by_expert[int(e)] = shard_ids
 
-        s = float(sum(weights))
-        if s <= 0.0:
-            return [0.0 for _ in range(total_i)]
+        return {
+            "tp_total": int(tp_total_i),
+            "tp_expert_ffn": int(tp_expert_ffn),
+            "experts_by_shard": [[int(x) for x in xs] for xs in experts_by_shard],
+            "shards_by_expert": {int(k): [int(x) for x in v] for k, v in shards_by_expert.items()},
+        }
 
-        scale = float(top_k_i) / s
-        return [float(max(0.0, min(1.0, w * scale))) for w in weights]
+    @staticmethod
+    def _add_selected_expert_ffn(
+        g: TaskGraph,
+        *,
+        l: int,
+        shape: ModelShape,
+        dtype_bytes: float,
+        base_attr: Dict,
+        ln_nid: str,
+        expert_id: int,
+        expert_rank: int,
+        shard_ids: List[int],
+        cfg: Optional[Dict] = None,
+    ) -> str:
+        dim = int(shape.dim)
+        ffn = int(shape.ffn_dim)
+        e = int(expert_id)
+        shards = [int(s) for s in (shard_ids or [0])]
+        shard_count = max(1, len(shards))
 
-    def build(self, shape: ModelShape, dtype_bytes: int, cfg: Optional[Dict] = None) -> TaskGraph:
+        expert_base_attr = {
+            **base_attr,
+            "expert": int(e),
+            "expert_rank": int(expert_rank),
+            "expert_active": True,
+            # Deterministic static simulation: selected experts are treated as fully used.
+            "moe_token_fraction": 1.0,
+            "tp_ffn": int(shard_count),
+            "tp_expert_ffn": int(shard_count),
+            "expert_shard_ids": [int(s) for s in shards],
+        }
+
+        if shard_count > 1:
+            if (ffn % shard_count) != 0:
+                raise ValueError(
+                    f"Invalid Mixtral expert split: require ffn_dim%tp_expert_ffn==0 "
+                    f"(ffn_dim={ffn}, tp_expert_ffn={shard_count})."
+                )
+            ffn_sh = int(ffn // shard_count)
+            w2_shards: List[str] = []
+
+            for local_si, global_si in enumerate(shards):
+                sh_attr = dict(expert_base_attr)
+                sh_attr.update(
+                    {
+                        "ffn_dim": int(ffn_sh),
+                        "ffn_shard": int(local_si),
+                        "expert_shard_local": int(local_si),
+                        "expert_shard": int(global_si),
+                        "moe_shard": int(global_si),
+                    }
+                )
+
+                nid_W1 = f"L{l}_FFN_W1_E{e}_s{local_si}"
+                nid_W3 = f"L{l}_FFN_W3_E{e}_s{local_si}"
+                nid_ACT = f"L{l}_Act_E{e}_s{local_si}"
+                nid_W2 = f"L{l}_FFN_W2_E{e}_s{local_si}"
+
+                g.add_node(
+                    TaskNode(
+                        nid_W1,
+                        "FFN_W1",
+                        flops=0.0,
+                        weight_id=f"L{l}_E{e}_W1_s{local_si}",
+                        weight_size=_weight_bytes(dim * ffn_sh, dtype_bytes),
+                        attrs=_weight_attrs(sh_attr, dim * ffn_sh, dtype_bytes),
+                        allowed=get_op_allowed("FFN_W1"),
+                    )
+                )
+                g.add_node(
+                    TaskNode(
+                        nid_W3,
+                        "FFN_W3",
+                        flops=0.0,
+                        weight_id=f"L{l}_E{e}_W3_s{local_si}",
+                        weight_size=_weight_bytes(dim * ffn_sh, dtype_bytes),
+                        attrs=_weight_attrs(sh_attr, dim * ffn_sh, dtype_bytes),
+                        allowed=get_op_allowed("FFN_W3"),
+                    )
+                )
+                g.add_node(
+                    TaskNode(
+                        nid_ACT,
+                        "SwiGLU",
+                        flops=0.0,
+                        attrs=dict(sh_attr),
+                        allowed=get_op_allowed("SwiGLU"),
+                    )
+                )
+                g.add_node(
+                    TaskNode(
+                        nid_W2,
+                        "FFN_W2",
+                        flops=0.0,
+                        weight_id=f"L{l}_E{e}_W2_s{local_si}",
+                        weight_size=_weight_bytes(ffn_sh * dim, dtype_bytes),
+                        attrs=_weight_attrs(sh_attr, ffn_sh * dim, dtype_bytes),
+                        allowed=get_op_allowed("FFN_W2"),
+                    )
+                )
+
+                g.add_edge(ln_nid, nid_W1)
+                g.add_edge(ln_nid, nid_W3)
+                g.add_edge(nid_W1, nid_ACT)
+                g.add_edge(nid_W3, nid_ACT)
+                g.add_edge(nid_ACT, nid_W2)
+                w2_shards.append(nid_W2)
+
+            collective_attr = dict(expert_base_attr)
+            collective_attr.update(
+                {
+                    "ffn_dim": int(ffn),
+                    "tp_ffn": int(shard_count),
+                    "tp_expert_ffn": int(shard_count),
+                }
+            )
+            return _insert_row_parallel_collective(
+                g,
+                l=l,
+                tag=f"MoE_E{e}",
+                base_attr=collective_attr,
+                inputs=w2_shards,
+                cfg=cfg,
+            )
+
+        shard_id = int(shards[0]) if shards else 0
+        expert_attr = dict(expert_base_attr)
+        expert_attr.update(
+            {
+                "ffn_dim": int(ffn),
+                "ffn_shard": 0,
+                "expert_shard_local": 0,
+                "expert_shard": int(shard_id),
+                "moe_shard": int(shard_id),
+            }
+        )
+
+        nid_W1 = f"L{l}_FFN_W1_E{e}"
+        nid_W3 = f"L{l}_FFN_W3_E{e}"
+        nid_ACT = f"L{l}_Act_E{e}"
+        nid_W2 = f"L{l}_FFN_W2_E{e}"
+
+        g.add_node(
+            TaskNode(
+                nid_W1,
+                "FFN_W1",
+                flops=0.0,
+                weight_id=f"L{l}_E{e}_W1",
+                weight_size=_weight_bytes(dim * ffn, dtype_bytes),
+                attrs=_weight_attrs(expert_attr, dim * ffn, dtype_bytes),
+                allowed=get_op_allowed("FFN_W1"),
+            )
+        )
+        g.add_node(
+            TaskNode(
+                nid_W3,
+                "FFN_W3",
+                flops=0.0,
+                weight_id=f"L{l}_E{e}_W3",
+                weight_size=_weight_bytes(dim * ffn, dtype_bytes),
+                attrs=_weight_attrs(expert_attr, dim * ffn, dtype_bytes),
+                allowed=get_op_allowed("FFN_W3"),
+            )
+        )
+        g.add_node(
+            TaskNode(
+                nid_ACT,
+                "SwiGLU",
+                flops=0.0,
+                attrs=dict(expert_attr),
+                allowed=get_op_allowed("SwiGLU"),
+            )
+        )
+        g.add_node(
+            TaskNode(
+                nid_W2,
+                "FFN_W2",
+                flops=0.0,
+                weight_id=f"L{l}_E{e}_W2",
+                weight_size=_weight_bytes(ffn * dim, dtype_bytes),
+                attrs=_weight_attrs(expert_attr, ffn * dim, dtype_bytes),
+                allowed=get_op_allowed("FFN_W2"),
+            )
+        )
+
+        g.add_edge(ln_nid, nid_W1)
+        g.add_edge(ln_nid, nid_W3)
+        g.add_edge(nid_W1, nid_ACT)
+        g.add_edge(nid_W3, nid_ACT)
+        g.add_edge(nid_ACT, nid_W2)
+        return nid_W2
+
+    def build(self, shape: ModelShape, dtype_bytes: float, cfg: Optional[Dict] = None) -> TaskGraph:
         g = TaskGraph()
 
         experts = int(getattr(shape, "experts_per_layer", 1) or 1)
-        top_k = self._resolve_top_k(experts, int(getattr(shape, "experts_top_k", 1) or 1))
-        moe_imbalance = float(getattr(shape, "moe_imbalance_factor", 1.0) or 1.0)
-        active_requested = getattr(shape, "active_experts_per_layer", None) if hasattr(shape, "active_experts_per_layer") else None
-        active_experts = self._resolve_active_experts(experts, top_k, active_requested)
-        expert_token_fracs = self._expert_token_fractions(experts, active_experts, top_k, moe_imbalance)
-
+        top_k = self._resolve_top_k(experts, int(getattr(shape, "experts_top_k", 2) or 2))
+        selected_experts = self._select_first_k_experts(experts, top_k)
+        active_experts = int(len(selected_experts))
         setattr(shape, "active_experts_per_layer", int(active_experts))
         setattr(shape, "moe_pruned_experts_per_layer", max(0, int(experts - active_experts)))
 
@@ -1042,12 +1259,19 @@ class MixtralDef:
         dim, ffn = int(shape.dim), int(shape.ffn_dim)
         qh, kvh, hd = int(shape.n_heads), int(shape.n_kv_heads), int(shape.head_dim)
         q_dim, kv_dim, o_in_dim = int(qh * hd), int(kvh * hd), int(qh * hd)
-        router_weight_size = int(dim * experts * dtype_bytes)
+        router_weight_elems = int(dim * experts)
+        router_weight_size = _weight_bytes(router_weight_elems, dtype_bytes)
 
         tp_qkv = int((cfg or {}).get('tp_qkv_effective', 1) or 1)
-        # For MoE, prefer an explicit tp_moe_effective; otherwise reuse tp_ffn_effective.
-        tp_moe = int((cfg or {}).get('tp_moe_effective', (cfg or {}).get('tp_ffn_effective', 1) or 1) or 1)
-        tp_moe = max(1, int(tp_moe))
+        tp_total = int((cfg or {}).get('tp_moe_total_effective', (cfg or {}).get('tp_moe_effective', 1) or 1) or 1)
+        shard_plan = self._plan_selected_expert_shards(selected_experts, tp_total)
+        tp_expert_ffn = int(shard_plan["tp_expert_ffn"])
+        experts_by_shard = list(shard_plan["experts_by_shard"])
+        shards_by_expert = dict(shard_plan["shards_by_expert"])
+
+        moe_imbalance = float(getattr(shape, "moe_imbalance_factor", 1.0) or 1.0)
+        router_aux_loss_coef = getattr(shape, "router_aux_loss_coef", None)
+        router_jitter_noise = getattr(shape, "router_jitter_noise", None)
 
         for l in range(int(shape.layer_num)):
             base_attr = {
@@ -1069,12 +1293,22 @@ class MixtralDef:
                 "top_k": int(top_k),
                 "num_local_experts": int(experts),
                 "num_experts_per_tok": int(top_k),
+                "selected_experts": [int(e) for e in selected_experts],
+                "selected_experts_by_shard": [[int(e) for e in xs] for xs in experts_by_shard],
+                "router_kind": "topk_static_first_k",
+                "moe_selection_policy": "first_k",
                 "moe_imbalance_factor": float(moe_imbalance),
-                "router_kind": "topk",
                 "router_weight_size": int(router_weight_size),
                 "tp_qkv": int(tp_qkv),
-                "tp_moe": int(tp_moe),
+                "tp": int(tp_total),
+                "tp_moe": int(tp_total),
+                "tp_moe_total": int(tp_total),
+                "tp_expert_ffn": int(tp_expert_ffn),
             }
+            if router_aux_loss_coef is not None:
+                base_attr["router_aux_loss_coef"] = float(router_aux_loss_coef)
+            if router_jitter_noise is not None:
+                base_attr["router_jitter_noise"] = float(router_jitter_noise)
 
             # Attention part (Mistral/LLaMA-style, LN1 here)
             nid_LN1 = f"L{l}_LN1"
@@ -1091,7 +1325,7 @@ class MixtralDef:
                     g,
                     l=l,
                     shape=shape,
-                    dtype_bytes=int(dtype_bytes),
+                    dtype_bytes=float(dtype_bytes),
                     base_attr=base_attr,
                     ln_nid=nid_LN1,
                     x_in=x_in,
@@ -1104,7 +1338,7 @@ class MixtralDef:
                     g,
                     l=l,
                     shape=shape,
-                    dtype_bytes=int(dtype_bytes),
+                    dtype_bytes=float(dtype_bytes),
                     base_attr=base_attr,
                     ln_nid=nid_LN1,
                     x_in=x_in,
@@ -1116,159 +1350,57 @@ class MixtralDef:
             g.add_node(TaskNode(nid_LN2, "LN", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("LN")))
             g.add_edge(nid_Add1, nid_LN2)
 
-            expert_outputs: List[str] = []
-            for e in range(int(experts)):
-                expert_shard = int(e % tp_moe) if tp_moe > 0 else 0
-                expert_frac = float(expert_token_fracs[e]) if e < len(expert_token_fracs) else 0.0
-                expert_attr = {
-                    **base_attr,
-                    "expert": int(e),
-                    "expert_shard": int(expert_shard),
-                    "experts": int(experts),
-                    "active_experts": int(active_experts),
-                    "top_k": int(top_k),
-                    "moe_imbalance": float(moe_imbalance),
-                    "moe_token_fraction": float(expert_frac),
-                    "expert_active": bool(expert_frac > 0.0),
-                }
-                nid_W1 = f"L{l}_FFN_W1_E{e}"
-                nid_W3 = f"L{l}_FFN_W3_E{e}"
-                nid_ACT = f"L{l}_Act_E{e}"
-                nid_W2 = f"L{l}_FFN_W2_E{e}"
-
-                g.add_node(
-                    TaskNode(
-                        nid_W1,
-                        "FFN_W1",
-                        flops=0.0,
-                        weight_id=f"L{l}_E{e}_W1",
-                        weight_size=int(dim * ffn * dtype_bytes),
-                        attrs=dict(expert_attr),
-                        allowed=get_op_allowed("FFN_W1"),
-                    )
-                )
-                g.add_node(
-                    TaskNode(
-                        nid_W3,
-                        "FFN_W3",
-                        flops=0.0,
-                        weight_id=f"L{l}_E{e}_W3",
-                        weight_size=int(dim * ffn * dtype_bytes),
-                        attrs=dict(expert_attr),
-                        allowed=get_op_allowed("FFN_W3"),
-                    )
-                )
-                g.add_node(TaskNode(nid_ACT, "SwiGLU", flops=0.0, attrs=dict(expert_attr), allowed=get_op_allowed("SwiGLU")))
-                g.add_node(
-                    TaskNode(
-                        nid_W2,
-                        "FFN_W2",
-                        flops=0.0,
-                        weight_id=f"L{l}_E{e}_W2",
-                        weight_size=int(ffn * dim * dtype_bytes),
-                        attrs=dict(expert_attr),
-                        allowed=get_op_allowed("FFN_W2"),
-                    )
+            expert_outputs: Dict[int, str] = {}
+            for rank, e in enumerate(selected_experts):
+                expert_outputs[int(e)] = self._add_selected_expert_ffn(
+                    g,
+                    l=l,
+                    shape=shape,
+                    dtype_bytes=float(dtype_bytes),
+                    base_attr=base_attr,
+                    ln_nid=nid_LN2,
+                    expert_id=int(e),
+                    expert_rank=int(rank),
+                    shard_ids=[int(s) for s in shards_by_expert.get(int(e), [0])],
+                    cfg=cfg,
                 )
 
-                g.add_edge(nid_LN2, nid_W1)
-                g.add_edge(nid_LN2, nid_W3)
-                g.add_edge(nid_W1, nid_ACT)
-                g.add_edge(nid_W3, nid_ACT)
-                g.add_edge(nid_ACT, nid_W2)
-
-                expert_outputs.append(nid_W2)
-
-            # Router / combine.
-            router_weight_id = f"L{l}_ROUTER_W"
-            if tp_moe > 1:
-                router_outputs: List[str] = []
-
-                for si in range(int(tp_moe)):
-                    local_expert_outs = [
-                        out for e, out in enumerate(expert_outputs) if int(e % tp_moe) == int(si)
-                    ]
-                    local_expert_ids = [int(e) for e in range(int(experts)) if int(e % tp_moe) == int(si)]
-                    local_active = [eid for eid in local_expert_ids if float(expert_token_fracs[eid]) > 0.0]
-                    local_top_k = float(sum(float(expert_token_fracs[eid]) for eid in local_expert_ids))
-                    if not local_expert_outs:
-                        continue
-
-                    nid_router_s = f"L{l}_Router_s{si}"
-                    g.add_node(
-                        TaskNode(
-                            nid_router_s,
-                            "MoE_Router",
-                            flops=0.0,
-                            weight_id=router_weight_id,
-                            weight_size=int(router_weight_size),
-                            attrs={
-                                **base_attr,
-                                "experts": int(experts),
-                                "active_experts": int(active_experts),
-                                "top_k": int(top_k),
-                                "local_experts": int(len(local_expert_ids)),
-                                "local_active_experts": int(len(local_active)),
-                                "local_top_k": float(local_top_k),
-                                "moe_imbalance": float(moe_imbalance),
-                                "tp_moe": int(tp_moe),
-                                "moe_shard": int(si),
-                                "router_replicated": True,
-                            },
-                            allowed=get_op_allowed("MoE_Router"),
-                        )
-                    )
-                    g.add_edge(nid_LN2, nid_router_s)
-                    for out in local_expert_outs:
-                        g.add_edge(out, nid_router_s)
-                    router_outputs.append(nid_router_s)
-
-                if len(router_outputs) == 1:
-                    nid_MLP_OUT = router_outputs[0]
-                else:
-                    nid_MLP_OUT = _insert_row_parallel_collective(
-                        g,
-                        l=l,
-                        tag='MoE',
-                        base_attr=base_attr,
-                        inputs=router_outputs,
-                        cfg=cfg,
-                    )
-            else:
-                nid_router = f"L{l}_Router"
-                g.add_node(
-                    TaskNode(
-                        nid_router,
-                        "MoE_Router",
-                        flops=0.0,
-                        weight_id=router_weight_id,
-                        weight_size=int(router_weight_size),
-                        attrs={
-                            **base_attr,
-                            "experts": int(experts),
-                            "active_experts": int(active_experts),
-                            "top_k": int(top_k),
-                            "local_experts": int(experts),
-                            "local_active_experts": int(active_experts),
-                            "local_top_k": float(top_k),
-                            "moe_imbalance": float(moe_imbalance),
-                            "tp_moe": int(tp_moe),
-                            "router_replicated": False,
-                        },
-                        allowed=get_op_allowed("MoE_Router"),
-                    )
+            nid_router = f"L{l}_Router"
+            router_attr = {
+                **base_attr,
+                "experts": int(experts),
+                "active_experts": int(active_experts),
+                "top_k": int(top_k),
+                "router_experts": int(experts),
+                "local_experts": int(experts),
+                "local_active_experts": int(active_experts),
+                "local_top_k": float(top_k),
+                "tp": int(tp_total),
+                "tp_moe": int(tp_total),
+                "tp_moe_total": int(tp_total),
+                "tp_expert_ffn": int(tp_expert_ffn),
+                "router_replicated": False,
+            }
+            g.add_node(
+                TaskNode(
+                    nid_router,
+                    "MoE_Router",
+                    flops=0.0,
+                    weight_id=f"L{l}_ROUTER_W",
+                    weight_size=int(router_weight_size),
+                    attrs=_weight_attrs(router_attr, router_weight_elems, dtype_bytes),
+                    allowed=get_op_allowed("MoE_Router"),
                 )
-                g.add_edge(nid_LN2, nid_router)
-                for out in expert_outputs:
-                    g.add_edge(out, nid_router)
-
-                nid_MLP_OUT = nid_router
+            )
+            g.add_edge(nid_LN2, nid_router)
+            for eid in selected_experts:
+                g.add_edge(expert_outputs[int(eid)], nid_router)
 
             # Residual Add2
             nid_Add2 = f"L{l}_Add2"
             g.add_node(TaskNode(nid_Add2, "Add", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("Add")))
             g.add_edge(nid_Add1, nid_Add2)
-            g.add_edge(nid_MLP_OUT, nid_Add2)
+            g.add_edge(nid_router, nid_Add2)
 
         return g
 
