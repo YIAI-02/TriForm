@@ -2022,11 +2022,14 @@ class SchedulerBase:
                 f"cached_nd={cached_nd} full_nd={wsize_nd}"
             )
 
-        cache_feasible = True
         try:
-            cache_feasible = bool(self.buffer.can_cache_weight(dev.name, wid, int(wsize_nd), pinned=False, fmt=str(resident_fmt)))
-        except Exception:
-            cache_feasible = True
+            cache_feasible = bool(self.buffer.can_cache_weight(
+                dev.name, wid, int(wsize_nd), pinned=False, fmt=str(resident_fmt)
+            ))
+        except Exception as e:
+            raise RuntimeError(
+                f"can_cache_weight crashed for weight_id='{wid}' on device='{dev.name}'"
+            ) from e
 
         if not cache_feasible:
             cache_obj = getattr(getattr(self, 'buffer', None), 'device_cache', {}).get(dev.name, None)

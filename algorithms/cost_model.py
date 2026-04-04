@@ -53,10 +53,10 @@ from weight_stage_models import (
     clamp_overlap_ratio,
     overlap_time,
 )
+from dtype_utils import DTYPE_BYTES, dtype_bytes, normalize_dtype_token
 
 logger = logging.getLogger(__name__)
 attach_local_debug_filter(logger, lambda: False)
-DTYPE_BYTES: Dict[str, float] = {'fp32': 4, 'fp16': 2, 'bf16': 2, 'int8': 1, 'int4': 0.5}
 
 
 class NpuFastModeConfigError(ValueError):
@@ -888,7 +888,7 @@ class CostModel:
         pim_trace_dir: Optional[Path] = None,
     ):
         self.cluster = cluster
-        self.dtype = dtype
+        self.dtype = normalize_dtype_token(dtype, default='fp16')
         self.pim_config_path = pim_config_path
         self.gb_config_path = gb_config_path
         self.ramulator_config_path = ramulator_config_path
@@ -2017,7 +2017,7 @@ class CostModel:
         if isinstance(aq, dict):
             b = aq.get('act_dtype_bytes')
             return float(b)
-        return float(DTYPE_BYTES.get(self.dtype, 2))
+        return float(dtype_bytes(self.dtype, default='fp16'))
 
     def _kv_dtype_bytes(self, node, phase: str) -> float:
         """KV-cache element byte-width.
@@ -2027,7 +2027,7 @@ class CostModel:
         if b is not None:
             return float(b)
 
-        return float(DTYPE_BYTES.get(self.dtype, 2))
+        return float(dtype_bytes(self.dtype, default='fp16'))
 
     def _activation_density(self, node, phase: str) -> float:
         opt = self._node_opt(node)

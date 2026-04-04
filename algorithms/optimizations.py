@@ -8,6 +8,7 @@ import math
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from task_graph import TaskGraph, TaskNode
+from dtype_utils import normalize_dtype_token
 
 
 def _as_dict(x: Any) -> Dict[str, Any]:
@@ -36,6 +37,13 @@ def _upper(x: Any, default: str = "") -> str:
         return s if s else default
     except Exception:
         return default
+
+
+def _normalize_activation_io_token(x: Any, default: str = "fp16") -> str:
+    s = _lower(x, default)
+    if s in ("", "none", "off", "disable", "disabled", "default", "same", "model"):
+        return default
+    return normalize_dtype_token(x, default=default)
 
 
 def _clamp01(x: Any, default: float) -> float:
@@ -79,7 +87,7 @@ class QuantizationSpec:
     mode: str = "none"  # 'none' | 'weight_only' | 'w8a8' | 'w4a16' | 'w4a8'
     weight_bits: int = 16
     activation_bits: Optional[int] = None
-    activation_io: str = "fp16"  # 'fp16' | 'int8' | 'int4'
+    activation_io: str = "fp16"  # canonicalized by normalize_dtype_token()
 
     # Group-wise quantization parameters (GPTQ/AWQ/torchao/ORT int4 commonly use group_size=128).
     group_size: int = 128
@@ -239,6 +247,13 @@ def parse_optimization_config(cfg: Dict[str, Any]) -> OptimizationConfig:
     attn_d = _as_dict(cfg.get("attention_sparsity")) or _as_dict(opt_root.get("attention_sparsity"))
 
     # ---- Quantization ----
+    q_group_size = quant_d.get("group_size", None)
+    if q_group_size is None:
+        q_group_size = 128
+    q_scale_dtype_bits = quant_d.get("scale_dtype_bits", quant_d.get("scale_bits", None))
+    if q_scale_dtype_bits is None:
+        q_scale_dtype_bits = 16
+
     q = QuantizationSpec(
         enable=bool(quant_d.get("enable", quant_d.get("enabled", False))),
         mode=_lower(quant_d.get("mode", quant_d.get("type", "none")), "none"),
@@ -248,10 +263,10 @@ def parse_optimization_config(cfg: Dict[str, Any]) -> OptimizationConfig:
             if quant_d.get("activation_bits", quant_d.get("a_bits")) is None
             else int(quant_d.get("activation_bits", quant_d.get("a_bits")) or 0)
         ),
-        activation_io=_lower(quant_d.get("activation_io", quant_d.get("act_io", "fp16")), "fp16"),
-        group_size=int(quant_d.get("group_size", 128) or 128),
+        activation_io=_normalize_activation_io_token(quant_d.get("activation_io", quant_d.get("act_io", "fp16")), default="fp16"),
+        group_size=int(q_group_size),
         per_channel=bool(quant_d.get("per_channel", quant_d.get("per_row", True))),
-        scale_dtype_bits=int(quant_d.get("scale_dtype_bits", quant_d.get("scale_bits", 16)) or 16),
+        scale_dtype_bits=int(q_scale_dtype_bits),
         speedup={str(k).lower(): float(v) for k, v in _as_dict(quant_d.get("speedup")).items()},
         apply_to=[str(x) for x in _as_list(quant_d.get("apply_to"))],
         exclude=[str(x) for x in _as_list(quant_d.get("exclude"))],
@@ -364,7 +379,7 @@ def apply_optimizations_to_graph(
     g: TaskGraph,
     cfg: Dict[str, Any],
     *,
-    base_weight_dtype_bytes: int,
+    base_weight_dtype_bytes: float,
     shape: Any = None,
 ) -> OptimizationConfig:
     """Annotate the graph nodes in-place and adjust weight_size for storage effects."""
@@ -377,7 +392,7 @@ def apply_optimizations_to_graph(
         if not isinstance(getattr(node, "attrs", None), dict):
             node.attrs = {}
         node.attrs.setdefault("opt", {})
-        node.attrs["opt"].setdefault("base_weight_dtype_bytes", int(base_weight_dtype_bytes))
+        node.attrs["opt"].setdefault("base_weight_dtype_bytes", float(base_weight_dtype_bytes))
 
     # Helper: per-layer override lookup.
     def layer_override(layer: Optional[int]) -> Dict[str, Any]:
@@ -494,7 +509,7 @@ def apply_optimizations_to_graph(
                     "mode": _lower(opt.quant.mode, "none"),
                     "weight_bits": int(opt.quant.weight_bits),
                     "activation_bits": int(act_bits),
-                    "activation_io": _lower(opt.quant.activation_io, "fp16"),
+                    "activation_io": _normalize_activation_io_token(opt.quant.activation_io, default="fp16"),
                     "group_size": int(opt.quant.group_size),
                     "per_channel": bool(opt.quant.per_channel),
                     "scale_dtype_bits": int(opt.quant.scale_dtype_bits),
@@ -508,8 +523,13 @@ def apply_optimizations_to_graph(
             # 1) Quantization changes element width (weights)
             if q_apply:
                 # Estimate number of (dense) weight elements based on base dtype.
-                base_b = max(1, int(base_weight_dtype_bytes))
-                elems = int(max(0, orig_w_bytes // base_b))
+                base_b = max(1e-12, float(base_weight_dtype_bytes))
+                elems = attrs.get("weight_elements", None)
+                if elems is None:
+                    elems = int(max(0.0, round(float(orig_w_bytes) / base_b)))
+                else:
+                    elems = int(max(0, int(elems)))
+                optd["weight_elements"] = int(elems)
                 w_bpe = _dtype_bytes_from_bits(int(opt.quant.weight_bits))
                 q_bytes = float(elems) * float(w_bpe)
 
@@ -529,8 +549,12 @@ def apply_optimizations_to_graph(
                 # Add metadata per nnz if requested.
                 if opt.w_sparsity.metadata_bytes_per_nnz and opt.w_sparsity.metadata_bytes_per_nnz > 0:
                     # Estimate nnz based on element count in base dtype.
-                    base_b = max(1, int(base_weight_dtype_bytes))
-                    elems = int(max(0, orig_w_bytes // base_b))
+                    base_b = max(1e-12, float(base_weight_dtype_bytes))
+                    elems = attrs.get("weight_elements", None)
+                    if elems is None:
+                        elems = int(max(0.0, round(float(orig_w_bytes) / base_b)))
+                    else:
+                        elems = int(max(0, int(elems)))
                     nnz = float(elems) * float(w_density)
                     payload += float(nnz) * float(opt.w_sparsity.metadata_bytes_per_nnz)
                 new_bytes = int(math.ceil(payload))
@@ -543,13 +567,13 @@ def apply_optimizations_to_graph(
         # -----------------------------
         if opt.quant.enabled() and opt.quant.activation_bits is not None:
             # Only tag nodes if user explicitly wants inter-op activations quantized.
-            if _lower(opt.quant.activation_io, "fp16") in ("int8", "int4"):
+            if _normalize_activation_io_token(opt.quant.activation_io, default="fp16") in ("int8", "int4"):
                 # Tag everything by default; CostModel can decide which ops to use it.
                 optd.setdefault("activation_quant", {})
                 optd["activation_quant"] = {
                     "act_bits": int(opt.quant.activation_bits),
                     "act_dtype_bytes": float(_dtype_bytes_from_bits(int(opt.quant.activation_bits))),
-                    "io": _lower(opt.quant.activation_io, "fp16"),
+                    "io": _normalize_activation_io_token(opt.quant.activation_io, default="fp16"),
                 }
 
                 # KV-cache storage dtype can be smaller than model compute dtype.
