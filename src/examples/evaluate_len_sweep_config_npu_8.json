@@ -1,0 +1,21 @@
+{
+  "pim_config_path": "./aim_simulator/PIM_AiM.json",
+  "ramulator_config_path": "./aim_simulator/example.yaml",
+  "algo": [
+    "Bifocal"
+  ],
+  "baselines": [
+    "PD+FFN",
+    "PD+Attn",
+    "PD+Linear",
+    "PD",
+    "AF"
+  ],
+  "split_by": "head",
+  "tp_qkv": 8,
+  "tp_ffn": 8,
+  "npu_backend": "lut",
+  "dump_graph": false,
+  "pim_weight_load_overlap_ratio": 0.0,
+  "weight_load_compute_overlap_ratio": 0.0
+}

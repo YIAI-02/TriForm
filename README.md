@@ -74,36 +74,58 @@ These are only needed for specific backends or reproduction workflows.
 
 ## 🚀 Quick Start
 
-### 1️⃣ Enter the main implementation directory
+The current repository is organized around a `src/` code tree and a `commands/` launcher tree. The fastest way to smoke-test the simulator is to stay at the project root and use the provided wrapper script, which already enables **fast NPU** and **fast PIM** simulation.
 
-```bash
-cd algorithms
+### 1️⃣ Verify the required model shape card
+
+For the bundled Llama-7B example, the repository expects this file at the project root:
+
+```text
+configs/llama_7b_shape.json
 ```
 
-### 2️⃣ Run the example evaluation
+If you use another model, either add its shape JSON under `configs/` and register it in `src/model_parser.py`, or set a custom `shape_file` in the config JSON.
+
+### 2️⃣ Run the bundled fast-mode evaluation
 
 ```bash
-python main.py evaluate \
-  --config ./examples/evaluate_test_config.json \
+bash commands/command_single_evaluate.sh \
+  --prefill_len 16 \
+  --decode_len 4 \
+  --decode_sample_stride 1 \
+  --decode_plan_refresh_stride 1
+```
+
+`commands/command_single_evaluate.sh` is a thin wrapper around:
+
+```bash
+python src/main.py evaluate \
+  --config src/examples/evaluate_test_config.json \
   --npu_backend fast_mode \
   --pim_fast_mode \
   --debug
 ```
 
+The shorter lengths above are only for a quick smoke test. To run the default example workload, execute the same script without extra overrides.
+
 ### 3️⃣ Inspect the outputs
 
-DOPS writes run artifacts under the output directory specified in the config, for example:
+With the bundled example config, outputs are written under:
 
 ```text
-output/evaluate_single_test/
+src/examples/output/evaluate_single_test/hardware_1npu_2aim_evaluate_eta0p1/
+└── llama_7b_fp16_b1_s1/
 ```
 
-Typical outputs include:
+A successful run produces at least:
 
-- comparison summaries,
-- per-policy schedule exports,
-- operator traces, and
-- communication traces.
+- `baseline_compare_<prefill>x<decode>.json`
+- `algo_PD/best_summary_<prefill>x<decode>.json`
+- `algo_Bifocal/best_summary_<prefill>x<decode>.json`
+- `*_ops_trace.csv`
+- `*_comms_trace.csv`
+
+> 📘 Config paths are resolved relative to the config JSON first, then `src/`, then the current working directory. That is why the bundled example writes into `src/examples/output/...`.
 
 > 📘 For a field-by-field explanation of the hardware and evaluation JSON files, see the [Configuration Reference](./docs/CONFIG_REFERENCE.md).
 
@@ -111,7 +133,37 @@ Typical outputs include:
 
 ## 🔄 Complete Workflow
 
-### Step 1. Prepare a hardware JSON
+The current CLI exposes two main modes:
+
+- `evaluate`: run scheduling / baseline comparisons and export traces.
+- `weight-suggest`: run the weight-layout arbiter on top of the scheduling flow.
+
+In the current repository setup, the **recommended default path is fast mode for both NPU and PIM**. The trace-based PIM path is still available, but it only becomes active when `pim_fast_mode` is disabled and the AiM / Ramulator config files are valid.
+
+### Step 1. Prepare a model shape card under `configs/`
+
+Model shapes are resolved from the project-level `configs/` directory using `(model_family, model_variant)`.
+
+The bundled Llama-7B shape card is:
+
+```json
+{
+  "type": "llama_7b",
+  "hidden_dim": 4096,
+  "layer_num": 32,
+  "intermediate_dim": 11008,
+  "q_head_num": 32,
+  "kv_head_num": 32
+}
+```
+
+If your model is not already registered in `src/model_parser.py`, you can either add a new mapping there or pass a custom `shape_file` in the config JSON.
+
+---
+
+### Step 2. Prepare a hardware JSON
+
+Hardware descriptions are typically placed under `src/examples/`, although any path is fine as long as the config points to it.
 
 The hardware JSON can be wrapped as either `{"hardware": ...}` or `{"cluster": ...}`. The parser accepts two major topology styles:
 
@@ -184,9 +236,9 @@ A minimal example looks like this:
 
 ---
 
-### Step 2. Prepare `evaluate_config.json`
+### Step 3. Prepare `evaluate_config.json`
 
-A representative config looks like this:
+A representative fast-mode evaluation config looks like this:
 
 ```json
 {
@@ -199,121 +251,130 @@ A representative config looks like this:
   "decode_sample_stride": 2,
   "decode_plan_refresh_stride": 2,
   "pim_config_path": "./aim_simulator/PIM_AiM.json",
-  "gb_config_path": "./aim_simulator/gb.json",
   "ramulator_config_path": "./aim_simulator/example.yaml",
-  "result_dir": "./output/evaluate_single_test/",
+  "result_dir": "./output/evaluate_single_test/hardware_1npu_2aim_evaluate_eta0p1/",
   "hardware_json": "./examples/hardware_1npu_2aim.json",
-  "algo": ["bifocal"],
-  "baselines": ["pd"],
+  "algo": ["Bifocal"],
+  "baselines": ["PD"],
   "tp_qkv": 2,
   "tp_ffn": 2,
-  "npu_backend": "lut",
+  "npu_backend": "fast",
+  "pim_fast_mode": true,
   "dump_graph": false,
-  "dump_graph_dir": "./output/graph_dumps",
+  "dump_graph_dir": "./output/evaluate_single_test/hardware_1npu_2aim/graph_dumps",
   "pim_weight_load_overlap_ratio": 0.0,
   "weight_load_compute_overlap_ratio": 0.0
 }
 ```
 
+A few details are easy to miss:
+
+- `algo` and `baselines` now use the **paper-aligned names** such as `Bifocal`, `HEFT`, `PD`, `AF`, `PD+Linear`, `PD+Attn`, and `PD+FFN`.
+- `npu_backend` should usually be `fast` in the JSON or `fast_mode` on the CLI for the analytical default path.
+- `pim_fast_mode: true` enables the analytical PIM path. In this mode, `pim_config_path` and `ramulator_config_path` may remain in the config, but they are only required when you switch back to trace-based PIM.
+- Relative paths in the config are resolved relative to the config JSON first, then `src/`, then the current working directory.
+
 > 📘 For the meaning of each key, see the [Configuration Reference](./docs/CONFIG_REFERENCE.md).
 
 ---
 
-### Step 3. Run the Bifocal scheduler
+### Step 4. Run `evaluate`
+
+From the project root, you can use either the wrapper script or the Python CLI directly.
+
+**Wrapper script:**
 
 ```bash
-cd algorithms
+bash commands/command_single_evaluate.sh
+```
 
-python main.py evaluate \
-  --config ./examples/evaluate_test_config.json \
+**Direct CLI:**
+
+```bash
+python src/main.py evaluate \
+  --config src/examples/evaluate_test_config.json \
   --npu_backend fast_mode \
   --pim_fast_mode \
   --debug
 ```
 
-This command runs the full scheduling and evaluation flow. In order, it:
+This flow:
 
-1. loads the model shape card (or your custom `shape_file`),
+1. loads the model shape card from `configs/`,
 2. validates tensor-parallel settings,
 3. builds the execution DAG for prefill and decode,
-4. loads the hardware JSON and instantiates the device/link topology,
-5. builds the cost model with the selected NPU backend and PIM mode,
-6. runs the requested dynamic scheduler(s) and static baseline(s),
-7. exports per-policy schedules, traces, and summaries, and
-8. writes one combined comparison JSON for downstream plotting.
+4. loads the hardware JSON and instantiates devices / links,
+5. builds the cost model for the selected NPU backend and PIM mode,
+6. runs the requested scheduler(s) and baseline(s), and
+7. exports summaries plus raw op / communication traces.
 
 #### 📂 Typical output layout
 
-The run directory is automatically named as:
+A representative output tree from the bundled fast-mode example is:
+
+```text
+src/examples/output/evaluate_single_test/hardware_1npu_2aim_evaluate_eta0p1/
+└── llama_7b_fp16_b1_s1/
+    ├── baseline_compare_<prefill>x<decode>.json
+    ├── driver_debug.txt
+    ├── algo_PD/
+    │   ├── best_summary_<prefill>x<decode>.json
+    │   ├── PD_linear_prefill-<prefill>xdecode_<decode>_ops_trace.csv
+    │   ├── PD_linear_prefill-<prefill>xdecode_<decode>_comms_trace.csv
+    │   └── pim_sim_<prefill>x<decode>.txt
+    └── algo_Bifocal/
+        ├── best_summary_<prefill>x<decode>.json
+        ├── Bifocal_linear_prefill-<prefill>xdecode_<decode>_ops_trace.csv
+        ├── Bifocal_linear_prefill-<prefill>xdecode_<decode>_comms_trace.csv
+        └── pim_sim_<prefill>x<decode>.txt
+```
+
+The run directory itself is named automatically as:
 
 ```text
 <result_root>/<family>_<variant>_<dtype>_b<batch>[_s<refresh_stride>]/
 ```
 
-A representative `evaluate` output tree looks like this:
-
-```text
-<result_dir>/
-├── baseline_compare_<prefill>x<decode>.json
-├── driver_debug.txt
-├── algo_pd/
-│   ├── best_summary_<prefill>x<decode>.json
-│   ├── debug_<prefill>x<decode>.txt
-│   ├── pd_prefill-<prefill>xdecode_<decode>_ops_trace.csv
-│   ├── pd_prefill-<prefill>xdecode_<decode>_comms_trace.csv
-│   └── pim_sim_<prefill>x<decode>.txt
-├── algo_xxxx/
-│   └── ...
-└── algo_bifocal/
-    ├── best_summary_<prefill>x<decode>.json
-    ├── debug_<prefill>x<decode>.txt
-    ├── hefthint_prefill-<prefill>xdecode_<decode>_ops_trace.csv
-    ├── hefthint_prefill-<prefill>xdecode_<decode>_comms_trace.csv
-    └── pim_sim_<prefill>x<decode>.txt
-```
-
-Exact filenames can vary slightly when you add custom artifact tags or storage-mode tags, but the overall structure stays the same.
-
 #### 🔍 How to read the results
 
-- **`baseline_compare_*.json`** is the easiest file to consume in scripts. It stores the top-level config and a flat list of results, each with `prefill_time_s`, `decode_time_s`, and `total_time_s`.
-- **`algo_<policy>/best_summary_*.json`** contains the richer schedule export for one policy. It typically records the chosen KV policy, the serialized prefill schedule, sampled decode schedules, and pointers to generated trace files.
-- **`*_ops_trace.csv`** contains operator execution events with device assignment, timing, and weight-stage details. It is the main input for timeline visualizers and overlap-breakdown tools.
-- **`*_comms_trace.csv`** contains inter-device communication events and is useful when studying topology bottlenecks or collective overhead.
+- **`baseline_compare_*.json`** is the top-level comparison file. It is the easiest artifact for scripts that only need `prefill_time_s`, `decode_time_s`, and `total_time_s`.
+- **`algo_<policy>/best_summary_*.json`** stores the richer schedule export for one policy, including serialized schedules and trace pointers.
+- **`*_ops_trace.csv`** stores raw operator execution events with device assignment and timing.
+- **`*_comms_trace.csv`** stores raw communication events between devices.
+- **`pim_sim_*.txt`** stores the PIM-side runtime log for that run.
 
 #### ✅ What you can do with `evaluate`
 
 `evaluate` is the right mode for:
 
-- comparing **Bifocal (`hefthint`)** against **PD**, **AF-style attention offload**, **IANUS-inspired**, **FACIL-inspired**, **AttAcc-inspired**, and other baselines,
-- running **hardware-scaling studies** by swapping `hardware_json` files,
-- generating **schedule traces** for downstream visualization, and
-- studying how performance changes with **batch size**, **prefill length**, **decode length**, and **TP sharding**.
+- comparing `Bifocal` or `HEFT` against baselines such as `PD`, `AF`, `PD+Linear`, `PD+Attn`, `PD+FFN`, and `NeuPIMs`,
+- running hardware-scaling studies by swapping `hardware_json`,
+- generating raw traces for downstream visualization, and
+- studying the effect of batch size, prefill length, decode length, and TP settings.
 
 ---
 
-### Step 4. Run the Weight Layout Arbiter
+### Step 5. Run `weight-suggest` (optional)
+
+Use this mode when you want to search for a blockwise persistent-weight layout on top of the scheduling flow.
+
+**Wrapper script:**
 
 ```bash
-cd algorithms
+bash commands/command_single_weight.sh
+```
 
-python main.py weight-suggest \
-  --config ./examples/evaluate_test_config.json \
+**Direct CLI:**
+
+```bash
+python src/main.py weight-suggest \
+  --config src/examples/weight_suggest_test_config.json \
   --npu_backend fast_mode \
   --pim_fast_mode \
   --debug
 ```
 
-This mode runs the paper’s **Weight Layout Arbiter** on top of the scheduling flow. At a high level, it:
-
-1. groups persistent weights into stable blocks,
-2. starts from a default storage mode (the current implementation treats `ND` / Linear as the default),
-3. evaluates schedules under that layout,
-4. performs an **outer dominance-assignment** update using block reload pressure,
-5. performs an **inner targeted-refinement** update for blocks that still disagree with observed loading behavior, and
-6. saves the best blockwise storage map and comparison reports.
-
-#### 📂 Typical output layout
+Typical artifacts are:
 
 ```text
 <result_dir>/
@@ -326,23 +387,7 @@ This mode runs the paper’s **Weight Layout Arbiter** on top of the scheduling 
 └── pim_sim_<tag>.txt
 ```
 
-#### 🔍 How to read the results
-
-- **`all_passes_*.json`** records the entire search history. Use it when you want to inspect every outer or inner iteration, not just the final answer.
-- **`best_summary_*.json`** stores the best pass, best times, best schedule exports, and the improvement relative to other passes.
-- **`weight_storage_suggestion_*.json`** stores the compact blockwise format map.
-- **`weight_storage_suggestion_*_full.json`** expands the blockwise decision to a per-weight map, which is convenient if you want to feed the result into another toolchain.
-- **`weight_storage_suggestion_*_compare.json`** compares the searched layout against built-in fixed references such as `PD + Linear`, `PD + DUAL`, `hefthint + Linear`, and `hefthint + DUAL`.
-- **`weight_suggest_al_debug.txt`** is the most useful file for debugging the arbiter itself. It logs initialization, outer-stage updates, accepted inner flips, and stop conditions.
-
-#### ✅ What you can do with `weight-suggest`
-
-This mode is the right choice when you want to study:
-
-- **Linear vs. optimized weight-layout comparisons**,
-- **mixed blockwise layout search** instead of a single global storage rule,
-- **iteration traces** that show where the arbiter converges, and
-- the interaction between **weight layout** and **dynamic scheduling** under the same workload/hardware setting.
+Use `weight-suggest` when you want to compare a fixed global layout against a searched blockwise layout under the same workload and hardware setting.
 
 ---
 
@@ -350,40 +395,58 @@ This mode is the right choice when you want to study:
 
 ```text
 .
-├── algorithms/      # Main implementation of DOPS
-│   ├── main.py                              # Main CLI entry point. Supports `evaluate` and `weight-suggest`.
-│   ├── model_parser.py                      # Loads shape cards, validates tensor-parallel settings, builds the DAG, and applies optimization annotations.
-│   ├── model_definition.py                  # Defines decoder-only graph construction logic, including attention/FFN subgraphs, TP sharding, and collectives such as reduce, scatter, and all-reduce.
-│   ├── task_graph.py                        # Core graph data structures.
-│   ├── hardware.py                          # Parses hardware JSON files, normalizes topology, builds device/link objects, and checks PIM capacity consistency against the address map.
-│   ├── cost_model.py                        # Unified runtime model. Handles compute, memory, communication, weight loading, format conversion, cache behavior, and backend dispatch.
-│   ├── cost_model_npu_ascend_backend.py     # LUT-based NPU backend for Ascend-style operator latency lookup/interpolation.
-│   ├── cost_model_npu_llmcompass_backend.py # Optional LLMCompass integration for NPU operator estimation.
-│   ├── cost_model_pim_backend.py            # PIM backend helpers, trace generation, Ramulator2 integration, and shared PIM model-dictionary construction.
-│   ├── scheduler.py                         # Aggregates available scheduler classes.
-│   ├── scheduler_heft.py                    # Baseline HEFT scheduler.
-│   ├── scheduler_heft_commaware.py          # Bifocal scheduling flow.
-│   ├── scheduler_naive.py                   # Simple topology/order baseline scheduler.
-│   ├── scheduler_common.py                  # Shared scheduling utilities, hint logic, buffer/cache interaction, communication accounting, and trace/stat collection.
-│   ├── scheduler_comm.py                    # Communication-related scheduling helpers.
-│   ├── comm_primitives.py                   # Collective communication primitives and topology-aware transfer helpers.
-│   ├── buffer_manager.py                    # Global memory manager and LRU-style cache abstractions.
-│   ├── plan_label.py                        # Metadata carrier for KV placement, PIM capacity, pinned weights, and trace artifacts.
-│   ├── optimizations.py                     # Optional graph annotations for quantization, weight sparsity, activation sparsity, and attention sparsity.
-│   ├── stats_recorder.py                    # Writes raw op/comm traces and overlap summaries.
-│   ├── weight_stage_trace_tools.py          # Post-processes op traces into weight-stage summaries grouped by phase, device type, or operator.
-│   ├── weight_stage_models.py               # Utility functions for overlap-ratio modeling.
-│   ├── runtime_models/                      # Packaged runtime tables.
-│   ├── examples/                            # Example configs and hardware descriptions used by `main.py evaluate` and `main.py weight-suggest`.
-│   ├── aim_simulator/                       # Example AiM/PIM config files used by the trace-based PIM path.
-│   ├── pkl/                                 # Cached latency/model artifacts for PIM trace execution.
-│   ├── sweep_*.py                           # Sweep-related scripts.
-│   ├── *.sh                                 # Shell scripts.
-│   └── *.slurm                              # Slurm job scripts.
-├── configs/         # Model shape cards (Llama, Qwen, Mixtral, ...)
-├── experiment/      # Paper-figure scripts and interactive schedule visualization
-├── measurements/    # Microbenchmarks, profiling utilities, LUT-generation scripts
-└── submodules/      # External backends such as LLMCompass and CENT / Ramulator-based flows
+├── src/                                 # Main implementation of DOPS
+│   ├── main.py                          # CLI entry point. Supports `evaluate` and `weight-suggest`.
+│   ├── mainlib/                         # High-level workflow logic for CLI parsing, evaluation, simulation, and storage helpers.
+│   ├── scheduler/                       # Scheduler package.
+│   │   ├── scheduler_base.py            # Shared timing / placement machinery used by all schedulers.
+│   │   ├── scheduler_bifocal.py         # Bifocal scheduler.
+│   │   ├── scheduler_heft.py            # HEFT scheduler.
+│   │   ├── scheduler_naive.py           # Simple topology/order baseline scheduler.
+│   │   ├── scheduler_common.py          # Shared scheduling helpers.
+│   │   ├── scheduler_comm.py            # Communication-related scheduling helpers.
+│   │   └── scheduler_types.py           # Shared scheduler-side type definitions.
+│   ├── cost_model.py                    # Unified cost-model entry point.
+│   ├── costmodel_impl/                  # Backend-specific and mixin-based cost-model implementation.
+│   │   ├── cost_model_npu_ascend_backend.py
+│   │   ├── cost_model_npu_llmcompass_backend.py
+│   │   ├── cost_model_pim_backend.py
+│   │   ├── compute_mixin.py
+│   │   ├── estimate_mixin.py
+│   │   ├── runtime_mixin.py
+│   │   ├── npu_backends.py
+│   │   ├── pim_backends.py
+│   │   └── shared.py
+│   ├── model_parser.py                  # Loads shape cards, validates TP settings, and builds the execution DAG.
+│   ├── model_definition.py              # Decoder-only graph construction logic.
+│   ├── task_graph.py                    # Core graph data structures.
+│   ├── hardware.py                      # Hardware / topology parser and validator.
+│   ├── buffer_manager.py                # Global memory manager and cache abstractions.
+│   ├── comm_primitives.py               # Collective communication primitives and transfer helpers.
+│   ├── plan_label.py                    # Metadata carrier for KV placement and trace artifacts.
+│   ├── optimizations.py                 # Optional graph annotations such as quantization and sparsity.
+│   ├── stats_recorder.py                # Writes raw op / communication traces.
+│   ├── runtime_models/                  # Packaged analytical runtime tables.
+│   ├── examples/                        # Example configs and hardware descriptions.
+│   ├── aim_simulator/                   # Example AiM / Ramulator config files for trace-based PIM mode.
+│   ├── pkl/                             # Cached latency/model artifacts.
+│   ├── run_bifocal.py                   # Python entry script for Bifocal sweeps / studies.
+│   ├── sweep_bifocal.py                 # Python sweep helper still used by the HPC launcher.
+│   └── sweep_weight_suggest_params.py   # Weight-layout sweep helper.
+├── commands/                            # Shell launchers and command-oriented sweep drivers.
+│   ├── command_single_evaluate.sh
+│   ├── command_single_weight.sh
+│   ├── run_hpc_sweep_bifocal.sh
+│   ├── run_hpc_sweep_bifocal_all.sh
+│   ├── run_hpc_sweep_weight_suggest.sh
+│   ├── sweep_models_npu.sh
+│   ├── sweep_models_npu_aim_evaluate.sh
+│   ├── sweep_models_scale_down_evaluate.sh
+│   └── sweep_bifocal_all_params.py
+├── configs/                             # Model shape cards resolved by `src/model_parser.py`.
+├── experiment/                          # Paper-figure scripts and interactive schedule visualization.
+├── measurements/                        # Microbenchmarks, profiling utilities, LUT-generation scripts.
+└── submodules/                          # Optional external backends such as LLMCompass and CENT / Ramulator flows.
 ```
 
 ---
@@ -393,33 +456,33 @@ This mode is the right choice when you want to study:
 ### Add a new model
 
 1. Add a shape JSON under `configs/`.
-2. Register it in `algorithms/model_parser.py` (`FILE_MAP`).
-3. Extend `algorithms/model_definition.py` if the graph structure differs from existing decoder families.
+2. Register it in `src/model_parser.py` (`FILE_MAP`).
+3. Extend `src/model_definition.py` if the graph structure differs from existing decoder families.
 4. If the model has MoE-specific behavior, also check the `tp_moe` path and any expert-routing assumptions.
 
 ### Add a new hardware target
 
-1. Create a new hardware JSON under `algorithms/examples/`.
+1. Create a new hardware JSON under `src/examples/`.
 2. Make sure device names, capacities, and topology are consistent with the backend you want to use.
 3. For PIM devices, make sure `pim_memory.addr_map` matches `mem_capacity_GB`.
 4. Pass the file through `--hardware_json` or set it in the config JSON.
 
 ### Add a new scheduler or baseline
 
-- **New scheduler**: implement it in `algorithms/scheduler_*.py`, export it through `algorithms/scheduler.py`, and wire it into `_make_scheduler()` in `algorithms/main.py`.
-- **New baseline**: register it in `_BASELINE_REGISTRY` in `algorithms/main.py` with the `@register_baseline(...)` decorator.
+- **New scheduler**: implement it under `src/scheduler/`, export it through `src/scheduler/__init__.py`, and wire it into the scheduler factory in `src/mainlib/`.
+- **New baseline**: register it in `src/mainlib/baselines.py` with the `@register_baseline(...)` decorator.
 
 ### Add a new NPU or PIM backend
 
-- Extend the backend logic in `algorithms/cost_model.py`.
-- Add a new NPU backend in `algorithms/cost_model_npu_*.py` or a new PIM path in `algorithms/cost_model_pim_backend.py`.
-- Place supporting tables under `algorithms/runtime_models/` when needed.
+- Extend the backend logic in `src/cost_model.py`.
+- Add a new NPU backend under `src/costmodel_impl/` or a new PIM path in `src/costmodel_impl/cost_model_pim_backend.py`.
+- Place supporting tables under `src/runtime_models/` when needed.
 
 ### Add a new optimization annotation
 
 If you want to model a new graph-side optimization such as another quantization or sparsity scheme, the main entry point is:
 
-- `algorithms/optimizations.py`
+- `src/optimizations.py`
 
 This file already contains the parsing and graph-annotation flow for quantization, weight sparsity, activation sparsity, and attention sparsity.
 
@@ -473,7 +536,6 @@ The browser demo is designed to visualize **simulated CSV traces** generated by 
 
 - `*_ops_trace.csv`
 - `*_comms_trace.csv`
-- derived weight-stage summary CSV/JSON files
 
 These files are generated by `evaluate`, so the typical workflow is to run a simulation first and then load the produced CSVs into the demo.
 
