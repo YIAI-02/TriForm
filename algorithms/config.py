@@ -34,7 +34,7 @@ NPU_WEIGHT_TARGET_FORMAT_BY_OP = {
 # Format size multipliers (alignment/packing overhead modeling)
 FORMAT_SIZE_MULTIPLIER = {
     "ND": 1.0,
-    "NZ": 0.9,
+    "NZ": 0.95,
     "ZN": 1.0,
     "ZZ": 1.0,
     "PIM-OPT": 1.0,

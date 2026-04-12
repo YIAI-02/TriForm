@@ -1,14 +1,26 @@
+<div align="center">
+
 # DOPS: Dynamic OPerator Sorting for Heterogeneous NPU–PIM LLM Inference
 
-DOPS is a simulation and analysis framework for studying decoder-only LLM inference on heterogeneous **NPU–PIM** platforms. It accompanies the paper **Beyond Prefill-Decode Partition: Dissecting LLM Inference for Heterogeneous Platforms via Dynamic OPerator Sorting** and provides a practical codebase for computation-graph construction, hardware abstraction, runtime modeling, scheduling, weight-layout search, trace export, and result analysis.
+<p>
+  <a href="./docs/framework.pdf">
+    <img src="./docs/framework_preview.png" alt="DOPS framework overview" width="980" />
+  </a>
+</p>
+
+<p><em>📄 Click the framework figure above to open the PDF version in <code>./docs/framework.pdf</code>.</em></p>
+
+DOPS is a simulation and analysis framework for studying decoder-only LLM inference on heterogeneous **NPU–PIM** platforms. It accompanies the paper **Beyond Prefill-Decode Disaggregation: Dissecting LLM Inference for Heterogeneous Platforms via Dynamic OPerator Scheduling** and provides a practical codebase for computation-graph construction, hardware abstraction, runtime modeling, scheduling, weight-layout search, trace export, and result analysis.
 
 **Quick links:** [Demo video](https://vimeo.com/1178735972) · [Configuration Reference](./docs/CONFIG_REFERENCE.md)
 
+</div>
+
 ---
 
-## Overview
+## ✨ Overview
 
-DOPS is built around a closed loop with three inputs:
+> DOPS is built around a closed loop with three inputs:
 
 1. an **LLM model card**,
 2. a **hardware abstraction** of the target heterogeneous system, and
@@ -17,36 +29,22 @@ DOPS is built around a closed loop with three inputs:
 From these inputs, DOPS:
 
 - builds a stage-aware execution DAG for prefill and decode,
+
 - instantiates **performance models** and **communication topology models**,
+
 - searches for a dynamic operator-to-device mapping using the **Bifocal scheduler**,
+
 - optionally searches for a blockwise persistent-weight layout using the **Weight Layout Arbiter**, and
+
 - exports schedules, traces, and summary JSON files for downstream comparison and visualization.
 
-At a high level, DOPS follows the workflow below.
-
-```mermaid
-flowchart LR
-    A[LLM model card<br/>+ optimization annotations] --> D[Computation Graph Builder]
-    B[Hardware abstraction<br/>NPU / PIM / links / capacities] --> D
-    C[Workload configuration<br/>batch / prefill / decode / TP / search knobs] --> D
-
-    D --> E[Performance model<br/>+ communication topology]
-    E --> F[Bifocal scheduler]
-    E --> G[Weight Layout Arbiter]
-
-    F --> H[Operator placement<br/>and execution timeline]
-    G --> I[Blockwise weight-layout map]
-
-    H --> J[Simulated latency / traces]
-    I --> J
-    J --> K[Verify / deploy / compare]
-```
+  
 
 ---
 
-## Dependencies
+## 🧰 Dependencies
 
-Recommended Python version: **3.10+**
+> ✅ Recommended Python version: **3.10+**
 
 ### Minimal installation for the core CLI flow
 
@@ -74,15 +72,15 @@ These are only needed for specific backends or reproduction workflows.
 
 ---
 
-## Quick Start
+## 🚀 Quick Start
 
-### 1. Enter the main implementation directory
+### 1️⃣ Enter the main implementation directory
 
 ```bash
 cd algorithms
 ```
 
-### 2. Run the example evaluation
+### 2️⃣ Run the example evaluation
 
 ```bash
 python main.py evaluate \
@@ -92,7 +90,7 @@ python main.py evaluate \
   --debug
 ```
 
-### 3. Inspect the outputs
+### 3️⃣ Inspect the outputs
 
 DOPS writes run artifacts under the output directory specified in the config, for example:
 
@@ -107,11 +105,11 @@ Typical outputs include:
 - operator traces, and
 - communication traces.
 
-For a field-by-field explanation of the hardware and evaluation JSON files, see the [Configuration Reference](./docs/CONFIG_REFERENCE.md).
+> 📘 For a field-by-field explanation of the hardware and evaluation JSON files, see the [Configuration Reference](./docs/CONFIG_REFERENCE.md).
 
 ---
 
-## Complete Workflow
+## 🔄 Complete Workflow
 
 ### Step 1. Prepare a hardware JSON
 
@@ -177,16 +175,16 @@ A minimal example looks like this:
 }
 ```
 
-For the meaning of each key, see the [Configuration Reference](./docs/CONFIG_REFERENCE.md).
+> 📘 For the meaning of each key, see the [Configuration Reference](./docs/CONFIG_REFERENCE.md).
 
-#### Practical guidance
+#### 💡 Practical guidance
 
 - Use **one CPU host** to model shared memory or host-side routing even if you do not schedule much work on CPU.
 - For every **PIM** device, make sure `mem_capacity_GB` matches the capacity implied by `pim_memory.addr_map`; the parser validates this and raises an error if they disagree.
 
 ---
 
-### Step 2. Prepare `evaluate_test_config.json`
+### Step 2. Prepare `evaluate_config.json`
 
 A representative config looks like this:
 
@@ -217,7 +215,7 @@ A representative config looks like this:
 }
 ```
 
-For the meaning of each key, see the [Configuration Reference](./docs/CONFIG_REFERENCE.md).
+> 📘 For the meaning of each key, see the [Configuration Reference](./docs/CONFIG_REFERENCE.md).
 
 ---
 
@@ -244,7 +242,7 @@ This command runs the full scheduling and evaluation flow. In order, it:
 7. exports per-policy schedules, traces, and summaries, and
 8. writes one combined comparison JSON for downstream plotting.
 
-#### Typical output layout
+#### 📂 Typical output layout
 
 The run directory is automatically named as:
 
@@ -266,7 +264,7 @@ A representative `evaluate` output tree looks like this:
 │   └── pim_sim_<prefill>x<decode>.txt
 ├── algo_xxxx/
 │   └── ...
-└── algo_hefthint/
+└── algo_bifocal/
     ├── best_summary_<prefill>x<decode>.json
     ├── debug_<prefill>x<decode>.txt
     ├── hefthint_prefill-<prefill>xdecode_<decode>_ops_trace.csv
@@ -276,14 +274,14 @@ A representative `evaluate` output tree looks like this:
 
 Exact filenames can vary slightly when you add custom artifact tags or storage-mode tags, but the overall structure stays the same.
 
-#### How to read the results
+#### 🔍 How to read the results
 
 - **`baseline_compare_*.json`** is the easiest file to consume in scripts. It stores the top-level config and a flat list of results, each with `prefill_time_s`, `decode_time_s`, and `total_time_s`.
 - **`algo_<policy>/best_summary_*.json`** contains the richer schedule export for one policy. It typically records the chosen KV policy, the serialized prefill schedule, sampled decode schedules, and pointers to generated trace files.
 - **`*_ops_trace.csv`** contains operator execution events with device assignment, timing, and weight-stage details. It is the main input for timeline visualizers and overlap-breakdown tools.
 - **`*_comms_trace.csv`** contains inter-device communication events and is useful when studying topology bottlenecks or collective overhead.
 
-#### What you can do with `evaluate`
+#### ✅ What you can do with `evaluate`
 
 `evaluate` is the right mode for:
 
@@ -315,7 +313,7 @@ This mode runs the paper’s **Weight Layout Arbiter** on top of the scheduling 
 5. performs an **inner targeted-refinement** update for blocks that still disagree with observed loading behavior, and
 6. saves the best blockwise storage map and comparison reports.
 
-#### Typical output layout
+#### 📂 Typical output layout
 
 ```text
 <result_dir>/
@@ -328,7 +326,7 @@ This mode runs the paper’s **Weight Layout Arbiter** on top of the scheduling 
 └── pim_sim_<tag>.txt
 ```
 
-#### How to read the results
+#### 🔍 How to read the results
 
 - **`all_passes_*.json`** records the entire search history. Use it when you want to inspect every outer or inner iteration, not just the final answer.
 - **`best_summary_*.json`** stores the best pass, best times, best schedule exports, and the improvement relative to other passes.
@@ -337,7 +335,7 @@ This mode runs the paper’s **Weight Layout Arbiter** on top of the scheduling 
 - **`weight_storage_suggestion_*_compare.json`** compares the searched layout against built-in fixed references such as `PD + Linear`, `PD + DUAL`, `hefthint + Linear`, and `hefthint + DUAL`.
 - **`weight_suggest_al_debug.txt`** is the most useful file for debugging the arbiter itself. It logs initialization, outer-stage updates, accepted inner flips, and stop conditions.
 
-#### What you can do with `weight-suggest`
+#### ✅ What you can do with `weight-suggest`
 
 This mode is the right choice when you want to study:
 
@@ -348,7 +346,7 @@ This mode is the right choice when you want to study:
 
 ---
 
-## Repository Layout
+## 🗂️ Repository Layout
 
 ```text
 .
@@ -390,7 +388,7 @@ This mode is the right choice when you want to study:
 
 ---
 
-## How to Extend the Framework
+## 🛠️ How to Extend the Framework
 
 ### Add a new model
 
@@ -427,7 +425,7 @@ This file already contains the parsing and graph-annotation flow for quantizatio
 
 ---
 
-## Visualization
+## 📊 Visualization
 
 ### `experiment/experiment_fig/`
 

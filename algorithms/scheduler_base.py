@@ -1390,16 +1390,35 @@ class SchedulerBase:
             out_nd = max(int(out_write_nd), int(out_read_nd))
 
             # ---- Activation residency / spill policy ----
-            keep_local = False
+            # Pure 1-NPU (no PIM) prefill can otherwise retain too many activations
+            # on the sole NPU, leaving no room for the next layer's weight load.
+            # In that topology, prefer host spill over local activation residency.
+            force_host_spill = False
             try:
-                keep_local = bool(self.buffer.pim_reserve_activation(dev.name, out_nd, commit=False))
+                force_host_spill = (
+                    str(getattr(dev, "type", "") or "").lower() == "npu"
+                    and str(phase_eff or "").lower() == "prefill"
+                    and len(self.cluster.devices_by_type("npu") or []) == 1
+                    and len(self.cluster.devices_by_type("pim") or []) == 0
+                )
             except Exception:
-                keep_local = False
+                force_host_spill = False
+
+            keep_local = False
+            if not force_host_spill:
+                try:
+                    keep_local = bool(
+                        self.buffer.pim_reserve_activation(dev.name, out_nd, commit=False)
+                    )
+                except Exception:
+                    keep_local = False
 
             if keep_local:
                 ok = False
                 try:
-                    ok = bool(self.buffer.pim_reserve_activation(dev.name, out_nd, commit=True))
+                    ok = bool(
+                        self.buffer.pim_reserve_activation(dev.name, out_nd, commit=True)
+                    )
                 except Exception:
                     ok = False
 

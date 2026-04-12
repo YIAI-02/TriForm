@@ -17,7 +17,7 @@
         "type": "npu",
         "tflops": 280.0,
         "mem_bw_GBs": 819.2,
-        "mem_capacity_GB": 32.0
+        "mem_capacity_GB": 16.0
       },
       {
         "name": "PIM0",
@@ -66,17 +66,17 @@
       {
         "a": "CPU0",
         "b": "PIM0",
-        "bw_GBs": 32.0
+        "bw_GBs": 62.0
       },
       {
         "a": "CPU0",
         "b": "PIM1",
-        "bw_GBs": 32.0
+        "bw_GBs": 62.0
       },
       {
         "a": "CPU0",
         "b": "NPU0",
-        "bw_GBs": 32.0
+        "bw_GBs": 62.0
       }
     ],
     "link_defaults": {

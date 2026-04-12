@@ -30,7 +30,5 @@
   "format_nd_margin_decay": 0.85,
   "format_nd_margin_min": 0.01,
   "format_reload_count_mode": "soft_per_device",
-  "format_reload_device_count_alpha": 0.16,
-  "pim_weight_load_overlap_ratio": 0.0,
-  "weight_load_compute_overlap_ratio": 0.0
+  "format_reload_device_count_alpha": 0.16
 }

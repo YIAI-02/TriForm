@@ -11,8 +11,6 @@ OUTPUT_ROOT="${OUTPUT_ROOT:-./output/exp1}"
 # Sweep dims
 MODEL_FAMILY_VARIANTS=(
   # "mixtral:8x7b"
-  # "palm:8b"
-  # "palm:62b"
   "qwen:1.8b"
   # "qwen:7b"
   # "qwen:14b"
