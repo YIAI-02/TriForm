@@ -80,6 +80,37 @@ class CostModelComputeMixin:
         weight_bytes = int(self.weight_storage_bytes(int(getattr(node, 'weight_size', 0) or 0), str(resident_weight_fmt)))
         return int(max(0, weight_bytes) + max(0, int(rd or 0)) + max(0, int(wr or 0)))
 
+    def _npu_fast_internal_load_time(
+        self,
+        node: TaskNode,
+        dev: DeviceSpec,
+        batch: int,
+        seq_len: int,
+        phase: str,
+        *,
+        resident_weight_fmt: str,
+    ) -> float:
+        rd, wr = self.estimate_activation_bytes(node, batch, seq_len, phase)
+        weight_bytes = int(self.weight_storage_bytes(int(getattr(node, 'weight_size', 0) or 0), str(resident_weight_fmt)))
+        total_bytes = int(max(0, weight_bytes) + max(0, int(rd or 0)) + max(0, int(wr or 0)))
+        return float(self.mem_time(int(total_bytes), dev))
+
+    def _pim_fast_internal_load_time(
+        self,
+        node: TaskNode,
+        dev: DeviceSpec,
+        batch: int,
+        seq_len: int,
+        phase: str,
+        *,
+        resident_weight_fmt: str,
+    ) -> float:
+        rd, wr = self.estimate_activation_bytes(node, batch, seq_len, phase)
+        weight_bytes = int(self.weight_storage_bytes(int(getattr(node, 'weight_size', 0) or 0), str(resident_weight_fmt)))
+        read_bytes = int(max(0, weight_bytes) + max(0, int(rd or 0)))
+        write_bytes = int(max(0, int(wr or 0)))
+        return float(self.pim_mem_time(int(read_bytes), int(write_bytes), dev))
+
     def npu_weight_b2_time(self, node: TaskNode, dev: DeviceSpec, batch: int, seq_len: int, phase: str) -> float:
         self._ensure_backend_impls()
         ctx = self._make_npu_op_context(node, dev, batch, seq_len, phase, mem_s=0.0)
@@ -111,7 +142,17 @@ class CostModelComputeMixin:
         if dev_type == 'npu':
             self._ensure_backend_impls()
             compute_fmt = str(self.npu_weight_compute_format(node))
-            b1 = float(self.npu_weight_conversion_time(int(weight_size_nd), str(resident_weight_fmt), str(compute_fmt)))
+            if str(getattr(self, '_npu_backend_impl_name', '') or '').lower() == 'fast':
+                b1 = float(self._npu_fast_internal_load_time(
+                    node,
+                    dev,
+                    int(batch),
+                    int(seq_len),
+                    str(phase),
+                    resident_weight_fmt=str(resident_weight_fmt),
+                ))
+            else:
+                b1 = float(self.npu_weight_conversion_time(int(weight_size_nd), str(resident_weight_fmt), str(compute_fmt), dev=dev))
             b2 = float(self.npu_weight_b2_time(node, dev, batch, seq_len, phase))
             backend_name = str(getattr(self, '_npu_backend_impl_name', None) or getattr(self, 'npu_backend', '') or 'fast').lower()
             if backend_name == 'fast':
@@ -147,8 +188,14 @@ class CostModelComputeMixin:
             compute_fmt = 'PIM-OPT'
             op_key_ovh = _normalize_npu_op_key(str(getattr(node, 'name', '') or getattr(node, 'id', '') or ''))
             if bool(getattr(self, 'pim_fast_mode', False)):
-                internal_bytes = int(self._weighted_internal_load_bytes(node, batch, seq_len, phase, resident_weight_fmt=str(resident_weight_fmt or 'PIM-OPT')))
-                b1 = float(self.mem_time(int(internal_bytes), dev))
+                b1 = float(self._pim_fast_internal_load_time(
+                    node,
+                    dev,
+                    int(batch),
+                    int(seq_len),
+                    str(phase),
+                    resident_weight_fmt=str(resident_weight_fmt or 'PIM-OPT'),
+                ))
                 flops = float(self.estimate_flops(node, batch, seq_len, phase))
                 b2 = float(self.flop_time(flops, dev))
                 b1 *= float(time_scale)
@@ -628,7 +675,17 @@ class CostModelComputeMixin:
         if size_src_bytes <= 0:
             return 0.0
 
-        path, bw_root, ovh_root = self._runtime_model_device_sections(str(getattr(dev, 'type', '') or '').lower())
+        dev_type = str(getattr(dev, 'type', '') or '').strip().lower()
+        self._ensure_backend_impls()
+
+        # Fast-mode simplification: bypass all runtime-model format-conversion
+        # tables and assume no explicit format-conversion stage.
+        if dev_type == 'npu' and str(getattr(self, '_npu_backend_impl_name', '') or '').lower() == 'fast':
+            return 0.0
+        if dev_type == 'pim' and bool(getattr(self, 'pim_fast_mode', False)):
+            return 0.0
+
+        path, bw_root, ovh_root = self._runtime_model_device_sections(dev_type)
         bw_paths = bw_root.get('paths') if isinstance(bw_root.get('paths'), dict) else {}
         ovh_paths = ovh_root.get('paths') if isinstance(ovh_root.get('paths'), dict) else {}
         path_key = f'{src_fmt}->{dst_fmt}'

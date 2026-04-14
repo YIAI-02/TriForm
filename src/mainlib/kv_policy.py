@@ -79,7 +79,14 @@ def _build_cost_model_for_run(
     if _cluster_type_count(cluster, 'npu') <= 0:
         npu_backend = None
 
-    pim_fast_mode = bool(cfg.get('pim_fast_mode', False))
+    pim_fast_mode_cfg = cfg.get('pim_fast_mode', None)
+    if pim_fast_mode_cfg is None:
+        # Fast-mode simplification: when the run selects NPU fast backend and the
+        # cluster contains PIM devices, default PIM to the same hardware-only
+        # fast path unless the user explicitly overrides pim_fast_mode.
+        pim_fast_mode = bool(npu_backend == 'fast' and _cluster_type_count(cluster, 'pim') > 0)
+    else:
+        pim_fast_mode = bool(pim_fast_mode_cfg)
     return CostModel(
         cluster=cluster,
         dtype=cfg.get('dtype', 'fp16'),
@@ -455,6 +462,46 @@ def _normalize_npu_backend(backend):
         return 'llmcompass'
     raise ValueError(
         f"Unknown npu_backend='{backend}'. Expected one of: fast, ascend_310b_lut, ascend_310b_json, llmcompass"
+    )
+
+
+def _cfg_bool(value: Any, *, default: bool = False) -> bool:
+    if value is None:
+        return bool(default)
+    if isinstance(value, bool):
+        return bool(value)
+    if isinstance(value, (int, float)):
+        return bool(value)
+    s = str(value).strip().lower()
+    if s in ('1', 'true', 'yes', 'y', 'on'):
+        return True
+    if s in ('0', 'false', 'no', 'n', 'off', '', 'none', 'null'):
+        return False
+    return bool(default)
+
+
+def _weight_suggest_fast_mode_reasons(cfg: Dict) -> List[str]:
+    reasons: List[str] = []
+
+    if _normalize_npu_backend(cfg.get('npu_backend', None)) == 'fast':
+        reasons.append('npu_backend=fast')
+
+    if _cfg_bool(cfg.get('pim_fast_mode', None), default=False):
+        reasons.append('pim_fast_mode=true')
+
+    return reasons
+
+
+def _ensure_weight_suggest_supported(cfg: Dict) -> None:
+    reasons = _weight_suggest_fast_mode_reasons(cfg)
+    if not reasons:
+        return
+
+    raise ValueError(
+        "weight-suggest does not support fast mode. "
+        f"Detected: {', '.join(reasons)}. "
+        "Fast mode is evaluate-only; please use `evaluate`, or disable fast mode "
+        "by setting a non-fast `npu_backend` and `pim_fast_mode=false`."
     )
 
 def auto_select_kv_policy(

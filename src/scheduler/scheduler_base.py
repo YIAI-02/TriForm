@@ -977,9 +977,9 @@ class SchedulerBaseHelperMixin:
             l1_s = float('inf')
 
         if dev_type == 'pim':
-            l2_s = float(self.cost.pim_local_weight_load_time(int(wsize_nd), str(host_src_fmt)))
-            l2_write_only_s = float(self.cost.pim_local_weight_write_only_time(int(wsize_nd)))
-            l2_pack_only_est_s = float(self.cost.pim_local_weight_pack_only_est_time(int(wsize_nd), str(host_src_fmt)))
+            l2_s = float(self.cost.pim_local_weight_load_time(int(wsize_nd), str(host_src_fmt), dev=dev))
+            l2_write_only_s = float(self.cost.pim_local_weight_write_only_time(int(wsize_nd), dev=dev))
+            l2_pack_only_est_s = float(self.cost.pim_local_weight_pack_only_est_time(int(wsize_nd), str(host_src_fmt), dev=dev))
             load_join = overlap_time(float(l1_s), float(l2_s), self._pim_weight_load_overlap_ratio())
         elif dev_type == 'cpu':
             compute_fmt = str(self.cost.device_preferred_fmt(dev))
@@ -2084,9 +2084,9 @@ class SchedulerBaseTimingMixin:
         l1_s = max(0.0, float(l1e) - float(l1s))
 
         if dev_type == 'pim':
-            l2_s = float(self.cost.pim_local_weight_load_time(int(wsize_nd), str(host_src_fmt)))
-            l2_write_only_s = float(self.cost.pim_local_weight_write_only_time(int(wsize_nd)))
-            l2_pack_only_est_s = float(self.cost.pim_local_weight_pack_only_est_time(int(wsize_nd), str(host_src_fmt)))
+            l2_s = float(self.cost.pim_local_weight_load_time(int(wsize_nd), str(host_src_fmt), dev=dev))
+            l2_write_only_s = float(self.cost.pim_local_weight_write_only_time(int(wsize_nd), dev=dev))
+            l2_pack_only_est_s = float(self.cost.pim_local_weight_pack_only_est_time(int(wsize_nd), str(host_src_fmt), dev=dev))
             load_join = overlap_time(float(l1_s), float(l2_s), self._pim_weight_load_overlap_ratio())
         elif dev_type == 'cpu':
             compute_fmt = str(self.cost.device_preferred_fmt(dev))

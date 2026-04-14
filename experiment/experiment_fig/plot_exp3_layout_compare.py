@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-python plot_exp3_layout_compare_ttft.py \
-  --csv ../../algorithms/output/ws_high_npu_bw/results.csv \
+"""Compare layout-search variants using summary tables and trace files.
+
+Run this script from ``experiment/experiment_fig``. The CSV input should point
+to a table derived from the current weight-suggest workflow, and any trace-file
+lookups are resolved relative to the repository-level ``output/`` tree.
+
+Example
+-------
+python plot_exp3_layout_compare.py \
+  --csv ../../output/ws_high_npu_bw/results.csv \
   --outdir ../../figs/exp3/compare \
   --metrics total ttft \
   --fig-format png pdf \
@@ -76,13 +83,13 @@ class TraceStats:
 
 
 # Five fixed bars, in the requested order.
-# Last column uses the HEFT-hint dual best result.
+# Last column uses the Bifocal dual best result.
 BAR_SPECS: List[BarSpec] = [
-    BarSpec("pd_linear_initial", "PD\nlinear", "#bdade4", "pd_linear"),
-    BarSpec("pd_dual_copy_initial", "PD\ndual", "#e4adb5", "pd_dual"),
-    BarSpec("nd_initial", "ND\ninit", "#aee4ad", "nd_initial"),
-    BarSpec("nd_best", "ND\nbest", "#add9e4", "nd_best"),
-    BarSpec("hefthint_dual_copy_best", "HEFT\ndual\nbest", "#e4ddad", "hefthint_dual"),
+    BarSpec("PD+Linear_initial", "PD\nLinear", "#bdade4", "pd_linear"),
+    BarSpec("PD+Dual_initial", "PD\nDual", "#e4adb5", "pd_dual"),
+    BarSpec("Bifocal+Linear_initial", "Bifocal\nLinear\nInit", "#aee4ad", "bifocal_linear_initial"),
+    BarSpec("Bifocal+Linear_best", "Bifocal\nLinear\nBest", "#add9e4", "bifocal_linear_best"),
+    BarSpec("Bifocal+Dual_best", "Bifocal\nDual\nBest", "#e4ddad", "bifocal_dual"),
 ]
 
 REQUIRED_COLUMNS = [
@@ -339,11 +346,11 @@ def parse_args() -> argparse.Namespace:
             "Plot per-(model, batch) multi-panel figures from results.csv. "
             "Each panel is one (prefill_len, decode_len) pair, and each panel "
             "contains five touching bars: PD linear, PD dual, ND init, ND best, "
-            "and HEFT dual best. TTFT is inferred from *_ops_trace.csv."
+            "and Bifocal dual best. TTFT is inferred from *_ops_trace.csv."
         )
     )
     parser.add_argument("--csv", required=True, help="Path to results.csv")
-    parser.add_argument("--outdir", default="plots_pd_nd", help="Output directory")
+    parser.add_argument("--outdir", default="plots_layout_compare", help="Output directory")
     parser.add_argument(
         "--fig-format",
         nargs="+",
@@ -572,10 +579,10 @@ def compute_ylim(max_value: float) -> Tuple[float, float]:
     return (0.0, max_value * 1.24)
 
 
-def compute_nd_best_reduction_pct(nd_init: float, nd_best: float) -> float:
-    if not np.isfinite(nd_init) or nd_init <= 0 or not np.isfinite(nd_best):
+def compute_bifocal_linear_best_reduction_pct(initial_value: float, best_value: float) -> float:
+    if not np.isfinite(initial_value) or initial_value <= 0 or not np.isfinite(best_value):
         return float("nan")
-    return (nd_init - nd_best) / nd_init * 100.0
+    return (initial_value - best_value) / initial_value * 100.0
 
 
 def add_value_labels(ax: plt.Axes, bars, values: Sequence[float], fontsize: float = 8.1) -> None:
@@ -894,57 +901,55 @@ def score_path_for_role(path: Path, role: str, pair_tag: str) -> int:
         score += 100
 
     if role == "pd_linear":
-        if "algo_pd__pd_linear" in s:
+        if "pd+linear" in s or "pd_linear" in s or "pd-linear" in s:
             score += 70
-        if "pd_linear" in s:
+        if "pd_linear" in s or "pd+linear" in s or "pd-linear" in s:
             score += 60
         if "linear" in s:
             score += 10
-        if "hefthint" in s:
+        if "bifocal" in s:
             score -= 80
         if "dual" in s:
             score -= 15
 
     elif role == "pd_dual":
-        if "algo_pd__pd_dual_copy" in s:
+        if "pd+dual" in s or "pd_dual" in s or "pd-dual" in s:
             score += 70
-        if "pd_dual_copy" in s or "pd_dual" in s:
+        if "pd_dual_copy" in s or "pd_dual" in s or "pd+dual" in s or "pd-dual" in s:
             score += 60
         if "dual_copy" in s or "dual" in s:
             score += 10
-        if "hefthint" in s:
+        if "bifocal" in s:
             score -= 80
         if "linear" in s:
             score -= 15
 
-    elif role == "hefthint_linear":
-        if "hefthint_linear" in s:
+    elif role == "bifocal_linear":
+        if "bifocal_linear" in s or "bifocal+linear" in s or "bifocal-linear" in s:
             score += 80
-        if "hefthint" in s and "linear" in s:
+        if "bifocal" in s and "linear" in s:
             score += 60
-        if "algo_pd__" in s:
+        if "pd+" in s or "/algo_pd/" in s or "algo:pd" in s:
             score -= 60
         if "dual" in s and "linear" not in s:
             score -= 15
 
-    elif role == "hefthint_dual":
-        if "hefthint_dual" in s:
+    elif role == "bifocal_dual":
+        if "bifocal_dual" in s or "bifocal+dual" in s or "bifocal-dual" in s:
             score += 80
-        if "hefthint" in s and ("dual" in s or "dual_copy" in s):
+        if "bifocal" in s and ("dual" in s or "dual_copy" in s):
             score += 60
-        if "algo_pd__" in s:
+        if "pd+" in s or "/algo_pd/" in s or "algo:pd" in s:
             score -= 60
         if "linear" in s and "dual" not in s:
             score -= 15
 
-    elif role == "nd_best":
+    elif role == "bifocal_linear_best":
         if "best" in s:
             score += 30
-        if "nd" in s:
-            score += 20
         if "search" in s:
             score += 10
-        if "hefthint_linear" in s:
+        if "bifocal_linear" in s or "bifocal+linear" in s or "bifocal-linear" in s:
             score += 10
 
     if path.is_file():
@@ -1089,66 +1094,66 @@ def resolve_trace_for_role(
             return TraceResolution(path=path, source="filesystem:pd_dual")
         return TraceResolution(path=None, source="filesystem:pd_dual", warning="PD dual trace not found")
 
-    if role == "hefthint_dual":
-        path = choose_best_path_candidate(fs_candidates, role="hefthint_dual", pair_tag=pair_tag)
+    if role == "bifocal_dual":
+        path = choose_best_path_candidate(fs_candidates, role="bifocal_dual", pair_tag=pair_tag)
         if path is not None:
-            return TraceResolution(path=path, source="filesystem:hefthint_dual")
-        return TraceResolution(path=None, source="filesystem:hefthint_dual", warning="HEFT-hint dual trace not found")
+            return TraceResolution(path=path, source="filesystem:bifocal_dual")
+        return TraceResolution(path=None, source="filesystem:bifocal_dual", warning="Bifocal dual trace not found")
 
-    if role == "nd_initial":
+    if role == "bifocal_linear_initial":
         path = choose_best_json_candidate(
             json_candidates,
-            role="hefthint_linear",
+            role="bifocal_linear",
             pair_tag=pair_tag,
-            target_total=float(row.get("nd_initial", np.nan)),
+            target_total=float(row.get("Bifocal+Linear_initial", np.nan)),
             pass_hint=0,
             preferred_terms=["initial", "pass0", "pass_0", "baseline"],
         )
         if path is not None:
-            return TraceResolution(path=path, source="json:nd_initial")
+            return TraceResolution(path=path, source="json:bifocal_linear_initial")
 
-        path = choose_best_path_candidate(fs_candidates, role="hefthint_linear", pair_tag=pair_tag)
+        path = choose_best_path_candidate(fs_candidates, role="bifocal_linear", pair_tag=pair_tag)
         if path is not None:
             return TraceResolution(
                 path=path,
-                source="filesystem:hefthint_linear_fallback_for_nd_initial",
+                source="filesystem:bifocal_linear_fallback_for_initial",
             )
-        return TraceResolution(path=None, source="nd_initial", warning="ND initial trace not found")
+        return TraceResolution(path=None, source="bifocal_linear_initial", warning="Bifocal linear initial trace not found")
 
-    if role == "nd_best":
+    if role == "bifocal_linear_best":
         best_pass = _safe_int(row.get("best_pass", None))
-        target_total = float(row.get("nd_best", np.nan))
+        target_total = float(row.get("Bifocal+Linear_best", np.nan))
 
         # First try a dedicated best-pass trace from sidecar JSONs.
         path = choose_best_json_candidate(
             json_candidates,
-            role="nd_best",
+            role="bifocal_linear_best",
             pair_tag=pair_tag,
             target_total=target_total,
             pass_hint=best_pass,
-            preferred_terms=["best", "best_pass", "search", "nd_best"],
+            preferred_terms=["best", "best_pass", "search", "bifocal+linear_best", "bifocal_linear_best"],
         )
         if path is not None:
-            return TraceResolution(path=path, source="json:nd_best")
+            return TraceResolution(path=path, source="json:bifocal_linear_best")
 
         # Next try a linear hint trace directly from the artifacts tree.
-        path = choose_best_path_candidate(fs_candidates, role="nd_best", pair_tag=pair_tag)
+        path = choose_best_path_candidate(fs_candidates, role="bifocal_linear_best", pair_tag=pair_tag)
         if path is not None:
-            return TraceResolution(path=path, source="filesystem:nd_best")
+            return TraceResolution(path=path, source="filesystem:bifocal_linear_best")
 
-        path = choose_best_path_candidate(fs_candidates, role="hefthint_linear", pair_tag=pair_tag)
+        path = choose_best_path_candidate(fs_candidates, role="bifocal_linear", pair_tag=pair_tag)
         if path is not None:
             warn = (
-                "ND best trace was not found explicitly; falling back to hefthint-linear "
+                "Bifocal linear best trace was not found explicitly; falling back to bifocal-linear "
                 "ops trace for TTFT ratio."
             )
             return TraceResolution(
                 path=path,
-                source="filesystem:hefthint_linear_fallback_for_nd_best",
+                source="filesystem:bifocal_linear_fallback_for_best",
                 warning=warn,
             )
 
-        return TraceResolution(path=None, source="nd_best", warning="ND best trace not found")
+        return TraceResolution(path=None, source="bifocal_linear_best", warning="Bifocal linear best trace not found")
 
     raise ValueError(f"Unsupported trace role: {role}")
 
@@ -1506,14 +1511,14 @@ def make_panel(
 
     add_value_labels(ax, bars, values)
 
-    nd_reduction_pct = compute_nd_best_reduction_pct(
-        nd_init=float(values[2]) if len(values) >= 3 else float("nan"),
-        nd_best=float(values[3]) if len(values) >= 4 else float("nan"),
+    bifocal_linear_reduction_pct = compute_bifocal_linear_best_reduction_pct(
+        initial_value=float(values[2]) if len(values) >= 3 else float("nan"),
+        best_value=float(values[3]) if len(values) >= 4 else float("nan"),
     )
     ax.text(
         0.98,
         0.97,
-        f"ND best reduction: {format_percent(nd_reduction_pct)}",
+        f"ND best reduction: {format_percent(bifocal_linear_reduction_pct)}",
         ha="right",
         va="top",
         transform=ax.transAxes,
@@ -1607,7 +1612,7 @@ def make_figure(
     out_paths: List[Path] = []
     for fmt in fig_formats:
         fmt = str(fmt).lower().lstrip(".")
-        out_path = outdir / f"{stem}_pd_nd_heft5.{fmt}"
+        out_path = outdir / f"{stem}_layout_compare.{fmt}"
         fig.savefig(out_path, bbox_inches="tight", pad_inches=0.06, dpi=dpi)
         out_paths.append(out_path)
     plt.close(fig)

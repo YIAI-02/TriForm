@@ -47,7 +47,7 @@ FORMAT_SIZE_MULTIPLIER = {
 # -----------------------------------------------------------------------------
 # 0.0 => fully serial L1/L2, 1.0 => full overlap between L1(host->PIM comm)
 # and L2(local ND/NZ -> PIM-OPT conversion/programming).
-PIM_WEIGHT_LOAD_OVERLAP_RATIO: float = 0.0
+PIM_WEIGHT_LOAD_OVERLAP_RATIO: float = 0.5
 
 # 0.0 => f 1.0 => full overlap between load stage L
 # and compute stage C for weight-bearing operators.
@@ -61,7 +61,7 @@ NPU_RUNTIME_MODEL_DIR = "./run_time_model"
 NONOVERLAP_TIME = 0.5
 
 # PIM capacity allocation factor
-PIM_STATIC_ALLOC_RATIO: float = 0.9
+PIM_STATIC_ALLOC_RATIO: float = 1.0
 PIM_RUNTIME_LRU_THRESHOLD: float = 0.95
 
 # =========================
@@ -172,11 +172,11 @@ SCHED_DEFAULT: str = "HEFT"
 # in large unrolled decode graphs.
 SCHED_JOINT_LK_ENABLE: bool = True
 SCHED_JOINT_LK_H: int = 3
-SCHED_JOINT_LK_GAMMA: float = 0.0
-SCHED_JOINT_LK_CONSIST_LAMBDA: float = 0
+SCHED_JOINT_LK_GAMMA: float = 0.4
+SCHED_JOINT_LK_CONSIST_LAMBDA: float = 3
 SCHED_JOINT_LK_PLAN_HINT_MAX: int =  3
 # Weight-reuse bias gain multiplier (eta in bias formula)
-SCHED_WEIGHT_BIAS_ETA: float = 0.1
+SCHED_WEIGHT_BIAS_ETA: float = 0.0
 #AMORT
 SCHED_DECODE_AMORT_ENABLE = True
 SCHED_DECODE_AMORT_ALPHA = 1
@@ -197,26 +197,13 @@ COMPUTE_UTILIZATION = {
         'Ascend_910B': {
             'enabled': True,
             'curve': 'sigmoid',
-            'min_util': 0.3,
+            'min_util': 0.5,
             'max_util': 0.8,
             'flops_low': 5e7,
             'flops_high': 5e12,
             'knee_flops': 1.0e10,
             'slope': 3.0,
         },
-
-        # NVIDIA A100
-        'A100': {
-            'enabled': True,
-            'curve': 'sigmoid',
-            'min_util': 0.3,
-            'max_util': 0.8,
-            'flops_low': 5e7,
-            'flops_high': 5e12,
-            'knee_flops': 1.5e8,
-            'slope': 3.0,
-        },
-
         'pim': {
             'enabled': True,
             'curve': 'sigmoid',

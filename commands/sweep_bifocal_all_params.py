@@ -16,13 +16,17 @@ python3 commands/sweep_bifocal_all_params.py \
   --mode grid \
   --config-py ./config.py \
   --h 2 3 4 \
-  --gamma 0.2 0.4 0.6 0.8 \
-  --lambda 0 1 2 4 \
-  --plan_hint_max 1 \
-  --eta 0 5 10 \
-  --amort_enable false \
+  --gamma 0 0.2 0.4 \
+  --lambda 0 3 5 \
+  --plan_hint_max 3 \
+  --eta 0.0 0.1 1 \
+  --amort_enable true \
   --objective total \
   --outdir ./output/sweep_bifocal_all \
+  --amort-enable true \
+  --amort-alpha 1 \
+  --amort-rmin 1.0 \
+  --amort-reuse-prob 0.5 1.0 \
   --resume \
   --config ./src/examples/evaluate_test_config.json
 

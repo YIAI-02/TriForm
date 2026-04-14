@@ -14,8 +14,6 @@
   "split_by": "head",
   "tp_qkv": 2,
   "tp_ffn": 2,
-  "npu_backend": "lut",
-  "dump_graph": false,
-  "pim_weight_load_overlap_ratio": 0.0,
-  "weight_load_compute_overlap_ratio": 0.0
+  "npu_backend": "fast_mode",
+  "dump_graph": false
 }

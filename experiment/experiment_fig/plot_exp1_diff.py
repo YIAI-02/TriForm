@@ -41,7 +41,7 @@ import seaborn as sns
 # USER EDIT ZONE
 # ============================================================================
 MANUAL_EXCLUDE: List[str] = []
-HEFT_VARIANTS: List[str] = ["heft", "hefthint"]
+SCHEDULER_VARIANTS: List[str] = []
 POSITIVE_COLOR = "#aee4ad"
 NEGATIVE_COLOR = "#add9e4"
 DEFAULT_FIG_WIDTH = 5.0   # interpreted as per-panel width
@@ -220,11 +220,21 @@ def parse_dims_arg(s: str) -> List[Tuple[int, int]]:
 
 
 def _normalize_strategy_token(s: str) -> str:
-    raw = (s or "").strip().lower()
-    compact = re.sub(r"[\s_\-]+", "", raw)
-    if compact in {"thiswork", "bifocal(thiswork)", "bifocal", "hefthint", "heft"}:
-        return "hefthint"
-    return raw
+    raw = (s or "").strip()
+    if raw.startswith("algo:"):
+        raw = raw.split(":", 1)[1].strip()
+
+    lowered = raw.lower().replace(" ", "")
+    canonical = {
+        "pd": "PD",
+        "af": "AF",
+        "pd+ffn": "PD+FFN",
+        "pd+linear": "PD+Linear",
+        "pd+attn": "PD+Attn",
+        "heft": "HEFT",
+        "bifocal": "Bifocal",
+    }
+    return canonical.get(lowered, raw)
 
 
 def parse_exclude_arg(exclude_arg: Optional[str]) -> List[str]:
@@ -295,30 +305,10 @@ def build_dim_results(
         res: Dict[str, Metrics] = {}
 
         for algo_on_disk, paths in dim_entry.items():
-            if algo_on_disk in HEFT_VARIANTS:
-                continue
             try:
                 res[algo_on_disk] = pick_best_by_trace_total(paths, algo_label=algo_on_disk, source_variant=algo_on_disk)
-            except Exception as e:
-                print(f"[WARN] {lin}x{lout}: cannot load '{algo_on_disk}': {e}", file=sys.stderr)
-
-        variant_metrics: List[Metrics] = []
-        for variant in HEFT_VARIANTS:
-            if variant in dim_entry:
-                try:
-                    variant_metrics.append(
-                        pick_best_by_trace_total(dim_entry[variant], algo_label="hefthint", source_variant=variant)
-                    )
-                except Exception as e:
-                    print(f"[WARN] {lin}x{lout}: cannot load '{variant}': {e}", file=sys.stderr)
-
-        if variant_metrics:
-            best = min(variant_metrics, key=lambda m: m.trace_total)
-            res["hefthint"] = best
-            print(
-                f"[INFO] {lin}x{lout}: choose '{best.source_variant}' for plotted label 'hefthint' "
-                f"(mean trace_total_s={best.trace_total:.6g}) from {best.csv_path}"
-            )
+            except Exception as exc:
+                print(f"[WARN] {lin}x{lout}: cannot load '{algo_on_disk}': {exc}", file=sys.stderr)
 
         out[dim] = res
 
@@ -646,12 +636,10 @@ def plot_gap_histograms(
         else:
             ax.set_ylabel("")
 
-        # 边框加深
         for spine in ax.spines.values():
             spine.set_color(SPINE_COLOR)
             spine.set_linewidth(SPINE_WIDTH)
 
-        # 刻度字体加大、颜色加深
         ax.tick_params(
             axis="both",
             which="major",

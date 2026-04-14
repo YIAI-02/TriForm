@@ -25,6 +25,7 @@ from .weight_formats import (
 )
 from .graph_utils import _cluster_type_count
 from .kv_policy import (
+    _ensure_weight_suggest_supported,
     _apply_kv_place_constraints,
     _build_cost_model_for_run,
     _fmt_kv_policy_scores,
@@ -35,6 +36,8 @@ from .simulator import simulate_decode_progressive, simulate_prefill
 from .evaluate import _eval_one_baseline, _run_strategy_once
 
 def run(cfg: Dict):
+    _ensure_weight_suggest_supported(cfg)
+
     #--------------------------------------------
     # 0: init all hardware settings
     #--------------------------------------------

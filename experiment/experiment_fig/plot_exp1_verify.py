@@ -1,30 +1,33 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Plot latency comparison from *merge_all.csv files.
+"""Plot merged trace-versus-reference latency comparisons from ``*.merge_all.csv`` files.
 
-find "$(pwd)" -name "*.merge_all.csv" | sort > files.txt
+Examples
+--------
+Create a file list first::
 
-Single model (same as before):
-python3 plot_exp1_verify.py \
-  --file-list ../../verify/sst2_rst2/llama_7b_fp16_b16_s2/files.txt \
-  --algo-order "pd,attn_on_pim, ianus,facil,attacc,hefthint" \
-  --exclude "weights_on_pim" \
-  --dims "128x128,128x512,128x1024,1024x128,1024x512,1024x1024" \
-  --name-map "pd=PD,ianus=PD+FFN,facil=PD+Linear,attacc=PD+Attention,attn_on_pim=AF,hefthint=Bifocal" \
-  --output ../../figs/exp1/verify/llama_7b_fp16_b16_s2.pdf
+    find "$(pwd)" -name "*.merge_all.csv" | sort > files.txt
 
-Multiple models (one model per row, one shared legend at the top):
-python3 plot_exp1_verify.py \
-  --file-list ../../verify/sst2_rst2/llama_7b_fp16_b16_s2/files.txt \
-  --file-list ../../verify/sst2_rst2/qwen_1.8b_fp16_b8_s2/files.txt \
-  --model-label "Qwen-1.8B" \
-  --model-label "Llama-7B" \
-  --algo-order "pd,attn_on_pim,ianus,facil,attacc,hefthint" \
-  --exclude "weights_on_pim" \
-  --dims "128x128,128x512,128x1024,1024x128,1024x512,1024x1024" \
-  --name-map "pd=PD,ianus=PD+FFN,facil=PD+Linear,attacc=PD+Attention,attn_on_pim=AF,hefthint=Bifocal" \
-  --output ../../figs/exp1/verify/exp1_verify.pdf
+Single model::
+
+    python3 plot_exp1_verify.py \
+      --file-list ../../verify/llama_7b_fp16_b16_s2/files.txt \
+      --algo-order "PD,AF,PD+FFN,PD+Linear,PD+Attn,HEFT,Bifocal" \
+      --dims "128x128,128x512,128x1024,1024x128,1024x512,1024x1024" \
+      --name-map "PD=PD,AF=AF,PD+FFN=PD+FFN,PD+Linear=PD+Linear,PD+Attn=PD+Attn,HEFT=HEFT,Bifocal=Bifocal" \
+      --output ../../figs/exp1/verify/llama_7b_fp16_b16_s2.pdf
+
+Multiple models::
+
+    python3 plot_exp1_verify.py \
+      --file-list ../../verify/llama_7b_fp16_b16_s2/files.txt \
+      --file-list ../../verify/qwen_1.8b_fp16_b8_s2/files.txt \
+      --model-label "Qwen-1.8B" \
+      --model-label "Llama-7B" \
+      --algo-order "PD,AF,PD+FFN,PD+Linear,PD+Attn,HEFT,Bifocal" \
+      --dims "128x128,128x512,128x1024,1024x128,1024x512,1024x1024" \
+      --name-map "PD=PD,AF=AF,PD+FFN=PD+FFN,PD+Linear=PD+Linear,PD+Attn=PD+Attn,HEFT=HEFT,Bifocal=Bifocal" \
+      --output ../../figs/exp1/verify/exp1_verify.pdf
 """
 
 from __future__ import annotations
@@ -83,39 +86,39 @@ apply_global_plot_style()
 # ============================================================================
 # 1) Default algorithm order on the x-axis.
 DEFAULT_ALGO_ORDER: List[str] = [
-    "pd",
-    "ianus",
-    "facil",
-    "attacc",
-    "attn_on_pim",
-    "weights_on_pim",
-    "hefthint",
+    "PD",
+    "AF",
+    "PD+FFN",
+    "PD+Linear",
+    "PD+Attn",
+    "HEFT",
+    "Bifocal",
 ]
 
 # 2) Mapping from the name read from files -> name shown on the plot.
 DEFAULT_DISPLAY_NAME_MAP: Dict[str, str] = {
-    "pd": "PD",
-    "ianus": "IANUS",
-    "facil": "Facil",
-    "attacc": "AttAcc",
-    "attn_on_pim": "Attn-on-PIM",
-    "weights_on_pim": "Weights-on-PIM",
-    "hefthint": "Bifocal (this work)",
+    "PD": "PD",
+    "PD+FFN": "PD+FFN",
+    "PD+Linear": "PD+Linear",
+    "PD+Attn": "PD+Attn",
+    "AF": "AF",
+    "HEFT": "HEFT",
+    "Bifocal": "Bifocal",
 }
 
 # 3) Highlight these x tick labels (red + bold).
-HIGHLIGHT_KEYS = {"hefthint"}
+HIGHLIGHT_KEYS = {"Bifocal"}
 
 # 4) Manual exclude list (can also pass --exclude on CLI).
 MANUAL_EXCLUDE: List[str] = []
 
-# 5) For plotted label "hefthint", candidates on disk can be either "heft" or "hefthint".
-HEFT_VARIANTS: List[str] = ["heft", "hefthint"]
+# 5) Leave this list empty to plot schedulers independently.
+SCHEDULER_VARIANTS: List[str] = []
 
 # 6) Spacing knobs.
 BAR_WIDTH = 0.004
-PAIR_SEP = BAR_WIDTH          # 两根柱子保持贴着
-GROUP_STEP = 0.011            # 固定，不跟 BAR_WIDTH 走
+PAIR_SEP = BAR_WIDTH
+GROUP_STEP = 0.011
 INTER_GROUP_GAP = GROUP_STEP - (BAR_WIDTH + PAIR_SEP)
 PANEL_LEFT_MARGIN = 0.002
 PANEL_RIGHT_MARGIN = 0.002
@@ -321,8 +324,8 @@ def _normalize_strategy_token(s: str) -> str:
         raw = raw[: -len("_linear")]
 
     compact = re.sub(r"[\s_\-]+", "", raw)
-    if compact in {"thiswork", "bifocal(thiswork)", "bifocal", "hefthint", "heft"}:
-        return "hefthint"
+    if compact in {"thiswork", "bifocal(thiswork)", "bifocal", "Bifocal", "HEFT"}:
+        return "Bifocal"
     return raw
 
 
@@ -370,38 +373,15 @@ def build_dim_results(
         dim_entry = idx.get(dim, {})
         res: Dict[str, Metrics] = {}
 
-        # Normal strategies (except heft/hefthint)
         for algo_on_disk, paths in dim_entry.items():
-            if algo_on_disk in HEFT_VARIANTS:
-                continue
             try:
                 res[algo_on_disk] = pick_best_by_trace_total(paths, algo_label=algo_on_disk, source_variant=algo_on_disk)
-            except Exception as e:
-                print(f"[WARN] {lin}x{lout}: cannot load '{algo_on_disk}': {e}", file=sys.stderr)
-
-        # Merge heft / hefthint into plotted key "hefthint"
-        variant_metrics: List[Metrics] = []
-        for variant in HEFT_VARIANTS:
-            if variant in dim_entry:
-                try:
-                    variant_metrics.append(
-                        pick_best_by_trace_total(dim_entry[variant], algo_label="hefthint", source_variant=variant)
-                    )
-                except Exception as e:
-                    print(f"[WARN] {lin}x{lout}: cannot load '{variant}': {e}", file=sys.stderr)
-
-        if variant_metrics:
-            best = min(variant_metrics, key=lambda m: m.trace_total)
-            res["hefthint"] = best
-            print(
-                f"[INFO] {lin}x{lout}: choose '{best.source_variant}' for plotted label 'hefthint' "
-                f"(mean trace_total_s={best.trace_total:.6g}) from {best.csv_path}"
-            )
+            except Exception as exc:
+                print(f"[WARN] {lin}x{lout}: cannot load '{algo_on_disk}': {exc}", file=sys.stderr)
 
         out[dim] = res
 
     return out
-
 
 
 def strategy_order_from_keys(strategy_keys: Sequence[str], preferred_order: List[str]) -> List[str]:
@@ -501,7 +481,7 @@ def _compute_row_limits(
         for m in res.values():
             max_time = max(max_time, m.trace_total, m.meas_total)
 
-        pd_m = res.get("pd")
+        pd_m = res.get("PD")
         if pd_m is not None:
             if pd_m.trace_total > 0:
                 for m in res.values():
@@ -784,7 +764,7 @@ def plot_results(
                     )
                 )
 
-            pd_m = res.get("pd")
+            pd_m = res.get("PD")
             if pd_m and pd_m.trace_total > 0:
                 speedup_trace = np.array([
                     pd_m.trace_total / res[a].trace_total if res[a].trace_total > 0 else np.nan
@@ -912,8 +892,8 @@ def main() -> None:
     ap.add_argument("--output", type=str, default="plot_latency.png", help="Output image path.")
     ap.add_argument("--title", type=str, default=None, help="Figure title.")
     ap.add_argument("--exclude", type=str, default=None, help="Comma-separated strategy names to exclude from plotting.")
-    ap.add_argument("--algo-order", type=str, default=None, help="Comma-separated x-axis order, e.g. 'pd,ianus,facil,hefthint'")
-    ap.add_argument("--name-map", type=str, default=None, help="Comma-separated display-name map, e.g. 'pd=PD,hefthint=Bifocal (this work)'")
+    ap.add_argument("--algo-order", type=str, default=None, help="Comma-separated x-axis order, e.g. 'PD,AF,PD+FFN,PD+Linear,PD+Attn,HEFT,Bifocal'")
+    ap.add_argument("--name-map", type=str, default=None, help="Comma-separated display-name map, e.g. 'PD=PD,Bifocal=Bifocal'")
     ap.add_argument("--dpi", type=int, default=200)
     ap.add_argument("--border-lw", type=float, default=0.7, help="Bar outline / spine linewidth.")
     ap.add_argument("--max-panels", type=int, default=8, help="Maximum number of dims to show in one row.")

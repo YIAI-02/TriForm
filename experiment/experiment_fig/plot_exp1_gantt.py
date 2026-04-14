@@ -1,16 +1,22 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-python plot_exp1_gantt_paper.py \
-  --json ../../algorithms/output/exp1/hw_hardware_1npu_2aim/sst8_rst8/llama_7b_fp16_b16_s8/algo_hefthint/best_summary_128x512.json \
+"""Plot a stage-local Gantt chart from one ``best_summary_*.json`` file.
+
+Run this script from ``experiment/experiment_fig``. The JSON input is produced
+by ``python src/main.py evaluate`` and is usually stored inside an ``algo_*``
+directory under ``output/``.
+
+Example
+-------
+python plot_exp1_gantt.py \
+  --json ../../output/evaluate_single_test/hardware_1npu_2aim/llama_7b_fp16_b1_s2/algo_Bifocal/best_summary_128x512.json \
   --stage decode \
   --layer 0 \
   --token 8 \
   --time_unit ms \
-  --out ../../figs/exp1/gantt/llama_7b_hefthint_128x512_decode_L8.pdf \
+  --out ../../figs/exp1/gantt/llama_7b_bifocal_128x512_decode_L8.pdf \
   --fig_w 18 --fig_h 4.8 \
   --label_min_frac 0.04
-
 """
 from __future__ import annotations
 

@@ -158,6 +158,20 @@ class CostModelRuntimeMixin:
         cpus = self.cluster.devices_by_type('cpu')
         return cpus[0] if cpus else next(iter(self.cluster.devices.values()))
 
+    def _first_device_of_type(self, dev_type: str) -> Optional[DeviceSpec]:
+        try:
+            devs = list(getattr(self.cluster, 'devices_by_type', lambda *_: [])(str(dev_type)))
+        except Exception:
+            devs = []
+        return devs[0] if devs else None
+
+    def _npu_fast_hw_only_mode(self) -> bool:
+        self._ensure_backend_impls()
+        return str(getattr(self, '_npu_backend_impl_name', '') or '').strip().lower() == 'fast'
+
+    def _pim_fast_hw_only_mode(self) -> bool:
+        return bool(getattr(self, 'pim_fast_mode', False))
+
     def device_preferred_fmt(self, dev: DeviceSpec) -> str:
         return DEVICE_PREFERRED_FORMAT.get(dev.type, 'ND')
 
@@ -388,10 +402,22 @@ class CostModelRuntimeMixin:
             total_s += float(size_nd_bytes) / float(eff_bw)
         return float(total_s)
 
-    def npu_weight_conversion_time(self, size_nd_bytes: int, src_fmt: str, dst_fmt: str) -> float:
+    def npu_weight_conversion_time(self, size_nd_bytes: int, src_fmt: str, dst_fmt: str, *, dev: Optional[DeviceSpec] = None) -> float:
         size_nd_bytes = int(size_nd_bytes or 0)
         if size_nd_bytes <= 0:
             return 0.0
+
+        # Fast-mode simplification: do not use any runtime-model ND/NZ/NPU-opt
+        # conversion data. Model NPU internal weight fetch purely from the
+        # hardware JSON memory bandwidth.
+        if self._npu_fast_hw_only_mode():
+            dev_eff = dev if dev is not None else self._first_device_of_type('npu')
+            if dev_eff is None:
+                return 0.0
+            src = _normalize_weight_format_token(src_fmt, allow_compute=True)
+            weight_bytes = int(self.weight_storage_bytes(int(size_nd_bytes), str(src)))
+            return float(self.mem_time(int(weight_bytes), dev_eff))
+
         src = _normalize_weight_format_token(src_fmt, allow_compute=True)
         dst = _normalize_weight_format_token(dst_fmt, allow_compute=True)
         if src == dst:
@@ -406,8 +432,8 @@ class CostModelRuntimeMixin:
             source_desc=str(mdl.path),
         ))
 
-    def npu_local_weight_load_cost(self, size_nd_bytes: int, src_storage_fmt: str, dst_compute_fmt: str, *, from_cache: bool = False) -> WeightLoadStageBreakdown:
-        total = float(self.npu_weight_conversion_time(int(size_nd_bytes), str(src_storage_fmt), str(dst_compute_fmt)))
+    def npu_local_weight_load_cost(self, size_nd_bytes: int, src_storage_fmt: str, dst_compute_fmt: str, *, from_cache: bool = False, dev: Optional[DeviceSpec] = None) -> WeightLoadStageBreakdown:
+        total = float(self.npu_weight_conversion_time(int(size_nd_bytes), str(src_storage_fmt), str(dst_compute_fmt), dev=dev))
         return WeightLoadStageBreakdown(
             total_s=float(total),
             host_src_fmt=str(src_storage_fmt),
@@ -418,10 +444,22 @@ class CostModelRuntimeMixin:
             bytes_src=int(self.weight_storage_bytes(int(size_nd_bytes or 0), str(src_storage_fmt))),
         )
 
-    def pim_local_weight_load_time(self, size_nd_bytes: int, src_storage_fmt: str) -> float:
+    def pim_local_weight_load_time(self, size_nd_bytes: int, src_storage_fmt: str, *, dev: Optional[DeviceSpec] = None) -> float:
         size_nd_bytes = int(size_nd_bytes or 0)
         if size_nd_bytes <= 0:
             return 0.0
+
+        # Fast-mode simplification: do not use ND->PIM-OPT runtime-model data.
+        # Treat local load as direct programming/write into PIM memory using the
+        # PIM line-latency model derived from hardware JSON.
+        if self._pim_fast_hw_only_mode():
+            dev_eff = dev if dev is not None else self._first_device_of_type('pim')
+            if dev_eff is None:
+                return 0.0
+            src = self.weight_storage_format(str(src_storage_fmt))
+            bytes_local = int(self.weight_storage_bytes(int(size_nd_bytes), str(src)))
+            return float(self.pim_write_time(int(bytes_local), dev_eff))
+
         mdl = self._ensure_pim_weight_runtime_model()
         steps = _resolve_pim_weight_load_steps(str(src_storage_fmt))
         return float(self._weight_runtime_path_total_s(
@@ -432,10 +470,17 @@ class CostModelRuntimeMixin:
             source_desc=str(mdl.source),
         ))
 
-    def pim_local_weight_write_only_time(self, size_nd_bytes: int) -> float:
+    def pim_local_weight_write_only_time(self, size_nd_bytes: int, *, dev: Optional[DeviceSpec] = None) -> float:
         size_nd_bytes = int(size_nd_bytes or 0)
         if size_nd_bytes <= 0:
             return 0.0
+
+        if self._pim_fast_hw_only_mode():
+            dev_eff = dev if dev is not None else self._first_device_of_type('pim')
+            if dev_eff is None:
+                return 0.0
+            return float(self.pim_write_time(int(size_nd_bytes), dev_eff))
+
         mdl = self._ensure_pim_weight_runtime_model()
         return float(self._weight_runtime_path_total_s(
             size_nd_bytes=int(size_nd_bytes),
@@ -445,13 +490,15 @@ class CostModelRuntimeMixin:
             source_desc=str(mdl.source),
         ))
 
-    def pim_local_weight_pack_only_est_time(self, size_nd_bytes: int, src_storage_fmt: str) -> float:
-        total = float(self.pim_local_weight_load_time(int(size_nd_bytes), str(src_storage_fmt)))
-        write_only = float(self.pim_local_weight_write_only_time(int(size_nd_bytes)))
+    def pim_local_weight_pack_only_est_time(self, size_nd_bytes: int, src_storage_fmt: str, *, dev: Optional[DeviceSpec] = None) -> float:
+        if self._pim_fast_hw_only_mode():
+            return 0.0
+        total = float(self.pim_local_weight_load_time(int(size_nd_bytes), str(src_storage_fmt), dev=dev))
+        write_only = float(self.pim_local_weight_write_only_time(int(size_nd_bytes), dev=dev))
         return float(max(0.0, total - write_only))
 
-    def pim_local_weight_load_cost(self, size_nd_bytes: int, src_storage_fmt: str, *, from_cache: bool = False) -> WeightLoadStageBreakdown:
-        total = float(self.pim_local_weight_load_time(int(size_nd_bytes), str(src_storage_fmt)))
+    def pim_local_weight_load_cost(self, size_nd_bytes: int, src_storage_fmt: str, *, from_cache: bool = False, dev: Optional[DeviceSpec] = None) -> WeightLoadStageBreakdown:
+        total = float(self.pim_local_weight_load_time(int(size_nd_bytes), str(src_storage_fmt), dev=dev))
         return WeightLoadStageBreakdown(
             total_s=float(total),
             host_src_fmt=str(src_storage_fmt),

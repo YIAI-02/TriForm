@@ -1,5 +1,6 @@
 <div align="center">
 
+
 # DOPS: Dynamic OPerator Sorting for Heterogeneous NPU–PIM LLM Inference
 
 <p>
@@ -7,6 +8,7 @@
     <img src="./docs/framework_preview.png" alt="DOPS framework overview" width="980" />
   </a>
 </p>
+
 
 <p><em>📄 Click the framework figure above to open the PDF version in <code>./docs/framework.pdf</code>.</em></p>
 
@@ -20,7 +22,7 @@ DOPS is a simulation and analysis framework for studying decoder-only LLM infere
 
 ## ✨ Overview
 
-> DOPS is built around a closed loop with three inputs:
+DOPS is built around a closed loop with three inputs:
 
 1. an **LLM model card**,
 2. a **hardware abstraction** of the target heterogeneous system, and
@@ -44,11 +46,11 @@ From these inputs, DOPS:
 
 ## 🧰 Dependencies
 
-> ✅ Recommended Python version: **3.10+**
+> Recommended Python version: **3.10+**
 
 ### Minimal installation for the core CLI flow
 
-If you only need the analytical/runtime-model path, the smallest practical dependency set is:
+If you only need the roofline model or operator model, the smallest practical dependency set is:
 
 ```bash
 pip install torch typing_extensions
@@ -74,26 +76,12 @@ These are only needed for specific backends or reproduction workflows.
 
 ## 🚀 Quick Start
 
-The current repository is organized around a `src/` code tree and a `commands/` launcher tree. The fastest way to smoke-test the simulator is to stay at the project root and use the provided wrapper script, which already enables **fast NPU** and **fast PIM** simulation.
+The current repository is organized around a `src/` code tree and a `commands/` launcher tree. The fastest way to test the framework  is to stay at the project root and use the provided wrapper script, which already enables simulation based on roofline models (fast NPU and fast PIM in code).
 
-### 1️⃣ Verify the required model shape card
-
-For the bundled Llama-7B example, the repository expects this file at the project root:
-
-```text
-configs/llama_7b_shape.json
-```
-
-If you use another model, either add its shape JSON under `configs/` and register it in `src/model_parser.py`, or set a custom `shape_file` in the config JSON.
-
-### 2️⃣ Run the bundled fast-mode evaluation
+### 1️⃣ Run the bundled fast-mode evaluation
 
 ```bash
-bash commands/command_single_evaluate.sh \
-  --prefill_len 16 \
-  --decode_len 4 \
-  --decode_sample_stride 1 \
-  --decode_plan_refresh_stride 1
+bash commands/command_single_evaluate.sh
 ```
 
 `commands/command_single_evaluate.sh` is a thin wrapper around:
@@ -106,15 +94,13 @@ python src/main.py evaluate \
   --debug
 ```
 
-The shorter lengths above are only for a quick smoke test. To run the default example workload, execute the same script without extra overrides.
-
-### 3️⃣ Inspect the outputs
+### 2️⃣ Inspect the outputs
 
 With the bundled example config, outputs are written under:
 
 ```text
-src/examples/output/evaluate_single_test/hardware_1npu_2aim_evaluate_eta0p1/
-└── llama_7b_fp16_b1_s1/
+./output/evaluate_single_test/hardware_1npu_2aim_evaluate/
+└── qwen_7b_fp16_b1_s1/
 ```
 
 A successful run produces at least:
@@ -124,8 +110,6 @@ A successful run produces at least:
 - `algo_Bifocal/best_summary_<prefill>x<decode>.json`
 - `*_ops_trace.csv`
 - `*_comms_trace.csv`
-
-> 📘 Config paths are resolved relative to the config JSON first, then `src/`, then the current working directory. That is why the bundled example writes into `src/examples/output/...`.
 
 > 📘 For a field-by-field explanation of the hardware and evaluation JSON files, see the [Configuration Reference](./docs/CONFIG_REFERENCE.md).
 
@@ -138,7 +122,7 @@ The current CLI exposes two main modes:
 - `evaluate`: run scheduling / baseline comparisons and export traces.
 - `weight-suggest`: run the weight-layout arbiter on top of the scheduling flow.
 
-In the current repository setup, the **recommended default path is fast mode for both NPU and PIM**. The trace-based PIM path is still available, but it only becomes active when `pim_fast_mode` is disabled and the AiM / Ramulator config files are valid.
+In the current repository setup, the **default model is the roofline model**. This setup is suitable for `evaluate` experiments only. To reproduce the paper results and run `weight-suggest`-mode optimizations, you need to adjust the relevant parameters in the config.
 
 ### Step 1. Prepare a model shape card under `configs/`
 
@@ -216,7 +200,7 @@ A minimal example looks like this:
         }
       }
     ],
-    "fc_bw_GBs": 32.0,
+    "fc_bw_GBs": 62.0,
     "link_defaults": {
       "latency_s": 0.0,
       "overhead_s": 0.0,
@@ -245,9 +229,9 @@ A representative fast-mode evaluation config looks like this:
   "model_family": "llama",
   "model_variant": "7b",
   "dtype": "fp16",
-  "batch": 1,
-  "prefill_len": 512,
-  "decode_len": 128,
+  "batch": 4,
+  "prefill_len": 128,
+  "decode_len": 512,
   "decode_sample_stride": 2,
   "decode_plan_refresh_stride": 2,
   "pim_config_path": "./aim_simulator/PIM_AiM.json",
@@ -261,17 +245,13 @@ A representative fast-mode evaluation config looks like this:
   "npu_backend": "fast",
   "pim_fast_mode": true,
   "dump_graph": false,
-  "dump_graph_dir": "./output/evaluate_single_test/hardware_1npu_2aim/graph_dumps",
-  "pim_weight_load_overlap_ratio": 0.0,
-  "weight_load_compute_overlap_ratio": 0.0
+  "dump_graph_dir": "./output/evaluate_single_test/hardware_1npu_2aim/graph_dumps"
 }
 ```
 
 A few details are easy to miss:
 
 - `algo` and `baselines` now use the **paper-aligned names** such as `Bifocal`, `HEFT`, `PD`, `AF`, `PD+Linear`, `PD+Attn`, and `PD+FFN`.
-- `npu_backend` should usually be `fast` in the JSON or `fast_mode` on the CLI for the analytical default path.
-- `pim_fast_mode: true` enables the analytical PIM path. In this mode, `pim_config_path` and `ramulator_config_path` may remain in the config, but they are only required when you switch back to trace-based PIM.
 - Relative paths in the config are resolved relative to the config JSON first, then `src/`, then the current working directory.
 
 > 📘 For the meaning of each key, see the [Configuration Reference](./docs/CONFIG_REFERENCE.md).
@@ -322,6 +302,11 @@ src/examples/output/evaluate_single_test/hardware_1npu_2aim_evaluate_eta0p1/
     │   ├── PD_linear_prefill-<prefill>xdecode_<decode>_ops_trace.csv
     │   ├── PD_linear_prefill-<prefill>xdecode_<decode>_comms_trace.csv
     │   └── pim_sim_<prefill>x<decode>.txt
+    ├── algo_xx/
+    │   ├── ...
+    ├── algo_xx/
+    │   ├── xxx
+    │   ├── ...
     └── algo_Bifocal/
         ├── best_summary_<prefill>x<decode>.json
         ├── Bifocal_linear_prefill-<prefill>xdecode_<decode>_ops_trace.csv
@@ -347,16 +332,68 @@ The run directory itself is named automatically as:
 
 `evaluate` is the right mode for:
 
-- comparing `Bifocal` or `HEFT` against baselines such as `PD`, `AF`, `PD+Linear`, `PD+Attn`, `PD+FFN`, and `NeuPIMs`,
+- comparing `Bifocal` or `HEFT` against baselines such as `PD`, `AF`, `PD+Linear`, `PD+Attn`,and  `PD+FFN`,
 - running hardware-scaling studies by swapping `hardware_json`,
 - generating raw traces for downstream visualization, and
 - studying the effect of batch size, prefill length, decode length, and TP settings.
+
+#### 💡 **Practical guidance**
+
+If the `evaluate` results are not satisfactory, you can try tuning the Bifocal hyperparameters defined in the config. Common knobs include:
+
+```python
+SCHED_JOINT_LK_ENABLE: bool = True
+SCHED_JOINT_LK_H: int = 3
+SCHED_JOINT_LK_GAMMA: float = 0.4
+SCHED_JOINT_LK_CONSIST_LAMBDA: float = 3
+SCHED_JOINT_LK_PLAN_HINT_MAX: int = 3
+
+SCHED_WEIGHT_BIAS_ETA: float = 0.0
+
+# AMORT
+SCHED_DECODE_AMORT_ENABLE = True
+SCHED_DECODE_AMORT_ALPHA = 1
+SCHED_DECODE_AMORT_RMIN = 1
+SCHED_DECODE_AMORT_REUSE_PROB = 1.0
+```
+
+You can sweep these parameters with `commands/sweep_bifocal_all_params.py`.
+
+**Wrapper script:**
+
+```bash
+bash commands/run_hpc_sweep_bifocal_all.sh
+```
+
+**Direct CLI:**
+
+```bash
+python3 commands/sweep_bifocal_all_params.py \
+  --mode grid \
+  --config-py ./config.py \
+  --h 2 3 4 \
+  --gamma 0 0.2 0.4 \
+  --lambda 0 3 5 \
+  --plan_hint_max 3 \
+  --eta 0.0 0.1 1 \
+  --amort_enable true \
+  --objective total \
+  --outdir ./output/sweep_bifocal_all \
+  --amort-enable true \
+  --amort-alpha 1 \
+  --amort-rmin 1.0 \
+  --amort-reuse-prob 0.5 1.0 \
+  --resume \
+  --config ./src/examples/evaluate_test_config.json
+```
+
+
 
 ---
 
 ### Step 5. Run `weight-suggest` (optional)
 
-Use this mode when you want to search for a blockwise persistent-weight layout on top of the scheduling flow.
+Use this mode when you want to search for a blockwise persistent-weight layout on top of the scheduling flow. Before doing so, you must manually measure the format-conversion overhead. The format-conversion overhead used in the paper is stored under `./src/runtime_models/`.
 
 **Wrapper script:**
 
@@ -494,7 +531,7 @@ This file already contains the parsing and graph-annotation flow for quantizatio
 
 These scripts generate the paper figures. Their headers are intended to document runnable examples and plotting assumptions.
 
-### Experiment 1: Scheduling benefits
+### Experiment 1: Scheduling benefits & Speedup Analysis
 
 - `plot_exp1_simulated.py`  
   Simulated latency and speedup comparison across policies.
@@ -505,14 +542,14 @@ These scripts generate the paper figures. Their headers are intended to document
 - `plot_exp1_gantt.py`  
   Case-study Gantt/timeline figure.
 
-### Experiment 2: Hardware scaling
+### Experiment 2: Hardware scaling & Marginal Return
 
 - `plot_exp2_heatmap.py`  
   Speedup heatmaps across prefill/decode/model/hardware axes.
 - `plot_exp2_baseline_marginal.py`  
   Marginal-return curves as more PIM budget is added.
 
-### Experiment 3: Weight Layout Arbiter
+### Experiment 3: Effectiveness of Weight Layout Arbiter
 
 - `plot_exp3_layout_compare.py`  
   Compares conventional/global layouts against arbiter-optimized results.
@@ -532,13 +569,19 @@ cd experiment/demo
 python server.py
 ```
 
-The browser demo is designed to visualize **simulated CSV traces** generated by the framework rather than live hardware telemetry. In practice, the most useful inputs are exported files such as:
+The browser demo is designed to visualize **simulated CSV traces** generated by the framework. In practice, the most useful inputs are exported files such as:
 
 - `*_ops_trace.csv`
-- `*_comms_trace.csv`
 
 These files are generated by `evaluate`, so the typical workflow is to run a simulation first and then load the produced CSVs into the demo.
 
 **Demo assets**
 
 - [Demo video](https://vimeo.com/1178735972)
+
+
+
+## 📖 Supplementary Materials
+
+Some figures from Sections 6.2 and 6.4 of the paper are now provided under `./figs/paper_supplementary/`.
+

@@ -1,23 +1,25 @@
 #!/usr/bin/env python3
-"""
+"""Plot hardware-scaling heatmaps from evaluate outputs.
+
+Run this script from ``experiment/experiment_fig``. Each ``--panel`` points to
+one output subtree under the repository-level ``output/`` directory. The script
+reads ``baseline_compare_*.json`` files produced by ``python src/main.py
+evaluate``.
+
+Example
+-------
 python plot_exp2_heatmap.py \
-  --panel "HP0=../../algorithms/output/exp2/npu_only/npu/hw_hardware_1npu/sst8_rst8" \
-  --panel "HP32=../../algorithms/output/exp1/hw_hardware_1npu_2aim/sst8_rst8" \
-  --panel "HP64=../../algorithms/output/exp2/4shards/hw_hardware_1npu_4aim/sst8_rst8" \
-  --panel "HP128=../../algorithms/output/exp2/8shards/hw_hardware_1npu_8aim/sst8_rst8" \
-  --model llama_7b \
-  --model llama_13b \
-  --model llama_70b \
+  --panel "HP0=../../output/exp2/npu_only/npu/hw_hardware_1npu/sst8_rst8" \
+  --panel "HP32=../../output/exp1/hw_hardware_1npu_2aim/sst8_rst8" \
+  --panel "HP64=../../output/exp2/4shards/hw_hardware_1npu_4aim/sst8_rst8" \
+  --panel "HP128=../../output/exp2/8shards/hw_hardware_1npu_8aim/sst8_rst8" \
+  --model llama_7b --model llama_13b --model llama_70b \
   --batches 1 4 8 16 \
   --prefills 128 512 1024 2048 \
   --decodes 128 256 512 1024 \
-  --baseline pd \
-  --reference-panel "HP0" \
-  --vmin 2 \
-  --vmax 12 \
-  --compact-outer-label-fontsize 9\
+  --baseline PD \
+  --reference-panel HP0 \
   --output ../../figs/exp2/llama_heatmap.pdf
-
 """
 
 from __future__ import annotations
@@ -73,7 +75,7 @@ DEFAULT_COLORS = [
     "#e4adb5",
     "#bdade4",
 ]
-AUTO_ALGORITHMS = ["heft", "hefthint"]
+AUTO_ALGORITHMS = ["HEFT", "Bifocal"]
 HARDWARE_UNIT_PATTERN = re.compile(
     r"(?P<count>\d+)\s*[_\-\s]?(?P<unit>gpu|npu|aim|pim)\b",
     re.IGNORECASE,
@@ -86,14 +88,14 @@ _PANEL_FILE_CACHE: Dict[Path, List[Path]] = {}
 def parse_panel(text: str) -> Tuple[str, str]:
     if "=" not in text:
         raise argparse.ArgumentTypeError(
-            f'--panel 参数格式必须是 "标签=路径"，收到: {text}'
+            f'--panel must use the format "label=path". Received: {text}'
         )
     label, path = text.split("=", 1)
     label = label.strip()
     path = path.strip()
     if not label or not path:
         raise argparse.ArgumentTypeError(
-            f'--panel 参数格式必须是 "标签=路径"，收到: {text}'
+            f'--panel must use the format "label=path". Received: {text}'
         )
     return label, path
 
@@ -393,7 +395,7 @@ def select_algorithm_result(
     if algorithm:
         algo = find_policy_result(data, algorithm)
         if algo is None:
-            raise KeyError(f"算法 {algorithm} 在 {path} 中不存在")
+            raise KeyError(f"Algorithm {algorithm} was not found in {path}")
         return algo
 
     candidates = []
@@ -411,7 +413,7 @@ def select_algorithm_result(
 
     if not candidates:
         raise KeyError(
-            f"默认模式下在 {path} 中找不到可用算法：{', '.join(AUTO_ALGORITHMS)}"
+            f"No eligible algorithms were found in {path}. Tried: {', '.join(AUTO_ALGORITHMS)}"
         )
 
     candidates.sort(key=lambda x: (x[0], x[1]))
@@ -437,7 +439,7 @@ def get_metric_from_file(
                 "base_latency": float("nan"),
                 "speedup_vs_baseline": float("nan"),
             }
-        raise KeyError(f"baseline 算法 {baseline_algorithm} 在 {path} 中不存在")
+        raise KeyError(f"Baseline algorithm {baseline_algorithm} was not found in {path}")
 
     base_latency = float(base[latency_field])
 
@@ -889,7 +891,7 @@ def merge_settings(args, cfg: dict) -> dict:
         "algorithm": args.algorithm or cfg.get("algorithm"),
         "models": models,
         "model": models[0] if len(models) == 1 else None,
-        "baseline_algorithm": args.baseline or cfg.get("baseline_algorithm", "pd"),
+        "baseline_algorithm": args.baseline or cfg.get("baseline_algorithm", "PD"),
         "reference_panel": args.reference_panel or cfg.get("reference_panel"),
         "latency_field": args.latency_field or cfg.get("latency_field", "total_time_s"),
         "title": args.title or cfg.get("title", "Experiment: Speedup"),
@@ -990,18 +992,18 @@ def merge_settings(args, cfg: dict) -> dict:
 def validate_settings(s: dict):
     if not s["panels"]:
         raise SystemExit(
-            "至少要提供一个 panel。可用 --panel '标签=路径'，或在 config.json 里写 panels。"
+            "At least one panel must be provided, either via --panel 'label=path' or in config.json."
         )
     if not s["batches"]:
-        raise SystemExit("请提供 batches。")
+        raise SystemExit("Please provide batches.")
     if not s["prefill_lengths"]:
-        raise SystemExit("请提供 prefill_lengths。")
+        raise SystemExit("Please provide prefill_lengths.")
     if not s["decode_lengths"]:
-        raise SystemExit("请提供 decode_lengths。")
+        raise SystemExit("Please provide decode_lengths.")
     if not s["reference_panel"]:
         s["reference_panel"] = list(s["panels"].keys())[0]
     if s["reference_panel"] not in s["panels"]:
-        raise SystemExit(f"reference_panel={s['reference_panel']} 不在 panels 中。")
+        raise SystemExit(f"reference_panel={s['reference_panel']} is not present in panels.")
 
 
 def resolve_output_paths(output: str) -> Tuple[Path, Path]:
@@ -1066,7 +1068,6 @@ def render_annotated_figure(
     batch_cols = max(1, int(settings["batch_cols"]))
     batch_rows = math.ceil(len(batches) / batch_cols)
 
-    # 主图单个格子的宽高：
     #   --annotated-cell-width
     #   --annotated-cell-height
     annotated_cell_w = float(settings["annotated_cell_width"]) * float(
@@ -1669,16 +1670,16 @@ def render_multi_model_compact_figure(
 def main():
     parser = argparse.ArgumentParser(
         description=(
-            "根据 batch / prefill / decode / 模型 / 算法 自动搜索 baseline_compare_*.json，"
-            "并同时生成带标注热力图与紧凑无标注热力图。"
+            "Automatically search baseline_compare_*.json by batch, prefill, decode, model, and algorithm, "
+            "and generate both annotated and compact heatmaps."
         )
     )
-    parser.add_argument("--config", type=str, default=None, help="JSON 配置文件")
+    parser.add_argument("--config", type=str, default=None, help="JSON configuration file")
     parser.add_argument(
         "--panel",
         type=parse_panel,
         action="append",
-        help='可重复，格式：--panel "1 NPU 2 PIM=output/..."',
+        help='Repeatable. Format: --panel "1 NPU 2 PIM=output/..."',
     )
     parser.add_argument("--batches", nargs="+", type=int)
     parser.add_argument("--prefills", nargs="+", type=int)
@@ -1689,21 +1690,21 @@ def main():
         action="append",
         default=None,
         help=(
-            '按模型筛选结果；可写单个模型如 --model llama 70b，'
-            '也可重复传入多个模型如 --model llama_7b --model llama_13b'
+            'Filter results by model. Use one model such as --model llama_70b, '
+            'or repeat the argument, e.g. --model llama_7b --model llama_13b'
         ),
     )
     parser.add_argument(
         "--algorithm",
         type=str,
-        help="显式指定算法；若不指定，则自动在 heft / hefthint 中选更快者",
+        help="Explicitly select one algorithm. If omitted, the script picks the faster result among HEFT and Bifocal.",
     )
     parser.add_argument("--baseline", type=str, default=None)
     parser.add_argument("--reference-panel", type=str, default=None)
     parser.add_argument(
         "--show-reference-panel",
         action="store_true",
-        help="显示 reference panel；默认 reference panel 只参与计算、不绘制",
+        help="Render the reference panel as well. By default it is used only for normalization.",
     )
     parser.add_argument(
         "--latency-field",
@@ -1717,7 +1718,7 @@ def main():
         "--output",
         type=str,
         default=None,
-        help="主图输出路径；同时会额外生成一张 compact_vs_min_hardware 图",
+        help="Output path for the main figure. A compact companion figure is also generated.",
     )
     parser.add_argument("--batch-cols", type=int, default=None)
     parser.add_argument("--figsize-scale", type=float, default=None)
@@ -1725,13 +1726,13 @@ def main():
         "--colors",
         nargs="+",
         default=None,
-        help="自定义颜色，示例：#bdade4 #e4adb5 ...",
+        help="Custom colors, for example: #bdade4 #e4adb5 ...",
     )
     parser.add_argument(
         "--cbar-label",
         type=str,
         default=None,
-        help="带数字主图的 colorbar 标签",
+        help="Colorbar label for the annotated main heatmap",
     )
     parser.add_argument("--vmin", type=float, default=None)
     parser.add_argument("--vmax", type=float, default=None)
@@ -1739,72 +1740,72 @@ def main():
         "--vmax-percentile",
         type=float,
         default=None,
-        help="若未显式指定 --vmax，则用该分位数作为颜色上限，例如 95",
+        help="If --vmax is not set, use this percentile as the upper color limit, e.g. 95.",
     )
     parser.add_argument(
         "--annotated-cell-width",
         type=float,
         default=None,
-        help="主图中单个 cell 的宽度（英寸）",
+        help="Width of one main-heatmap cell in inches",
     )
     parser.add_argument(
         "--annotated-cell-height",
         type=float,
         default=None,
-        help="主图中单个 cell 的高度（英寸）",
+        help="Height of one main-heatmap cell in inches",
     )
     parser.add_argument(
         "--compact-cell-width",
         type=float,
         default=None,
-        help="compact 图中单个 cell 的宽度（英寸）",
+        help="Width of one compact-heatmap cell in inches",
     )
     parser.add_argument(
         "--compact-cell-height",
         type=float,
         default=None,
-        help="compact 图中单个 cell 的高度（英寸）",
+        help="Height of one compact-heatmap cell in inches",
     )
     parser.add_argument(
         "--compact-tick-fontsize",
         type=float,
         default=None,
-        help="compact 图内部 tick label 字号",
+        help="Tick-label font size inside the compact heatmap",
     )
     parser.add_argument(
         "--compact-outer-label-fontsize",
         type=float,
         default=None,
-        help="compact 图外侧 panel / batch label 字号",
+        help="Outer panel and batch-label font size for the compact heatmap",
     )
     parser.add_argument(
         "--compact-cbar-tick-fontsize",
         type=float,
         default=None,
-        help="compact 图 colorbar 刻度字号",
+        help="Compact-heatmap colorbar tick font size",
     )
     parser.add_argument(
         "--compact-annotate",
         action="store_true",
-        help="在 compact 图的 cell 内显示数值标注",
+        help="Show numeric annotations inside compact-heatmap cells",
     )
     parser.add_argument(
         "--compact-annotation-fontsize",
         type=float,
         default=None,
-        help="compact 图 cell 内标注字号",
+        help="Font size of annotations inside compact-heatmap cells",
     )
     parser.add_argument(
         "--compact-annotation-fmt",
         type=str,
         default=None,
-        help='compact 图标注格式，例如 "{:.2f}"',
+        help='Compact-heatmap annotation format, for example "{:.2f}"',
     )
     parser.add_argument(
         "--compact-x-tick-rotation",
         type=float,
         default=None,
-        help="compact 图底部 x 轴 label 旋转角度",
+        help="Rotation angle for compact-heatmap bottom x-axis labels",
     )
     parser.add_argument("--xlabel", type=str, default=None)
     parser.add_argument("--ylabel", type=str, default=None)

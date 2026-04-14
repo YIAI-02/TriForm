@@ -1,55 +1,25 @@
 #!/usr/bin/env python3
-"""
+"""Plot marginal latency improvement versus added PIM budget.
+
+Run this script from ``experiment/experiment_fig``. Each ``--panel-root``
+points to a subtree under the repository-level ``output/`` directory that
+contains ``baseline_compare_*.json`` files from the current ``src/main.py
+evaluate`` flow.
+
+Example
+-------
 python plot_exp2_baseline_marginal.py \
   --model-folder llama_7b_fp16_b16_s8 \
   --prefills 128 512 1024 2048 \
   --decodes 128 256 512 1024 \
   --reference-panel 0 \
-  --panel-root 0=../../algorithms/output/exp2/npu_only/npu/hw_hardware_1npu/sst8_rst8/ \
-  --panel-root 2=../../algorithms/output/exp1/hw_hardware_1npu_2aim/sst8_rst8/ \
-  --panel-root 4=../../algorithms/output/exp2/4shards/hw_hardware_1npu_4aim/sst8_rst8/ \
-  --panel-root 8=../../algorithms/output/exp2/8shards/hw_hardware_1npu_8aim/sst8_rst8/ \
+  --panel-root 0=../../output/exp2/npu_only/npu/hw_hardware_1npu/sst8_rst8/ \
+  --panel-root 2=../../output/exp1/hw_hardware_1npu_2aim/sst8_rst8/ \
+  --panel-root 4=../../output/exp2/4shards/hw_hardware_1npu_4aim/sst8_rst8/ \
+  --panel-root 8=../../output/exp2/8shards/hw_hardware_1npu_8aim/sst8_rst8/ \
   --output ../../figs/exp2/llama_7b_fp16_b16_s8_marginal.pdf
-
-python plot_exp2_baseline_marginal.py \
-  --model-folder llama_13b_fp16_b16_s8 \
-  --prefills 128 512 1024 2048 \
-  --decodes 128 256 512 1024 \
-  --reference-panel 0 \
-  --panel-root 0=../../algorithms/output/exp2/npu_only/npu/hw_hardware_1npu/sst8_rst8/ \
-  --panel-root 2=../../algorithms/output/exp1/hw_hardware_1npu_2aim/sst8_rst8/ \
-  --panel-root 4=../../algorithms/output/exp2/4shards/hw_hardware_1npu_4aim/sst8_rst8/ \
-  --panel-root 8=../../algorithms/output/exp2/8shards/hw_hardware_1npu_8aim/sst8_rst8/ \
-  --output ../../figs/exp2/llama_13b_fp16_b16_s8_marginal.pdf
-
-python plot_exp2_baseline_marginal.py \
-  --model-folder llama_70b_fp16_b16_s8 \
-  --prefills 128 512 1024 2048 \
-  --decodes 128 256 512 1024 \
-  --reference-panel 0 \
-  --panel-root 0=../../algorithms/output/exp2/npu_only/npu/hw_hardware_1npu/sst8_rst8/ \
-  --panel-root 2=../../algorithms/output/exp1/hw_hardware_1npu_2aim/sst8_rst8/ \
-  --panel-root 4=../../algorithms/output/exp2/4shards/hw_hardware_1npu_4aim/sst8_rst8/ \
-  --panel-root 8=../../algorithms/output/exp2/8shards/hw_hardware_1npu_8aim/sst8_rst8/ \
-  --output ../../figs/exp2/llama_70b_fp16_b16_s8_marginal.pdf
-
-others:
-python plot_exp2_baseline_marginal.py \
-  --model-folder llama_7b_fp16_b1_s8 \
-  --prefills 128 512 1024 2048 \
-  --decodes 128 256 512 1024 \
-  --reference-panel 0 \
-  --panel-root 0=../../algorithms/output/exp2/npu_only/npu/hw_hardware_1npu/sst8_rst8/ \
-  --panel-root 2=../../algorithms/output/exp1/hw_hardware_1npu_2aim/sst8_rst8/ \
-  --panel-root 4=../../algorithms/output/exp2/4shards/hw_hardware_1npu_4aim/sst8_rst8/ \
-  --panel-root 8=../../algorithms/output/exp2/8shards/hw_hardware_1npu_8aim/sst8_rst8/ \
-  --panel-policy 2=heft \
-  --panel-policy 4=myalgo \
-  --panel-policy 8=otheralgo \
-  --output ../../figs/exp2/llama_7b_fp16_b1_s8_marginal_mixed_policy.pdf
-
 """
-#!/usr/bin/env python3
+
 from __future__ import annotations
 
 import argparse
@@ -107,8 +77,8 @@ DEFAULT_PALETTE = [
     "#a89a37",
 ]
 
-DEFAULT_NONZERO_POLICIES = ("algo:heft", "algo:hefthint")
-ZERO_PANEL_POLICY = "algo:hefthint"
+DEFAULT_NONZERO_POLICIES = ("algo:HEFT", "algo:Bifocal")
+ZERO_PANEL_POLICY = "algo:Bifocal"
 FILENAME_RE = re.compile(r"baseline_compare_(\d+)x(\d+)\.json$")
 
 
@@ -128,7 +98,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Plot speedup-vs-panel curves from baseline_compare_*.json. "
-            "Panel 0 is always normalized with algo:hefthint, while non-zero panels "
+            "Panel 0 is always normalized with algo:Bifocal, while non-zero panels "
             "can use either the default policy pool or per-panel policies via "
             "--panel-policy PANEL=POLICY. Supports either one recursive --root, or "
             "repeated --panel-root PANEL=PATH when each panel setting lives under "
@@ -215,9 +185,9 @@ def parse_args() -> argparse.Namespace:
         default=None,
         metavar="PANEL=POLICY[,POLICY...]",
         help=(
-            "Repeatable non-zero panel policy override, e.g. --panel-policy 2=heft "
+            "Repeatable non-zero panel policy override, e.g. --panel-policy 2=HEFT "
             "--panel-policy 4=algo:beam. When multiple policies are given with commas, "
-            "the best total_time_s among them is used. Panel 0 always uses algo:hefthint."
+            "the best total_time_s among them is used. Panel 0 always uses algo:Bifocal."
         ),
     )
     parser.add_argument(

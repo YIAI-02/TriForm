@@ -1,10 +1,19 @@
 #!/usr/bin/env python3
-"""
+"""Plot Weight Layout Arbiter iteration trajectories from ``driver_debug.txt``
+and ``all_passes.json``.
+
+Run this script from ``experiment/experiment_fig``. The input files are emitted
+by the current ``python src/main.py weight-suggest`` flow and usually live under
+one run directory inside the repository-level ``output/`` tree.
+
+Example
+-------
 python plot_exp3_iter_from_txt_json.py \
-  ../../algorithms/output/ws_hpc/shards/8w/worker_5/runs/000002_g_13_model_llama_7b_S_128_T_512_b_1_r_1_af7b5e10bf/artifacts/llama_7b_fp16_b1_s8/driver_debug.txt \
-  ../../algorithms/output/ws_hpc/shards/8w/worker_5/runs/000002_g_13_model_llama_7b_S_128_T_512_b_1_r_1_af7b5e10bf/all_passes.json \
+  ../../output/ws_hpc/shards/8w/worker_5/runs/example_run/artifacts/llama_7b_fp16_b1_s8/driver_debug.txt \
+  ../../output/ws_hpc/shards/8w/worker_5/runs/example_run/all_passes.json \
   -o ../../figs/exp3/exp3_iter/llama_7b_fp16_b1_s8_128x512.pdf
 """
+
 from __future__ import annotations
 
 import argparse

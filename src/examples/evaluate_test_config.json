@@ -1,16 +1,16 @@
 {
-  "model_family": "llama",
+  "model_family": "qwen",
   "model_variant": "7b",
   "dtype": "fp16",
   "batch": 1,
-  "prefill_len": 16,
-  "decode_len": 4,
-  "decode_sample_stride": 1,
-  "decode_plan_refresh_stride": 1,
+  "prefill_len": 1024,
+  "decode_len": 128,
+  "decode_sample_stride": 2,
+  "decode_plan_refresh_stride": 2,
   "pim_config_path": "./aim_simulator/PIM_AiM.json",
   "ramulator_config_path": "./aim_simulator/example.yaml",
   "simulation_log_file": "../../output/evaluate_single_test/hardware_1npu_2aim/pim_simulation.txt",
-  "result_dir": "../../output/evaluate_single_test/hardware_1npu_2aim_evaluate_eta0p1/",
+  "result_dir": "../../output/evaluate_single_test/hardware_1npu_2aim_evaluate/",
   "hardware_json": "./examples/hardware_1npu_2aim.json",
   "algo": [
     "Bifocal"

@@ -36,12 +36,12 @@ python3 "${COMMANDS_DIR}/sweep_bifocal_all_params.py" \
   --objective "${OBJECTIVE}" \
   --repeat "${REPEAT}" \
   --h 3 \
-  --gamma 0 0.2 0.4 0.6 \
-  --lambda_ 0 5 10\
+  --gamma 0 0.2 0.4 \
+  --lambda_ 0 3 5 \
   --plan-hint-max 3 \
-  --eta 1 5 10 \
+  --eta 0.0 0.1 1\
   --amort-enable true \
-  --amort-alpha 2 4 6 8 \
+  --amort-alpha 1 \
   --amort-rmin 1.0 \
   --amort-reuse-prob 0.5 1.0 \
   --outdir "${OUTDIR}" \

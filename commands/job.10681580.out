@@ -1,0 +1,1818 @@
+[1;33m[1m███████  PIM FAST MODE: ON  ███████[0m
+Config                : ./src/examples/evaluate_len_sweep_config_npu.json
+Output root           : ./output/exp1
+Sample stride         : 2
+Plan refresh stride   : 2
+DType/Batch           : fp16 / 1 4 8 16
+Parallel jobs         : 24
+Hardwares             : 1 file(s)
+Models                : 3 family entry(s)
+====================================
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:1.8b | S=512 T=128 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=1 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b1_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:1.8b | S=512 T=256 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=1 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b1_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:1.8b | S=512 T=512 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=1 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b1_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:1.8b | S=512 T=1024 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=1 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b1_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:1.8b | S=1024 T=128 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=1 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b1_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:1.8b | S=1024 T=256 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=1 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b1_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:1.8b | S=1024 T=512 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=1 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b1_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:1.8b | S=1024 T=1024 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=1 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b1_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:1.8b | S=512 T=128 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=4 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b4_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:1.8b | S=512 T=256 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=4 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b4_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:1.8b | S=512 T=512 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=4 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b4_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:1.8b | S=512 T=1024 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=4 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b4_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:1.8b | S=1024 T=128 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=4 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b4_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:1.8b | S=1024 T=256 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=4 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b4_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:1.8b | S=1024 T=512 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=4 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b4_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:1.8b | S=1024 T=1024 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=4 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b4_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:1.8b | S=512 T=128 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=8 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b8_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:1.8b | S=512 T=256 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=8 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b8_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:1.8b | S=512 T=512 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=8 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b8_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:1.8b | S=512 T=1024 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=8 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b8_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:1.8b | S=1024 T=128 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=8 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b8_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:1.8b | S=1024 T=256 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=8 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b8_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:1.8b | S=1024 T=512 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=8 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b8_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:1.8b | S=1024 T=1024 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=8 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b8_s2
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b8_s2 tag=1024x128
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b8_s2/baseline_compare_1024x128.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.1367       0.5608       0.6975
+algo:PD+Attn             pim_by_capacity       0.1367       0.4024       0.5391
+algo:PD+Linear           pim_by_capacity       0.1367       0.3024       0.4391
+algo:PD                  pim_by_capacity       0.1367       0.3394       0.4761
+algo:AF                  pim_by_capacity       0.4566       0.4092       0.8658
+algo:Bifocal             pim_by_capacity       0.1367       0.3097       0.4464
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b4_s2 tag=512x128
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b4_s2/baseline_compare_512x128.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.0939       0.2971       0.3910
+algo:PD+Attn             pim_by_capacity       0.0939       0.3844       0.4783
+algo:PD+Linear           pim_by_capacity       0.0939       0.2191       0.3131
+algo:PD                  pim_by_capacity       0.0939       0.1935       0.2874
+algo:AF                  pim_by_capacity       0.1621       0.3676       0.5297
+algo:Bifocal             pim_by_capacity       0.0939       0.1858       0.2797
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b4_s2 tag=1024x128
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b4_s2/baseline_compare_1024x128.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.1050       0.3652       0.4702
+algo:PD+Attn             pim_by_capacity       0.1050       0.3863       0.4913
+algo:PD+Linear           pim_by_capacity       0.1050       0.2245       0.3295
+algo:PD                  pim_by_capacity       0.1050       0.1987       0.3037
+algo:AF                  pim_by_capacity       0.2619       0.3730       0.6348
+algo:Bifocal             pim_by_capacity       0.1050       0.1908       0.2958
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b8_s2 tag=512x128
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b8_s2/baseline_compare_512x128.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.1018       0.4242       0.5260
+algo:PD+Attn             pim_by_capacity       0.1018       0.3916       0.4934
+algo:PD+Linear           pim_by_capacity       0.1018       0.2916       0.3934
+algo:PD                  pim_by_capacity       0.1018       0.3297       0.4315
+algo:AF                  pim_by_capacity       0.2474       0.3984       0.6458
+algo:Bifocal             pim_by_capacity       0.1018       0.3089       0.4106
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b1_s2 tag=512x128
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b1_s2/baseline_compare_512x128.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.0883       0.2186       0.3069
+algo:PD+Attn             pim_by_capacity       0.0883       0.3821       0.4704
+algo:PD+Linear           pim_by_capacity       0.0883       0.1625       0.2508
+algo:PD                  pim_by_capacity       0.0883       0.0831       0.1714
+algo:AF                  pim_by_capacity       0.0982       0.3446       0.4428
+algo:Bifocal             pim_by_capacity       0.0649       0.0914       0.1563
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:1.8b | S=512 T=128 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=16 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b16_s2
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b1_s2 tag=1024x128
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b1_s2/baseline_compare_1024x128.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.0910       0.2357       0.3266
+algo:PD+Attn             pim_by_capacity       0.0910       0.3821       0.4731
+algo:PD+Linear           pim_by_capacity       0.0910       0.1638       0.2548
+algo:PD                  pim_by_capacity       0.0910       0.0843       0.1753
+algo:AF                  pim_by_capacity       0.1231       0.3459       0.4690
+algo:Bifocal             pim_by_capacity       0.0910       0.0837       0.1747
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b4_s2 tag=1024x256
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b4_s2/baseline_compare_1024x256.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.1050       0.6950       0.8000
+algo:PD+Attn             pim_by_capacity       0.1050       0.7740       0.8790
+algo:PD+Linear           pim_by_capacity       0.1050       0.4207       0.5257
+algo:PD                  pim_by_capacity       0.1050       0.3577       0.4627
+algo:AF                  pim_by_capacity       0.2619       0.7472       1.0091
+algo:Bifocal             pim_by_capacity       0.1050       0.3426       0.4476
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b8_s2 tag=1024x256
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b8_s2/baseline_compare_1024x256.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.1367       1.1290       1.2657
+algo:PD+Attn             pim_by_capacity       0.1367       0.8075       0.9442
+algo:PD+Linear           pim_by_capacity       0.1367       0.5781       0.7148
+algo:PD                  pim_by_capacity       0.1367       0.6440       0.7807
+algo:AF                  pim_by_capacity       0.4566       0.8211       1.2777
+algo:Bifocal             pim_by_capacity       0.1367       0.5870       0.7238
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b4_s2 tag=512x256
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b4_s2/baseline_compare_512x256.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.0939       0.5588       0.6527
+algo:PD+Attn             pim_by_capacity       0.0939       0.7688       0.8627
+algo:PD+Linear           pim_by_capacity       0.0939       0.4100       0.5039
+algo:PD                  pim_by_capacity       0.0939       0.3473       0.4412
+algo:AF                  pim_by_capacity       0.1621       0.7365       0.8986
+algo:Bifocal             pim_by_capacity       0.0939       0.3322       0.4262
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b8_s2 tag=512x256
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b8_s2/baseline_compare_512x256.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.1018       0.8558       0.9575
+algo:PD+Attn             pim_by_capacity       0.1018       0.7860       0.8877
+algo:PD+Linear           pim_by_capacity       0.1018       0.5566       0.6584
+algo:PD                  pim_by_capacity       0.1018       0.6236       0.7254
+algo:AF                  pim_by_capacity       0.2474       0.7996       1.0470
+algo:Bifocal             pim_by_capacity       0.1018       0.5721       0.6739
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b1_s2 tag=1024x256
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b1_s2/baseline_compare_1024x256.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.0910       0.4233       0.5143
+algo:PD+Attn             pim_by_capacity       0.0910       0.7642       0.8552
+algo:PD+Linear           pim_by_capacity       0.0910       0.2980       0.3890
+algo:PD                  pim_by_capacity       0.0910       0.1269       0.2179
+algo:AF                  pim_by_capacity       0.1231       0.6922       0.8153
+algo:Bifocal             pim_by_capacity       0.0910       0.1259       0.2169
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b1_s2 tag=512x256
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b1_s2/baseline_compare_512x256.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.0883       0.3893       0.4776
+algo:PD+Attn             pim_by_capacity       0.0883       0.7642       0.8525
+algo:PD+Linear           pim_by_capacity       0.0883       0.2954       0.3837
+algo:PD                  pim_by_capacity       0.0883       0.1244       0.2127
+algo:AF                  pim_by_capacity       0.0982       0.6895       0.7877
+algo:Bifocal             pim_by_capacity       0.0649       0.1344       0.1993
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:1.8b | S=512 T=256 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=16 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b16_s2
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b16_s2 tag=512x128
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b16_s2/baseline_compare_512x128.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.1303       0.7441       0.8745
+algo:PD+Attn             pim_by_capacity       0.1303       0.4130       0.5433
+algo:PD+Linear           pim_by_capacity       0.1303       0.4769       0.6072
+algo:PD                  pim_by_capacity       0.1303       0.5912       0.7215
+algo:AF                  pim_by_capacity       0.4277       0.4601       0.8879
+algo:Bifocal             pim_by_capacity       0.1303       0.3129       0.4433
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b4_s2 tag=1024x512
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b4_s2/baseline_compare_1024x512.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.1050       1.4057       1.5107
+algo:PD+Attn             pim_by_capacity       0.1050       1.5534       1.6584
+algo:PD+Linear           pim_by_capacity       0.1050       0.8172       0.9222
+algo:PD                  pim_by_capacity       0.1050       0.6800       0.7850
+algo:AF                  pim_by_capacity       0.2619       1.4999       1.7618
+algo:Bifocal             pim_by_capacity       0.1050       0.6502       0.7552
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b8_s2 tag=1024x512
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b8_s2/baseline_compare_1024x512.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.1367       2.3678       2.5045
+algo:PD+Attn             pim_by_capacity       0.1367       1.6256       1.7624
+algo:PD+Linear           pim_by_capacity       0.1367       1.1376       1.2743
+algo:PD                  pim_by_capacity       0.1367       1.2613       1.3980
+algo:AF                  pim_by_capacity       0.4566       1.6528       2.1094
+algo:Bifocal             pim_by_capacity       0.1367       1.1462       1.2829
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b8_s2 tag=512x512
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b8_s2/baseline_compare_512x512.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.1018       1.8213       1.9231
+algo:PD+Attn             pim_by_capacity       0.1018       1.5826       1.6844
+algo:PD+Linear           pim_by_capacity       0.1018       1.0946       1.1964
+algo:PD                  pim_by_capacity       0.1018       1.2194       1.3212
+algo:AF                  pim_by_capacity       0.2474       1.6098       1.8572
+algo:Bifocal             pim_by_capacity       0.1018       1.1077       1.2094
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b4_s2 tag=512x512
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b4_s2/baseline_compare_512x512.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.0939       1.1332       1.2272
+algo:PD+Attn             pim_by_capacity       0.0939       1.5382       1.6321
+algo:PD+Linear           pim_by_capacity       0.0939       0.7958       0.8897
+algo:PD                  pim_by_capacity       0.0939       0.6588       0.7528
+algo:AF                  pim_by_capacity       0.1621       1.4785       1.6406
+algo:Bifocal             pim_by_capacity       0.0939       0.6291       0.7231
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b1_s2 tag=512x512
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b1_s2/baseline_compare_512x512.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.0883       0.7433       0.8316
+algo:PD+Attn             pim_by_capacity       0.0883       1.5283       1.6166
+algo:PD+Linear           pim_by_capacity       0.0883       0.5621       0.6504
+algo:PD                  pim_by_capacity       0.0883       0.2081       0.2964
+algo:AF                  pim_by_capacity       0.0982       1.3804       1.4786
+algo:Bifocal             pim_by_capacity       0.0649       0.2259       0.2907
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:1.8b | S=512 T=512 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=16 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b16_s2
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b1_s2 tag=1024x512
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b1_s2/baseline_compare_1024x512.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.0910       0.8114       0.9024
+algo:PD+Attn             pim_by_capacity       0.0910       1.5283       1.6193
+algo:PD+Linear           pim_by_capacity       0.0910       0.5674       0.6584
+algo:PD                  pim_by_capacity       0.0910       0.2132       0.3042
+algo:AF                  pim_by_capacity       0.1231       1.3857       1.5088
+algo:Bifocal             pim_by_capacity       0.0910       0.2091       0.3001
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b16_s2 tag=512x256
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b16_s2/baseline_compare_512x256.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.1303       1.5308       1.6611
+algo:PD+Attn             pim_by_capacity       0.1303       0.8313       0.9617
+algo:PD+Linear           pim_by_capacity       0.1303       0.9308       1.0611
+algo:PD                  pim_by_capacity       0.1303       1.1518       1.2821
+algo:AF                  pim_by_capacity       0.4277       0.9256       1.3534
+algo:Bifocal             pim_by_capacity       0.1303       0.6200       0.7504
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b8_s2 tag=512x1024
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b8_s2/baseline_compare_512x1024.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.1018       4.1624       4.2642
+algo:PD+Attn             pim_by_capacity       0.1018       3.2082       3.3100
+algo:PD+Linear           pim_by_capacity       0.1018       2.2028       2.3046
+algo:PD                  pim_by_capacity       0.1018       2.4432       2.5450
+algo:AF                  pim_by_capacity       0.2474       3.2626       3.5101
+algo:Bifocal             pim_by_capacity       0.1018       2.2088       2.3106
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b8_s2 tag=1024x1024
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b8_s2/baseline_compare_1024x1024.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.1367       5.2553       5.3920
+algo:PD+Attn             pim_by_capacity       0.1367       3.2941       3.4308
+algo:PD+Linear           pim_by_capacity       0.1367       2.2887       2.4254
+algo:PD                  pim_by_capacity       0.1367       2.5279       2.6646
+algo:AF                  pim_by_capacity       0.4566       3.3485       3.8051
+algo:Bifocal             pim_by_capacity       0.1367       2.2952       2.4319
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b4_s2 tag=1024x1024
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b4_s2/baseline_compare_1024x1024.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.1050       3.0314       3.1364
+algo:PD+Attn             pim_by_capacity       0.1050       3.1282       3.2332
+algo:PD+Linear           pim_by_capacity       0.1050       1.6261       1.7311
+algo:PD                  pim_by_capacity       0.1050       1.3406       1.4456
+algo:AF                  pim_by_capacity       0.2619       3.0212       3.2831
+algo:Bifocal             pim_by_capacity       0.1050       1.2848       1.3898
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b4_s2 tag=512x1024
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b4_s2/baseline_compare_512x1024.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.0939       2.4865       2.5805
+algo:PD+Attn             pim_by_capacity       0.0939       3.0916       3.1855
+algo:PD+Linear           pim_by_capacity       0.0939       1.5833       1.6772
+algo:PD                  pim_by_capacity       0.0939       1.2980       1.3919
+algo:AF                  pim_by_capacity       0.1621       2.9784       3.1405
+algo:Bifocal             pim_by_capacity       0.0939       1.2389       1.3328
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b1_s2 tag=512x1024
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b1_s2/baseline_compare_512x1024.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.0883       1.5025       1.5908
+algo:PD+Attn             pim_by_capacity       0.0883       3.0567       3.1450
+algo:PD+Linear           pim_by_capacity       0.0883       1.0996       1.1879
+algo:PD                  pim_by_capacity       0.0883       0.3793       0.4677
+algo:AF                  pim_by_capacity       0.0982       2.7661       2.8643
+algo:Bifocal             pim_by_capacity       0.0649       0.3758       0.4407
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:1.8b | S=512 T=1024 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=16 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b16_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:1.8b | S=1024 T=128 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=16 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b16_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:1.8b | S=1024 T=256 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=16 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b16_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:1.8b | S=1024 T=512 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=16 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b16_s2
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b16_s2 tag=512x512
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b16_s2/baseline_compare_512x512.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.1303       3.3090       3.4393
+algo:PD+Attn             pim_by_capacity       0.1303       1.6841       1.8144
+algo:PD+Linear           pim_by_capacity       0.1303       1.8547       1.9850
+algo:PD                  pim_by_capacity       0.1303       2.2891       2.4194
+algo:AF                  pim_by_capacity       0.4277       1.8727       2.3004
+algo:Bifocal             pim_by_capacity       0.1303       1.2491       1.3794
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b1_s2 tag=1024x1024
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b1_s2/baseline_compare_1024x1024.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.0910       1.6387       1.7297
+algo:PD+Attn             pim_by_capacity       0.0910       3.0567       3.1477
+algo:PD+Linear           pim_by_capacity       0.0910       1.1101       1.2011
+algo:PD                  pim_by_capacity       0.0910       0.3898       0.4808
+algo:AF                  pim_by_capacity       0.1231       2.7766       2.8997
+algo:Bifocal             pim_by_capacity       0.0910       0.3833       0.4742
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:1.8b | S=1024 T=1024 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=16 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b16_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:7b | S=512 T=128 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=1 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b1_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:7b | S=512 T=256 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=1 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b1_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:7b | S=512 T=512 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=1 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b1_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:7b | S=512 T=1024 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=1 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b1_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:7b | S=1024 T=128 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=1 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b1_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:7b | S=1024 T=256 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=1 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b1_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:7b | S=1024 T=512 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=1 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b1_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:7b | S=1024 T=1024 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=1 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b1_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:7b | S=512 T=128 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=4 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b4_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:7b | S=512 T=256 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=4 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b4_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:7b | S=512 T=512 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=4 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b4_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:7b | S=512 T=1024 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=4 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b4_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:7b | S=1024 T=128 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=4 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b4_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:7b | S=1024 T=256 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=4 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b4_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:7b | S=1024 T=512 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=4 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b4_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:7b | S=1024 T=1024 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=4 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b4_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:7b | S=512 T=128 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=8 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b8_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:7b | S=512 T=256 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=8 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b8_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:7b | S=512 T=512 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=8 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b8_s2
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b16_s2 tag=1024x128
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b16_s2/baseline_compare_1024x128.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.2706       1.0174       1.2879
+algo:PD+Attn             pim_by_capacity       0.2706       0.4344       0.7050
+algo:PD+Linear           pim_by_capacity       0.2706       0.4983       0.7689
+algo:PD                  pim_by_capacity       0.2706       0.6094       0.8800
+algo:AF                  pim_by_capacity       0.9113       0.4816       1.3929
+algo:Bifocal             pim_by_capacity       0.2706       0.3338       0.6043
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b4_s2 tag=512x128
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b4_s2/baseline_compare_512x128.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.4472       1.1290       1.5763
+algo:PD+Attn             pim_by_capacity       0.4472       1.9059       2.3531
+algo:PD+Linear           pim_by_capacity       0.4472       1.0005       1.4478
+algo:PD                  pim_by_capacity       0.4472       0.8308       1.2780
+algo:AF                  pim_by_capacity       0.7230       1.7761       2.4991
+algo:Bifocal             pim_by_capacity       0.4472       0.8146       1.2618
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b4_s2 tag=1024x128
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b4_s2/baseline_compare_1024x128.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.4715       1.2671       1.7386
+algo:PD+Attn             pim_by_capacity       0.4715       1.9059       2.3774
+algo:PD+Linear           pim_by_capacity       0.4715       1.0128       1.4843
+algo:PD                  pim_by_capacity       0.4715       0.8423       1.3138
+algo:AF                  pim_by_capacity       1.1031       1.7884       2.8915
+algo:Bifocal             pim_by_capacity       0.4715       0.8276       1.2991
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b8_s2 tag=512x128
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b8_s2/baseline_compare_512x128.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.4640       1.5488       2.0128
+algo:PD+Attn             pim_by_capacity       0.4640       1.9127       2.3767
+algo:PD+Linear           pim_by_capacity       0.4640       1.2761       1.7401
+algo:PD                  pim_by_capacity       0.4640       1.4015       1.8654
+algo:AF                  pim_by_capacity       1.0693       1.8843       2.9536
+algo:Bifocal             pim_by_capacity       0.4640       1.3168       1.7808
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b1_s2 tag=1024x128
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b1_s2/baseline_compare_1024x128.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.4407       1.0636       1.5043
+algo:PD+Attn             pim_by_capacity       0.4407       1.9008       2.3415
+algo:PD+Linear           pim_by_capacity       0.4407       0.7876       1.2283
+algo:PD                  pim_by_capacity       0.4407       0.3866       0.8273
+algo:AF                  pim_by_capacity       0.5583       1.6934       2.2516
+algo:Bifocal             pim_by_capacity       0.4407       0.3759       0.8166
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b1_s2 tag=512x128
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b1_s2/baseline_compare_512x128.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.4347       1.0291       1.4637
+algo:PD+Attn             pim_by_capacity       0.4347       1.9008       2.3355
+algo:PD+Linear           pim_by_capacity       0.4347       0.7846       1.2192
+algo:PD                  pim_by_capacity       0.4347       0.3837       0.8184
+algo:AF                  pim_by_capacity       0.4633       1.6903       2.1536
+algo:Bifocal             pim_by_capacity       0.3046       0.4361       0.7407
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b16_s2 tag=1024x256
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b16_s2/baseline_compare_1024x256.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.2706       2.0772       2.3478
+algo:PD+Attn             pim_by_capacity       0.2706       0.8743       1.1448
+algo:PD+Linear           pim_by_capacity       0.2706       0.9737       1.2443
+algo:PD                  pim_by_capacity       0.2706       1.1915       1.4621
+algo:AF                  pim_by_capacity       0.9113       0.9686       1.8799
+algo:Bifocal             pim_by_capacity       0.2706       0.6620       0.9326
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b8_s2 tag=512x256
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b8_s2/baseline_compare_512x256.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.4640       3.0338       3.4978
+algo:PD+Attn             pim_by_capacity       0.4640       3.8253       4.2893
+algo:PD+Linear           pim_by_capacity       0.4640       2.4115       2.8755
+algo:PD                  pim_by_capacity       0.4640       2.6075       3.0715
+algo:AF                  pim_by_capacity       1.0693       3.7748       4.8441
+algo:Bifocal             pim_by_capacity       0.4640       2.4507       2.9147
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b4_s2 tag=512x256
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b4_s2/baseline_compare_512x256.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.4472       2.0323       2.4796
+algo:PD+Attn             pim_by_capacity       0.4472       3.8118       4.2590
+algo:PD+Linear           pim_by_capacity       0.4472       1.8557       2.3029
+algo:PD                  pim_by_capacity       0.4472       1.4583       1.9055
+algo:AF                  pim_by_capacity       0.7230       3.5552       4.2782
+algo:Bifocal             pim_by_capacity       0.4472       1.4190       1.8662
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b1_s2 tag=1024x256
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b1_s2/baseline_compare_1024x256.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.4407       1.8773       2.3180
+algo:PD+Attn             pim_by_capacity       0.4407       3.8016       4.2423
+algo:PD+Linear           pim_by_capacity       0.4407       1.4262       1.8670
+algo:PD                  pim_by_capacity       0.4407       0.5644       1.0052
+algo:AF                  pim_by_capacity       0.5583       3.3876       3.9458
+algo:Bifocal             pim_by_capacity       0.4407       0.5522       0.9929
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b1_s2 tag=512x256
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b1_s2/baseline_compare_512x256.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.4347       1.8083       2.2429
+algo:PD+Attn             pim_by_capacity       0.4347       3.8016       4.2363
+algo:PD+Linear           pim_by_capacity       0.4347       1.4201       1.8547
+algo:PD                  pim_by_capacity       0.4347       0.5585       0.9931
+algo:AF                  pim_by_capacity       0.4633       3.3814       3.8447
+algo:Bifocal             pim_by_capacity       0.3046       0.6159       0.9205
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b4_s2 tag=1024x256
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b4_s2/baseline_compare_1024x256.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.4715       2.3085       2.7799
+algo:PD+Attn             pim_by_capacity       0.4715       3.8118       4.2832
+algo:PD+Linear           pim_by_capacity       0.4715       1.8804       2.3518
+algo:PD                  pim_by_capacity       0.4715       1.4821       1.9536
+algo:AF                  pim_by_capacity       1.1031       3.5799       4.6830
+algo:Bifocal             pim_by_capacity       0.4715       1.4403       1.9118
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b16_s2 tag=1024x512
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b16_s2/baseline_compare_1024x512.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.2706       4.4019       4.6725
+algo:PD+Attn             pim_by_capacity       0.2706       1.7699       2.0405
+algo:PD+Linear           pim_by_capacity       0.2706       1.9405       2.2111
+algo:PD                  pim_by_capacity       0.2706       2.3717       2.6423
+algo:AF                  pim_by_capacity       0.9113       1.9586       2.8699
+algo:Bifocal             pim_by_capacity       0.2706       1.3338       1.6043
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b1_s2 tag=1024x512
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b1_s2/baseline_compare_1024x512.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.4407       3.5306       3.9714
+algo:PD+Attn             pim_by_capacity       0.4407       7.6032       8.0439
+algo:PD+Linear           pim_by_capacity       0.4407       2.7058       3.1466
+algo:PD                  pim_by_capacity       0.4407       0.9225       1.3632
+algo:AF                  pim_by_capacity       0.5583       6.7783       7.3366
+algo:Bifocal             pim_by_capacity       0.4407       0.9044       1.3451
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b4_s2 tag=512x512
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b4_s2/baseline_compare_512x512.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.4472       3.9425       4.3897
+algo:PD+Attn             pim_by_capacity       0.4472       7.6235       8.0708
+algo:PD+Linear           pim_by_capacity       0.4472       3.5753       4.0225
+algo:PD                  pim_by_capacity       0.4472       2.7225       3.1697
+algo:AF                  pim_by_capacity       0.7230       7.1228       7.8458
+algo:Bifocal             pim_by_capacity       0.4472       2.6447       3.0920
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b1_s2 tag=512x512
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b1_s2/baseline_compare_512x512.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.4347       3.3926       3.8272
+algo:PD+Attn             pim_by_capacity       0.4347       7.6032       8.0379
+algo:PD+Linear           pim_by_capacity       0.4347       2.6934       3.1280
+algo:PD                  pim_by_capacity       0.4347       0.9103       1.3449
+algo:AF                  pim_by_capacity       0.4633       6.7659       7.2292
+algo:Bifocal             pim_by_capacity       0.3046       0.9533       1.2579
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b8_s2 tag=512x512
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b8_s2/baseline_compare_512x512.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.4640       6.2117       6.6757
+algo:PD+Attn             pim_by_capacity       0.4640       7.6506       8.1146
+algo:PD+Linear           pim_by_capacity       0.4640       4.7009       5.1648
+algo:PD                  pim_by_capacity       0.4640       5.0380       5.5020
+algo:AF                  pim_by_capacity       1.0693       7.5742       8.6436
+algo:Bifocal             pim_by_capacity       0.4640       4.7343       5.1983
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b4_s2 tag=1024x512
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b4_s2/baseline_compare_1024x512.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.4715       4.4948       4.9662
+algo:PD+Attn             pim_by_capacity       0.4715       7.6235       8.0950
+algo:PD+Linear           pim_by_capacity       0.4715       3.6246       4.0960
+algo:PD                  pim_by_capacity       0.4715       2.7710       3.2424
+algo:AF                  pim_by_capacity       1.1031       7.1721       8.2752
+algo:Bifocal             pim_by_capacity       0.4715       2.7041       3.1756
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b16_s2 tag=1024x1024
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b16_s2/baseline_compare_1024x1024.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.2706       9.8707      10.1412
+algo:PD+Attn             pim_by_capacity       0.2706       3.6252       3.8958
+algo:PD+Linear           pim_by_capacity       0.2706       3.9382       4.2087
+algo:PD                  pim_by_capacity       0.2706       4.7960       5.0666
+algo:AF                  pim_by_capacity       0.9113       4.0025       4.9138
+algo:Bifocal             pim_by_capacity       0.2706       2.7408       3.0114
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b16_s2 tag=512x1024
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_1.8b_fp16_b16_s2/baseline_compare_512x1024.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.1303       7.6851       7.8154
+algo:PD+Attn             pim_by_capacity       0.1303       3.4540       3.5843
+algo:PD+Linear           pim_by_capacity       0.1303       3.7670       3.8973
+algo:PD                  pim_by_capacity       0.1303       4.6280       4.7583
+algo:AF                  pim_by_capacity       0.4277       3.8313       4.2590
+algo:Bifocal             pim_by_capacity       0.1303       2.5711       2.7014
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:7b | S=512 T=1024 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=8 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b8_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:7b | S=1024 T=128 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=8 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b8_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:7b | S=1024 T=256 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=8 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b8_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:7b | S=1024 T=512 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=8 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b8_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:7b | S=1024 T=1024 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=8 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b8_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:7b | S=512 T=128 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=16 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b16_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:7b | S=512 T=256 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=16 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b16_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:7b | S=512 T=512 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=16 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b16_s2
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b4_s2 tag=512x1024
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b4_s2/baseline_compare_512x1024.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.4472       8.1770       8.6243
+algo:PD+Attn             pim_by_capacity       0.4472      15.2471      15.6943
+algo:PD+Linear           pim_by_capacity       0.4472       7.0514       7.4986
+algo:PD                  pim_by_capacity       0.4472       5.2878       5.7350
+algo:AF                  pim_by_capacity       0.7230      14.2949      15.0179
+algo:Bifocal             pim_by_capacity       0.4472       5.1441       5.5913
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b1_s2 tag=512x1024
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b1_s2/baseline_compare_512x1024.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.4347       6.6647       7.0994
+algo:PD+Attn             pim_by_capacity       0.4347      15.2064      15.6411
+algo:PD+Linear           pim_by_capacity       0.4347       5.2494       5.6841
+algo:PD                  pim_by_capacity       0.4347       1.6232       2.0579
+algo:AF                  pim_by_capacity       0.4633      13.5442      14.0075
+algo:Bifocal             pim_by_capacity       0.3046       1.6362       1.9408
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:7b | S=512 T=1024 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=16 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b16_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:7b | S=1024 T=128 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=16 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b16_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:7b | S=1024 T=256 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=16 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b16_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:7b | S=1024 T=512 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=16 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b16_s2
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b1_s2 tag=1024x1024
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b1_s2/baseline_compare_1024x1024.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.4407       6.9409       7.3816
+algo:PD+Attn             pim_by_capacity       0.4407      15.2064      15.6471
+algo:PD+Linear           pim_by_capacity       0.4407       5.2741       5.7148
+algo:PD                  pim_by_capacity       0.4407       1.6478       2.0885
+algo:AF                  pim_by_capacity       0.5583      13.5689      14.1272
+algo:Bifocal             pim_by_capacity       0.4407       1.6174       2.0581
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:7b | S=1024 T=1024 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=16 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b16_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:14b | S=512 T=128 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=1 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b1_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:14b | S=512 T=256 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=1 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b1_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:14b | S=512 T=512 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=1 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b1_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:14b | S=512 T=1024 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=1 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b1_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:14b | S=1024 T=128 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=1 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b1_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:14b | S=1024 T=256 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=1 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b1_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:14b | S=1024 T=512 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=1 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b1_s2
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b4_s2 tag=1024x1024
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b4_s2/baseline_compare_1024x1024.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.4715       9.2816       9.7530
+algo:PD+Attn             pim_by_capacity       0.4715      15.2471      15.7185
+algo:PD+Linear           pim_by_capacity       0.4715       7.1499       7.6214
+algo:PD                  pim_by_capacity       0.4715       5.3856       5.8571
+algo:AF                  pim_by_capacity       1.1031      14.3935      15.4966
+algo:Bifocal             pim_by_capacity       0.4715       5.2588       5.7303
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:14b | S=1024 T=1024 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=1 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b1_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:14b | S=512 T=128 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=4 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b4_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:14b | S=512 T=256 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=4 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b4_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:14b | S=512 T=512 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=4 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b4_s2
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b8_s2 tag=1024x128
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b8_s2/baseline_compare_1024x128.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.5622       1.8258       2.3881
+algo:PD+Attn             pim_by_capacity       0.5622       1.9134       2.4756
+algo:PD+Linear           pim_by_capacity       0.5622       1.3007       1.8629
+algo:PD                  pim_by_capacity       0.5622       1.4158       1.9780
+algo:AF                  pim_by_capacity       1.8714       1.9090       3.7803
+algo:Bifocal             pim_by_capacity       0.5622       1.3379       1.9001
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b16_s2 tag=512x128
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b16_s2/baseline_compare_512x128.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.5473       2.4356       2.9829
+algo:PD+Attn             pim_by_capacity       0.5473       1.9363       2.4836
+algo:PD+Linear           pim_by_capacity       0.5473       1.9289       2.4762
+algo:PD                  pim_by_capacity       0.5473       2.5241       3.0713
+algo:AF                  pim_by_capacity       1.8039       2.0917       3.8955
+algo:Bifocal             pim_by_capacity       0.5473       1.4323       1.9796
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b16_s2 tag=1024x128
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b16_s2/baseline_compare_1024x128.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       1.1212       2.9863       4.1075
+algo:PD+Attn             pim_by_capacity       1.1212       1.9787       3.0999
+algo:PD+Linear           pim_by_capacity       1.1212       1.9713       3.0925
+algo:PD                  pim_by_capacity       1.1212       2.5473       3.6685
+algo:AF                  pim_by_capacity       3.7415       2.1341       5.8755
+algo:Bifocal             pim_by_capacity       1.1212       1.4683       2.5895
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b1_s2 tag=1024x128
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b1_s2/baseline_compare_1024x128.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.7297       1.9229       2.6526
+algo:PD+Attn             pim_by_capacity       0.7297      91.1990      91.9287
+algo:PD+Linear           pim_by_capacity       0.7297       1.2730       2.0027
+algo:PD                  pim_by_capacity       0.7297       0.6480       1.3777
+algo:AF                  pim_by_capacity       1.0284      71.8017      72.8302
+algo:Bifocal             pim_by_capacity       0.7297       0.6618       1.3915
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b1_s2 tag=512x128
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b1_s2/baseline_compare_512x128.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.7192       1.8716       2.5908
+algo:PD+Attn             pim_by_capacity       0.7192      91.1990      91.9182
+algo:PD+Linear           pim_by_capacity       0.7192       1.2668       1.9860
+algo:PD                  pim_by_capacity       0.7192       0.6421       1.3613
+algo:AF                  pim_by_capacity       0.7861      71.7955      72.5817
+algo:Bifocal             pim_by_capacity       0.5177       0.7528       1.2705
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b4_s2 tag=512x128
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b4_s2/baseline_compare_512x128.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.7393       2.0215       2.7608
+algo:PD+Attn             pim_by_capacity       0.7393      91.2022      91.9415
+algo:PD+Linear           pim_by_capacity       0.7393       1.6673       2.4066
+algo:PD                  pim_by_capacity       0.7393       1.3862       2.1255
+algo:AF                  pim_by_capacity       1.4616      71.9993      73.4609
+algo:Bifocal             pim_by_capacity       0.7393       1.4116       2.1508
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b8_s2 tag=1024x256
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b8_s2/baseline_compare_1024x256.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.5622       3.5880       4.1502
+algo:PD+Attn             pim_by_capacity       0.5622       3.8321       4.3943
+algo:PD+Linear           pim_by_capacity       0.5622       2.4608       3.0230
+algo:PD                  pim_by_capacity       0.5622       2.6465       3.2087
+algo:AF                  pim_by_capacity       1.8714       3.8241       5.6955
+algo:Bifocal             pim_by_capacity       0.5622       2.4994       3.0617
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b16_s2 tag=512x256
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b16_s2/baseline_compare_512x256.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.5473       4.8806       5.4279
+algo:PD+Attn             pim_by_capacity       0.5473       3.8850       4.4323
+algo:PD+Linear           pim_by_capacity       0.5473       3.7275       4.2748
+algo:PD                  pim_by_capacity       0.5473       4.8769       5.4241
+algo:AF                  pim_by_capacity       1.8039       4.1957       5.9996
+algo:Bifocal             pim_by_capacity       0.5473       2.8176       3.3649
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b16_s2 tag=1024x256
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b16_s2/baseline_compare_1024x256.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       1.1212       5.9811       7.1023
+algo:PD+Attn             pim_by_capacity       1.1212       3.9681       5.0893
+algo:PD+Linear           pim_by_capacity       1.1212       3.8106       4.9318
+algo:PD                  pim_by_capacity       1.1212       4.9408       6.0620
+algo:AF                  pim_by_capacity       3.7415       4.2788       8.0203
+algo:Bifocal             pim_by_capacity       1.1212       2.8929       4.0141
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b1_s2 tag=1024x256
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b1_s2/baseline_compare_1024x256.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.7297       3.3699       4.0996
+algo:PD+Attn             pim_by_capacity       0.7297     182.3980     183.1277
+algo:PD+Linear           pim_by_capacity       0.7297       2.2584       2.9882
+algo:PD                  pim_by_capacity       0.7297       0.9466       1.6763
+algo:AF                  pim_by_capacity       1.0284     143.6050     144.6334
+algo:Bifocal             pim_by_capacity       0.7297       0.9557       1.6854
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b1_s2 tag=512x256
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b1_s2/baseline_compare_512x256.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.7192       3.2673       3.9865
+algo:PD+Attn             pim_by_capacity       0.7192     182.3980     183.1172
+algo:PD+Linear           pim_by_capacity       0.7192       2.2461       2.9653
+algo:PD                  pim_by_capacity       0.7192       0.9345       1.6537
+algo:AF                  pim_by_capacity       0.7861     143.5926     144.3787
+algo:Bifocal             pim_by_capacity       0.5177       1.0341       1.5519
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b4_s2 tag=512x256
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b4_s2/baseline_compare_512x256.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.7393       3.6028       4.3421
+algo:PD+Attn             pim_by_capacity       0.7393     182.4045     183.1438
+algo:PD+Linear           pim_by_capacity       0.7393       3.0544       3.7937
+algo:PD                  pim_by_capacity       0.7393       2.4326       3.1718
+algo:AF                  pim_by_capacity       1.4616     144.0047     145.4663
+algo:Bifocal             pim_by_capacity       0.7393       2.4446       3.1839
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b8_s2 tag=1024x512
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b8_s2/baseline_compare_1024x512.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.5622       7.3200       7.8822
+algo:PD+Attn             pim_by_capacity       0.5622       7.6881       8.2503
+algo:PD+Linear           pim_by_capacity       0.5622       4.7995       5.3617
+algo:PD                  pim_by_capacity       0.5622       5.1263       5.6886
+algo:AF                  pim_by_capacity       1.8714       7.6729       9.5442
+algo:Bifocal             pim_by_capacity       0.5622       4.8276       5.3899
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b16_s2 tag=512x512
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b16_s2/baseline_compare_512x512.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.5473      10.1829      10.7302
+algo:PD+Attn             pim_by_capacity       0.5473       7.8130       8.3603
+algo:PD+Linear           pim_by_capacity       0.5473       7.3554       7.9026
+algo:PD                  pim_by_capacity       0.5473       9.6131      10.1604
+algo:AF                  pim_by_capacity       1.8039       8.4344      10.2383
+algo:Bifocal             pim_by_capacity       0.5473       5.6157       6.1630
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b16_s2 tag=1024x512
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b16_s2/baseline_compare_1024x512.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       1.1212      12.3836      13.5048
+algo:PD+Attn             pim_by_capacity       1.1212       7.9785       9.0997
+algo:PD+Linear           pim_by_capacity       1.1212       7.5209       8.6421
+algo:PD                  pim_by_capacity       1.1212       9.7595      10.8807
+algo:AF                  pim_by_capacity       3.7415       8.5999      12.3414
+algo:Bifocal             pim_by_capacity       1.1212       5.7737       6.8949
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b1_s2 tag=1024x512
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b1_s2/baseline_compare_1024x512.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.7297       6.3022       7.0319
+algo:PD+Attn             pim_by_capacity       0.7297     364.7960     365.5257
+algo:PD+Linear           pim_by_capacity       0.7297       4.2339       4.9636
+algo:PD                  pim_by_capacity       0.7297       1.5484       2.2781
+algo:AF                  pim_by_capacity       1.0284     287.2159     288.2444
+algo:Bifocal             pim_by_capacity       0.7297       1.5430       2.2727
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b4_s2 tag=512x512
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b4_s2/baseline_compare_512x512.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.7393       6.9192       7.6585
+algo:PD+Attn             pim_by_capacity       0.7393     364.8089     365.5482
+algo:PD+Linear           pim_by_capacity       0.7393       5.8467       6.5860
+algo:PD                  pim_by_capacity       0.7393       4.5435       5.2828
+algo:AF                  pim_by_capacity       1.4616     288.0338     289.4954
+algo:Bifocal             pim_by_capacity       0.7393       4.4810       5.2203
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b1_s2 tag=512x512
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b1_s2/baseline_compare_512x512.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.7192       6.0971       6.8162
+algo:PD+Attn             pim_by_capacity       0.7192     364.7960     365.5152
+algo:PD+Linear           pim_by_capacity       0.7192       4.2095       4.9287
+algo:PD                  pim_by_capacity       0.7192       1.5242       2.2434
+algo:AF                  pim_by_capacity       0.7861     287.1915     287.9776
+algo:Bifocal             pim_by_capacity       0.5177       1.6158       2.1335
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b8_s2 tag=1024x1024
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b8_s2/baseline_compare_1024x1024.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.5622      15.6089      16.1711
+algo:PD+Attn             pim_by_capacity       0.5622      15.4613      16.0235
+algo:PD+Linear           pim_by_capacity       0.5622       9.5382      10.1004
+algo:PD                  pim_by_capacity       0.5622      10.1473      10.7095
+algo:AF                  pim_by_capacity       1.8714      15.4317      17.3030
+algo:Bifocal             pim_by_capacity       0.5622       9.5455      10.1077
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b8_s2 tag=512x1024
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b8_s2/baseline_compare_512x1024.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.4640      13.3987      13.8627
+algo:PD+Attn             pim_by_capacity       0.4640      15.3387      15.8027
+algo:PD+Linear           pim_by_capacity       0.4640       9.3536       9.8176
+algo:PD                  pim_by_capacity       0.4640       9.9730      10.4370
+algo:AF                  pim_by_capacity       1.0693      15.2471      16.3164
+algo:Bifocal             pim_by_capacity       0.4640       9.3664       9.8304
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:14b | S=512 T=1024 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=4 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b4_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:14b | S=1024 T=128 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=4 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b4_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:14b | S=1024 T=256 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=4 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b4_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:14b | S=1024 T=512 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=4 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b4_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:14b | S=1024 T=1024 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=4 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b4_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:14b | S=512 T=128 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=8 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b8_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:14b | S=512 T=256 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=8 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b8_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:14b | S=512 T=512 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=8 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b8_s2
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b16_s2 tag=512x1024
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b16_s2/baseline_compare_512x1024.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.5473      22.4373      22.9845
+algo:PD+Attn             pim_by_capacity       0.5473      15.7915      16.3388
+algo:PD+Linear           pim_by_capacity       0.5473      14.7336      15.2809
+algo:PD                  pim_by_capacity       0.5473      19.2082      19.7554
+algo:AF                  pim_by_capacity       1.8039      17.0343      18.8382
+algo:Bifocal             pim_by_capacity       0.5473      11.3355      11.8827
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:14b | S=512 T=1024 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=8 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b8_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:14b | S=1024 T=128 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=8 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b8_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:14b | S=1024 T=256 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=8 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b8_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:14b | S=1024 T=512 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=8 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b8_s2
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b16_s2 tag=1024x1024
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_7b_fp16_b16_s2/baseline_compare_1024x1024.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       1.1212      26.8390      27.9602
+algo:PD+Attn             pim_by_capacity       1.1212      16.1233      17.2445
+algo:PD+Linear           pim_by_capacity       1.1212      15.0654      16.1866
+algo:PD                  pim_by_capacity       1.1212      19.5208      20.6420
+algo:AF                  pim_by_capacity       3.7415      17.3661      21.1076
+algo:Bifocal             pim_by_capacity       1.1212      11.6593      12.7805
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:14b | S=1024 T=1024 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=8 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b8_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:14b | S=512 T=128 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=16 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b16_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:14b | S=512 T=256 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=16 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b16_s2
+
+[1;36m[1m--- HW=hardware_1npu_2aim | qwen:14b | S=512 T=512 | sample_stride=2 | refresh_stride=2 | dtype=fp16 b=16 ---[0m
+[1;33m[1m[PIM FAST MODE ACTIVE][0m
+Expected result_dir   : ./output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b16_s2
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b16_s2 tag=512x128
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b16_s2/baseline_compare_512x128.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.9012       4.1291       5.0302
+algo:PD+Attn             pim_by_capacity       0.9012      91.2152      92.1163
+algo:PD+Linear           pim_by_capacity       0.9012       3.3383       4.2395
+algo:PD                  pim_by_capacity       0.9012       4.2069       5.1081
+algo:AF                  pim_by_capacity       4.2261      72.7530      76.9791
+algo:Bifocal             pim_by_capacity       0.9012       2.6455       3.5467
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b4_s2 tag=1024x128
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b4_s2/baseline_compare_1024x128.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.7814       2.2267       3.0080
+algo:PD+Attn             pim_by_capacity       0.7814      91.2022      91.9836
+algo:PD+Linear           pim_by_capacity       0.7814       1.6918       2.4732
+algo:PD                  pim_by_capacity       0.7814       1.4098       2.1911
+algo:AF                  pim_by_capacity       2.4312      72.0238      74.4550
+algo:Bifocal             pim_by_capacity       0.7814       1.4340       2.2153
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN', 'PD+Attn', 'PD+Linear', 'PD', 'AF'] result_dir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b8_s2 tag=512x128
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/hardware_1npu_2aim.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/src/examples/output/exp1/hw_hardware_1npu_2aim/sst2_rst2/qwen_14b_fp16_b8_s2/baseline_compare_512x128.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              pim_by_capacity       0.7661       2.6614       3.4275
+algo:PD+Attn             pim_by_capacity       0.7661      91.2065      91.9727
+algo:PD+Linear           pim_by_capacity       0.7661       2.1766       2.9427
+algo:PD                  pim_by_capacity       0.7661       2.3345       3.1006
+algo:AF                  pim_by_capacity       2.3624      72.2550      74.6174
+algo:Bifocal             pim_by_capacity       0.7661       2.2143       2.9804

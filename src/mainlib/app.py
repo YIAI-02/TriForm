@@ -11,7 +11,7 @@ from .cli import (
     parse_args,
 )
 from .evaluate import evaluate_suite
-from .kv_policy import _normalize_npu_backend
+from .kv_policy import _ensure_weight_suggest_supported, _normalize_npu_backend
 from .log_utils import _set_weight_suggest_debug_summary_only, _setup_weight_suggest_al_logger
 from .runner import run
 from .storage import _build_result_dir, _build_tag
@@ -82,6 +82,9 @@ def main():
         if cfg.get('npu_backend', None) is None:
             raise ValueError("Missing required config key: 'npu_backend'. Choose from: fast, ascend_310b_lut, ascend_310b_json, llmcompass")
         cfg['npu_backend'] = _normalize_npu_backend(cfg.get('npu_backend'))
+
+        if args.mode == 'weight-suggest':
+            _ensure_weight_suggest_supported(cfg)
 
         result_dir = str(_build_result_dir(cfg, cfg.get('result_dir') or './output'))
         cfg['result_dir'] = result_dir
