@@ -100,7 +100,7 @@ With the bundled example config, outputs are written under:
 
 ```text
 ./output/evaluate_single_test/hardware_1npu_2aim_evaluate/
-└── qwen_7b_fp16_b1_s1/
+└── qwen_7b_fp16_b8_s2/
 ```
 
 A successful run produces at least:
@@ -176,7 +176,8 @@ A minimal example looks like this:
         "type": "npu",
         "tflops": 280.0,
         "mem_bw_GBs": 819.2,
-        "mem_capacity_GB": 16.0
+        "mem_capacity_GB": 16.0,
+        "llmcompass_device": "A100_80GB_fp16"
       },
       {
         "name": "PIM0",
@@ -217,6 +218,7 @@ A minimal example looks like this:
 
 - Use **one CPU host** to model shared memory or host-side routing even if you do not schedule much work on CPU.
 - For every **PIM** device, make sure `mem_capacity_GB` matches the capacity implied by `pim_memory.addr_map`; the parser validates this and raises an error if they disagree.
+- When using `npu_backend=llmcompass`, set `llmcompass_device` on each NPU. LLMCompass' bundled keys include `A100_80GB_fp16`, `TPUv3`, `MI210`, and `TPUv3_new`; the bundled Ascend-named examples use `A100_80GB_fp16` as an explicit proxy key.
 
 ---
 
@@ -255,6 +257,50 @@ A few details are easy to miss:
 - Relative paths in the config are resolved relative to the config JSON first, then `src/`, then the current working directory.
 
 > 📘 For the meaning of each key, see the [Configuration Reference](./docs/CONFIG_REFERENCE.md).
+
+#### Optional: specify quantization and sparsity
+
+`src/optimizations.py` reads optimization annotations from the run config. The shortest form is to add an `optimizations` block:
+
+```json
+{
+  "optimizations": {
+    "quantization": {
+      "enable": true,
+      "mode": "w4a16",
+      "method": "awq",
+      "weight_bits": 4,
+      "activation_bits": 16,
+      "activation_io": "fp16",
+      "group_size": 128
+    },
+    "sparsity": {
+      "weight": {
+        "enable": true,
+        "method": "magnitude",
+        "pattern": "2:4",
+        "storage": "compressed",
+        "assume_sparse_compute": true
+      }
+    }
+  }
+}
+```
+
+A complete runnable example is provided at `src/examples/evaluate_quant_sparse_config.json`. Run it with:
+
+```bash
+CONFIG=./src/examples/evaluate_quant_sparse_config.json \
+  bash commands/command_single_evaluate.sh
+```
+
+To run the same wrapper with LLMCompass instead of fast mode:
+
+```bash
+CONFIG=./src/examples/evaluate_quant_sparse_config.json \
+NPU_BACKEND=llmcompass \
+  bash commands/command_single_evaluate.sh
+```
 
 ---
 
@@ -406,8 +452,7 @@ bash commands/command_single_weight.sh
 ```bash
 python src/main.py weight-suggest \
   --config src/examples/weight_suggest_test_config.json \
-  --npu_backend fast_mode \
-  --pim_fast_mode \
+  --npu_backend lut \
   --debug
 ```
 
@@ -473,9 +518,7 @@ Use `weight-suggest` when you want to compare a fixed global layout against a se
 ├── commands/                            # Shell launchers and command-oriented sweep drivers.
 │   ├── command_single_evaluate.sh
 │   ├── command_single_weight.sh
-│   ├── run_hpc_sweep_bifocal.sh
-│   ├── run_hpc_sweep_bifocal_all.sh
-│   ├── run_hpc_sweep_weight_suggest.sh
+│   ├── run_hpc_sweep_npu_aim_evaluate.slurm
 │   ├── sweep_models_npu.sh
 │   ├── sweep_models_npu_aim_evaluate.sh
 │   ├── sweep_models_scale_down_evaluate.sh

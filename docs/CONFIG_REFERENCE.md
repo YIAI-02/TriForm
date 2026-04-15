@@ -2,12 +2,6 @@
 
 This document collects the configuration keys and runtime options used by DOPS.
 
-> **Working-directory note**
-> The CLI examples in the main README assume your current working directory is `algorithms/`. Paths in JSON files are therefore typically written relative to `algorithms/`, unless you intentionally use repository-root-relative paths.
-
-> **Naming note**
-> In config files, the Bifocal scheduler is typically requested as `bifocal`, while some internal modules and generated artifacts may still use the legacy/internal label `hefthint`.
-
 ## Contents
 
 - [Required files](#required-files)
@@ -26,8 +20,8 @@ A typical run needs two inputs:
 
 Example locations:
 
-- `algorithms/examples/hardware_1npu_2aim.json`
-- `algorithms/examples/evaluate_test_config.json`
+- `src/examples/hardware_1npu_2aim.json`
+- `src/examples/evaluate_test_config.json`
 
 ---
 
@@ -65,25 +59,28 @@ or:
 | `mem_bw_GBs`                                  | Device memory bandwidth        | Required by the runtime model.             |
 | `mem_capacity_GB`                             | Device memory capacity         | Used for feasibility and placement checks. |
 | `arch` / `llmcompass_kind`                    | Optional architecture tag      | Useful with `npu_backend=llmcompass`.      |
+| `llmcompass_device` / `llmcompass_device_name` / `llmcompass_arch` | LLMCompass device key | Use a built-in key such as `A100_80GB_fp16`, `TPUv3`, `MI210`, or `TPUv3_new`. |
 | `cpu_read_latency_ns`, `cpu_write_latency_ns` | Host-access latency parameters | CPU-only.                                  |
 | `cpu_cacheline_B` / `cpu_access_bytes_B`      | Host access granularity        | Optional.                                  |
 | `pim_read_latency_ns`, `pim_write_latency_ns` | PIM local-memory latency       | PIM-only.                                  |
 | `freq_ghz`                                    | PIM operating frequency        | Used by trace-mode flows.                  |
-| `pim_memory`                                  | PIM address-map description    | Needed for strict capacity checks.         |
-| `capacity_bytes` / `capacity_B`               | Explicit capacity override     | Use when no address map is available.      |
+| `pim_memory`                                  | PIM address-map description    | Required for PIM capacity checks.          |
 
 ### PIM address map fields
 
 Inside `pim_memory`:
 
-| Key                | Meaning                                             |
-| ------------------ | --------------------------------------------------- |
-| `addr_map_unit`    | Whether `addr_map` values are in `bits` or `counts` |
-| `addr_map.row`     | Row decomposition                                   |
-| `addr_map.channel` | Channel decomposition                               |
-| `addr_map.bank`    | Bank decomposition                                  |
-| `addr_map.column`  | Column decomposition                                |
-| `addr_map.offset`  | Offset decomposition                                |
+| Key                             | Meaning                         | Notes |
+| ------------------------------- | ------------------------------- | ----- |
+| `addr_map_unit`                 | Address-map interpretation      | `bits` treats each field as address bits; other values are treated as counts. |
+| `addr_map`                      | Address-map object              | Required by the current capacity checker. |
+| `addr_map.row`                  | Row decomposition               | Also accepts `line`, `lines`, or `rows`. |
+| `addr_map.channel`              | Channel decomposition           | Also accepts `channels`. |
+| `addr_map.bank`                 | Bank decomposition              | Also accepts `banks`. |
+| `addr_map.column`               | Column decomposition            | Also accepts `columns`. |
+| `addr_map.offset`               | Offset decomposition            | Also accepts `offset_bits` or `offset_bytes`. |
+| `capacity_bytes` / `capacity_B` | Explicit capacity override      | Only read inside `pim_memory`; device-level keys with these names are ignored. Current code still requires `addr_map` to exist as an object before applying this override. |
+
 
 ### Link fields
 
@@ -99,7 +96,7 @@ Inside `pim_memory`:
 ### Practical notes
 
 - Use a host CPU entry when modeling host-mediated routing or shared-memory behavior.
-- For every PIM device, make sure `mem_capacity_GB` matches the capacity implied by `pim_memory.addr_map`.
+- For every PIM device, provide `pim_memory.addr_map` and make sure `mem_capacity_GB` matches the capacity implied by it.
 
 ---
 
@@ -118,7 +115,6 @@ A representative config looks like this:
   "decode_sample_stride": 2,
   "decode_plan_refresh_stride": 2,
   "pim_config_path": "./aim_simulator/PIM_AiM.json",
-  "gb_config_path": "./aim_simulator/gb.json",
   "ramulator_config_path": "./aim_simulator/example.yaml",
   "result_dir": "./output/evaluate_single_test/",
   "hardware_json": "./examples/hardware_1npu_2aim.json",
@@ -128,9 +124,7 @@ A representative config looks like this:
   "tp_ffn": 2,
   "npu_backend": "lut",
   "dump_graph": false,
-  "dump_graph_dir": "./output/graph_dumps",
-  "pim_weight_load_overlap_ratio": 0.0,
-  "weight_load_compute_overlap_ratio": 0.0
+  "dump_graph_dir": "./output/graph_dumps"
 }
 ```
 
@@ -145,7 +139,7 @@ A representative config looks like this:
 | `prefill_len`   | Prefill sequence length          | Required for the workload.                               |
 | `decode_len`    | Decode length                    | Required for the workload.                               |
 | `result_dir`    | Base output directory            | DOPS creates run-specific folders inside it.             |
-| `hardware_json` | Path to the hardware description | Usually under `algorithms/examples/`.                    |
+| `hardware_json` | Path to the hardware description | Usually under `src/examples/`.                           |
 | `npu_backend`   | NPU latency backend              | Common values: `fast`, `fast_mode`, `lut`, `llmcompass`. |
 | `debug`         | Verbose logging                  | Can be set in JSON or passed with `--debug`.             |
 
@@ -182,6 +176,75 @@ A representative config looks like this:
 | `attention_sparsity`                       | Sparse-attention block           | Models reduced attention work.                |
 | `optimizations` / `optimization` / `optim` | Alternative root object name     | The parser accepts all three names.           |
 
+#### Optimization annotation schema
+
+These annotations are parsed by `src/optimizations.py` and attached to graph nodes before cost modeling. You may place the sections at the top level (`quantization`, `weight_sparsity`, etc.) or under `optimizations`. For sparsity, the nested form `optimizations.sparsity.weight`, `optimizations.sparsity.activation`, and `optimizations.sparsity.attention` is also accepted.
+
+**Quantization**
+
+| Key | Meaning | Notes |
+| --- | --- | --- |
+| `enable` / `enabled` | Enables quantization annotations | Must be true and `mode` must not be `none`. |
+| `mode` / `type` / `scheme` | Quantization mode | Examples: `weight_only`, `w8a8`, `w4a16`, `w4a8`. |
+| `method` / `algorithm` | Algorithm label | Examples: `awq`, `gptq`, `smoothquant`; stored as metadata. |
+| `weight_bits` / `w_bits` / `bits` | Weight bit width | Changes stored weight size. |
+| `activation_bits` / `a_bits` | Activation bit width | Used when `activation_io` is `int8` or `int4`. |
+| `activation_io` / `act_io` | Inter-op activation dtype | `fp16` keeps activation I/O unchanged; `int8`/`int4` tags activation and KV bytes. |
+| `group_size` | Quantization group size | Adds scale overhead when `weight_bits < 16`. |
+| `per_channel` / `per_row` | Per-channel metadata flag | Stored as metadata. |
+| `scale_dtype_bits` / `scale_bits` | Scale dtype width | Defaults to 16. |
+| `speedup` | Optional device-type speedup hint | Example: `{"npu": 1.15}`. |
+| `apply_to`, `exclude` | Op-name substring filters | Empty `apply_to` means common linear weights. |
+
+**Weight sparsity**
+
+| Key | Meaning | Notes |
+| --- | --- | --- |
+| `enable` / `enabled` | Enables weight sparsity annotations | Requires positive sparsity or valid N:M pattern. |
+| `method` / `mode` | Pruning method label | Examples: `magnitude`, `wanda`, `sparsegpt`, `global`, `layerwise`. |
+| `pattern` / `scheme` / `type` | Sparsity pattern | `unstructured`, `block`, `n:m`; `2:4` is accepted as a shortcut for `n=2,m=4`. |
+| `sparsity` / `ratio` | Zero fraction | Used for unstructured/block sparsity. |
+| `n`, `m` | N:M structured sparsity | Density is `n/m`. |
+| `storage` | Stored format assumption | `dense` keeps bytes unchanged; `compressed` scales bytes by density plus metadata. |
+| `assume_sparse_compute` / `sparse_compute` | FLOP reduction switch | If true, compute cost uses sparse density. |
+| `metadata_bytes_per_nnz` / `index_bytes` | Compressed metadata overhead | Extra bytes per nonzero. |
+| `speedup`, `apply_to`, `exclude` | Same as quantization | Optional. |
+
+**Activation and attention sparsity**
+
+| Section | Important keys | Effect |
+| --- | --- | --- |
+| `activation_sparsity` or `optimizations.sparsity.activation` | `enable`, `method`/`mode`, `sparsity` or `density`, `density_by_phase`, `storage`, `assume_sparse_compute` | Scales activation bytes when compressed; scales compute only when `assume_sparse_compute=true`. |
+| `attention_sparsity` or `optimizations.sparsity.attention` | `enable`, `pattern`, `window_left`, `window_right`, `block_size`, `blocks_left`, `blocks_right`, `density` | Reduces effective QK / Softmax / SV attention pairs for local, block, or sparse-matrix patterns. |
+
+Minimal nested example:
+
+```json
+{
+  "optimizations": {
+    "quantization": {
+      "enable": true,
+      "mode": "w4a16",
+      "method": "awq",
+      "weight_bits": 4,
+      "activation_io": "fp16",
+      "group_size": 128
+    },
+    "sparsity": {
+      "weight": {
+        "enable": true,
+        "method": "magnitude",
+        "pattern": "2:4",
+        "storage": "compressed",
+        "assume_sparse_compute": true
+      }
+    }
+  }
+}
+```
+
+See `src/examples/evaluate_quant_sparse_config.json` for a complete runnable config.
+
 ### Optional export and debug keys
 
 | Key              | Meaning                           | Notes                                           |
@@ -198,11 +261,10 @@ A representative config looks like this:
 
 ### Trace-mode / backend-specific paths
 
-| Key                     | Meaning              | Notes                                                     |
-| ----------------------- | -------------------- | --------------------------------------------------------- |
-| `pim_config_path`       | PIM simulator config | Needed for trace-based PIM flows.                         |
-| `gb_config_path`        | Global buffer config | Needed for some trace/simulator paths.                    |
-| `ramulator_config_path` | Ramulator2 config    | Needed when using the Ramulator2-based PIM backend.       |
+| Key                     | Meaning              | Notes                                               |
+| ----------------------- | -------------------- | --------------------------------------------------- |
+| `pim_config_path`       | PIM simulator config | Needed for trace-based PIM flows.                   |
+| `ramulator_config_path` | Ramulator2 config    | Needed when using the Ramulator2-based PIM backend. |
 
 ---
 

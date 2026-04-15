@@ -1,0 +1,101 @@
+{
+  "model_family": "qwen",
+  "model_variant": "7b",
+  "dtype": "fp16",
+  "batch": 8,
+  "prefill_len": 512,
+  "decode_len": 1024,
+  "decode_sample_stride": 2,
+  "decode_plan_refresh_stride": 2,
+  "pim_config_path": "./aim_simulator/PIM_AiM.json",
+  "ramulator_config_path": "./aim_simulator/example.yaml",
+  "simulation_log_file": "../../output/evaluate_quant_sparse/pim_simulation.txt",
+  "result_dir": "../../output/evaluate_quant_sparse/",
+  "hardware_json": "./examples/hardware_1npu_2aim.json",
+  "algo": [
+    "Bifocal"
+  ],
+  "baselines": [
+    "PD"
+  ],
+  "tp_qkv": 2,
+  "tp_ffn": 2,
+  "npu_backend": "fast_mode",
+  "pim_fast_mode": true,
+  "dump_graph": true,
+  "dump_graph_dir": "../../output/evaluate_quant_sparse/graph_dumps",
+  "optimizations": {
+    "quantization": {
+      "enable": true,
+      "mode": "w4a16",
+      "method": "awq",
+      "weight_bits": 4,
+      "activation_bits": 16,
+      "activation_io": "fp16",
+      "group_size": 128,
+      "per_channel": true,
+      "scale_dtype_bits": 16,
+      "apply_to": [
+        "Q",
+        "K",
+        "V",
+        "O",
+        "FFN"
+      ],
+      "exclude": [
+        "EMBED",
+        "LM_HEAD"
+      ],
+      "speedup": {
+        "npu": 1.15
+      }
+    },
+    "sparsity": {
+      "weight": {
+        "enable": true,
+        "method": "magnitude",
+        "pattern": "2:4",
+        "storage": "compressed",
+        "assume_sparse_compute": true,
+        "metadata_bytes_per_nnz": 0.125,
+        "apply_to": [
+          "Q",
+          "K",
+          "V",
+          "O",
+          "FFN"
+        ],
+        "exclude": [
+          "EMBED",
+          "LM_HEAD"
+        ],
+        "speedup": {
+          "npu": 1.25
+        }
+      },
+      "activation": {
+        "enable": true,
+        "method": "threshold",
+        "density_by_phase": {
+          "prefill": 0.85,
+          "decode": 0.85
+        },
+        "storage": "dense",
+        "assume_sparse_compute": false
+      },
+      "attention": {
+        "enable": true,
+        "pattern": "local",
+        "window_left": 512,
+        "window_right": 0
+      }
+    }
+  },
+  "format_block_layer_span": 4,
+  "format_outer_max_iters": 5,
+  "format_nd_margin_init": 0.04,
+  "format_nd_margin_decay": 0.85,
+  "format_nd_margin_min": 0.01,
+  "format_reload_count_mode": "soft_per_device",
+  "format_reload_device_count_alpha": 0.16
+}

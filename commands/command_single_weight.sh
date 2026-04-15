@@ -5,13 +5,28 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SRC_DIR="${PROJECT_ROOT}/src"
 PYTHON_BIN="${PYTHON_BIN:-python}"
+CONFIG="${CONFIG:-${SRC_DIR}/examples/weight_suggest_test_config.json}"
+NPU_BACKEND="${NPU_BACKEND:-}"
+PIM_FAST_MODE="${PIM_FAST_MODE:-0}"
+
+# Examples:
+#   bash commands/command_single_weight.sh
+#   CONFIG=./src/examples/weight_suggest_test_config.json NPU_BACKEND=lut bash commands/command_single_weight.sh
+# Add quantization/sparsity settings inside the CONFIG JSON under the `optimizations` block.
 
 cd "${PROJECT_ROOT}"
 
+EXTRA_ARGS=()
+if [[ -n "${NPU_BACKEND}" ]]; then
+  EXTRA_ARGS+=(--npu_backend "${NPU_BACKEND}")
+fi
+if [[ "${PIM_FAST_MODE}" =~ ^(1|true|TRUE|yes|YES|on|ON)$ ]]; then
+  EXTRA_ARGS+=(--pim_fast_mode)
+fi
+
 "${PYTHON_BIN}" "${SRC_DIR}/main.py" weight-suggest \
-  --config "${SRC_DIR}/examples/weight_suggest_test_config.json" \
-  --npu_backend fast_mode \
-  --pim_fast_mode \
+  --config "${CONFIG}" \
+  "${EXTRA_ARGS[@]}" \
   --debug \
   "$@"
 

@@ -56,6 +56,24 @@ _LLMCOMPASS_LAT_CACHE_S: Dict[Tuple[Any, ...], float] = {}
 _LLMCOMPASS_DEVICE_OVERRIDE: Dict[str, Any] = {}  # user-registered Device objects
 
 
+_LLMCOMPASS_DEVICE_ALIASES: Dict[str, str] = {
+    # LLMCompass' built-in database uses full device keys. Accept shorter names
+    # that are commonly used in hardware JSON files.
+    'a100': 'A100_80GB_fp16',
+    'a100_80gb': 'A100_80GB_fp16',
+    'a100_80gb_fp16': 'A100_80GB_fp16',
+    'ga100': 'A100_80GB_fp16',
+    'ga100_fp16': 'A100_80GB_fp16',
+    'tpuv3': 'TPUv3',
+    'tpu_v3': 'TPUv3',
+    'tpu-v3': 'TPUv3',
+    'mi210': 'MI210',
+    'amd_mi210': 'MI210',
+    'tpuv3_new': 'TPUv3_new',
+    'tpu_v3_new': 'TPUv3_new',
+}
+
+
 def _initialize_llmcompass_modules() -> Dict[str, Any]:
     """Lazy-import LLMCompass modules; only used when npu_backend == 'llmcompass'."""
     llm_root, _ = _ensure_llmcompass_on_path()
@@ -133,12 +151,15 @@ def _llmcompass_guess_device_key(dev: DeviceSpec) -> str:
 def _llmcompass_normalize_device_key(device_key: str) -> str:
     s = (device_key or '').strip()
     sl = s.lower()
-    if 'a100' in sl:
-        return 'A100'
-    if 'tpu' in sl and 'v3' in sl:
-        return 'TPUv3'
-    if sl in ('tpuv3', 'tpuv3'):
-        return 'TPUv3'
+    sl_norm = sl.replace('-', '_').replace(' ', '_')
+    if sl_norm in _LLMCOMPASS_DEVICE_ALIASES:
+        return _LLMCOMPASS_DEVICE_ALIASES[sl_norm]
+    if 'a100' in sl_norm or 'ga100' in sl_norm:
+        return 'A100_80GB_fp16'
+    if 'mi210' in sl_norm:
+        return 'MI210'
+    if 'tpu' in sl_norm and 'v3' in sl_norm:
+        return 'TPUv3_new' if 'new' in sl_norm else 'TPUv3'
     if not s:
         raise ValueError(
             "LLMCompass device_key is empty. "
@@ -194,9 +215,17 @@ def _llmcompass_get_device(device_key: str):
             except Exception:
                 pass
 
+    available: list[str] = []
+    for dname in dict_candidates:
+        d = getattr(device_mod, dname, None)
+        if isinstance(d, dict) and d:
+            available.extend([str(k) for k in d.keys()])
+    available_msg = ', '.join(sorted(set(available))) if available else 'unknown'
     raise RuntimeError(
         f"Unable to obtain LLMCompass Device for device_key='{device_key}'. "
-        "Consider adding `llmcompass_device` in your hardware JSON device entry (e.g., 'A100' or 'TPUv3')."
+        f"Available built-in device keys: {available_msg}. "
+        "Add `llmcompass_device` to the NPU entry in the hardware JSON, "
+        "for example `\"llmcompass_device\": \"A100_80GB_fp16\"`, `\"TPUv3\"`, or `\"MI210\"`."
     )
 
 def _llmcompass_default_compile_mode(device_key: str) -> str:

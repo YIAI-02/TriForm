@@ -67,13 +67,6 @@ def _build_cost_model_for_run(
 ) -> CostModel:
     """Build CostModel with the same runtime knobs across search / compare / evaluate."""
     prefill_len = int(cfg.get('prefill_len', 128))
-    model_dict = _make_shared_model_dict(
-        dim=int(getattr(shape, 'dim', 128)),
-        n_heads=int(getattr(shape, 'n_heads', 1)),
-        n_kv_heads=int(getattr(shape, 'n_kv_heads', 1)),
-        ffn_dim=int(getattr(shape, 'ffn_dim', 512)),
-        seqlen=prefill_len,
-    )
 
     npu_backend = _normalize_npu_backend(cfg.get('npu_backend', None))
     if _cluster_type_count(cluster, 'npu') <= 0:
@@ -87,6 +80,18 @@ def _build_cost_model_for_run(
         pim_fast_mode = bool(npu_backend == 'fast' and _cluster_type_count(cluster, 'pim') > 0)
     else:
         pim_fast_mode = bool(pim_fast_mode_cfg)
+
+    # The trace-based PIM backend needs a torch-backed model_dict; the analytical fast backend does not.
+    model_dict = None
+    if not pim_fast_mode:
+        model_dict = _make_shared_model_dict(
+            dim=int(getattr(shape, 'dim', 128)),
+            n_heads=int(getattr(shape, 'n_heads', 1)),
+            n_kv_heads=int(getattr(shape, 'n_kv_heads', 1)),
+            ffn_dim=int(getattr(shape, 'ffn_dim', 512)),
+            seqlen=prefill_len,
+        )
+
     return CostModel(
         cluster=cluster,
         dtype=cfg.get('dtype', 'fp16'),

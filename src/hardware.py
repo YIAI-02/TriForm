@@ -33,7 +33,10 @@ class DeviceSpec:
     attached_npu: Optional[str] = None
     # Optional device arch/model tags (used by external latency submodels like LLMCompass)
     arch: Optional[str] = None
-    llmcompass_kind: Optional[str] = None  # e.g., 'a100' | 'tpuv3'
+    llmcompass_kind: Optional[str] = None  # e.g., 'A100_80GB_fp16' | 'TPUv3' | 'MI210'
+    llmcompass_device: Optional[str] = None
+    llmcompass_device_name: Optional[str] = None
+    llmcompass_arch: Optional[str] = None
     # Optional near-memory access latency (used by CostModel.pim_mem_time in fast-mode)
     pim_read_latency_ns: float = 0.0
     pim_write_latency_ns: float = 0.0
@@ -291,7 +294,16 @@ def demo_cluster(cfg: Dict | None = None) -> Cluster:
             pim_read_latency_ns=float(d.get('pim_read_latency_ns', d.get('read_latency_ns', 0.0)) or 0.0),
             pim_write_latency_ns=float(d.get('pim_write_latency_ns', d.get('write_latency_ns', 0.0)) or 0.0),
             arch=d.get('arch') or d.get('model') or d.get('device_arch'),
-            llmcompass_kind=d.get('llmcompass_kind') or d.get('llmcompass') or d.get('llmcompass_device'),
+            llmcompass_kind=(
+                d.get('llmcompass_kind')
+                or d.get('llmcompass')
+                or d.get('llmcompass_device')
+                or d.get('llmcompass_device_name')
+                or d.get('llmcompass_arch')
+            ),
+            llmcompass_device=d.get('llmcompass_device'),
+            llmcompass_device_name=d.get('llmcompass_device_name'),
+            llmcompass_arch=d.get('llmcompass_arch'),
             pim_memory=(pim_mem if isinstance(pim_mem, dict) else {}),
 
             cpu_read_latency_ns=float(d.get('cpu_read_latency_ns', d.get('read_latency_ns', 0.0)) or 0.0),

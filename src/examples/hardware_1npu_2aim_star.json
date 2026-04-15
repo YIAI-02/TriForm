@@ -1,4 +1,4 @@
- {
+{
   "hardware": {
     "topology": "fc",
     "devices": [
@@ -17,7 +17,8 @@
         "type": "npu",
         "tflops": 280.0,
         "mem_bw_GBs": 819.2,
-        "mem_capacity_GB": 32.0
+        "mem_capacity_GB": 32.0,
+        "llmcompass_device": "A100_80GB_fp16"
       },
       {
         "name": "PIM0",

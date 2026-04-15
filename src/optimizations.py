@@ -85,6 +85,7 @@ class QuantizationSpec:
     enable: bool = False
 
     mode: str = "none"  # 'none' | 'weight_only' | 'w8a8' | 'w4a16' | 'w4a8'
+    method: str = "generic"  # e.g., 'awq' | 'gptq' | 'smoothquant' (informational)
     weight_bits: int = 16
     activation_bits: Optional[int] = None
     activation_io: str = "fp16"  # canonicalized by normalize_dtype_token()
@@ -242,9 +243,14 @@ def parse_optimization_config(cfg: Dict[str, Any]) -> OptimizationConfig:
     )
 
     # Allow both styles simultaneously: top-level keys override opt_root.
-    quant_d = _as_dict(cfg.get("quantization")) or _as_dict(opt_root.get("quantization"))
+    quant_d = _as_dict(cfg.get("quantization")) or _as_dict(opt_root.get("quantization")) or _as_dict(opt_root.get("quant"))
     spars_d = _as_dict(cfg.get("sparsity")) or _as_dict(opt_root.get("sparsity"))
-    attn_d = _as_dict(cfg.get("attention_sparsity")) or _as_dict(opt_root.get("attention_sparsity"))
+    attn_d = (
+        _as_dict(cfg.get("attention_sparsity"))
+        or _as_dict(opt_root.get("attention_sparsity"))
+        or _as_dict(opt_root.get("attention"))
+        or _as_dict(spars_d.get("attention"))
+    )
 
     # ---- Quantization ----
     q_group_size = quant_d.get("group_size", None)
@@ -256,7 +262,8 @@ def parse_optimization_config(cfg: Dict[str, Any]) -> OptimizationConfig:
 
     q = QuantizationSpec(
         enable=bool(quant_d.get("enable", quant_d.get("enabled", False))),
-        mode=_lower(quant_d.get("mode", quant_d.get("type", "none")), "none"),
+        mode=_lower(quant_d.get("mode", quant_d.get("type", quant_d.get("scheme", quant_d.get("method", "none")))), "none"),
+        method=_lower(quant_d.get("method", quant_d.get("algorithm", "generic")), "generic"),
         weight_bits=int(quant_d.get("weight_bits", quant_d.get("w_bits", quant_d.get("bits", 16))) or 16),
         activation_bits=(
             None
@@ -273,11 +280,17 @@ def parse_optimization_config(cfg: Dict[str, Any]) -> OptimizationConfig:
     )
 
     # ---- Weight sparsity ----
-    w_d = _as_dict(spars_d.get("weight")) or _as_dict(spars_d.get("weights")) or _as_dict(cfg.get("weight_sparsity"))
+    w_d = (
+        _as_dict(spars_d.get("weight"))
+        or _as_dict(spars_d.get("weights"))
+        or _as_dict(cfg.get("weight_sparsity"))
+        or _as_dict(opt_root.get("weight_sparsity"))
+        or _as_dict(opt_root.get("weight_sparse"))
+    )
     ws = WeightSparsitySpec(
         enable=bool(w_d.get("enable", w_d.get("enabled", False))),
-        method=_lower(w_d.get("method", "global"), "global"),
-        pattern=_lower(w_d.get("pattern", w_d.get("type", "unstructured")), "unstructured"),
+        method=_lower(w_d.get("method", w_d.get("mode", "global")), "global"),
+        pattern=_lower(w_d.get("pattern", w_d.get("scheme", w_d.get("type", "unstructured"))), "unstructured"),
         sparsity=_clamp01(w_d.get("sparsity", w_d.get("ratio", 0.0)), 0.0),
         n=(None if w_d.get("n") is None else int(w_d.get("n") or 0)),
         m=(None if w_d.get("m") is None else int(w_d.get("m") or 0)),
@@ -300,10 +313,16 @@ def parse_optimization_config(cfg: Dict[str, Any]) -> OptimizationConfig:
             ws.storage = "compressed"
 
     # ---- Activation sparsity ----
-    a_d = _as_dict(spars_d.get("activation")) or _as_dict(spars_d.get("activations")) or _as_dict(cfg.get("activation_sparsity"))
+    a_d = (
+        _as_dict(spars_d.get("activation"))
+        or _as_dict(spars_d.get("activations"))
+        or _as_dict(cfg.get("activation_sparsity"))
+        or _as_dict(opt_root.get("activation_sparsity"))
+        or _as_dict(opt_root.get("activation_sparse"))
+    )
     aspec = ActivationSparsitySpec(
         enable=bool(a_d.get("enable", a_d.get("enabled", False))),
-        mode=_lower(a_d.get("mode", a_d.get("type", "threshold")), "threshold"),
+        mode=_lower(a_d.get("mode", a_d.get("method", a_d.get("type", "threshold"))), "threshold"),
         sparsity=(None if a_d.get("sparsity") is None else _clamp01(a_d.get("sparsity"), 0.0)),
         density=(None if a_d.get("density") is None else _clamp01(a_d.get("density"), 1.0)),
         density_by_phase={str(k).lower(): _clamp01(v, 1.0) for k, v in _as_dict(a_d.get("density_by_phase", a_d.get("density_by_pass", {}))).items()},
@@ -317,7 +336,7 @@ def parse_optimization_config(cfg: Dict[str, Any]) -> OptimizationConfig:
     # ---- Attention sparsity ----
     att = AttentionSparsitySpec(
         enable=bool(attn_d.get("enable", attn_d.get("enabled", False))),
-        pattern=_lower(attn_d.get("pattern", attn_d.get("type", "dense")), "dense"),
+        pattern=_lower(attn_d.get("pattern", attn_d.get("method", attn_d.get("type", "dense"))), "dense"),
         window_left=int(attn_d.get("window_left", attn_d.get("left", -1)) or -1),
         window_right=int(attn_d.get("window_right", attn_d.get("right", -1)) or -1),
         block_size=int(attn_d.get("block_size", 128) or 128),
@@ -507,6 +526,7 @@ def apply_optimizations_to_graph(
                 act_bits = int(opt.quant.activation_bits or 16)
                 optd["quantization"] = {
                     "mode": _lower(opt.quant.mode, "none"),
+                    "method": _lower(opt.quant.method, "generic"),
                     "weight_bits": int(opt.quant.weight_bits),
                     "activation_bits": int(act_bits),
                     "activation_io": _normalize_activation_io_token(opt.quant.activation_io, default="fp16"),

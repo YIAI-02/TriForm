@@ -17,7 +17,8 @@
         "type": "npu",
         "tflops": 280.0,
         "mem_bw_GBs": 819.2,
-        "mem_capacity_GB": 16.0
+        "mem_capacity_GB": 16.0,
+        "llmcompass_device": "A100_80GB_fp16"
       },
       {
         "name": "PIM0",
@@ -188,7 +189,7 @@
         "freq_ghz": 0.8
       }
     ],
-    "fc_bw_GBs":62.0,
+    "fc_bw_GBs": 62.0,
     "link_defaults": {
       "latency_s": 0.0,
       "overhead_s": 0.0,
