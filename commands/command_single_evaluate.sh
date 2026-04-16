@@ -7,10 +7,10 @@ SRC_DIR="${PROJECT_ROOT}/src"
 PYTHON_BIN="${PYTHON_BIN:-python}"
 CONFIG="${CONFIG:-${SRC_DIR}/examples/evaluate_test_config.json}"
 NPU_BACKEND="${NPU_BACKEND:-fast_mode}"
-PIM_FAST_MODE="${PIM_FAST_MODE:-1}"
+PIM_FAST_MODE="${PIM_FAST_MODE:-0}"
 
 # Examples:
-#  c
+#   CONFIG=./src/examples/evaluate_quant_sparse_config.json bash commands/command_single_evaluate.sh
 #   CONFIG=./src/examples/evaluate_test_config.json NPU_BACKEND=llmcompass bash commands/command_single_evaluate.sh
 
 cd "${PROJECT_ROOT}"
