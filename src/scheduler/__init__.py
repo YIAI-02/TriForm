@@ -5,6 +5,7 @@ from .scheduler_comm import CommManager
 from .scheduler_base import SchedulerBase
 from .scheduler_naive import NaiveTopoScheduler
 from .scheduler_heft import HEFTScheduler
+from .scheduler_mcts import MCTSAction, MCTSState, MCTSNode, MCTSScheduler
 from .scheduler_bifocal import BifocalScheduler
 
 __all__ = [
@@ -14,5 +15,9 @@ __all__ = [
     "SchedulerBase",
     "NaiveTopoScheduler",
     "HEFTScheduler",
+    "MCTSAction",
+    "MCTSState",
+    "MCTSNode",
+    "MCTSScheduler",
     "BifocalScheduler",
 ]

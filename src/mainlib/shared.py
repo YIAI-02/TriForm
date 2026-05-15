@@ -26,7 +26,7 @@ from dtype_utils import dtype_bytes, normalize_dtype_token
 from hardware import Cluster, demo_cluster
 from model_parser import build_graph
 from plan_label import PlanLabel
-from scheduler import BifocalScheduler, HEFTScheduler, NaiveTopoScheduler
+from scheduler import BifocalScheduler, HEFTScheduler, MCTSScheduler, NaiveTopoScheduler
 from stats_recorder import reset_simulation_logger
 from task_graph import TaskGraph, TaskNode
 
@@ -42,6 +42,7 @@ _POLICY_DISPLAY_NAMES: Dict[str, str] = {
     'HEFT': 'HEFT',
     'Bifocal': 'Bifocal',
     'Naive': 'Naive',
+    'MCTS': 'MCTS',
     'PD': 'PD',
     'AF': 'AF',
     'PD+Linear': 'PD+Linear',
@@ -51,7 +52,7 @@ _POLICY_DISPLAY_NAMES: Dict[str, str] = {
     'NeuPIMs': 'NeuPIMs',
 }
 
-_ALGO_TOKENS = frozenset({'HEFT', 'Bifocal', 'Naive'})
+_ALGO_TOKENS = frozenset({'HEFT', 'Bifocal', 'Naive', 'MCTS'})
 _BASELINE_TOKENS = frozenset({'PD', 'AF', 'PD+Linear', 'PD+Attn', 'PD+FFN', 'weights_on_pim', 'NeuPIMs'})
 
 

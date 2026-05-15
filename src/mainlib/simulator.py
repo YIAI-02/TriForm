@@ -173,6 +173,9 @@ def _make_scheduler(name: str, cluster: Cluster, cost: CostModel, label: PlanLab
     if strategy == 'HEFT':
         return HEFTScheduler(cluster, cost, label, batch=batch, seq_len=seq_len, buffer=buffer)
 
+    if strategy == 'MCTS':
+        return MCTSScheduler(cluster, cost, label, batch=batch, seq_len=seq_len, buffer=buffer)
+
     if strategy == 'Naive':
         return NaiveTopoScheduler(cluster, cost, label, batch=batch, seq_len=seq_len, buffer=buffer)
 

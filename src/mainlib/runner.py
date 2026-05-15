@@ -114,6 +114,8 @@ def run(cfg: Dict):
         if BifocalScheduler is None:
             raise ImportError("BifocalScheduler is not available. Please export it from the scheduler package.")
         SchedCls = BifocalScheduler
+    elif algo_name == 'MCTS':
+        SchedCls = MCTSScheduler
     elif algo_name not in ('HEFT', 'Naive', ''):
         _debug(f"[weight-suggest] Unknown algorithm '{algo_name}', fallback to HEFTScheduler")
 
