@@ -341,6 +341,183 @@ class SchedulerBaseHelperMixin:
                 types = ['cpu']
         return tuple(types)
 
+
+    def _label_kv_action_signature(self) -> Tuple[Any, ...]:
+        """Return the label-dependent part of the legal-action cache key.
+
+        KV write legality depends on placement flags and optional per-head/per-device
+        mappings.  Keep these values in the cache key so a graph index can be reused
+        safely across phases and label variants without freezing stale actions.
+        """
+        lb = getattr(self, "label", None)
+        if lb is None:
+            return ("host",)
+
+        def _safe_attr(name: str, default: Any = None) -> Any:
+            try:
+                return getattr(lb, name, default)
+            except Exception:
+                return default
+
+        kv_head_to_pim = _safe_attr("kv_head_to_pim", None)
+        if isinstance(kv_head_to_pim, Mapping):
+            try:
+                head_sig: Any = tuple(sorted((str(k), str(v)) for k, v in kv_head_to_pim.items()))
+            except Exception:
+                head_sig = id(kv_head_to_pim)
+        else:
+            head_sig = None
+
+        kv_bytes_by_pim = _safe_attr("kv_bytes_by_pim", None)
+        if isinstance(kv_bytes_by_pim, Mapping):
+            try:
+                bytes_sig: Any = tuple(sorted((str(k), int(v or 0)) for k, v in kv_bytes_by_pim.items()))
+            except Exception:
+                bytes_sig = id(kv_bytes_by_pim)
+        else:
+            bytes_sig = None
+
+        return (
+            self._kv_place(lb),
+            bool(_safe_attr("kv_in_pim", False)),
+            bool(_safe_attr("kv_in_npu", False)),
+            str(_safe_attr("kv_npu_device", "") or ""),
+            head_sig,
+            bytes_sig,
+        )
+
+    def legal_actions(self, g: TaskGraph, nid: str, phase: str) -> Tuple[Tuple[str, str], ...]:
+        """Enumerate legal ``(node_id, device_name)`` actions for a scheduler state.
+
+        This is the single placement-legality entry point used by heuristic
+        schedulers and MCTS/policy code.  It intentionally returns simple tuples
+        rather than importing an MCTS action type from another package.
+
+        Communication primitives use the virtual ``"COMM"`` device name in the
+        returned action to match schedule traces, while execution still goes
+        through the host device when a concrete ``DeviceSpec`` is needed.
+        """
+        idx = self._get_graph_index(g)
+        key = (str(phase), self._label_kv_action_signature(), str(nid))
+        try:
+            cached = idx.allowed_actions.get(key)
+        except Exception:
+            cached = None
+        if cached is not None:
+            return cached
+
+        try:
+            node = g.nodes[nid]
+        except Exception:
+            return tuple()
+
+        actions: List[Tuple[str, str]] = []
+
+        # Communication primitives are modeled as host-executed control/transfer
+        # operations but are exposed to policy/MCTS as the virtual COMM lane.
+        if self._is_comm_node(node):
+            actions = [(str(nid), "COMM")]
+        else:
+            pinned_dev = self._preferred_kv_write_device(g, nid)
+            if pinned_dev is not None:
+                try:
+                    if self._node_allowed_on(node, pinned_dev):
+                        actions = [(str(nid), str(getattr(pinned_dev, "name", "")))]
+                except Exception:
+                    actions = [(str(nid), str(getattr(pinned_dev, "name", "")))]
+
+            if not actions:
+                seen: set[str] = set()
+                for dev_type in self._executor_device_types():
+                    try:
+                        devs = self.cluster.devices_by_type(dev_type) or []
+                    except Exception:
+                        devs = []
+                    for dev in devs:
+                        dname = str(getattr(dev, "name", "") or "")
+                        if not dname or dname in seen:
+                            continue
+                        try:
+                            allowed = bool(self._node_allowed_on(node, dev))
+                        except Exception:
+                            allowed = True
+                        if allowed:
+                            seen.add(dname)
+                            actions.append((str(nid), dname))
+
+        result: Tuple[Tuple[str, str], ...] = tuple(a for a in actions if a[0] and a[1])
+        try:
+            idx.allowed_actions[key] = result
+        except Exception:
+            pass
+        return result
+
+    def legal_devices(self, g: TaskGraph, nid: str, phase: str) -> Tuple[DeviceSpec, ...]:
+        """Return concrete devices for ``legal_actions``.
+
+        The virtual COMM action is resolved to the host device so existing timing
+        code can evaluate communication nodes without knowing about policy action
+        encodings.
+        """
+        devices: List[DeviceSpec] = []
+        for _, dname in self.legal_actions(g, nid, phase):
+            if str(dname) == "COMM":
+                host = self.cost.get_host_device()
+                if host is not None:
+                    devices.append(host)
+                continue
+            dev = self.cluster.devices.get(str(dname))
+            if dev is not None:
+                devices.append(dev)
+        return tuple(devices)
+
+    def legal_action_set(self, g: TaskGraph, ready: Iterable[str], phase: str) -> frozenset[Tuple[str, str]]:
+        """Return all legal actions whose node is currently ready."""
+        allowed: set[Tuple[str, str]] = set()
+        for nid in tuple(ready or ()):  # tolerate callers passing a mutating ready set
+            allowed.update(self.legal_actions(g, str(nid), phase))
+        return frozenset(allowed)
+
+    def action_mask(
+        self,
+        g: TaskGraph,
+        ready: Iterable[str],
+        phase: str,
+        action_space: Iterable[Tuple[str, str]],
+    ) -> Tuple[bool, ...]:
+        """Build a policy-network mask over ``action_space`` for the ready set."""
+        legal = self.legal_action_set(g, ready, phase)
+        return tuple((str(n), str(d)) in legal for n, d in tuple(action_space or ()))
+
+    def mask_action_probabilities(
+        self,
+        g: TaskGraph,
+        ready: Iterable[str],
+        phase: str,
+        action_space: Iterable[Tuple[str, str]],
+        probabilities: Iterable[float],
+    ) -> Tuple[float, ...]:
+        """Zero illegal action probabilities and renormalize over legal ready actions."""
+        actions = tuple((str(n), str(d)) for n, d in tuple(action_space or ()))
+        probs = tuple(float(p) for p in tuple(probabilities or ()))
+        if len(actions) != len(probs):
+            raise ValueError(
+                f"action_space/probabilities length mismatch: {len(actions)} != {len(probs)}"
+            )
+        mask = self.action_mask(g, ready, phase, actions)
+        masked = [p if m and math.isfinite(p) and p > 0.0 else 0.0 for p, m in zip(probs, mask)]
+        total = float(sum(masked))
+        if total > 0.0:
+            return tuple(float(p / total) for p in masked)
+
+        # If the network placed no mass on legal actions, fall back to a uniform
+        # distribution over legal ready actions rather than returning all zeros.
+        legal_count = int(sum(1 for m in mask if m))
+        if legal_count <= 0:
+            return tuple(0.0 for _ in masked)
+        uniform = 1.0 / float(legal_count)
+        return tuple(uniform if m else 0.0 for m in mask)
+
     def reset_state(self, *, clear_caches: bool = True) -> None:
         """Reset scheduler runtime state."""
 

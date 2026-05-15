@@ -966,33 +966,10 @@ class BifocalScheduler(HEFTScheduler):
         use_chain_select = bool(use_lookahead) and num_exec > 1
 
         def _candidates_for(nid: str, node: TaskNode) -> Tuple[List[DeviceSpec], bool]:
-            """Return (device_candidates, is_kv_write)."""
-
-            # Communication primitives: always schedule on host (control/comm-only op).
-            if self._is_comm_node(node):
-                return [self.cost.get_host_device()], False
-
+            """Return (device_candidates, is_kv_write) from the shared legal-action helper."""
             name_up = str(getattr(node, "name", "")).upper()
             is_kv_write = name_up in ("K_WRITE", "V_WRITE", "KV_WRITE")
-
-            pinned_dev: Optional[DeviceSpec] = None
-            if is_kv_write:
-                pinned_dev = self._preferred_kv_write_device(g, nid)
-                if pinned_dev is not None and (not self._node_allowed_on(node, pinned_dev)):
-                    pinned_dev = None
-
-            if pinned_dev is not None:
-                return [pinned_dev], is_kv_write
-
-            cands: List[DeviceSpec] = []
-            for dev_type in exec_types:
-                for dev in self.cluster.devices_by_type(dev_type):
-                    try:
-                        if self._node_allowed_on(node, dev):
-                            cands.append(dev)
-                    except Exception:
-                        cands.append(dev)
-            return cands, is_kv_write
+            return list(self.legal_devices(g, nid, phase)), is_kv_write
 
         def _best_assignment_for(nid: str) -> Tuple[float, float, str, Optional[DeviceSpec], Optional[dict], Dict[str, str]]:
             """Return (best_score, best_eft, best_mode, best_dev, best_hy_est, best_hint_assign)."""

@@ -182,43 +182,23 @@ class HEFTScheduler(SchedulerBase):
                         heapq.heappush(heap, (-rank_u.get(v, 0.0), topo_pos.get(v, 0), v))
                 continue
 
-            kv_in_pim = getattr(self.label, 'kv_in_pim', False)
-            is_kv_write = node.name.upper() in ('K_WRITE', 'V_WRITE', 'KV_WRITE')
-
-            exec_types = tuple(self._executor_device_types())
-
-            pinned_dev: Optional[DeviceSpec] = None
-            if is_kv_write:
-                pinned_dev = self._preferred_kv_write_device(g, nid)
-                if pinned_dev is not None and not self._node_allowed_on(node, pinned_dev):
-                    pinned_dev = None
-
+            # Enumerate placement choices through the shared legal-action helper so
+            # HEFT, Bifocal, and policy/MCTS code all observe the same KV pinning,
+            # communication, and operator allow-list semantics.  Preserve classic
+            # HEFT behavior by keeping only the best EFT candidate per executor type.
+            legal_devs = self.legal_devices(g, nid, phase)
             candidates: List[Tuple[str, float, Any]] = []
-
-            if pinned_dev is not None:
-                # Only one candidate: keep the same device as the source K/V.
+            best_by_type: Dict[str, Tuple[float, DeviceSpec]] = {}
+            for dev in legal_devs:
                 _, finish = self._earliest_finish_on_device(
-                    g, nid, pinned_dev, self.label, phase, commit=False
+                    g, nid, dev, self.label, phase, commit=False
                 )
-                mode = str(getattr(pinned_dev, "type", "") or "").upper() or "DEV"
-                candidates.append((mode, float(finish), pinned_dev))
-            else:
-                # Pick the best device within each executor type.
-                for t in exec_types:
-                    best_dev = None
-                    best_finish = float('inf')
-                    for dev in self.cluster.devices_by_type(t):
-                        if not self._node_allowed_on(node, dev):
-                            continue
-                        _, finish = self._earliest_finish_on_device(
-                            g, nid, dev, self.label, phase, commit=False
-                        )
-                        if float(finish) < float(best_finish):
-                            best_finish = float(finish)
-                            best_dev = dev
-                    if best_dev is not None:
-                        candidates.append((str(t).upper(), float(best_finish), best_dev))
-
+                mode = str(getattr(dev, "type", "") or "").upper() or "DEV"
+                cur = best_by_type.get(mode)
+                if cur is None or float(finish) < float(cur[0]):
+                    best_by_type[mode] = (float(finish), dev)
+            for mode, (best_finish, best_dev) in best_by_type.items():
+                candidates.append((mode, float(best_finish), best_dev))
 
             if not candidates:
                 raise RuntimeError("No available device for node %s" % nid)

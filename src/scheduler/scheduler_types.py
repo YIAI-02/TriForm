@@ -10,7 +10,7 @@ class _GraphIndex:
     topo: tuple
     rev_topo: tuple
     rank_u_by_phase: dict = field(default_factory=dict)      # phase -> {nid: upward_rank}
-    allowed_actions: dict = field(default_factory=dict)       # nid -> tuple[action...]
+    allowed_actions: dict = field(default_factory=dict)       # (phase, label_kv_sig, nid) -> tuple[action...]
 
 @dataclass
 class ScheduledTask:
