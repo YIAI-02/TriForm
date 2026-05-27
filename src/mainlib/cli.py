@@ -44,7 +44,7 @@ def parse_args():
     sp_eval.add_argument('--result_dir', type=str)
     sp_eval.add_argument('--hardware_json', type=str, help='Path to a JSON file with hardware topology (devices + links).')
     sp_eval.add_argument('--algo', type=str, help='Algorithm list, for example "HEFT,Bifocal" or a single name.')
-    sp_eval.add_argument('--baselines', type=str, help='Baseline list, for example "PD,AF,PD+Linear".')
+    sp_eval.add_argument('--baselines', type=str, help='Baseline list, for example "PD,AF,PD+Linear,ColdMoE".')
     sp_eval.add_argument(
         '--npu_backend',
         type=str,

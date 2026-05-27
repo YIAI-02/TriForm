@@ -49,10 +49,11 @@ _POLICY_DISPLAY_NAMES: Dict[str, str] = {
     'PD+FFN': 'PD+FFN',
     'weights_on_pim': 'weights_on_pim',
     'NeuPIMs': 'NeuPIMs',
+    'ColdMoE': 'ColdMoE',
 }
 
 _ALGO_TOKENS = frozenset({'HEFT', 'Bifocal', 'Naive'})
-_BASELINE_TOKENS = frozenset({'PD', 'AF', 'PD+Linear', 'PD+Attn', 'PD+FFN', 'weights_on_pim', 'NeuPIMs'})
+_BASELINE_TOKENS = frozenset({'PD', 'AF', 'PD+Linear', 'PD+Attn', 'PD+FFN', 'weights_on_pim', 'NeuPIMs', 'ColdMoE'})
 
 
 def _normalize_policy_lookup_key(name: Any) -> str:

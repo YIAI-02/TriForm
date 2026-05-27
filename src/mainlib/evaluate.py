@@ -19,6 +19,7 @@ from .kv_policy import (
     _build_cost_model_for_run,
     _fmt_kv_policy_scores,
     _infer_kv_place_from_label,
+    _make_label_given_kv_place,
     auto_select_kv_policy,
 )
 from .simulator import _make_scheduler, simulate_decode_progressive, simulate_prefill
@@ -96,15 +97,26 @@ def _eval_one_baseline(
     best_decode_ser = None
     best_sched = None
 
-    label = auto_select_kv_policy(
-        strategy="Naive",
-        cfg=cfg,
-        cluster=cluster,
-        cost=cost,
-        graph=g_prefill,
-        graph_decode=g_decode,
-        shape=shape,
-    )
+    if pol == 'ColdMoE':
+        label, _ = _make_label_given_kv_place(
+            cfg=cfg,
+            cluster=cluster,
+            graph=g_prefill,
+            shape=shape,
+            kv_place='npu',
+        )
+        setattr(label, 'kv_policy_selected', 'npu_for_cold_moe')
+        setattr(label, 'kv_policy_scores', {'host': None, 'npu': None, 'pim': None})
+    else:
+        label = auto_select_kv_policy(
+            strategy="Naive",
+            cfg=cfg,
+            cluster=cluster,
+            cost=cost,
+            graph=g_prefill,
+            graph_decode=g_decode,
+            shape=shape,
+        )
 
     sel = getattr(label, 'kv_policy_selected', 'unknown')
     sc = getattr(label, 'kv_policy_scores', {})

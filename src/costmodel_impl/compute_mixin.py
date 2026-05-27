@@ -29,7 +29,9 @@ class CostModelComputeMixin:
             kv_len = max(1, int(pairs))
 
         aspec = self._node_opt(node).get('attention_sparsity')
-        pat = str(aspec.get('pattern', 'dense')).lower() if isinstance(aspec, dict) else 'dense'
+        if not isinstance(aspec, dict):
+            aspec = attrs.get('attention_sparsity')
+        pat = str(aspec.get('pattern', attrs.get('attention_pattern', 'dense'))).lower() if isinstance(aspec, dict) else str(attrs.get('attention_pattern', 'dense')).lower()
         raw_key = str(getattr(node, 'name', '') or getattr(node, 'id', '') or '')
         op_key = _normalize_npu_op_key(raw_key)
         return _instantiate_context(NpuOpContext,

@@ -283,6 +283,13 @@ NPU_GEMM_KEYS = {
 }
 NPU_ROUTER_KEYS = {
     'router', 'moe_router',
+    # DeepSeek-V4 custom fused/proxy operators use the analytic fallback in
+    # LLMCompass/LUT backends because they combine GEMM, compression, routing,
+    # top-k, and token-wise mixing semantics that are not single primitive ops.
+    'dsv4_q_down', 'dsv4_q_up', 'dsv4_kv_compress', 'dsv4_window_kv',
+    'dsv4_indexer_q', 'dsv4_index_score', 'dsv4_topk',
+    'dsv4_o_g1', 'dsv4_o_g2', 'mhc_mix', 'moe_shared_combine',
+    'reduce', 'scatter',
 }
 
 
@@ -398,12 +405,26 @@ _NPU_OP_ALIASES: Dict[str, str] = {
     # MoE router / gate
     'router': 'moe_router',
     'moe_router': 'moe_router',
+
+    # DeepSeek-V4 custom ops (kept as custom keys; backends fall back to
+    # analytic estimates via NPU_ROUTER_KEYS).
+    'dsv4_q_down': 'dsv4_q_down',
+    'dsv4_q_up': 'dsv4_q_up',
+    'dsv4_kv_compress': 'dsv4_kv_compress',
+    'dsv4_window_kv': 'dsv4_window_kv',
+    'dsv4_indexer_q': 'dsv4_indexer_q',
+    'dsv4_index_score': 'dsv4_index_score',
+    'dsv4_topk': 'dsv4_topk',
+    'dsv4_o_g1': 'dsv4_o_g1',
+    'dsv4_o_g2': 'dsv4_o_g2',
+    'mhc_mix': 'mhc_mix',
+    'moe_shared_combine': 'moe_shared_combine',
 }
 
 
 # Token-level matcher for embedded op names.
 _NPU_OP_TOKEN_RE = re.compile(
-    r'(^|_)(qk|sv|softmax|ffn_w1|ffn_w2|ffn_w3|q_proj|k_proj|v_proj|wo_proj|moe_router|router)($|_)'
+    r'(^|_)(qk|sv|softmax|ffn_w1|ffn_w2|ffn_w3|q_proj|k_proj|v_proj|wo_proj|moe_router|router|dsv4_q_down|dsv4_q_up|dsv4_kv_compress|dsv4_window_kv|dsv4_indexer_q|dsv4_index_score|dsv4_topk|dsv4_o_g1|dsv4_o_g2|mhc_mix|moe_shared_combine)($|_)'
 )
 
 

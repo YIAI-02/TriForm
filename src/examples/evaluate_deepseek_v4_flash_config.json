@@ -1,0 +1,31 @@
+{
+  "model_family": "deepseek_v4",
+  "model_variant": "flash",
+  "dtype": "fp8",
+  "batch": 4,
+  "prefill_len": 4096,
+  "decode_len": 1024,
+  "decode_sample_stride": 16,
+  "decode_plan_refresh_stride": 16,
+  "pim_config_path": "./aim_simulator/PIM_AiM.json",
+  "ramulator_config_path": "./aim_simulator/example.yaml",
+  "simulation_log_file": "../../output/deepseek_v4_flash/pim_simulation.txt",
+  "result_dir": "../../output/deepseek_v4_flash/",
+  "hardware_json": "./examples/hardware_1npu_1pim_huawei.json",
+  "algo": [
+    "Bifocal"
+  ],
+  "baselines": [
+    "PD+FFN",
+    "PD+Attn",
+    "PD+Linear",
+    "PD",
+    "AF"
+  ],
+  "tp": 1,
+  "tp_qkv": 1,
+  "npu_backend": "fast",
+  "dump_graph": true,
+  "dump_graph_dir": "../../output/deepseek_v4_flash/graph_dumps",
+  "pim_fast_mode": true
+}

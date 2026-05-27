@@ -1,0 +1,36 @@
+{
+  "model_family": "deepseek_v4",
+  "model_variant": "pro",
+  "dtype": "fp8",
+  "batch": 1,
+  "prefill_len": 1024,
+  "decode_len": 128,
+  "decode_sample_stride": 16,
+  "decode_plan_refresh_stride": 16,
+  "pim_config_path": "./aim_simulator/PIM_AiM.json",
+  "ramulator_config_path": "./aim_simulator/example.yaml",
+  "simulation_log_file": "../../output/deepseek_v4_pro/pim_simulation.txt",
+  "result_dir": "../../output/deepseek_v4_pro/",
+  "hardware_json": "./examples/hardware_1npu_8aim.json",
+  "algo": [
+    "Bifocal",
+    "Bifocal+Linear",
+    "Bifocal+Dual"
+  ],
+  "baselines": [
+    "PD",
+    "PD+Dual",
+    "AF",
+    "PD+Linear",
+    "PD+Attn",
+    "PD+FFN",
+    "NeuPIMs",
+    "weights_on_pim"
+  ],
+  "tp": 1,
+  "tp_qkv": 1,
+  "npu_backend": "fast",
+  "dump_graph": false,
+  "dump_graph_dir": "../output/deepseek_v4_pro/graph_dumps",
+  "pim_fast_mode": true
+}

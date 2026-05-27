@@ -79,9 +79,10 @@ def main():
         if runtime_cfg_overrides:
             print(f"[runtime-config] applied {json.dumps(runtime_cfg_overrides, ensure_ascii=False, sort_keys=True)}")
 
-        if cfg.get('npu_backend', None) is None:
-            raise ValueError("Missing required config key: 'npu_backend'. Choose from: fast, ascend_310b_lut, ascend_310b_json, llmcompass")
-        cfg['npu_backend'] = _normalize_npu_backend(cfg.get('npu_backend'))
+        # Current supported runtime is analytical fast mode only.  Keep legacy
+        # config fields accepted, but always coerce to NPU-fast/PIM-fast here.
+        cfg['npu_backend'] = _normalize_npu_backend(cfg.get('npu_backend', 'fast'))
+        cfg['pim_fast_mode'] = True
 
         if args.mode == 'weight-suggest':
             _ensure_weight_suggest_supported(cfg)

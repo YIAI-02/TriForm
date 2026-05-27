@@ -5,9 +5,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SRC_DIR="${PROJECT_ROOT}/src"
 PYTHON_BIN="${PYTHON_BIN:-python}"
-CONFIG="${CONFIG:-${SRC_DIR}/examples/evaluate_test_config.json}"
+CONFIG="${CONFIG:-${SRC_DIR}/examples/evaluate_deepseek_v4_flash_config.json}"
 NPU_BACKEND="${NPU_BACKEND:-fast_mode}"
-PIM_FAST_MODE="${PIM_FAST_MODE:-0}"
+PIM_FAST_MODE="${PIM_FAST_MODE:-1}"
 
 # Examples:
 #   CONFIG=./src/examples/evaluate_quant_sparse_config.json bash commands/command_single_evaluate.sh

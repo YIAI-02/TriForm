@@ -57,6 +57,77 @@ def _effective_tp_qkv(cfg: Dict) -> int:
         return max(1, int(tp_eff))
     return max(1, int(cfg.get('tp_qkv', 1) or 1))
 
+
+def _is_deepseek_v4_shape(cfg: Dict, shape: Any) -> bool:
+    fam = str(cfg.get('model_family', cfg.get('model_type', '')) or '').lower().replace('-', '_')
+    return fam in ('deepseek_v4', 'deepseekv4', 'deepseek_v4_pro', 'deepseek_v4_flash') or hasattr(shape, 'deepseek_v4_variant')
+
+
+def _dsv4_layer_compression_rate(layer_idx: int, shape: Any) -> int:
+    ratios = getattr(shape, 'compress_ratios', None)
+    if isinstance(ratios, (list, tuple)) and layer_idx < len(ratios):
+        try:
+            r = int(ratios[layer_idx])
+            return r
+        except Exception:
+            pass
+
+    # Fallback to the compact schedule stored in DOPS shape JSONs.
+    first_sliding = int(getattr(shape, 'first_sliding_attention_layers', 0) or 0)
+    first_hca = int(getattr(shape, 'first_hca_attention_layers', 0) or 0)
+    if layer_idx < first_sliding:
+        return 0
+    if layer_idx < first_sliding + first_hca:
+        return int(getattr(shape, 'hca_compression_rate', 128) or 128)
+    rel = int(layer_idx - first_sliding - first_hca)
+    if rel % 2 == 0:
+        return int(getattr(shape, 'csa_compression_rate', 4) or 4)
+    return int(getattr(shape, 'hca_compression_rate', 128) or 128)
+
+
+def _estimate_deepseek_v4_kv_total_bytes(
+    *,
+    cfg: Dict,
+    shape: Any,
+    kv_dtype_bytes: float,
+) -> tuple[int, int]:
+    """Return (KV bytes, effective_entries_sum) for the compressed DSV4 cache.
+
+    The estimate follows DOPS' graph-level abstraction: each layer stores a
+    shared KV stream with one KV head and `head_dim` channels, plus a local
+    sliding window for compressed layers and the CSA indexer KV cache.
+    Top-k metadata and allocator fragmentation are ignored.
+    """
+    S = int(cfg.get('prefill_len', 128) or 0)
+    T = int(cfg.get('decode_len', 32) or 0)
+    L = max(0, int(S + T))
+    batch = int(cfg.get('batch', 1) or 1)
+    layers = int(getattr(shape, 'layer_num', 1) or 1)
+    n_kv_heads = int(getattr(shape, 'n_kv_heads', 1) or 1)
+    head_dim = int(getattr(shape, 'head_dim', max(1, int(getattr(shape, 'dim', 1) or 1) // max(1, int(getattr(shape, 'n_heads', 1) or 1)))) or 1)
+    window = int(getattr(shape, 'sliding_window', 128) or 128)
+
+    entries_total = 0
+    index_entries_total = 0
+    csa_rate = int(getattr(shape, 'csa_compression_rate', 4) or 4)
+    index_head_dim = int(getattr(shape, 'indexer_head_dim', getattr(shape, 'index_head_dim', 128)) or 128)
+    for l in range(layers):
+        r = int(_dsv4_layer_compression_rate(l, shape))
+        if r <= 1:
+            entries = int(min(int(L), max(0, window)))
+        else:
+            entries = int(math.ceil(float(L) / float(max(1, r))) + min(int(L), max(0, window)))
+        entries_total += int(entries)
+        # CSA (c4a) uses an auxiliary indexer KV cache.  The main attention KV
+        # is a single shared K/V vector, not independent K and V streams.
+        if r == csa_rate and csa_rate > 1:
+            index_entries_total += int(math.ceil(float(L) / float(csa_rate)))
+
+    main_elems = int(n_kv_heads) * int(head_dim) * int(batch) * int(entries_total)
+    index_elems = int(batch) * int(index_head_dim) * int(index_entries_total)
+    total = int(math.ceil((float(main_elems) + float(index_elems)) * float(kv_dtype_bytes)))
+    return int(total), int(entries_total + index_entries_total)
+
 def _build_cost_model_for_run(
     cfg: Dict,
     cluster: Cluster,
@@ -65,32 +136,16 @@ def _build_cost_model_for_run(
     simulation_log_file: Path | str,
     debug_traces: bool = False,
 ) -> CostModel:
-    """Build CostModel with the same runtime knobs across search / compare / evaluate."""
-    prefill_len = int(cfg.get('prefill_len', 128))
+    """Build CostModel for the supported runtime: NPU fast + PIM fast.
 
-    npu_backend = _normalize_npu_backend(cfg.get('npu_backend', None))
-    if _cluster_type_count(cluster, 'npu') <= 0:
-        npu_backend = None
-
-    pim_fast_mode_cfg = cfg.get('pim_fast_mode', None)
-    if pim_fast_mode_cfg is None:
-        # Fast-mode simplification: when the run selects NPU fast backend and the
-        # cluster contains PIM devices, default PIM to the same hardware-only
-        # fast path unless the user explicitly overrides pim_fast_mode.
-        pim_fast_mode = bool(npu_backend == 'fast' and _cluster_type_count(cluster, 'pim') > 0)
-    else:
-        pim_fast_mode = bool(pim_fast_mode_cfg)
-
-    # The trace-based PIM backend needs a torch-backed model_dict; the analytical fast backend does not.
-    model_dict = None
-    if not pim_fast_mode:
-        model_dict = _make_shared_model_dict(
-            dim=int(getattr(shape, 'dim', 128)),
-            n_heads=int(getattr(shape, 'n_heads', 1)),
-            n_kv_heads=int(getattr(shape, 'n_kv_heads', 1)),
-            ffn_dim=int(getattr(shape, 'ffn_dim', 512)),
-            seqlen=prefill_len,
-        )
+    The current target workflow only runs analytical fast mode.  Older LUT/trace
+    knobs are accepted in config for compatibility, but are normalized here so
+    the runtime never builds the trace-backed torch model dictionary.
+    """
+    npu_backend = 'fast' if _cluster_type_count(cluster, 'npu') > 0 else None
+    pim_fast_mode = bool(_cluster_type_count(cluster, 'pim') > 0)
+    cfg['npu_backend'] = 'fast' if npu_backend else None
+    cfg['pim_fast_mode'] = bool(pim_fast_mode)
 
     return CostModel(
         cluster=cluster,
@@ -99,7 +154,7 @@ def _build_cost_model_for_run(
         ramulator_config_path=_optional_path(cfg.get('ramulator_config_path')),
         simulation_log_file=Path(simulation_log_file),
         debug_traces=bool(debug_traces),
-        model_dict=model_dict,
+        model_dict=None,
         npu_backend=npu_backend,
         pim_fast_mode=pim_fast_mode,
         tp_qkv=int(cfg.get('tp_qkv', 1) or 1),
@@ -134,12 +189,29 @@ def _compute_kv_plan_info(
         or 1
     )
 
-    KV_total_bytes = int(math.ceil(2 * (S + T) * n_kv_heads * head_dim * batch * layers * kv_dtype_bytes))
+    if _is_deepseek_v4_shape(cfg, shape):
+        KV_total_bytes, _kv_effective_entries = _estimate_deepseek_v4_kv_total_bytes(
+            cfg=cfg, shape=shape, kv_dtype_bytes=kv_dtype_bytes
+        )
+    else:
+        _kv_effective_entries = int((S + T) * layers)
+        KV_total_bytes = int(math.ceil(2 * (S + T) * n_kv_heads * head_dim * batch * layers * kv_dtype_bytes))
 
-    # Sum FC weight bytes from graph.
-    FC_total_bytes = 0
+    # Sum graph-resident weight bytes.  For DeepSeek-V4 the graph expands only
+    # active top-k routed experts plus the always-on shared expert for latency;
+    # capacity/placement baselines must still reserve the full checkpoint weights.
+    graph_weight_bytes = 0
     for n in graph.nodes.values():
-        FC_total_bytes += int(getattr(n, 'weight_size', 0) or 0)
+        graph_weight_bytes += int(getattr(n, 'weight_size', 0) or 0)
+    FC_total_bytes = int(graph_weight_bytes)
+    if _is_deepseek_v4_shape(cfg, shape):
+        reported_b = getattr(shape, 'reported_total_params_b', None)
+        if reported_b is not None:
+            try:
+                wt_dtype_b = float(dtype_bytes(cfg.get('dtype', 'fp16'), default='fp16'))
+                FC_total_bytes = int(math.ceil(float(reported_b) * 1e9 * wt_dtype_b))
+            except Exception:
+                FC_total_bytes = int(graph_weight_bytes)
 
     pim_rr = sorted(pim_devs, key=lambda d: str(d.name))
     pim_bytes_by_name = {d.name: int(d.mem_capacity_GB * (1024**3)) for d in pim_rr}
@@ -193,7 +265,7 @@ def _compute_kv_plan_info(
                 kv_heads_by_pim[str(dev.name)].extend(int(h) for h in shard_heads)
 
         # Compute per-PIM KV bytes.
-        bytes_per_head_all_layers = float(2 * (S + T) * head_dim * batch * layers) * kv_dtype_bytes
+        bytes_per_head_all_layers = float(KV_total_bytes) / float(max(1, kv_heads_total))
         for dev in pim_rr:
             hcnt = len(kv_heads_by_pim.get(str(dev.name), []) or [])
             kv_bytes_by_pim[str(dev.name)] = int(math.ceil(float(hcnt) * bytes_per_head_all_layers))
@@ -214,7 +286,9 @@ def _compute_kv_plan_info(
     return {
         'kv_total_bytes_all': int(KV_total_bytes),
         'kv_dtype_bytes': float(kv_dtype_bytes),
+        'kv_effective_entries_all_layers': int(_kv_effective_entries),
         'fc_total_bytes': int(FC_total_bytes),
+        'graph_weight_bytes': int(graph_weight_bytes),
         'tp_qkv_effective': int(tp_qkv_eff),
         'pim_total_capacity_bytes': int(pim_bytes_total),
         'pim_bytes_by_name': dict(pim_bytes_by_name),
@@ -304,6 +378,7 @@ def _make_label_from_kv_plan(
     # Extra metadata used by reporting / debugging (kept as attributes for flexibility).
     setattr(label, 'total_weight_bytes', int(FC_total_bytes))
     setattr(label, 'fc_total_bytes', int(FC_total_bytes))
+    setattr(label, 'graph_weight_bytes', int(kv_plan.get('graph_weight_bytes', FC_total_bytes) or FC_total_bytes))
     setattr(label, 'kv_total_bytes_raw', int(KV_total_bytes))
     setattr(label, 'kv_dtype_bytes', float(kv_plan.get('kv_dtype_bytes', 0.0) or 0.0))
     setattr(label, 'tp_qkv_effective', int(kv_plan.get('tp_qkv_effective', 1) or 1))
@@ -452,22 +527,22 @@ def _estimate_total_time_for_label(
     return float(t_prefill), float(t_decode), float(t_prefill + t_decode)
 
 def _normalize_npu_backend(backend):
-    """Normalize npu_backend strings to canonical: fast / ascend_310b_lut / llmcompass."""
+    """Normalize npu_backend strings.
+
+    Only NPU fast mode is supported by the current workflow.  Legacy backend
+    names are accepted and coerced to 'fast' so older configs still run.
+    """
     if backend is None:
-        return None
-    b = str(backend).strip().lower().replace('-', '_')
-    b = b.replace(' ', '_')
-    if b in ('fast', 'fastmode', 'fast_mode'):
         return 'fast'
-    if b in ('ascend_310b_lut', 'ascend310b_lut', 'ascend_lut', 'lut', 'runtime_lut'):
-        return 'ascend_310b_lut'
-    if b in ('ascend_310b_json', 'ascend310b_json', 'ascend_json', 'json', 'runtime_json', 'ascend_310b'):
-        return 'ascend_310b_json'
-    if b in ('llmcompass', 'llm_compass'):
-        return 'llmcompass'
-    raise ValueError(
-        f"Unknown npu_backend='{backend}'. Expected one of: fast, ascend_310b_lut, ascend_310b_json, llmcompass"
-    )
+    b = str(backend).strip().lower().replace('-', '_').replace(' ', '_')
+    if b in (
+        'fast', 'fastmode', 'fast_mode',
+        'ascend_310b_lut', 'ascend310b_lut', 'ascend_lut', 'lut', 'runtime_lut',
+        'ascend_310b_json', 'ascend310b_json', 'ascend_json', 'json', 'runtime_json', 'ascend_310b',
+        'llmcompass', 'llm_compass',
+    ):
+        return 'fast'
+    raise ValueError(f"Unknown npu_backend='{backend}'. Current supported runtime is fast mode only.")
 
 
 def _cfg_bool(value: Any, *, default: bool = False) -> bool:
@@ -498,16 +573,10 @@ def _weight_suggest_fast_mode_reasons(cfg: Dict) -> List[str]:
 
 
 def _ensure_weight_suggest_supported(cfg: Dict) -> None:
-    reasons = _weight_suggest_fast_mode_reasons(cfg)
-    if not reasons:
-        return
-
-    raise ValueError(
-        "weight-suggest does not support fast mode. "
-        f"Detected: {', '.join(reasons)}. "
-        "Fast mode is evaluate-only; please use `evaluate`, or disable fast mode "
-        "by setting a non-fast `npu_backend` and `pim_fast_mode=false`."
-    )
+    """Fast mode is now the supported path for both evaluate and weight-suggest."""
+    cfg['npu_backend'] = _normalize_npu_backend(cfg.get('npu_backend', 'fast'))
+    cfg['pim_fast_mode'] = True
+    return None
 
 def auto_select_kv_policy(
     *,

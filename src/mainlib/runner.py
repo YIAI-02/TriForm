@@ -108,6 +108,8 @@ def run(cfg: Dict):
     else:
         algo_name = str(algo_raw)
     algo_name = _normalize_algo_name((algo_name.replace(',', ' ').split()[:1] or ['HEFT'])[0])
+    if algo_name in ('Bifocal+Linear', 'Bifocal+Dual'):
+        algo_name = 'Bifocal'
 
     SchedCls = HEFTScheduler
     if algo_name == 'Bifocal':

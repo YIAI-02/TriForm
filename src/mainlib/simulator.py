@@ -162,6 +162,8 @@ def _make_scheduler(name: str, cluster: Cluster, cost: CostModel, label: PlanLab
     """Factory for scheduler strategies used by evaluate-suite."""
 
     strategy = _normalize_algo_name(name or 'HEFT')
+    if strategy in ('Bifocal+Linear', 'Bifocal+Dual'):
+        strategy = 'Bifocal'
 
     if strategy == 'Bifocal':
         if BifocalScheduler is None:

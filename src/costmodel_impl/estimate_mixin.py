@@ -103,9 +103,14 @@ class CostModelEstimateMixin:
         opt = self._node_opt(node)
         aspec = opt.get('attention_sparsity')
         if not isinstance(aspec, dict):
-            return int(dense_pairs)
+            aspec = attrs.get('attention_sparsity')
+        if not isinstance(aspec, dict):
+            pat0 = str(attrs.get('attention_pattern', 'dense')).lower()
+            if pat0 in ('dense', 'none', 'off', 'disabled'):
+                return int(dense_pairs)
+            aspec = {'pattern': pat0}
 
-        pat = str(aspec.get('pattern', 'dense')).lower()
+        pat = str(aspec.get('pattern', attrs.get('attention_pattern', 'dense'))).lower()
         if pat in ('dense', 'none', 'off', 'disabled'):
             return int(dense_pairs)
 
@@ -146,6 +151,55 @@ class CostModelEstimateMixin:
                 return int(T * min(T, per_q))
             return int(min(kv_len, per_q))
 
+        # DeepSeek-V4 CSA / HCA: attention is performed over compressed KV
+        # entries plus an explicit short sliding-window branch.  CSA adds a
+        # sparse top-k selection over compressed blocks; HCA is dense over a
+        # much more aggressively compressed hierarchy.
+        if pat in ('deepseek_csa', 'csa', 'compressed_sparse_attention'):
+            m = max(1, int(aspec.get('compression_rate', attrs.get('csa_compression_rate', 4)) or 4))
+            top_k = max(1, int(aspec.get('top_k', attrs.get('csa_top_k', 512)) or 512))
+            window = max(0, int(aspec.get('sliding_window', attrs.get('sliding_window', 0)) or 0))
+
+            def sum_min_ceil(n: int, rate: int, cap: int) -> int:
+                limit = min(int(n), int(rate) * int(cap))
+                q = int(limit // rate)
+                r = int(limit % rate)
+                total = int(rate * q * (q + 1) // 2 + r * (q + 1))
+                if n > limit:
+                    total += int((n - limit) * cap)
+                return int(total)
+
+            def sum_window(n: int, w: int) -> int:
+                if w <= 0:
+                    return 0
+                if n <= w:
+                    return int(tri(n))
+                return int(tri(w) + (n - w) * w)
+
+            if str(phase) == 'prefill':
+                return int(sum_min_ceil(T, m, top_k) + sum_window(T, window))
+            return int(min(top_k, int(math.ceil(kv_len / float(m)))) + min(kv_len, window))
+
+        if pat in ('deepseek_hca', 'hca', 'hierarchical_compressed_attention'):
+            m = max(1, int(aspec.get('compression_rate', attrs.get('hca_compression_rate', 128)) or 128))
+            window = max(0, int(aspec.get('sliding_window', attrs.get('sliding_window', 0)) or 0))
+
+            def sum_ceil(n: int, rate: int) -> int:
+                q = int(n // rate)
+                r = int(n % rate)
+                return int(rate * q * (q + 1) // 2 + r * (q + 1))
+
+            def sum_window(n: int, w: int) -> int:
+                if w <= 0:
+                    return 0
+                if n <= w:
+                    return int(tri(n))
+                return int(tri(w) + (n - w) * w)
+
+            if str(phase) == 'prefill':
+                return int(sum_ceil(T, m) + sum_window(T, window))
+            return int(int(math.ceil(kv_len / float(m))) + min(kv_len, window))
+
         # Generic sparse attention matrix density
         if pat in ('matrix', 'sparse_matrix', 'sparse'):
             try:
@@ -168,6 +222,44 @@ class CostModelEstimateMixin:
         pairs = self._attention_pairs(node, int(seq_len or kv_len), str(phase), causal=bool(attrs.get('causal', True)))
         # pairs in decode is "keys per query".
         return int(max(0, min(kv_len, pairs)))
+
+    def _attention_unique_kv_entries(self, node, seq_len: int, phase: str) -> int:
+        """Approximate unique shared-KV vectors read by a DeepSeek-V4 attention op.
+
+        `_attention_pairs` counts query-key dot products.  For memory traffic we
+        need a separate estimate because DeepSeek-V4 uses one shared K/V vector
+        per cache entry and reuses it across all Q heads.
+        """
+        T = int(seq_len or 0)
+        if T <= 0:
+            return 0
+        attrs = getattr(node, 'attrs', {}) or {}
+        kv_len = int(attrs.get('kv_len', attrs.get('past_kv_len', T)) or T)
+        opt = self._node_opt(node)
+        aspec = opt.get('attention_sparsity')
+        if not isinstance(aspec, dict):
+            aspec = attrs.get('attention_sparsity')
+        pat = str(aspec.get('pattern', attrs.get('attention_pattern', 'dense'))).lower() if isinstance(aspec, dict) else str(attrs.get('attention_pattern', 'dense')).lower()
+        window = max(0, int((aspec or {}).get('sliding_window', attrs.get('sliding_window', 0)) or 0)) if isinstance(aspec, dict) else max(0, int(attrs.get('sliding_window', 0) or 0))
+
+        if pat in ('local', 'sliding', 'sliding_window', 'window'):
+            return int(min(kv_len if str(phase) != 'prefill' else T, window if window > 0 else kv_len))
+
+        if pat in ('deepseek_csa', 'csa', 'compressed_sparse_attention'):
+            m = max(1, int((aspec or {}).get('compression_rate', attrs.get('csa_compression_rate', 4)) or 4)) if isinstance(aspec, dict) else max(1, int(attrs.get('csa_compression_rate', 4) or 4))
+            top_k = max(1, int((aspec or {}).get('top_k', attrs.get('csa_top_k', 512)) or 512)) if isinstance(aspec, dict) else max(1, int(attrs.get('csa_top_k', 512) or 512))
+            n = T if str(phase) == 'prefill' else kv_len
+            compressed = int(math.ceil(float(n) / float(m)))
+            if str(phase) != 'prefill':
+                compressed = min(int(top_k), int(compressed))
+            return int(compressed + min(int(n), int(window)))
+
+        if pat in ('deepseek_hca', 'hca', 'hierarchical_compressed_attention'):
+            m = max(1, int((aspec or {}).get('compression_rate', attrs.get('hca_compression_rate', 128)) or 128)) if isinstance(aspec, dict) else max(1, int(attrs.get('hca_compression_rate', 128) or 128))
+            n = T if str(phase) == 'prefill' else kv_len
+            return int(math.ceil(float(n) / float(m)) + min(int(n), int(window)))
+
+        return int(T if str(phase) == 'prefill' else kv_len)
 
     def _time_scale_hint(self, node, dev_type: str) -> float:
         """Optional heuristic speedup scale from node.opt['speedup'].
@@ -203,7 +295,11 @@ class CostModelEstimateMixin:
         hd = int(attrs.get('head_dim', 0) or 0)
         if kvh <= 0 or hd <= 0:
             return 0
-        elems = batch * kvh * hd * kv_len
+        if bool(attrs.get('kv_cache_shared', attrs.get('shared_kv', False))):
+            cache_width = int(attrs.get('kv_cache_dim', attrs.get('shared_kv_dim', hd)) or hd)
+        else:
+            cache_width = int(attrs.get('kv_cache_dim', max(1, kvh * hd)) or max(1, kvh * hd))
+        elems = batch * max(1, int(cache_width)) * kv_len
         return int(math.ceil(float(elems) * float(dtype_bytes)))
         
     def estimate_flops(self, node, batch: int, seq_len: int, phase: str) -> float:
@@ -263,6 +359,89 @@ class CostModelEstimateMixin:
         w_den = float(self._weight_density_for_compute(node))
         a_den = float(self._activation_density_for_compute(node, phase))
 
+        # DeepSeek-V4 specific operators
+        if name in ('DSV4_Q_DOWN', 'DSV4_Q_UP'):
+            inp = int(attrs.get('input_dim', D) or D)
+            out = int(attrs.get('output_dim', attrs.get('q_dim', 0)) or 0)
+            if inp > 0 and out > 0:
+                return float(C_MATMUL * inp * out * b * q_len) * w_den * a_den
+
+        if name == 'DSV4_INDEXER_Q':
+            inp = int(attrs.get('input_dim', D) or D)
+            out = int(attrs.get('output_dim', attrs.get('q_dim', 0)) or 0)
+            aux_in = int(attrs.get('aux_input_dim', attrs.get('model_dim', attrs.get('dim', D))) or D)
+            aux_out = int(attrs.get('aux_output_dim', attrs.get('indexer_heads', 0)) or 0)
+            main = float(C_MATMUL * inp * out * b * q_len) if inp > 0 and out > 0 else 0.0
+            aux = float(C_MATMUL * aux_in * aux_out * b * q_len) if aux_in > 0 and aux_out > 0 else 0.0
+            return (main + aux) * w_den * a_den
+
+        if name in ('DSV4_KV_COMPRESS', 'DSV4_INDEX_KV_COMPRESS', 'DSV4_WINDOW_KV'):
+            inp = int(attrs.get('input_dim', D) or D)
+            out = int(attrs.get('output_dim', max(1, hd)) or max(1, hd))
+            comp = max(1, int(attrs.get('compression_rate', 1) or 1))
+            if name == 'DSV4_WINDOW_KV':
+                return float(C_MATMUL * inp * out * b * q_len + b * q_len * out * C_LN) * w_den * a_den
+            proj_dim = int(attrs.get('projected_dim', attrs.get('compressor_projected_dim', out)) or out)
+            compressed_tokens = max(1, int(math.ceil(float(q_len) / float(comp))))
+            # wkv and wgate are both dim -> projected_dim.  The softmax/gated
+            # pooling cost is small but included so c4a overlap is visible.
+            proj = float(2.0 * C_MATMUL * inp * proj_dim * b * q_len)
+            mix = float(b * compressed_tokens * max(1, proj_dim) * comp * 3.0)
+            return (proj + mix) * w_den * a_den
+
+        if name == 'DSV4_INDEX_SCORE':
+            idx_h = int(attrs.get('indexer_heads', 1) or 1)
+            idx_d = int(attrs.get('indexer_head_dim', hd) or hd or 1)
+            m = max(1, int(attrs.get('csa_compression_rate', attrs.get('compression_rate', 4)) or 4))
+            if str(phase) == 'prefill':
+                q = int(T := q_len) // m
+                r = int(T) % m
+                pairs_idx = int(m * q * (q + 1) // 2 + r * (q + 1))
+            else:
+                pairs_idx = int(math.ceil(float(kv_len) / float(m)))
+            return float(C_MATMUL * b * idx_h * idx_d * pairs_idx)
+
+        if name == 'DSV4_TOPK':
+            m = max(1, int(attrs.get('csa_compression_rate', attrs.get('compression_rate', 4)) or 4))
+            topk = max(1, int(attrs.get('top_k', attrs.get('csa_top_k', 512)) or 512))
+            if str(phase) == 'prefill':
+                candidates = int(math.ceil(float(seq_len) / float(m)))
+                elems = b * q_len * candidates
+            else:
+                candidates = int(math.ceil(float(kv_len) / float(m)))
+                elems = b * candidates
+            return float(elems * max(1.0, math.log2(float(min(topk, max(2, candidates))))))
+
+        if name == 'DSV4_O_G1':
+            if bool(attrs.get('grouped_linear', False)):
+                groups = max(1, int(attrs.get('groups', attrs.get('output_projection_groups', 1)) or 1))
+                gin = int(attrs.get('group_input_dim', 0) or 0)
+                gout = int(attrs.get('group_output_dim', 0) or 0)
+                if gin > 0 and gout > 0:
+                    return float(C_MATMUL * groups * gin * gout * b * q_len) * w_den * a_den
+            inp = int(attrs.get('input_dim', attrs.get('o_dim', 0)) or 0)
+            out = int(attrs.get('output_dim', attrs.get('dim', D)) or D)
+            if inp > 0 and out > 0:
+                return float(C_MATMUL * inp * out * b * q_len) * w_den * a_den
+
+        if name == 'DSV4_O_G2':
+            inp = int(attrs.get('input_dim', attrs.get('o_dim', 0)) or 0)
+            out = int(attrs.get('output_dim', attrs.get('dim', D)) or D)
+            if inp > 0 and out > 0:
+                return float(C_MATMUL * inp * out * b * q_len) * w_den * a_den
+
+        if name == 'MHC_MIX' and D > 0:
+            nhc = max(1, int(attrs.get('mhc_expansion_factor', 1) or 1))
+            sinkhorn_iters = max(0, int(attrs.get('sinkhorn_iters', 0) or 0))
+            mix = float(b * q_len * D * nhc * nhc)
+            normalize = float(b * q_len * nhc * nhc * sinkhorn_iters)
+            return (mix + normalize) * a_den
+
+        if name == 'MOE_SHARED_COMBINE' and D > 0:
+            shared = max(0, int(attrs.get('shared_experts', 0) or 0))
+            active = max(0, int(attrs.get('active_routed_experts', attrs.get('active_experts', 0)) or 0))
+            return float(b * q_len * D * max(1, shared + min(1, active))) * a_den
+
         # 1) LayerNorm
         if name == 'LN' and D > 0:
             return float(b * q_len * D * C_LN) * a_den
@@ -278,7 +457,8 @@ class CostModelEstimateMixin:
         if name == 'QK' and qh > 0 and (hd > 0):
             # Attention sparsity-aware pairs
             pairs = int(self._attention_pairs(node, seq_len, phase, causal=causal))
-            return float(C_MATMUL * b * qh * hd * pairs)
+            qk_dim = int(attrs.get('qk_dim', hd) or hd)
+            return float(C_MATMUL * b * qh * qk_dim * pairs)
 
         # 4) Softmax
         if name == 'SOFTMAX' and qh > 0:
@@ -288,7 +468,8 @@ class CostModelEstimateMixin:
         # 5) S = softmax(QK^T)
         if name == 'SV' and qh > 0 and (hd > 0):
             pairs = int(self._attention_pairs(node, seq_len, phase, causal=causal))
-            return float(C_MATMUL * b * qh * hd * pairs)
+            value_dim = int(attrs.get('value_dim', hd) or hd)
+            return float(C_MATMUL * b * qh * value_dim * pairs)
 
         # 6) O 
         if name == 'O' and D > 0 and (o_dim > 0):
@@ -400,6 +581,75 @@ class CostModelEstimateMixin:
             active = max(1.0, float(moe_active))
             base = moe_top_k / active
             return min(1.0, base * max(1.0, imbalance))
+        if name in ('DSV4_Q_DOWN', 'DSV4_Q_UP'):
+            inp = int(attrs.get('input_dim', D) or D)
+            out = int(attrs.get('output_dim', attrs.get('q_dim', 0)) or 0)
+            return (
+                to_bytes(dens_store * (b * q_len * inp)),
+                to_bytes(dens_store * (b * q_len * out)),
+            )
+        if name == 'DSV4_INDEXER_Q':
+            inp = int(attrs.get('input_dim', D) or D)
+            out = int(attrs.get('output_dim', attrs.get('q_dim', 0)) or 0)
+            aux_out = int(attrs.get('aux_output_dim', attrs.get('indexer_heads', 0)) or 0)
+            return (
+                to_bytes(dens_store * (b * q_len * inp)),
+                to_bytes(dens_store * (b * q_len * (out + max(0, aux_out)))),
+            )
+        if name in ('DSV4_KV_COMPRESS', 'DSV4_INDEX_KV_COMPRESS', 'DSV4_WINDOW_KV'):
+            inp = int(attrs.get('input_dim', D) or D)
+            out = int(attrs.get('output_dim', max(1, hd)) or max(1, hd))
+            comp = max(1, int(attrs.get('compression_rate', 1) or 1))
+            # DeepSeek-V4 stores one shared K/V vector per cache entry.  Window
+            # K/V is written at token granularity; compressor outputs are written
+            # at block granularity.  The indexer compressor has its own 128-wide
+            # cache used only by CSA top-k selection.
+            if name == 'DSV4_WINDOW_KV':
+                write_tokens = float(q_len)
+            elif str(phase) == 'prefill':
+                write_tokens = float(max(1, int(math.ceil(float(q_len) / float(comp)))))
+            else:
+                write_tokens = float(1.0 / float(comp))
+            return (
+                to_bytes(dens_store * (b * q_len * inp)),
+                to_bytes(dens_store * (b * write_tokens * out)),
+            )
+        if name == 'DSV4_INDEX_SCORE':
+            idx_h = int(attrs.get('indexer_heads', 1) or 1)
+            idx_d = int(attrs.get('indexer_head_dim', hd) or hd or 1)
+            m = max(1, int(attrs.get('csa_compression_rate', attrs.get('compression_rate', 4)) or 4))
+            candidates = int(math.ceil(float(T if str(phase) == 'prefill' else kv_len) / float(m)))
+            # The implementation first forms per-index-head scores, then applies
+            # learned head weights and reduces to one scalar score per candidate.
+            # Read traffic must include the shared indexer KV cache, but the node
+            # output is the reduced scalar score matrix used by TOPK.
+            q_tokens = q_len if str(phase) == 'prefill' else 1
+            score_elems = b * q_tokens * candidates
+            read_elems = b * q_tokens * idx_h * idx_d + b * candidates * idx_d
+            return (to_bytes(dens_store * read_elems), to_bytes(dens_store * score_elems))
+        if name == 'DSV4_TOPK':
+            topk = max(1, int(attrs.get('top_k', attrs.get('csa_top_k', 512)) or 512))
+            m = max(1, int(attrs.get('csa_compression_rate', attrs.get('compression_rate', 4)) or 4))
+            candidates = int(math.ceil(float(T if str(phase) == 'prefill' else kv_len) / float(m)))
+            q_tokens = q_len if str(phase) == 'prefill' else 1
+            read_scores = b * q_tokens * candidates
+            write_idx = b * q_tokens * min(topk, max(1, candidates))
+            return (to_bytes(dens_store * read_scores), to_bytes(dens_store * write_idx))
+        if name in ('DSV4_O_G1', 'DSV4_O_G2'):
+            inp = int(attrs.get('input_dim', attrs.get('o_dim', 0)) or 0)
+            out = int(attrs.get('output_dim', attrs.get('dim', D)) or D)
+            return (
+                to_bytes(dens_store * (b * q_len * inp)),
+                to_bytes(dens_store * (b * q_len * out)),
+            )
+        if name == 'MHC_MIX' and D > 0:
+            elems = dens_store * (b * q_len * D)
+            return (to_bytes(elems), to_bytes(elems))
+        if name == 'MOE_SHARED_COMBINE' and D > 0:
+            shared = max(0, int(attrs.get('shared_experts', 0) or 0))
+            read_elems = dens_store * (b * q_len * D * max(2, shared + 1))
+            write_elems = dens_store * (b * q_len * D)
+            return (to_bytes(read_elems), to_bytes(write_elems))
         if name == 'LN' and D > 0:
             elems = dens_store * (b * q_len * D)
             return (to_bytes(elems), to_bytes(elems))
@@ -449,20 +699,50 @@ class CostModelEstimateMixin:
             elems = dens_store * (b * q_len * D)
             return (to_bytes(elems), to_bytes(elems))
         if name == 'QK' and qh > 0 and (hd > 0):
-            q_read = dens_store * (b * q_len * q_dim)
+            qk_dim = int(attrs.get('qk_dim', hd) or hd)
+            q_read = dens_store * (b * q_len * qh * qk_dim)
+            unique_kv = self._attention_unique_kv_entries(node, T, phase)
+            vectors = 1 if bool(attrs.get('kv_cache_shared', attrs.get('shared_kv', False))) else max(1, kvh)
+            k_read = dens_store * (b * unique_kv * vectors * qk_dim)
             write_elems = dens_store * (b * qh * attn_pairs)
-            return (to_bytes(q_read), to_bytes(write_elems))
+            return (to_bytes(q_read + k_read), to_bytes(write_elems))
         if name in ('SOFTMAX', 'ATTN_SOFTMAX') and qh > 0:
             elems = dens_store * (b * qh * attn_pairs)
             return (to_bytes(elems), to_bytes(elems))
         if name == 'SV' and qh > 0 and (hd > 0):
+            value_dim = int(attrs.get('value_dim', hd) or hd)
+            unique_kv = self._attention_unique_kv_entries(node, T, phase)
+            vectors = 1 if bool(attrs.get('kv_cache_shared', attrs.get('shared_kv', False))) else max(1, kvh)
             attn_read = dens_store * (b * qh * attn_pairs)
-            out_elems = dens_store * (b * qh * q_len * hd)
-            return (to_bytes(attn_read), to_bytes(out_elems))
-        if name in ('K_WRITE', 'V_WRITE'):
-            write_tokens = q_len
-            elems = float(b * kvh * hd * write_tokens)
+            v_read = dens_store * (b * unique_kv * vectors * value_dim)
+            out_elems = dens_store * (b * qh * q_len * value_dim)
+            return (to_bytes(attn_read + v_read), to_bytes(out_elems))
+        if name in ('K_WRITE', 'V_WRITE', 'KV_WRITE'):
+            comp = max(1, int(attrs.get('compression_rate', 1) or 1))
             kv_dtype_bytes = float(self._kv_dtype_bytes(node, phase))
+            if name == 'KV_WRITE' and str(attrs.get('model_family', '')).lower() == 'deepseek_v4':
+                window = max(0, int(attrs.get('sliding_window', 0) or 0))
+                shared = bool(attrs.get('kv_cache_shared', attrs.get('shared_kv', False)))
+                if shared:
+                    cache_width = int(attrs.get('kv_cache_dim', attrs.get('shared_kv_dim', hd)) or hd)
+                else:
+                    cache_width = int(attrs.get('kv_cache_dim', max(1, kvh * hd)) or max(1, kvh * hd))
+                if comp <= 1:
+                    entries = float(q_len)
+                elif str(phase) == 'prefill':
+                    # Prefill writes the full local-window stream plus the block-compressed stream.
+                    entries = float(q_len + max(1, int(math.ceil(float(q_len) / float(comp)))))
+                else:
+                    # Decode writes one local token plus an amortized compressed block entry.
+                    entries = float(1.0 + 1.0 / float(comp))
+                elems = float(b * max(1, cache_width) * entries)
+                return (0, int(math.ceil(max(0.0, elems) * kv_dtype_bytes)))
+            write_tokens = q_len if name != 'KV_WRITE' else max(1, int(math.ceil(float(q_len) / float(comp))))
+            if bool(attrs.get('kv_cache_shared', attrs.get('shared_kv', False))):
+                cache_width = int(attrs.get('kv_cache_dim', attrs.get('shared_kv_dim', hd)) or hd)
+            else:
+                cache_width = int(attrs.get('kv_cache_dim', max(1, kvh * hd)) or max(1, kvh * hd))
+            elems = float(b * cache_width * write_tokens)
             return (0, int(math.ceil(max(0.0, elems) * kv_dtype_bytes)))
         if 'ROUTER' in name and D > 0:
             tokens = float(b * q_len)
@@ -509,7 +789,9 @@ class CostModelEstimateMixin:
             kv_len = max(1, int(pairs))
 
         aspec = self._node_opt(node).get('attention_sparsity')
-        pat = str(aspec.get('pattern', 'dense')).lower() if isinstance(aspec, dict) else 'dense'
+        if not isinstance(aspec, dict):
+            aspec = attrs.get('attention_sparsity')
+        pat = str(aspec.get('pattern', attrs.get('attention_pattern', 'dense'))).lower() if isinstance(aspec, dict) else str(attrs.get('attention_pattern', 'dense')).lower()
 
         # ------------------------------------------------------------------
         # CPU

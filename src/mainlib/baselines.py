@@ -14,6 +14,58 @@ def _is_attention_node(n: TaskNode) -> bool:
         return True
     return any(k in name for k in _ATTENTION_KEYS)
 
+_FFN_OP_KEYS = {
+    'ffn_w1', 'ffn_w2', 'ffn_w3', 'swiglu', 'gelu', 'act', 'activation'
+}
+
+def _node_text(n: TaskNode) -> str:
+    attrs = getattr(n, 'attrs', {}) or {}
+    op = str(attrs.get('op') or '') if isinstance(attrs, dict) else ''
+    return ' '.join([str(getattr(n, 'id', '') or ''), str(getattr(n, 'name', '') or ''), op]).lower()
+
+def _node_op(n: TaskNode) -> str:
+    attrs = getattr(n, 'attrs', {}) or {}
+    return str((attrs.get('op') if isinstance(attrs, dict) else None) or getattr(n, 'name', '') or '').lower()
+
+def _is_ffn_compute_node(n: TaskNode) -> bool:
+    op = _node_op(n)
+    text = _node_text(n)
+    return any(k in op or k in text for k in _FFN_OP_KEYS)
+
+def _is_shared_expert_node(n: TaskNode) -> bool:
+    attrs = getattr(n, 'attrs', {}) or {}
+    if isinstance(attrs, dict):
+        for key in ('expert_shared', 'shared_expert', 'is_shared_expert'):
+            if bool(attrs.get(key, False)):
+                return True
+        # DeepSeek-style shared expert ids are sometimes recorded without a boolean.
+        if attrs.get('shared_expert_id', None) is not None:
+            return True
+    text = _node_text(n)
+    return ('shared' in text and ('expert' in text or 'ffn' in text))
+
+def _is_moe_expert_node(n: TaskNode) -> bool:
+    attrs = getattr(n, 'attrs', {}) or {}
+    if isinstance(attrs, dict):
+        for key in ('expert', 'expert_id', 'expert_rank', 'expert_active', 'expert_shard', 'moe_shard'):
+            if key in attrs:
+                return True
+    text = _node_text(n)
+    # Legacy Mixtral/DeepSeek graph nodes use names like L3_FFN_W1_E0 or L3_Act_E0.
+    return ('_e' in text or 'moe_e' in text) and ('ffn' in text or 'act' in text or 'swiglu' in text)
+
+def _is_cold_moe_ffn_node(n: TaskNode) -> bool:
+    """True for routed/cold MoE FFN compute nodes, excluding shared experts.
+
+    ColdMoE baseline semantics:
+      - prefill: everything runs on NPU;
+      - decode: only non-shared expert FFN compute runs on PIM;
+        router, shared experts, attention, norms, residuals, and KV ops stay on NPU.
+    """
+    if _is_shared_expert_node(n):
+        return False
+    return bool(_is_moe_expert_node(n) and _is_ffn_compute_node(n))
+
 def _clone_graph(g: TaskGraph) -> TaskGraph:
     """Deep copy TaskGraph nodes + edges, to safely override `allowed`."""
     new_g = TaskGraph()
@@ -253,3 +305,25 @@ def _baseline_partitioned_linear(g: TaskGraph, *, phase: str) -> TaskGraph:
     return g2
 
 
+
+
+@register_baseline('ColdMoE')
+def _baseline_cold_moe(g: TaskGraph, *, phase: str) -> TaskGraph:
+    """Hot/cold MoE baseline.
+
+    Semantics requested for DeepSeek/MoE models:
+      * prefill: all operators run on NPU;
+      * decode: routed (cold) expert FFN compute runs on PIM;
+        shared expert FFN, router/combine, attention, KV, norm, residual and
+        all other operators run on NPU.
+    """
+    g2 = _clone_graph(g)
+    for _, n in g2.nodes.items():
+        on_pim = bool(phase == 'decode' and _is_cold_moe_ffn_node(n))
+        n.allowed['pim'] = on_pim
+        n.allowed['npu'] = not on_pim
+        n.allowed['cpu'] = False
+    return g2
+
+
+__all__ = [name for name in globals() if not name.startswith('__')]

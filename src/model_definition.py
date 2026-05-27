@@ -21,9 +21,15 @@ class ModelShape:
     n_kv_heads: int      # shared KV heads (GQA/MQA)
     batch: int
     max_seq_len: int     # Maximum sequence length (for graph structure)
+    # Some newer architectures decouple attention head width from
+    # hidden_size / num_attention_heads. DeepSeek-V4 uses very wide
+    # sparse-attention heads, so the parser may set this override.
+    head_dim_override: Optional[int] = None
 
     @property
     def head_dim(self) -> int:
+        if self.head_dim_override is not None:
+            return int(self.head_dim_override)
         return int(self.dim // max(1, int(self.n_heads)))
 
 
@@ -1407,8 +1413,765 @@ class MixtralDef:
         return g
 
 
+class DeepSeekV4Def(MixtralDef):
+    """DeepSeek-V4 graph builder.
+
+    This builder extends the existing DOPS transformer abstraction with the
+    operators that make DeepSeek-V4 distinct from Mixtral/LLaMA-style models:
+    compressed sparse attention (CSA), hierarchical compressed attention (HCA),
+    a sliding-window branch, mHC residual mixing, and DeepSeekMoE with always-on
+    shared experts plus top-k routed experts.
+    """
+
+    name = "deepseek_v4"
+
+    @staticmethod
+    def _shape_int(shape: ModelShape, key: str, default: int) -> int:
+        return int(getattr(shape, key, default) or default)
+
+    @staticmethod
+    def _attention_kind(layer: int, shape: ModelShape) -> str:
+        ratios = getattr(shape, "compress_ratios", None)
+        if isinstance(ratios, (list, tuple)) and int(layer) < len(ratios):
+            try:
+                r = int(ratios[int(layer)])
+                if r <= 1:
+                    return "sliding"
+                if r == int(getattr(shape, "csa_compression_rate", 4) or 4):
+                    return "csa"
+                if r == int(getattr(shape, "hca_compression_rate", 128) or 128):
+                    return "hca"
+                return "csa" if r < 64 else "hca"
+            except Exception:
+                pass
+
+        schedule = getattr(shape, "attention_schedule", None)
+        if isinstance(schedule, (list, tuple)) and int(layer) < len(schedule):
+            item = str(schedule[int(layer)]).strip().lower()
+            if item in ("csa", "hca", "sliding", "window", "local"):
+                return "sliding" if item in ("window", "local") else item
+
+        variant = str(getattr(shape, "deepseek_v4_variant", getattr(shape, "model_variant", "pro"))).lower()
+        first_sliding = DeepSeekV4Def._shape_int(
+            shape,
+            "first_sliding_attention_layers",
+            2 if variant == "flash" else 0,
+        )
+        first_hca = DeepSeekV4Def._shape_int(
+            shape,
+            "first_hca_attention_layers",
+            2 if variant == "pro" else 0,
+        )
+        l = int(layer)
+        if l < first_sliding:
+            return "sliding"
+        if l < first_hca:
+            return "hca"
+        offset = max(int(first_sliding), int(first_hca))
+        return "csa" if ((l - offset) % 2 == 0) else "hca"
+
+    @staticmethod
+    def _add_mhc_mix(
+        g: TaskGraph,
+        *,
+        l: int,
+        tag: str,
+        input_nid: str,
+        shape: ModelShape,
+        dtype_bytes: float,
+        base_attr: Dict,
+    ) -> str:
+        nhc = max(1, int(getattr(shape, "mhc_expansion_factor", getattr(shape, "m_hc_expansion_factor", 1)) or 1))
+        if nhc <= 1:
+            return input_nid
+        dim = int(shape.dim)
+        sinkhorn_iters = int(getattr(shape, "sinkhorn_iters", 20) or 20)
+        # DOPS keeps a single logical residual stream.  The node below models the
+        # additional token-wise mixing/projection work introduced by mHC without
+        # expanding every downstream tensor by n_hc.
+        weight_elems = int(dim * nhc * nhc + 3 * dim * nhc)
+        nid = f"L{l}_mHC_{tag}"
+        attr = dict(base_attr)
+        attr.update(
+            {
+                "mhc_expansion_factor": int(nhc),
+                "sinkhorn_iters": int(sinkhorn_iters),
+                "op_detail": str(tag),
+                "input_dim": int(dim),
+                "output_dim": int(dim),
+            }
+        )
+        g.add_node(
+            TaskNode(
+                nid,
+                "MHC_MIX",
+                flops=0.0,
+                weight_id=f"L{l}_MHC_{tag}_W",
+                weight_size=_weight_bytes(weight_elems, dtype_bytes),
+                attrs=_weight_attrs(attr, weight_elems, dtype_bytes),
+                allowed=get_op_allowed("MHC_MIX"),
+            )
+        )
+        g.add_edge(input_nid, nid)
+        return nid
+
+    @staticmethod
+    def _add_shared_expert_ffn(
+        g: TaskGraph,
+        *,
+        l: int,
+        shape: ModelShape,
+        dtype_bytes: float,
+        base_attr: Dict,
+        ln_nid: str,
+        shared_id: int,
+    ) -> str:
+        dim = int(shape.dim)
+        ffn = int(shape.ffn_dim)
+        sid = int(shared_id)
+        expert_attr = dict(base_attr)
+        expert_attr.update(
+            {
+                "expert": int(-(sid + 1)),
+                "shared_expert_id": int(sid),
+                "expert_shared": True,
+                "expert_active": True,
+                "moe_token_fraction": 1.0,
+                "tp_ffn": 1,
+                "tp_expert_ffn": 1,
+                "ffn_dim": int(ffn),
+            }
+        )
+
+        nid_W1 = f"L{l}_Shared{sid}_FFN_W1"
+        nid_W3 = f"L{l}_Shared{sid}_FFN_W3"
+        nid_ACT = f"L{l}_Shared{sid}_SwiGLU"
+        nid_W2 = f"L{l}_Shared{sid}_FFN_W2"
+
+        g.add_node(
+            TaskNode(
+                nid_W1,
+                "FFN_W1",
+                flops=0.0,
+                weight_id=f"L{l}_SHARED{sid}_W1",
+                weight_size=_weight_bytes(dim * ffn, dtype_bytes),
+                attrs=_weight_attrs(expert_attr, dim * ffn, dtype_bytes),
+                allowed=get_op_allowed("FFN_W1"),
+            )
+        )
+        g.add_node(
+            TaskNode(
+                nid_W3,
+                "FFN_W3",
+                flops=0.0,
+                weight_id=f"L{l}_SHARED{sid}_W3",
+                weight_size=_weight_bytes(dim * ffn, dtype_bytes),
+                attrs=_weight_attrs(expert_attr, dim * ffn, dtype_bytes),
+                allowed=get_op_allowed("FFN_W3"),
+            )
+        )
+        g.add_node(TaskNode(nid_ACT, "SwiGLU", flops=0.0, attrs=dict(expert_attr), allowed=get_op_allowed("SwiGLU")))
+        g.add_node(
+            TaskNode(
+                nid_W2,
+                "FFN_W2",
+                flops=0.0,
+                weight_id=f"L{l}_SHARED{sid}_W2",
+                weight_size=_weight_bytes(ffn * dim, dtype_bytes),
+                attrs=_weight_attrs(expert_attr, ffn * dim, dtype_bytes),
+                allowed=get_op_allowed("FFN_W2"),
+            )
+        )
+        g.add_edge(ln_nid, nid_W1)
+        g.add_edge(ln_nid, nid_W3)
+        g.add_edge(nid_W1, nid_ACT)
+        g.add_edge(nid_W3, nid_ACT)
+        g.add_edge(nid_ACT, nid_W2)
+        return nid_W2
+
+    @staticmethod
+    def _add_deepseek_v4_attention(
+        g: TaskGraph,
+        *,
+        l: int,
+        shape: ModelShape,
+        dtype_bytes: float,
+        base_attr: Dict,
+        ln_nid: str,
+        x_in: Optional[str],
+        add1_nid: str,
+        kind: str,
+    ) -> Dict[str, str]:
+        dim = int(shape.dim)
+        qh = int(shape.n_heads)
+        hd = int(shape.head_dim)
+        dc = int(getattr(shape, "query_compression_dim", 1024) or 1024)
+        rope_hd = int(getattr(shape, "qk_rope_head_dim", getattr(shape, "rope_head_dim", 64)) or 64)
+        rope_hd = max(0, min(int(rope_hd), int(hd)))
+        nope_hd = max(0, int(hd) - int(rope_hd))
+        csa_m = max(1, int(getattr(shape, "csa_compression_rate", 4) or 4))
+        hca_m = max(1, int(getattr(shape, "hca_compression_rate", 128) or 128))
+        window = max(0, int(getattr(shape, "sliding_window", 128) or 128))
+        csa_top_k = max(1, int(getattr(shape, "csa_top_k", getattr(shape, "index_topk", 512)) or 512))
+        index_heads = int(getattr(shape, "indexer_heads", 64) or 64)
+        index_head_dim = int(getattr(shape, "indexer_head_dim", 128) or 128)
+        groups = max(1, int(getattr(shape, "output_projection_groups", 8) or 8))
+        group_dim = int(getattr(shape, "group_output_dim", 1024) or 1024)
+
+        q_out_dim = int(qh * hd)
+        attn_kind = str(kind).lower()
+        pattern = "deepseek_csa" if attn_kind == "csa" else ("deepseek_hca" if attn_kind == "hca" else "local")
+        compression_rate = csa_m if attn_kind == "csa" else (hca_m if attn_kind == "hca" else 1)
+        compressor_coff = 2 if int(compression_rate) == 4 and attn_kind != "sliding" else 1
+
+        attn_attr = dict(base_attr)
+        attn_attr.update(
+            {
+                "attention_kind": attn_kind,
+                "attention_pattern": pattern,
+                "attention_sparsity": {
+                    "pattern": pattern,
+                    "compression_rate": int(compression_rate),
+                    "top_k": int(csa_top_k),
+                    "sliding_window": int(window),
+                    "window_left": int(max(0, window - 1)),
+                    "window_right": 0,
+                },
+                "q_heads": int(qh),
+                "kv_heads": 1,
+                "n_heads": int(qh),
+                "n_kv_heads": 1,
+                "head_dim": int(hd),
+                "qk_dim": int(hd),
+                "value_dim": int(hd),
+                "kv_cache_dim": int(hd),
+                "q_lora_rank": int(dc),
+                "qk_rope_head_dim": int(rope_hd),
+                "qk_nope_head_dim": int(nope_hd),
+                "rope_head_dim": int(rope_hd),
+                "q_dim": int(q_out_dim),
+                "kv_dim": int(hd),
+                "o_dim": int(q_out_dim),
+                "shared_kv": True,
+                "kv_cache_shared": True,
+                "kv_cache_vectors_per_entry": 1,
+                "query_compression_dim": int(dc),
+                "csa_compression_rate": int(csa_m),
+                "hca_compression_rate": int(hca_m),
+                "sliding_window": int(window),
+                "csa_top_k": int(csa_top_k),
+                "indexer_heads": int(index_heads),
+                "indexer_head_dim": int(index_head_dim),
+                "output_projection_groups": int(groups),
+                "group_output_dim": int(group_dim),
+            }
+        )
+
+        # Down/up query projection.  Q-down is shared by the CSA indexer path.
+        nid_QD = f"L{l}_DSV4_Q_Down"
+        qd_attr = dict(attn_attr)
+        qd_attr.update({"dim": int(dim), "input_dim": int(dim), "output_dim": int(dc), "q_dim": int(dc)})
+        g.add_node(
+            TaskNode(
+                nid_QD,
+                "DSV4_Q_DOWN",
+                flops=0.0,
+                weight_id=f"L{l}_DSV4_Q_DOWN_W",
+                weight_size=_weight_bytes(dim * dc, dtype_bytes),
+                attrs=_weight_attrs(qd_attr, dim * dc, dtype_bytes),
+                allowed=get_op_allowed("DSV4_Q_DOWN"),
+            )
+        )
+
+        nid_QU = f"L{l}_DSV4_Q_Up"
+        qu_attr = dict(attn_attr)
+        qu_attr.update({"dim": int(dc), "input_dim": int(dc), "output_dim": int(q_out_dim), "q_dim": int(q_out_dim)})
+        g.add_node(
+            TaskNode(
+                nid_QU,
+                "DSV4_Q_UP",
+                flops=0.0,
+                weight_id=f"L{l}_DSV4_Q_UP_W",
+                weight_size=_weight_bytes(dc * q_out_dim, dtype_bytes),
+                attrs=_weight_attrs(qu_attr, dc * q_out_dim, dtype_bytes),
+                allowed=get_op_allowed("DSV4_Q_UP"),
+            )
+        )
+        g.add_edge(ln_nid, nid_QD)
+        g.add_edge(nid_QD, nid_QU)
+
+        # DeepSeek-V4 attention uses a single shared K/V vector.  Every layer
+        # produces an uncompressed short-window KV stream; compressed layers add
+        # a learned compressor stream on top of it.  This is different from a
+        # LLaMA/Mixtral K+V projection and must not be modeled as 2*head_dim.
+        nid_WIN_KV = f"L{l}_DSV4_Window_KV"
+        win_kv_weight = int(dim * hd)
+        win_kv_attr = dict(attn_attr)
+        win_kv_attr.update(
+            {
+                "input_dim": int(dim),
+                "output_dim": int(hd),
+                "kv_dim": int(hd),
+                "kv_cache_dim": int(hd),
+                "compression_rate": 1,
+                "compressor_mode": "window",
+                "shared_kv": True,
+                "kv_cache_vectors_per_entry": 1,
+            }
+        )
+        g.add_node(
+            TaskNode(
+                nid_WIN_KV,
+                "DSV4_WINDOW_KV",
+                flops=0.0,
+                weight_id=f"L{l}_DSV4_WINDOW_KV_W",
+                weight_size=_weight_bytes(win_kv_weight, dtype_bytes),
+                attrs=_weight_attrs(win_kv_attr, win_kv_weight, dtype_bytes),
+                allowed=get_op_allowed("DSV4_WINDOW_KV"),
+            )
+        )
+        g.add_edge(ln_nid, nid_WIN_KV)
+
+        kv_sources = [nid_WIN_KV]
+        if attn_kind != "sliding":
+            nid_KV = f"L{l}_DSV4_{attn_kind.upper()}_KV_Compress"
+            proj_dim = int(compressor_coff * hd)
+            # Compressor has wkv and wgate, both dim -> coff*head_dim, plus
+            # learned APE/gating parameters for each token within the block.
+            kv_weight = int(2 * dim * proj_dim + compression_rate * proj_dim)
+            kv_attr = dict(attn_attr)
+            kv_attr.update(
+                {
+                    "input_dim": int(dim),
+                    "output_dim": int(hd),
+                    "projected_dim": int(proj_dim),
+                    "kv_dim": int(hd),
+                    "kv_cache_dim": int(hd),
+                    "compression_rate": int(compression_rate),
+                    "compressor_coff": int(compressor_coff),
+                    "compressor_mode": attn_kind,
+                    "shared_kv": True,
+                    "kv_cache_vectors_per_entry": 1,
+                }
+            )
+            g.add_node(
+                TaskNode(
+                    nid_KV,
+                    "DSV4_KV_COMPRESS",
+                    flops=0.0,
+                    weight_id=f"L{l}_DSV4_{attn_kind.upper()}_KV_COMPRESS_W",
+                    weight_size=_weight_bytes(kv_weight, dtype_bytes),
+                    attrs=_weight_attrs(kv_attr, kv_weight, dtype_bytes),
+                    allowed=get_op_allowed("DSV4_KV_COMPRESS"),
+                )
+            )
+            g.add_edge(ln_nid, nid_KV)
+            kv_sources.append(nid_KV)
+
+        nid_KVW = f"L{l}_KV_write"
+        kvw_attr = dict(attn_attr)
+        kvw_attr.update(
+            {
+                "compression_rate": int(compression_rate),
+                "kv_cache_dim": int(hd),
+                "kv_cache_shared": True,
+                "shared_kv": True,
+                "kv_cache_vectors_per_entry": 1,
+                "write_window_cache": True,
+                "write_compressed_cache": bool(attn_kind != "sliding"),
+            }
+        )
+        g.add_node(TaskNode(nid_KVW, "KV_WRITE", flops=0.0, attrs=dict(kvw_attr), allowed=get_op_allowed("KV_WRITE")))
+        for kv_source in kv_sources:
+            g.add_edge(kv_source, nid_KVW)
+
+        topk_source: Optional[str] = None
+        if attn_kind == "csa":
+            nid_IQ = f"L{l}_DSV4_CSA_Indexer_Q"
+            iq_weight = int(dc * index_heads * index_head_dim + dim * index_heads)
+            iq_attr = dict(attn_attr)
+            iq_attr.update(
+                {
+                    "input_dim": int(dc),
+                    "output_dim": int(index_heads * index_head_dim),
+                    "q_dim": int(index_heads * index_head_dim),
+                    "aux_input_dim": int(dim),
+                    "aux_output_dim": int(index_heads),
+                    "indexer_projection": True,
+                }
+            )
+            g.add_node(
+                TaskNode(
+                    nid_IQ,
+                    "DSV4_INDEXER_Q",
+                    flops=0.0,
+                    weight_id=f"L{l}_DSV4_CSA_INDEXER_Q_W",
+                    weight_size=_weight_bytes(iq_weight, dtype_bytes),
+                    attrs=_weight_attrs(iq_attr, iq_weight, dtype_bytes),
+                    allowed=get_op_allowed("DSV4_INDEXER_Q"),
+                )
+            )
+            g.add_edge(nid_QD, nid_IQ)
+
+            nid_IKV = f"L{l}_DSV4_CSA_Indexer_KV_Compress"
+            idx_coff = 2 if int(csa_m) == 4 else 1
+            idx_proj_dim = int(idx_coff * index_head_dim)
+            idx_kv_weight = int(2 * dim * idx_proj_dim + csa_m * idx_proj_dim)
+            ikv_attr = dict(attn_attr)
+            ikv_attr.update(
+                {
+                    "input_dim": int(dim),
+                    "output_dim": int(index_head_dim),
+                    "projected_dim": int(idx_proj_dim),
+                    "kv_dim": int(index_head_dim),
+                    "kv_cache_dim": int(index_head_dim),
+                    "head_dim": int(index_head_dim),
+                    "qk_dim": int(index_head_dim),
+                    "compression_rate": int(csa_m),
+                    "compressor_coff": int(idx_coff),
+                    "compressor_mode": "csa_indexer",
+                    "indexer_projection": True,
+                    "indexer_kv_cache": True,
+                    "shared_kv": True,
+                    "kv_cache_vectors_per_entry": 1,
+                }
+            )
+            g.add_node(
+                TaskNode(
+                    nid_IKV,
+                    "DSV4_INDEX_KV_COMPRESS",
+                    flops=0.0,
+                    weight_id=f"L{l}_DSV4_CSA_INDEXER_KV_COMPRESS_W",
+                    weight_size=_weight_bytes(idx_kv_weight, dtype_bytes),
+                    attrs=_weight_attrs(ikv_attr, idx_kv_weight, dtype_bytes),
+                    allowed=get_op_allowed("DSV4_INDEX_KV_COMPRESS"),
+                )
+            )
+            g.add_edge(ln_nid, nid_IKV)
+
+            nid_IS = f"L{l}_DSV4_CSA_Index_Score"
+            is_attr = dict(attn_attr)
+            is_attr.update({"indexer_heads": int(index_heads), "indexer_head_dim": int(index_head_dim)})
+            g.add_node(TaskNode(nid_IS, "DSV4_INDEX_SCORE", flops=0.0, attrs=dict(is_attr), allowed=get_op_allowed("DSV4_INDEX_SCORE")))
+            g.add_edge(nid_IQ, nid_IS)
+            g.add_edge(nid_IKV, nid_IS)
+
+            nid_TK = f"L{l}_DSV4_CSA_TopK"
+            tk_attr = dict(attn_attr)
+            tk_attr.update({"top_k": int(csa_top_k), "compression_rate": int(csa_m)})
+            g.add_node(TaskNode(nid_TK, "DSV4_TOPK", flops=0.0, attrs=dict(tk_attr), allowed=get_op_allowed("DSV4_TOPK")))
+            g.add_edge(nid_IS, nid_TK)
+            topk_source = nid_TK
+
+        # Sparse/dense-on-compressed attention core.  The cost model reads
+        # attention_pattern/attention_sparsity from these attrs.
+        nid_QK = f"L{l}_QK"
+        nid_SM = f"L{l}_Softmax"
+        nid_SV = f"L{l}_SV"
+        g.add_node(TaskNode(nid_QK, "QK", flops=0.0, attrs=dict(attn_attr), allowed=get_op_allowed("QK")))
+        g.add_node(TaskNode(nid_SM, "Softmax", flops=0.0, attrs=dict(attn_attr), allowed=get_op_allowed("Softmax")))
+        g.add_node(TaskNode(nid_SV, "SV", flops=0.0, attrs=dict(attn_attr), allowed=get_op_allowed("SV")))
+        g.add_edge(nid_QU, nid_QK)
+        g.add_edge(nid_KVW, nid_QK)
+        if topk_source is not None:
+            g.add_edge(topk_source, nid_QK)
+        g.add_edge(nid_QK, nid_SM)
+        g.add_edge(nid_SM, nid_SV)
+        g.add_edge(nid_KVW, nid_SV)
+        if topk_source is not None:
+            g.add_edge(topk_source, nid_SV)
+
+        nid_OG1 = f"L{l}_DSV4_O_Group"
+        group_input_dim = int(max(1, (qh // groups)) * hd)
+        og1_weight = int(groups * group_input_dim * group_dim)
+        og1_attr = dict(attn_attr)
+        og1_attr.update(
+            {
+                "input_dim": int(q_out_dim),
+                "output_dim": int(groups * group_dim),
+                "group_input_dim": int(group_input_dim),
+                "group_output_dim": int(group_dim),
+                "groups": int(groups),
+                "grouped_linear": True,
+                "o_dim": int(q_out_dim),
+                "dim": int(groups * group_dim),
+            }
+        )
+        g.add_node(
+            TaskNode(
+                nid_OG1,
+                "DSV4_O_G1",
+                flops=0.0,
+                weight_id=f"L{l}_DSV4_O_G1_W",
+                weight_size=_weight_bytes(og1_weight, dtype_bytes),
+                attrs=_weight_attrs(og1_attr, og1_weight, dtype_bytes),
+                allowed=get_op_allowed("DSV4_O_G1"),
+            )
+        )
+
+        nid_OG2 = f"L{l}_DSV4_O_Final"
+        og2_in = int(groups * group_dim)
+        og2_weight = int(og2_in * dim)
+        og2_attr = dict(attn_attr)
+        og2_attr.update({"input_dim": int(og2_in), "output_dim": int(dim), "o_dim": int(og2_in), "dim": int(dim)})
+        g.add_node(
+            TaskNode(
+                nid_OG2,
+                "DSV4_O_G2",
+                flops=0.0,
+                weight_id=f"L{l}_DSV4_O_G2_W",
+                weight_size=_weight_bytes(og2_weight, dtype_bytes),
+                attrs=_weight_attrs(og2_attr, og2_weight, dtype_bytes),
+                allowed=get_op_allowed("DSV4_O_G2"),
+            )
+        )
+        g.add_edge(nid_SV, nid_OG1)
+        g.add_edge(nid_OG1, nid_OG2)
+
+        nid_POST = DeepSeekV4Def._add_mhc_mix(
+            g,
+            l=l,
+            tag="PostAttn",
+            input_nid=nid_OG2,
+            shape=shape,
+            dtype_bytes=float(dtype_bytes),
+            base_attr=base_attr,
+        )
+        g.add_edge(nid_POST, add1_nid)
+        if x_in is not None:
+            g.add_edge(x_in, add1_nid)
+
+        return {
+            "q_down": nid_QD,
+            "q_up": nid_QU,
+            "kv": kv_source,
+            "kv_write": nid_KVW,
+            "qk": nid_QK,
+            "softmax": nid_SM,
+            "sv": nid_SV,
+            "o_group": nid_OG1,
+            "o_final": nid_OG2,
+        }
+
+    def build(self, shape: ModelShape, dtype_bytes: float, cfg: Optional[Dict] = None) -> TaskGraph:
+        g = TaskGraph()
+
+        routed_experts = int(
+            getattr(shape, "routed_experts_per_layer", getattr(shape, "experts_per_layer", 1)) or 1
+        )
+        shared_experts = int(getattr(shape, "shared_experts_per_layer", 1) or 0)
+        top_k = self._resolve_top_k(routed_experts, int(getattr(shape, "experts_top_k", 6) or 6))
+        selected_experts = self._select_first_k_experts(routed_experts, top_k)
+        active_routed = int(len(selected_experts))
+        active_total = int(active_routed + max(0, shared_experts))
+        setattr(shape, "active_routed_experts_per_layer", int(active_routed))
+        setattr(shape, "active_experts_per_layer", int(active_total))
+        setattr(shape, "moe_pruned_experts_per_layer", max(0, int(routed_experts - active_routed)))
+
+        b = int(shape.batch)
+        dim, ffn = int(shape.dim), int(shape.ffn_dim)
+        qh, hd = int(shape.n_heads), int(shape.head_dim)
+        q_dim, kv_dim, o_in_dim = int(qh * hd), int(hd), int(qh * hd)
+        router_weight_elems = int(dim * routed_experts)
+        router_weight_size = _weight_bytes(router_weight_elems, dtype_bytes)
+        total_moe_weight_elems = int((routed_experts + shared_experts) * (2 * dim * ffn + ffn * dim))
+
+        tp_qkv = int((cfg or {}).get("tp_qkv_effective", 1) or 1)
+        tp_total = int((cfg or {}).get("tp_moe_total_effective", (cfg or {}).get("tp_moe_effective", 1) or 1) or 1)
+        shard_plan = self._plan_selected_expert_shards(selected_experts, tp_total)
+        tp_expert_ffn = int(shard_plan["tp_expert_ffn"])
+        experts_by_shard = list(shard_plan["experts_by_shard"])
+        shards_by_expert = dict(shard_plan["shards_by_expert"])
+
+        moe_imbalance = float(getattr(shape, "moe_imbalance_factor", 1.0) or 1.0)
+        router_aux_loss_coef = getattr(shape, "router_aux_loss_coef", None)
+        router_jitter_noise = getattr(shape, "router_jitter_noise", None)
+        hash_layers = int(getattr(shape, "hash_routing_layers", 3) or 0)
+
+        for l in range(int(shape.layer_num)):
+            attn_kind = self._attention_kind(l, shape)
+            base_attr = {
+                "layer": int(l),
+                "batch": int(b),
+                "dim": int(dim),
+                "ffn_dim": int(ffn),
+                "q_heads": int(qh),
+                "kv_heads": 1,
+                "n_heads": int(qh),
+                "n_kv_heads": 1,
+                "head_dim": int(hd),
+                "q_dim": int(q_dim),
+                "kv_dim": int(kv_dim),
+                "o_dim": int(o_in_dim),
+                "model_family": "deepseek_v4",
+                "deepseek_v4_variant": str(getattr(shape, "deepseek_v4_variant", "pro")),
+                "attention_kind": str(attn_kind),
+                "experts": int(routed_experts),
+                "experts_total": int(routed_experts),
+                "routed_experts": int(routed_experts),
+                "shared_experts": int(shared_experts),
+                "active_experts": int(active_total),
+                "active_routed_experts": int(active_routed),
+                "top_k": int(top_k),
+                "num_local_experts": int(routed_experts),
+                "num_experts_per_tok": int(top_k),
+                "selected_experts": [int(e) for e in selected_experts],
+                "selected_experts_by_shard": [[int(e) for e in xs] for xs in experts_by_shard],
+                "router_kind": "deepseek_v4_sqrt_softplus_topk",
+                "router_affinity": "sqrt_softplus",
+                "hash_routing_active": bool(l < hash_layers),
+                "hash_routing_layers": int(hash_layers),
+                "moe_selection_policy": "first_k_runtime_proxy",
+                "moe_imbalance_factor": float(moe_imbalance),
+                "router_weight_size": int(router_weight_size),
+                "moe_total_weight_elements_per_layer": int(total_moe_weight_elems),
+                "tp_qkv": int(tp_qkv),
+                "tp": int(tp_total),
+                "tp_moe": int(tp_total),
+                "tp_moe_total": int(tp_total),
+                "tp_expert_ffn": int(tp_expert_ffn),
+            }
+            if router_aux_loss_coef is not None:
+                base_attr["router_aux_loss_coef"] = float(router_aux_loss_coef)
+            if router_jitter_noise is not None:
+                base_attr["router_jitter_noise"] = float(router_jitter_noise)
+
+            # Pre-LN attention with optional mHC residual mixing.
+            nid_LN1 = f"L{l}_LN1"
+            g.add_node(TaskNode(nid_LN1, "LN", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("LN")))
+            if l > 0:
+                g.add_edge(f"L{l-1}_Add2", nid_LN1)
+            nid_ATT_IN = self._add_mhc_mix(
+                g,
+                l=l,
+                tag="PreAttn",
+                input_nid=nid_LN1,
+                shape=shape,
+                dtype_bytes=float(dtype_bytes),
+                base_attr=base_attr,
+            )
+
+            nid_Add1 = f"L{l}_Add1"
+            g.add_node(TaskNode(nid_Add1, "Add", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("Add")))
+            x_in = f"L{l-1}_Add2" if l > 0 else None
+            self._add_deepseek_v4_attention(
+                g,
+                l=l,
+                shape=shape,
+                dtype_bytes=float(dtype_bytes),
+                base_attr=base_attr,
+                ln_nid=nid_ATT_IN,
+                x_in=x_in,
+                add1_nid=nid_Add1,
+                kind=attn_kind,
+            )
+
+            # DeepSeekMoE block: top-k routed experts plus shared experts.
+            nid_LN2 = f"L{l}_LN2"
+            g.add_node(TaskNode(nid_LN2, "LN", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("LN")))
+            g.add_edge(nid_Add1, nid_LN2)
+            nid_MOE_IN = self._add_mhc_mix(
+                g,
+                l=l,
+                tag="PreMoE",
+                input_nid=nid_LN2,
+                shape=shape,
+                dtype_bytes=float(dtype_bytes),
+                base_attr=base_attr,
+            )
+
+            expert_outputs: Dict[int, str] = {}
+            for rank, e in enumerate(selected_experts):
+                expert_outputs[int(e)] = self._add_selected_expert_ffn(
+                    g,
+                    l=l,
+                    shape=shape,
+                    dtype_bytes=float(dtype_bytes),
+                    base_attr=base_attr,
+                    ln_nid=nid_MOE_IN,
+                    expert_id=int(e),
+                    expert_rank=int(rank),
+                    shard_ids=[int(s) for s in shards_by_expert.get(int(e), [0])],
+                    cfg=cfg,
+                )
+
+            shared_outputs: List[str] = []
+            for sid in range(max(0, int(shared_experts))):
+                shared_outputs.append(
+                    self._add_shared_expert_ffn(
+                        g,
+                        l=l,
+                        shape=shape,
+                        dtype_bytes=float(dtype_bytes),
+                        base_attr=base_attr,
+                        ln_nid=nid_MOE_IN,
+                        shared_id=int(sid),
+                    )
+                )
+
+            nid_router = f"L{l}_Router"
+            router_attr = {
+                **base_attr,
+                "experts": int(routed_experts),
+                "active_experts": int(active_routed),
+                "active_routed_experts": int(active_routed),
+                "shared_experts": int(shared_experts),
+                "top_k": int(top_k),
+                "router_experts": int(routed_experts),
+                "local_experts": int(routed_experts),
+                "local_active_experts": int(active_routed),
+                "local_top_k": float(top_k),
+                "tp": int(tp_total),
+                "tp_moe": int(tp_total),
+                "tp_moe_total": int(tp_total),
+                "tp_expert_ffn": int(tp_expert_ffn),
+                "router_replicated": False,
+            }
+            g.add_node(
+                TaskNode(
+                    nid_router,
+                    "MoE_Router",
+                    flops=0.0,
+                    weight_id=f"L{l}_ROUTER_W",
+                    weight_size=int(router_weight_size),
+                    attrs=_weight_attrs(router_attr, router_weight_elems, dtype_bytes),
+                    allowed=get_op_allowed("MoE_Router"),
+                )
+            )
+            g.add_edge(nid_MOE_IN, nid_router)
+            for eid in selected_experts:
+                g.add_edge(expert_outputs[int(eid)], nid_router)
+
+            moe_out = nid_router
+            if shared_outputs:
+                nid_combine = f"L{l}_SharedMoE_Combine"
+                combine_attr = dict(base_attr)
+                combine_attr.update({"shared_experts": int(shared_experts), "active_routed_experts": int(active_routed)})
+                g.add_node(TaskNode(nid_combine, "MOE_SHARED_COMBINE", flops=0.0, attrs=combine_attr, allowed=get_op_allowed("MOE_SHARED_COMBINE")))
+                g.add_edge(nid_router, nid_combine)
+                for so in shared_outputs:
+                    g.add_edge(so, nid_combine)
+                moe_out = nid_combine
+
+            moe_out = self._add_mhc_mix(
+                g,
+                l=l,
+                tag="PostMoE",
+                input_nid=moe_out,
+                shape=shape,
+                dtype_bytes=float(dtype_bytes),
+                base_attr=base_attr,
+            )
+
+            nid_Add2 = f"L{l}_Add2"
+            g.add_node(TaskNode(nid_Add2, "Add", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("Add")))
+            g.add_edge(nid_Add1, nid_Add2)
+            g.add_edge(moe_out, nid_Add2)
+
+        return g
+
 def make_model_def(family: str):
-    f = (family or "").lower()
+    f = (family or "").lower().replace("-", "_")
     if f == "llama":
         return LLaMADef()
     if f == "mpt":
@@ -1419,12 +2182,15 @@ def make_model_def(family: str):
         return MixtralDef()
     if f == "qwen":
         return QwenDef()
+    if f in ("deepseek_v4", "deepseekv4", "deepseek_v4_pro", "deepseek_v4_flash"):
+        return DeepSeekV4Def()
     raise ValueError(f"Unknown model family: {family}")
 
 __all__ = [
     "LLaMADef",
     "MPTDef",
     "MixtralDef",
+    "DeepSeekV4Def",
     "ModelShape",
     "PaLMDef",
     "QwenDef",
