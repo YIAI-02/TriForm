@@ -5,5 +5,5 @@
         "vector": "cpp"
     },
     "python.languageServer": "None",
-    "cmake.sourceDirectory": "/Users/yangjiaqi/WW/project_1/python/TriForm/measurements/ascendc/layernorm_v2/kernel_launch_method_by_framework/op_kernel"
+    "cmake.sourceDirectory": "/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/measurements/ascendc/softmax/kernel_launch_method_by_direct"
 }

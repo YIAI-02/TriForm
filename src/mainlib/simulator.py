@@ -25,6 +25,7 @@ def simulate_prefill(sched: SchedulerBase, cfg: Dict, graph: TaskGraph) -> tuple
 def simulate_decode_progressive(sched: SchedulerBase, cfg: Dict, graph: TaskGraph, prefill_end: float) -> tuple[float, List[Dict]]:
     prefill_len = int(cfg.get('prefill_len', 128))
     decode_len = int(cfg.get('decode_len', 32))
+    decode_horizon_len = int(cfg.get('decode_horizon_len', decode_len) or decode_len)
     global_end = float(prefill_end)
     steps_serialized: List[Dict] = []
 
@@ -45,10 +46,10 @@ def simulate_decode_progressive(sched: SchedulerBase, cfg: Dict, graph: TaskGrap
         setter = getattr(sched, 'set_decode_context', None)
         if callable(setter):
             try:
-                setter(cur_token_idx=int(token_idx), total_decode_tokens=int(decode_len), cfg=cfg)
+                setter(cur_token_idx=int(token_idx), total_decode_tokens=int(decode_horizon_len), cfg=cfg)
             except TypeError:
                 try:
-                    setter(cur_token_idx=int(token_idx), total_decode_tokens=int(decode_len))
+                    setter(cur_token_idx=int(token_idx), total_decode_tokens=int(decode_horizon_len))
                 except Exception:
                     pass
             except Exception:
