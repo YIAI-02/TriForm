@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -J sweep_models_npu_aim_evaluate
+#SBATCH -J rebuttal_papi_paise
 #SBATCH -p C064M0256G
 #SBATCH --qos=high
 #SBATCH -N 1

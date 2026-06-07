@@ -47,12 +47,29 @@ _POLICY_DISPLAY_NAMES: Dict[str, str] = {
     'PD+Linear': 'PD+Linear',
     'PD+Attn': 'PD+Attn',
     'PD+FFN': 'PD+FFN',
+    'PAPI-inspired': 'PAPI-inspired',
+    'PAISE-inspired': 'PAISE-inspired',
     'weights_on_pim': 'weights_on_pim',
     'NeuPIMs': 'NeuPIMs',
 }
 
 _ALGO_TOKENS = frozenset({'HEFT', 'Bifocal', 'Naive'})
-_BASELINE_TOKENS = frozenset({'PD', 'AF', 'PD+Linear', 'PD+Attn', 'PD+FFN', 'weights_on_pim', 'NeuPIMs'})
+_BASELINE_TOKENS = frozenset({
+    'PD', 'AF', 'PD+Linear', 'PD+Attn', 'PD+FFN',
+    'PAPI-inspired', 'PAISE-inspired',
+    'weights_on_pim', 'NeuPIMs',
+})
+
+_POLICY_ALIASES: Dict[str, str] = {
+    'papi-inspired': 'PAPI-inspired',
+    'papi_inspired': 'PAPI-inspired',
+    'papi inspired': 'PAPI-inspired',
+    'papi': 'PAPI-inspired',
+    'paise-inspired': 'PAISE-inspired',
+    'paise_inspired': 'PAISE-inspired',
+    'paise inspired': 'PAISE-inspired',
+    'paise': 'PAISE-inspired',
+}
 
 
 def _normalize_policy_lookup_key(name: Any) -> str:
@@ -60,7 +77,8 @@ def _normalize_policy_lookup_key(name: Any) -> str:
 
 
 def _canonical_policy_token(name: Any) -> str:
-    return _normalize_policy_lookup_key(name)
+    token = _normalize_policy_lookup_key(name)
+    return _POLICY_ALIASES.get(token.lower(), token)
 
 
 def _normalize_algo_name(name: Any) -> str:

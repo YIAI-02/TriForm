@@ -45,6 +45,8 @@ from mainlib.baselines import (
     _baseline_partitioned_linear,
     _baseline_partitioned_ffn,
     _baseline_neu_pims,
+    _baseline_papi_inspired,
+    _baseline_paise_inspired,
     _is_attention_node,
     _is_gemv_like,
     _is_kv_rw,

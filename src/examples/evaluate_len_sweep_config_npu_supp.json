@@ -1,0 +1,27 @@
+{
+  "model_family": "llama",
+  "model_variant": "7b",
+  "dtype": "fp16",
+  "batch": 16,
+  "prefill_len": 1024,
+  "decode_len": 512,
+  "decode_sample_stride": 8,
+  "decode_plan_refresh_stride": 8,
+  "pim_config_path": "./aim_simulator/PIM_AiM.json",
+  "ramulator_config_path": "./aim_simulator/example.yaml",
+  "simulation_log_file": "../../output/inspired_figure7/pim_simulation.txt",
+  "result_dir": "../../output/inspired_figure7/",
+  "hardware_json": "./examples/hardware_1npu_2aim.json",
+  "algo": [
+  ],
+  "baselines": [
+    "PAPI-inspired",
+    "PAISE-inspired"
+  ],
+  "split_by": "head",
+  "tp_qkv": 2,
+  "tp_ffn": 2,
+  "npu_backend": "lut",
+  "pim_fast_mode": false,
+  "dump_graph": false
+}
