@@ -15,8 +15,14 @@ def _is_attention_node(n: TaskNode) -> bool:
     return any(k in name for k in _ATTENTION_KEYS)
 
 _FFN_OP_KEYS = {
-    'ffn_w1', 'ffn_w2', 'ffn_w3', 'swiglu', 'gelu', 'act', 'activation'
+    'ffn_w1', 'ffn_w2', 'ffn_w3',
+    'ffn_up', 'ffn_down', 'ffn_gate',
+    'mlp_up', 'mlp_down', 'mlp_gate',
+    'swiglu', 'silu_glu', 'silu', 'gelu',
+    'act', 'activation',
 }
+
+_FFN_OP_EXACT = {k.upper() for k in _FFN_OP_KEYS}
 
 def _node_text(n: TaskNode) -> str:
     attrs = getattr(n, 'attrs', {}) or {}
@@ -29,6 +35,9 @@ def _node_op(n: TaskNode) -> str:
 
 def _is_ffn_compute_node(n: TaskNode) -> bool:
     op = _node_op(n)
+    op_up = op.upper()
+    if op_up in _FFN_OP_EXACT:
+        return True
     text = _node_text(n)
     return any(k in op or k in text for k in _FFN_OP_KEYS)
 
@@ -247,19 +256,20 @@ def _is_gemv_like(n: TaskNode, *, phase: str) -> bool:
 
 @register_baseline('PD+FFN')
 def _baseline_partitioned_ffn(g: TaskGraph, *, phase: str) -> TaskGraph:
+
     g2 = _clone_graph(g)
     if phase == 'prefill':
         for _, n in g2.nodes.items():
-            n.allowed['npu'] = True; n.allowed['pim'] = False; n.allowed['cpu'] = n.allowed.get('cpu', True)
+            n.allowed['npu'] = True
+            n.allowed['pim'] = False
+            n.allowed['cpu'] = False
         return g2
 
     for _, n in g2.nodes.items():
-        on_pim = True
-        if _is_op(n, 'Q', 'K', 'SOFTMAX', 'NORM', 'ADD'):
-            on_pim = False
+        on_pim = bool(_is_ffn_compute_node(n))
         n.allowed['pim'] = on_pim
-        n.allowed['npu'] = n.allowed.get('npu', True)
-        n.allowed['cpu'] = n.allowed.get('cpu', True)
+        n.allowed['npu'] = not on_pim
+        n.allowed['cpu'] = False
     return g2 
 
 @register_baseline('NeuPIMs')

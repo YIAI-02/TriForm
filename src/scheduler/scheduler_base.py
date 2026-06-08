@@ -444,6 +444,16 @@ class SchedulerBaseHelperMixin:
         except Exception:
             return None
         return None
+
+    def _node_kv_seq_shard(self, node: Any) -> Optional[int]:
+        """Return the context/KV-length shard id for sequence-sharded attention."""
+        try:
+            attrs = getattr(node, "attrs", None)
+            if isinstance(attrs, Mapping) and attrs.get("kv_seq_shard") is not None:
+                return int(attrs.get("kv_seq_shard"))
+        except Exception:
+            return None
+        return None
          
     def _kv_place(self, label: Optional[PlanLabel] = None) -> str:
         """Normalize KV placement tag."""
@@ -521,6 +531,57 @@ class SchedulerBaseHelperMixin:
                 return None
         except Exception:
             return None
+
+        try:
+            part_dim = str(getattr(self.label, "kv_partition_dim", "") or "").strip().lower()
+        except Exception:
+            part_dim = ""
+
+        # Sequence/context-block mapping for shared-KV architectures such as
+        # DeepSeek-V4. This is the mode that enables same-layer PIM parallelism.
+        seq_map = getattr(self.label, "kv_seq_shard_to_pim", None)
+        if part_dim in ("seq", "sequence", "context", "kv_seq") or (isinstance(seq_map, Mapping) and seq_map):
+            shard_idx = self._node_kv_seq_shard(node)
+            if shard_idx is not None and isinstance(seq_map, Mapping) and seq_map:
+                pim_name = seq_map.get(int(shard_idx), seq_map.get(str(int(shard_idx))))
+                if pim_name is not None:
+                    dev = self.cluster.devices.get(str(pim_name))
+                    if dev is not None and str(getattr(dev, "type", "")).lower() == "pim":
+                        return dev
+            if part_dim in ("seq", "sequence", "context", "kv_seq"):
+                return None
+
+        # Layer-based mapping for shared-KV architectures such as DeepSeek-V4.
+        # This is only a placement fallback; it does not create same-layer PIM
+        # concurrency.
+        layer_map = getattr(self.label, "kv_layer_to_pim", None)
+        if part_dim == "layer" or (isinstance(layer_map, Mapping) and layer_map):
+            try:
+                attrs = getattr(node, "attrs", {}) or {}
+            except Exception:
+                attrs = {}
+            layer_idx = None
+            if isinstance(attrs, Mapping):
+                for key in ("layer", "layer_idx", "layer_id"):
+                    if key in attrs and attrs.get(key) is not None:
+                        try:
+                            layer_idx = int(attrs.get(key))
+                            break
+                        except Exception:
+                            pass
+            if layer_idx is None:
+                try:
+                    m = re.match(r"^L(\d+)_", str(getattr(node, "id", "") or getattr(node, "name", "") or ""))
+                    if m:
+                        layer_idx = int(m.group(1))
+                except Exception:
+                    layer_idx = None
+            if layer_idx is not None and isinstance(layer_map, Mapping) and layer_map:
+                pim_name = layer_map.get(int(layer_idx), layer_map.get(str(int(layer_idx))))
+                if pim_name is not None:
+                    dev = self.cluster.devices.get(str(pim_name))
+                    if dev is not None and str(getattr(dev, "type", "")).lower() == "pim":
+                        return dev
 
         # KV-head based mapping
         head_map = getattr(self.label, "kv_head_to_pim", None)
@@ -629,14 +690,12 @@ class SchedulerBaseHelperMixin:
 
         # ---- 2) KV locality restriction (multi-PIM KV placement) ----
         if kv_place == 'pim':
-            kv_local_ops = {"K","V","QK","SOFTMAX","SV"}
-            if name_up in kv_local_ops and dev_type == "pim":
+            kv_local_ops = {"K", "V", "QK", "SOFTMAX", "SV"}
+            if name_up in kv_local_ops:
                 mapped = self._kv_pim_for_node(node)
                 if mapped is None:
                     return False
-                if dev_name != str(getattr(mapped, "name", "")):
-                    return False
-            
+                return dev_type == "pim" and dev_name == str(getattr(mapped, "name", ""))
 
         # ---- 3) operator-level allow-list ----
         allowed = getattr(node, "allowed", None)
@@ -1194,6 +1253,12 @@ class SchedulerBaseTimingMixin:
                         ex['kv_head_start'] = int(kv_h0)
                     if kv_h1 is not None:
                         ex['kv_head_end'] = int(kv_h1)
+                    try:
+                        kv_seq_shard = self._node_kv_seq_shard(node)
+                    except Exception:
+                        kv_seq_shard = None
+                    if kv_seq_shard is not None:
+                        ex['kv_seq_shard'] = int(kv_seq_shard)
                     return ex
 
                 kv_place = self._kv_place(label)

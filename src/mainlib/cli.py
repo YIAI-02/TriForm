@@ -54,6 +54,29 @@ def parse_args():
     )
     sp_eval.add_argument('--pim_fast_mode', action='store_true', default=None)
     sp_eval.add_argument(
+        '--kv_place',
+        type=str,
+        choices=['host', 'pim', 'npu'],
+        help='Force KV-cache placement. If omitted, use the default capacity-aware policy.',
+    )
+    sp_eval.add_argument(
+        '--kv_partition_dim',
+        type=str,
+        choices=['kv_head', 'head', 'seq', 'sequence', 'context', 'layer'],
+        help='KV/PIM partition axis. For DeepSeek-V4, seq/context enables same-layer PIM parallelism.',
+    )
+    sp_eval.add_argument(
+        '--kv_seq_shards',
+        type=int,
+        help='Number of sequence/context shards for DeepSeek-V4 KV attention; defaults to the number of PIM devices.',
+    )
+    sp_eval.add_argument(
+        '--pd_ffn_kv_place',
+        type=str,
+        choices=['host', 'pim', 'npu', 'follow'],
+        help='KV placement used only by the PD+FFN baseline. Default is npu, so PD+FFN remains FFN-on-PIM/non-FFN-on-NPU even when the main algorithm uses --kv_place pim.',
+    )
+    sp_eval.add_argument(
         '--pim-weight-load-overlap-ratio',
         dest='pim_weight_load_overlap_ratio',
         type=float,
@@ -98,6 +121,29 @@ def parse_args():
         help='NPU operator-latency backend: fast/lut/llmcompass. Must be explicitly specified in config JSON or CLI.',
     )
     sp_ws.add_argument('--pim_fast_mode', action='store_true', default=None)
+    sp_ws.add_argument(
+        '--kv_place',
+        type=str,
+        choices=['host', 'pim', 'npu'],
+        help='Force KV-cache placement. If omitted, use the default capacity-aware policy.',
+    )
+    sp_ws.add_argument(
+        '--kv_partition_dim',
+        type=str,
+        choices=['kv_head', 'head', 'seq', 'sequence', 'context', 'layer'],
+        help='KV/PIM partition axis. For DeepSeek-V4, seq/context enables same-layer PIM parallelism.',
+    )
+    sp_ws.add_argument(
+        '--kv_seq_shards',
+        type=int,
+        help='Number of sequence/context shards for DeepSeek-V4 KV attention; defaults to the number of PIM devices.',
+    )
+    sp_ws.add_argument(
+        '--pd_ffn_kv_place',
+        type=str,
+        choices=['host', 'pim', 'npu', 'follow'],
+        help='KV placement used only by the PD+FFN baseline. Default is npu.',
+    )
     sp_ws.add_argument(
         '--pim-weight-load-overlap-ratio',
         dest='pim_weight_load_overlap_ratio',

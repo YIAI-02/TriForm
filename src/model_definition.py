@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import math
+from pathlib import Path
 from typing import Dict, List, Optional
 from task_graph import TaskGraph, TaskNode
 from config import OPERATOR_DEVICE_ALLOWED
@@ -63,6 +65,102 @@ def _normalize_topology(topology: Optional[str]) -> str:
     if t in ('star', 'host', 'host_star', 'host-centric', 'host_centric'):
         return 'star'
     return t
+
+def _normalize_kv_partition_dim_token(v: Optional[str], *, default: str = "kv_head") -> str:
+    """Normalize the KV/PIM partitioning mode used by graph construction.
+
+    `seq` means context/KV-length block sharding: every attention layer emits one
+    QK/Softmax/SV lane per sequence shard so multiple PIMs can work on the same
+    layer concurrently.
+    """
+    s = str(v or default or "kv_head").strip().lower().replace("-", "_")
+    if s in ("seq", "sequence", "context", "ctx", "kv_seq", "kv_block", "context_block"):
+        return "seq"
+    if s in ("layer", "layers", "layer_rr", "layer_round_robin"):
+        return "layer"
+    if s in ("head", "heads", "kvhead", "kv_head", "kv_heads"):
+        return "kv_head"
+    return str(default or "kv_head")
+
+
+def _cfg_list_of_strings(v) -> List[str]:
+    if v is None:
+        return []
+    if isinstance(v, (list, tuple)):
+        return [str(x) for x in v if str(x)]
+    return [x for x in str(v).replace(",", " ").split() if x]
+
+
+def _infer_pim_names_from_cfg(cfg: Optional[Dict]) -> List[str]:
+    """Best-effort PIM-name inference for graph expansion.
+
+    The scheduler has the authoritative Cluster object later, but DeepSeek-V4
+    graph construction needs to know whether to materialize context-sharded
+    attention lanes.  Evaluation fills cfg['hardware_json']; for standalone use we
+    also honor explicit pim_names/_pim_device_names.
+    """
+    cfg = cfg or {}
+    for key in ("_pim_device_names", "pim_device_names", "pim_names"):
+        xs = _cfg_list_of_strings(cfg.get(key))
+        if xs:
+            return xs
+
+    hw_path = cfg.get("hardware_json") or cfg.get("hardware_config") or cfg.get("hardware")
+    if not hw_path:
+        return []
+    try:
+        path = Path(str(hw_path)).expanduser()
+        if not path.is_file():
+            alt = Path.cwd() / str(hw_path)
+            if alt.is_file():
+                path = alt
+        with path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+        hw = data.get("hardware", data) if isinstance(data, dict) else {}
+        devices = hw.get("devices", []) if isinstance(hw, dict) else []
+        out = []
+        for d in devices:
+            if isinstance(d, dict) and str(d.get("type", "")).lower() == "pim":
+                out.append(str(d.get("name", f"PIM{len(out)}")))
+        return out
+    except Exception:
+        return []
+
+
+def _deepseek_v4_seq_shards_from_cfg(cfg: Optional[Dict]) -> int:
+    cfg = cfg or {}
+    for key in ("kv_seq_shards", "attention_seq_shards", "deepseek_kv_seq_shards"):
+        if cfg.get(key) is not None:
+            try:
+                return max(1, int(cfg.get(key) or 1))
+            except Exception:
+                pass
+    return max(1, len(_infer_pim_names_from_cfg(cfg)))
+
+
+def _deepseek_v4_partition_dim_from_cfg(cfg: Optional[Dict], *, n_pim: int) -> str:
+    cfg = cfg or {}
+    raw = cfg.get("kv_partition_dim", cfg.get("deepseek_kv_partition_dim", None))
+    if raw is None:
+        # For DeepSeek-V4/shared-KV, sequence/context sharding is the only mode
+        # here that creates true same-layer PIM concurrency.
+        return "seq" if int(n_pim or 0) > 1 else "kv_head"
+    return _normalize_kv_partition_dim_token(raw, default=("seq" if int(n_pim or 0) > 1 else "kv_head"))
+
+
+def _partition_fraction_attrs(shard: int, shards: int) -> Dict:
+    shards = max(1, int(shards or 1))
+    shard = max(0, min(int(shard), shards - 1))
+    frac = 1.0 / float(shards)
+    return {
+        "kv_partition_dim": "seq",
+        "kv_seq_shard": int(shard),
+        "kv_seq_shards": int(shards),
+        "kv_seq_fraction": float(frac),
+        "attention_partition_fraction": float(frac),
+        "kv_seq_start_frac": float(shard) / float(shards),
+        "kv_seq_end_frac": float(shard + 1) / float(shards),
+    }
 
 def _insert_row_parallel_collective(
     g: TaskGraph,
@@ -1253,6 +1351,49 @@ class MixtralDef:
         g.add_edge(nid_ACT, nid_W2)
         return nid_W2
 
+    @staticmethod
+    def _add_routed_moe_combine(
+        g: TaskGraph,
+        *,
+        l: int,
+        router_nid: str,
+        expert_outputs: Dict[int, str],
+        base_attr: Dict,
+        active_routed: int,
+        top_k: int,
+    ) -> str:
+        """Combine routed expert outputs using router scores.
+
+        The router itself must execute before routed experts because it produces
+        the top-k selection/gating scores.  The combine node is the true sink
+        that waits for both router scores and expert FFN outputs.
+        """
+
+        nid = f"L{l}_RoutedMoE_Combine"
+        combine_attr = dict(base_attr)
+        combine_attr.update(
+            {
+                "shared_experts": 0,
+                "active_routed_experts": int(active_routed),
+                "active_experts": int(active_routed),
+                "top_k": int(top_k),
+                "combine_inputs": int(max(1, top_k)),
+            }
+        )
+        g.add_node(
+            TaskNode(
+                nid,
+                "MOE_COMBINE",
+                flops=0.0,
+                attrs=combine_attr,
+                allowed=get_op_allowed("MOE_COMBINE"),
+            )
+        )
+        g.add_edge(router_nid, nid)
+        for out_nid in expert_outputs.values():
+            g.add_edge(out_nid, nid)
+        return nid
+
     def build(self, shape: ModelShape, dtype_bytes: float, cfg: Optional[Dict] = None) -> TaskGraph:
         g = TaskGraph()
 
@@ -1358,21 +1499,6 @@ class MixtralDef:
             g.add_node(TaskNode(nid_LN2, "LN", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("LN")))
             g.add_edge(nid_Add1, nid_LN2)
 
-            expert_outputs: Dict[int, str] = {}
-            for rank, e in enumerate(selected_experts):
-                expert_outputs[int(e)] = self._add_selected_expert_ffn(
-                    g,
-                    l=l,
-                    shape=shape,
-                    dtype_bytes=float(dtype_bytes),
-                    base_attr=base_attr,
-                    ln_nid=nid_LN2,
-                    expert_id=int(e),
-                    expert_rank=int(rank),
-                    shard_ids=[int(s) for s in shards_by_expert.get(int(e), [0])],
-                    cfg=cfg,
-                )
-
             nid_router = f"L{l}_Router"
             router_attr = {
                 **base_attr,
@@ -1401,14 +1527,37 @@ class MixtralDef:
                 )
             )
             g.add_edge(nid_LN2, nid_router)
-            for eid in selected_experts:
-                g.add_edge(expert_outputs[int(eid)], nid_router)
+
+            expert_outputs: Dict[int, str] = {}
+            for rank, e in enumerate(selected_experts):
+                expert_outputs[int(e)] = self._add_selected_expert_ffn(
+                    g,
+                    l=l,
+                    shape=shape,
+                    dtype_bytes=float(dtype_bytes),
+                    base_attr=base_attr,
+                    ln_nid=nid_router,
+                    expert_id=int(e),
+                    expert_rank=int(rank),
+                    shard_ids=[int(s) for s in shards_by_expert.get(int(e), [0])],
+                    cfg=cfg,
+                )
+
+            moe_out = self._add_routed_moe_combine(
+                g,
+                l=l,
+                router_nid=nid_router,
+                expert_outputs=expert_outputs,
+                base_attr=base_attr,
+                active_routed=int(active_experts),
+                top_k=int(top_k),
+            )
 
             # Residual Add2
             nid_Add2 = f"L{l}_Add2"
             g.add_node(TaskNode(nid_Add2, "Add", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("Add")))
             g.add_edge(nid_Add1, nid_Add2)
-            g.add_edge(nid_router, nid_Add2)
+            g.add_edge(moe_out, nid_Add2)
 
         return g
 
@@ -1601,6 +1750,7 @@ class DeepSeekV4Def(MixtralDef):
         x_in: Optional[str],
         add1_nid: str,
         kind: str,
+        cfg: Optional[Dict] = None,
     ) -> Dict[str, str]:
         dim = int(shape.dim)
         qh = int(shape.n_heads)
@@ -1768,7 +1918,6 @@ class DeepSeekV4Def(MixtralDef):
             g.add_edge(ln_nid, nid_KV)
             kv_sources.append(nid_KV)
 
-        nid_KVW = f"L{l}_KV_write"
         kvw_attr = dict(attn_attr)
         kvw_attr.update(
             {
@@ -1781,9 +1930,35 @@ class DeepSeekV4Def(MixtralDef):
                 "write_compressed_cache": bool(attn_kind != "sliding"),
             }
         )
-        g.add_node(TaskNode(nid_KVW, "KV_WRITE", flops=0.0, attrs=dict(kvw_attr), allowed=get_op_allowed("KV_WRITE")))
-        for kv_source in kv_sources:
-            g.add_edge(kv_source, nid_KVW)
+
+        pim_names = _infer_pim_names_from_cfg(cfg)
+        partition_dim = _deepseek_v4_partition_dim_from_cfg(cfg, n_pim=len(pim_names))
+        seq_shards = _deepseek_v4_seq_shards_from_cfg(cfg) if partition_dim == "seq" else 1
+        # Keep the graph size bounded by the available PIM lanes unless the user
+        # explicitly asks for more sequence shards.
+        if partition_dim == "seq" and len(pim_names) > 0:
+            seq_shards = max(1, int(seq_shards))
+        else:
+            seq_shards = 1
+        use_seq_sharded_attention = bool(partition_dim == "seq" and seq_shards > 1)
+
+        kv_write_ids: List[str] = []
+        if use_seq_sharded_attention:
+            for si in range(int(seq_shards)):
+                nid = f"L{l}_KV_write_seq{si}"
+                shard_attr = dict(kvw_attr)
+                shard_attr.update(_partition_fraction_attrs(si, seq_shards))
+                g.add_node(TaskNode(nid, "KV_WRITE", flops=0.0, attrs=shard_attr, allowed=get_op_allowed("KV_WRITE")))
+                for kv_source in kv_sources:
+                    g.add_edge(kv_source, nid)
+                kv_write_ids.append(nid)
+        else:
+            nid = f"L{l}_KV_write"
+            g.add_node(TaskNode(nid, "KV_WRITE", flops=0.0, attrs=dict(kvw_attr), allowed=get_op_allowed("KV_WRITE")))
+            for kv_source in kv_sources:
+                g.add_edge(kv_source, nid)
+            kv_write_ids.append(nid)
+        nid_KVW = kv_write_ids[0]
 
         topk_source: Optional[str] = None
         if attn_kind == "csa":
@@ -1863,23 +2038,89 @@ class DeepSeekV4Def(MixtralDef):
             g.add_edge(nid_IS, nid_TK)
             topk_source = nid_TK
 
-        # Sparse/dense-on-compressed attention core.  The cost model reads
-        # attention_pattern/attention_sparsity from these attrs.
-        nid_QK = f"L{l}_QK"
-        nid_SM = f"L{l}_Softmax"
-        nid_SV = f"L{l}_SV"
-        g.add_node(TaskNode(nid_QK, "QK", flops=0.0, attrs=dict(attn_attr), allowed=get_op_allowed("QK")))
-        g.add_node(TaskNode(nid_SM, "Softmax", flops=0.0, attrs=dict(attn_attr), allowed=get_op_allowed("Softmax")))
-        g.add_node(TaskNode(nid_SV, "SV", flops=0.0, attrs=dict(attn_attr), allowed=get_op_allowed("SV")))
-        g.add_edge(nid_QU, nid_QK)
-        g.add_edge(nid_KVW, nid_QK)
-        if topk_source is not None:
-            g.add_edge(topk_source, nid_QK)
-        g.add_edge(nid_QK, nid_SM)
-        g.add_edge(nid_SM, nid_SV)
-        g.add_edge(nid_KVW, nid_SV)
-        if topk_source is not None:
-            g.add_edge(topk_source, nid_SV)
+        # Sparse/dense-on-compressed attention core.  For DeepSeek-V4/shared-KV,
+        # head sharding is ineffective because n_kv_heads == 1.  Sequence/context
+        # sharding materializes one QK/Softmax/SV lane per KV block, so all PIMs
+        # can work on the same layer concurrently.  The two ALLREDUCE nodes model
+        # the global softmax statistics and the final partial-value accumulation.
+        if use_seq_sharded_attention:
+            qk_ids: List[str] = []
+            sm_ids: List[str] = []
+            sv_ids: List[str] = []
+            for si, kvw_id in enumerate(kv_write_ids):
+                shard_attr = dict(attn_attr)
+                shard_attr.update(_partition_fraction_attrs(si, seq_shards))
+                nid_QK_i = f"L{l}_QK_seq{si}"
+                nid_SM_i = f"L{l}_Softmax_seq{si}"
+                nid_SV_i = f"L{l}_SV_seq{si}"
+                g.add_node(TaskNode(nid_QK_i, "QK", flops=0.0, attrs=dict(shard_attr), allowed=get_op_allowed("QK")))
+                g.add_node(TaskNode(nid_SM_i, "Softmax", flops=0.0, attrs=dict(shard_attr), allowed=get_op_allowed("Softmax")))
+                g.add_node(TaskNode(nid_SV_i, "SV", flops=0.0, attrs=dict(shard_attr), allowed=get_op_allowed("SV")))
+                g.add_edge(nid_QU, nid_QK_i)
+                g.add_edge(kvw_id, nid_QK_i)
+                if topk_source is not None:
+                    g.add_edge(topk_source, nid_QK_i)
+                qk_ids.append(nid_QK_i)
+                sm_ids.append(nid_SM_i)
+                sv_ids.append(nid_SV_i)
+
+            stats_attr = dict(attn_attr)
+            stats_attr.update({
+                "primitive": "allreduce",
+                "kv_partition_dim": "seq",
+                "collective_role": "deepseek_v4_softmax_stats",
+                "dim": int(2 * qh),
+                "q_dim": int(2 * qh),
+                "o_dim": int(2 * qh),
+            })
+            nid_SM_STATS = f"L{l}_AllReduce_DSV4_SoftmaxStats"
+            g.add_node(TaskNode(nid_SM_STATS, "ALLREDUCE", flops=0.0, attrs=stats_attr, allowed=get_op_allowed("ALLREDUCE")))
+            for nid_QK_i in qk_ids:
+                g.add_edge(nid_QK_i, nid_SM_STATS)
+
+            for si, (nid_QK_i, nid_SM_i, nid_SV_i, kvw_id) in enumerate(zip(qk_ids, sm_ids, sv_ids, kv_write_ids)):
+                g.add_edge(nid_QK_i, nid_SM_i)
+                g.add_edge(nid_SM_STATS, nid_SM_i)
+                g.add_edge(nid_SM_i, nid_SV_i)
+                g.add_edge(kvw_id, nid_SV_i)
+                if topk_source is not None:
+                    g.add_edge(topk_source, nid_SV_i)
+
+            out_attr = dict(attn_attr)
+            out_attr.update({
+                "primitive": "allreduce",
+                "kv_partition_dim": "seq",
+                "collective_role": "deepseek_v4_attention_output",
+                "dim": int(q_out_dim),
+                "q_dim": int(q_out_dim),
+                "o_dim": int(q_out_dim),
+            })
+            nid_ATTN_OUT = f"L{l}_AllReduce_DSV4_AttnOut"
+            g.add_node(TaskNode(nid_ATTN_OUT, "ALLREDUCE", flops=0.0, attrs=out_attr, allowed=get_op_allowed("ALLREDUCE")))
+            for nid_SV_i in sv_ids:
+                g.add_edge(nid_SV_i, nid_ATTN_OUT)
+
+            nid_QK = qk_ids[0]
+            nid_SM = nid_SM_STATS
+            nid_SV = nid_ATTN_OUT
+            attn_out_nid = nid_ATTN_OUT
+        else:
+            nid_QK = f"L{l}_QK"
+            nid_SM = f"L{l}_Softmax"
+            nid_SV = f"L{l}_SV"
+            g.add_node(TaskNode(nid_QK, "QK", flops=0.0, attrs=dict(attn_attr), allowed=get_op_allowed("QK")))
+            g.add_node(TaskNode(nid_SM, "Softmax", flops=0.0, attrs=dict(attn_attr), allowed=get_op_allowed("Softmax")))
+            g.add_node(TaskNode(nid_SV, "SV", flops=0.0, attrs=dict(attn_attr), allowed=get_op_allowed("SV")))
+            g.add_edge(nid_QU, nid_QK)
+            g.add_edge(nid_KVW, nid_QK)
+            if topk_source is not None:
+                g.add_edge(topk_source, nid_QK)
+            g.add_edge(nid_QK, nid_SM)
+            g.add_edge(nid_SM, nid_SV)
+            g.add_edge(nid_KVW, nid_SV)
+            if topk_source is not None:
+                g.add_edge(topk_source, nid_SV)
+            attn_out_nid = nid_SV
 
         nid_OG1 = f"L{l}_DSV4_O_Group"
         group_input_dim = int(max(1, (qh // groups)) * hd)
@@ -1925,7 +2166,7 @@ class DeepSeekV4Def(MixtralDef):
                 allowed=get_op_allowed("DSV4_O_G2"),
             )
         )
-        g.add_edge(nid_SV, nid_OG1)
+        g.add_edge(attn_out_nid, nid_OG1)
         g.add_edge(nid_OG1, nid_OG2)
 
         nid_POST = DeepSeekV4Def._add_mhc_mix(
@@ -1944,8 +2185,9 @@ class DeepSeekV4Def(MixtralDef):
         return {
             "q_down": nid_QD,
             "q_up": nid_QU,
-            "kv": kv_source,
+            "kv": kv_sources[-1] if kv_sources else None,
             "kv_write": nid_KVW,
+            "kv_writes": list(kv_write_ids),
             "qk": nid_QK,
             "softmax": nid_SM,
             "sv": nid_SV,
@@ -2064,6 +2306,7 @@ class DeepSeekV4Def(MixtralDef):
                 x_in=x_in,
                 add1_nid=nid_Add1,
                 kind=attn_kind,
+                cfg=cfg,
             )
 
             # DeepSeekMoE block: top-k routed experts plus shared experts.
@@ -2079,21 +2322,6 @@ class DeepSeekV4Def(MixtralDef):
                 dtype_bytes=float(dtype_bytes),
                 base_attr=base_attr,
             )
-
-            expert_outputs: Dict[int, str] = {}
-            for rank, e in enumerate(selected_experts):
-                expert_outputs[int(e)] = self._add_selected_expert_ffn(
-                    g,
-                    l=l,
-                    shape=shape,
-                    dtype_bytes=float(dtype_bytes),
-                    base_attr=base_attr,
-                    ln_nid=nid_MOE_IN,
-                    expert_id=int(e),
-                    expert_rank=int(rank),
-                    shard_ids=[int(s) for s in shards_by_expert.get(int(e), [0])],
-                    cfg=cfg,
-                )
 
             shared_outputs: List[str] = []
             for sid in range(max(0, int(shared_experts))):
@@ -2139,16 +2367,37 @@ class DeepSeekV4Def(MixtralDef):
                 )
             )
             g.add_edge(nid_MOE_IN, nid_router)
-            for eid in selected_experts:
-                g.add_edge(expert_outputs[int(eid)], nid_router)
 
-            moe_out = nid_router
+            expert_outputs: Dict[int, str] = {}
+            for rank, e in enumerate(selected_experts):
+                expert_outputs[int(e)] = self._add_selected_expert_ffn(
+                    g,
+                    l=l,
+                    shape=shape,
+                    dtype_bytes=float(dtype_bytes),
+                    base_attr=base_attr,
+                    ln_nid=nid_router,
+                    expert_id=int(e),
+                    expert_rank=int(rank),
+                    shard_ids=[int(s) for s in shards_by_expert.get(int(e), [0])],
+                    cfg=cfg,
+                )
+
+            moe_out = self._add_routed_moe_combine(
+                g,
+                l=l,
+                router_nid=nid_router,
+                expert_outputs=expert_outputs,
+                base_attr=base_attr,
+                active_routed=int(active_routed),
+                top_k=int(top_k),
+            )
             if shared_outputs:
                 nid_combine = f"L{l}_SharedMoE_Combine"
                 combine_attr = dict(base_attr)
-                combine_attr.update({"shared_experts": int(shared_experts), "active_routed_experts": int(active_routed)})
+                combine_attr.update({"shared_experts": int(shared_experts), "active_routed_experts": int(active_routed), "combine_inputs": int(shared_experts + 1)})
                 g.add_node(TaskNode(nid_combine, "MOE_SHARED_COMBINE", flops=0.0, attrs=combine_attr, allowed=get_op_allowed("MOE_SHARED_COMBINE")))
-                g.add_edge(nid_router, nid_combine)
+                g.add_edge(moe_out, nid_combine)
                 for so in shared_outputs:
                     g.add_edge(so, nid_combine)
                 moe_out = nid_combine

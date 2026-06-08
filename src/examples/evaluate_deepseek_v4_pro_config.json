@@ -32,5 +32,7 @@
   "npu_backend": "fast",
   "dump_graph": false,
   "dump_graph_dir": "../output/deepseek_v4_pro/graph_dumps",
-  "pim_fast_mode": true
+  "pim_fast_mode": true,
+  "kv_place": "pim",
+  "kv_partition_dim": "seq"
 }

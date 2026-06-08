@@ -111,6 +111,7 @@ OPERATOR_DEVICE_ALLOWED = {
     "DSV4_O_G2":        {"cpu": True, "npu": True, "pim": True},
     "MHC_MIX":          {"cpu": True, "npu": True, "pim": True},
     "KV_WRITE":         {"cpu": True, "npu": True, "pim": True},
+    "MOE_COMBINE": {"cpu": True, "npu": True, "pim": False},
     "MOE_SHARED_COMBINE": {"cpu": True, "npu": True, "pim": False},
     "REDUCE":           {"cpu": True, "npu": True, "pim": True},
     "SCATTER":          {"cpu": True, "npu": True, "pim": True},
@@ -212,11 +213,92 @@ SCHED_DECODE_AMORT_REUSE_PROB = 1.0
 # Peak compute utilization model 
 # -------------------------------------------------------------------------------------------------
 CPU_FALLBACK_TFLOPS = 1e-3  # 1 GFLOP/s
+
+# Fast-mode op-specific peak selection.  In analytical fast mode, GEMM/matrix-
+# multiply-like ops use device.cube_tflops/cube_tflops_fp8 when present, while
+# nonlinear/vector-like ops use device.vec_tflops when present.  Any op not listed
+# here and not matched by the built-in classifier preserves the legacy dev.tflops
+# path.  Values: "cube", "vec", or "default".
+FAST_MODE_OP_PEAK_KIND_BY_OP = {
+    # Attention / projection GEMM or BMM
+    "Q": "cube",
+    "K": "cube",
+    "V": "cube",
+    "O": "cube",
+    "QK": "cube",
+    "SV": "cube",
+    "q_proj": "cube",
+    "k_proj": "cube",
+    "v_proj": "cube",
+    "wo_proj": "cube",
+    "score": "cube",
+    "output": "cube",
+
+    # FFN / MoE GEMM
+    "FFN_W1": "cube",
+    "FFN_W2": "cube",
+    "FFN_W3": "cube",
+    "ffn_gate": "cube",
+    "ffn_up": "cube",
+    "ffn_down": "cube",
+    "MOE_ROUTER": "cube",
+    "moe_router": "cube",
+
+    # DeepSeek-V4 Flash matrix-like fused/proxy ops
+    "DSV4_Q_DOWN": "cube",
+    "DSV4_Q_UP": "cube",
+    "DSV4_KV_COMPRESS": "cube",
+    "DSV4_INDEX_KV_COMPRESS": "cube",
+    "DSV4_WINDOW_KV": "cube",
+    "DSV4_INDEXER_Q": "cube",
+    "DSV4_INDEX_SCORE": "cube",
+    "DSV4_O_G1": "cube",
+    "DSV4_O_G2": "cube",
+    "MHC_MIX": "cube",
+
+    # Nonlinear/vector/elementwise kernels
+    "LN": "vec",
+    "RMSNORM": "vec",
+    "SOFTMAX": "vec",
+    "SWIGLU": "vec",
+    "SILU_GLU": "vec",
+    "GELU": "vec",
+    "RELU": "vec",
+    "ACT": "vec",
+    "ADD": "vec",
+    "IDENTITY": "vec",
+    "RESIDUAL": "vec",
+    "DROPOUT": "vec",
+    "ROPE": "vec",
+    "ALIBI": "vec",
+    "DSV4_TOPK": "vec",
+    "MOE_COMBINE": "vec",
+    "MOE_SHARED_COMBINE": "vec",
+    "KV_WRITE": "vec",
+    "K_WRITE": "vec",
+    "V_WRITE": "vec",
+    "KV_READ": "vec",
+    "ALLREDUCE": "vec",
+    "REDUCE": "vec",
+    "SCATTER": "vec",
+}
 COMPUTE_UTILIZATION = {
     # Device-name based overrides (match prefix in hardware.json "name")
+    #   - name="Ascend_950DT_NPU0" -> key "Ascend_950DT"
     #   - name="Ascend_910B_NPU0" -> key "Ascend_910B"
     #   - name="A100_GPU0"        -> key "A100"
     'by_device_name': {
+
+        'Ascend_950DT': {
+            'enabled': False,
+            'curve': 'sigmoid',
+            'min_util': 0.5,
+            'max_util': 0.8,
+            'flops_low': 5e7,
+            'flops_high': 5e12,
+            'knee_flops': 1.0e10,
+            'slope': 3.0,
+        },
 
         'Ascend_910B': {
             'enabled': True,
@@ -229,7 +311,7 @@ COMPUTE_UTILIZATION = {
             'slope': 3.0,
         },
         'pim': {
-            'enabled': True,
+            'enabled': False,
             'curve': 'sigmoid',
             'min_util': 0.3,
             'max_util': 0.4,
@@ -251,6 +333,30 @@ KERNEL_LAUNCH_OVERHEAD = {
     #   - name="Ascend_910B_NPU0" -> key "Ascend_910B"
     #   - name="A100_GPU0"        -> key "A100"
     'by_device_name': {
+        'Ascend_950DT': {
+            'enabled': False,
+            'apply_backends': ['fast'],
+            'phase_scale': {
+                'prefill': 0.5,
+                'decode': 1.0,
+            },
+            'scale_by_time_scale': False,
+            'default_us': 0.0,
+            'by_category_us': {
+                'norm': 3.0,
+                'softmax': 0.25,
+                'activation': 3.0,
+                'elem': 3.0,
+                'gemm': 4.0,
+            },
+            'by_op_us': {
+                'ln': 3.0,
+                'gelu': 3.0,
+                'softmax': 0.25,
+                'q_proj': 4.0,
+            },
+        },
+
         'Ascend_910B': {
             'enabled': False,
             'apply_backends': ['fast'],

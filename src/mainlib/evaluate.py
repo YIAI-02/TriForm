@@ -97,6 +97,20 @@ def _eval_one_baseline(
     best_decode_ser = None
     best_sched = None
 
+    kv_cfg = cfg
+    if pol == 'PD+FFN':
+        pd_ffn_kv_place = str(cfg.get('pd_ffn_kv_place', 'npu') or 'npu').strip().lower()
+        if pd_ffn_kv_place in ('host', 'pim', 'npu'):
+            kv_cfg = dict(cfg)
+            kv_cfg['kv_place'] = pd_ffn_kv_place
+        elif pd_ffn_kv_place not in ('follow', 'same', 'default'):
+            logger.warning(
+                "[PD+FFN] Unknown pd_ffn_kv_place=%r; falling back to NPU KV placement.",
+                cfg.get('pd_ffn_kv_place'),
+            )
+            kv_cfg = dict(cfg)
+            kv_cfg['kv_place'] = 'npu'
+
     if pol == 'ColdMoE':
         label, _ = _make_label_given_kv_place(
             cfg=cfg,
@@ -110,7 +124,7 @@ def _eval_one_baseline(
     else:
         label = auto_select_kv_policy(
             strategy="Naive",
-            cfg=cfg,
+            cfg=kv_cfg,
             cluster=cluster,
             cost=cost,
             graph=g_prefill,
@@ -413,6 +427,32 @@ def _label_summary(label: PlanLabel | None) -> Dict[str, Any]:
         'pim_weight_capacity_bytes': int(getattr(label, 'pim_weight_capacity_bytes', 0) or 0),
         'pinned_fc_on_pim': sorted(list(getattr(label, 'pinned_fc_on_pim', set()) or [])),
     }
+
+    # Optional placement/sharding diagnostics.  These are especially useful for
+    # DeepSeek-V4, where KV is shared and context/sequence sharding is used to
+    # create same-layer PIM parallelism.
+    for attr in (
+        'kv_partition_dim',
+        'kv_bytes_by_pim',
+        'kv_head_to_pim',
+        'kv_heads_by_pim',
+        'kv_layer_to_pim',
+        'kv_layers_by_pim',
+        'kv_seq_shard_to_pim',
+        'kv_seq_shards_by_pim',
+        'tp_qkv',
+        'tp_qkv_effective',
+        'tp_ffn',
+        'tp_ffn_effective',
+        'tp_moe',
+        'tp_moe_effective',
+    ):
+        try:
+            val = getattr(label, attr, None)
+        except Exception:
+            val = None
+        if val is not None:
+            out[attr] = val
 
     # Optional: record trace/stat artifact locations if the caller populated them.
     try:

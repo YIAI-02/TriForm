@@ -1,0 +1,32 @@
+{
+  "hardware": {
+    "topology": "fc",
+    "devices": [
+      {
+        "name": "CPU0",
+        "type": "cpu",
+        "tflops": 0.001,
+        "mem_bw_GBs": 32768.0,
+        "mem_capacity_GB": 8192.0,
+        "cpu_read_latency_ns": 70.0,
+        "cpu_write_latency_ns": 85.0,
+        "cpu_cacheline_B": 64
+      },
+      {
+        "name": "Ascend_910B_NPU0",
+        "type": "npu",
+        "tflops": 280.0,
+        "mem_bw_GBs": 819.2,
+        "mem_capacity_GB": 256.0,
+        "llmcompass_device": "A100_80GB_fp16"
+      }
+    ],
+    "fc_bw_GBs": 60.0,
+    "link_defaults": {
+      "latency_s": 0.0,
+      "overhead_s": 0.0,
+      "flit_size_B": 16,
+      "max_payload_B": 256
+    }
+  }
+}

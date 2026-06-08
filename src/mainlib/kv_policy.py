@@ -27,6 +27,33 @@ def _normalize_kv_place(kv_place: str) -> str:
         return 'npu'
     return 'host'
 
+def _normalize_kv_partition_dim(partition_dim: Any, *, default: str = 'kv_head') -> str:
+    s = str(partition_dim or default or 'kv_head').strip().lower().replace('-', '_')
+    if s in ('seq', 'sequence', 'context', 'ctx', 'kv_seq', 'kv_block', 'context_block'):
+        return 'seq'
+    if s in ('layer', 'layers', 'layer_rr', 'layer_round_robin'):
+        return 'layer'
+    if s in ('head', 'heads', 'kvhead', 'kv_head', 'kv_heads'):
+        return 'kv_head'
+    return str(default or 'kv_head')
+
+
+def _requested_kv_partition_dim(cfg: Dict, *, is_dsv4: bool, pim_count: int) -> str:
+    raw = cfg.get('kv_partition_dim', cfg.get('deepseek_kv_partition_dim', None))
+    if raw is None:
+        return 'seq' if bool(is_dsv4 and int(pim_count or 0) > 1) else 'kv_head'
+    return _normalize_kv_partition_dim(raw, default=('seq' if bool(is_dsv4 and int(pim_count or 0) > 1) else 'kv_head'))
+
+
+def _requested_kv_seq_shards(cfg: Dict, *, pim_count: int) -> int:
+    for key in ('kv_seq_shards', 'attention_seq_shards', 'deepseek_kv_seq_shards'):
+        if cfg.get(key) is not None:
+            try:
+                return max(1, int(cfg.get(key) or 1))
+            except Exception:
+                pass
+    return max(1, int(pim_count or 1))
+
 def _infer_kv_dtype_bytes_from_graph(cfg: Dict, graph: TaskGraph) -> float:
     """Infer KV-cache storage element size (bytes)."""
     default_b = float(dtype_bytes(cfg.get('dtype', 'fp16'), default='fp16'))
@@ -128,6 +155,53 @@ def _estimate_deepseek_v4_kv_total_bytes(
     total = int(math.ceil((float(main_elems) + float(index_elems)) * float(kv_dtype_bytes)))
     return int(total), int(entries_total + index_entries_total)
 
+
+def _estimate_deepseek_v4_kv_bytes_by_layer(
+    *,
+    cfg: Dict,
+    shape: Any,
+    kv_dtype_bytes: float,
+) -> List[int]:
+    """Approximate DeepSeek-V4 KV bytes per layer.
+
+    DeepSeek-V4 stores a shared compressed KV stream instead of many
+    independent KV heads.  For multi-PIM placement we therefore balance by
+    layer, not by head.  This helper mirrors
+    _estimate_deepseek_v4_kv_total_bytes() but keeps the per-layer sizes.
+    """
+    S = int(cfg.get('prefill_len', 128) or 0)
+    T = int(cfg.get('decode_len', 32) or 0)
+    L = max(0, int(S + T))
+    batch = int(cfg.get('batch', 1) or 1)
+    layers = int(getattr(shape, 'layer_num', 1) or 1)
+    n_kv_heads = int(getattr(shape, 'n_kv_heads', 1) or 1)
+    head_dim = int(
+        getattr(
+            shape,
+            'head_dim',
+            max(1, int(getattr(shape, 'dim', 1) or 1) // max(1, int(getattr(shape, 'n_heads', 1) or 1))),
+        )
+        or 1
+    )
+    window = int(getattr(shape, 'sliding_window', 128) or 128)
+    csa_rate = int(getattr(shape, 'csa_compression_rate', 4) or 4)
+    index_head_dim = int(getattr(shape, 'indexer_head_dim', getattr(shape, 'index_head_dim', 128)) or 128)
+
+    out: List[int] = []
+    for l in range(max(0, layers)):
+        r = int(_dsv4_layer_compression_rate(l, shape))
+        if r <= 1:
+            entries = int(min(int(L), max(0, window)))
+        else:
+            entries = int(math.ceil(float(L) / float(max(1, r))) + min(int(L), max(0, window)))
+        index_entries = 0
+        if r == csa_rate and csa_rate > 1:
+            index_entries = int(math.ceil(float(L) / float(csa_rate)))
+        main_elems = int(n_kv_heads) * int(head_dim) * int(batch) * int(entries)
+        index_elems = int(batch) * int(index_head_dim) * int(index_entries)
+        out.append(int(math.ceil((float(main_elems) + float(index_elems)) * float(kv_dtype_bytes))))
+    return out
+
 def _build_cost_model_for_run(
     cfg: Dict,
     cluster: Cluster,
@@ -189,7 +263,8 @@ def _compute_kv_plan_info(
         or 1
     )
 
-    if _is_deepseek_v4_shape(cfg, shape):
+    is_dsv4 = bool(_is_deepseek_v4_shape(cfg, shape))
+    if is_dsv4:
         KV_total_bytes, _kv_effective_entries = _estimate_deepseek_v4_kv_total_bytes(
             cfg=cfg, shape=shape, kv_dtype_bytes=kv_dtype_bytes
         )
@@ -230,7 +305,12 @@ def _compute_kv_plan_info(
     # Build KV-head shards (only meaningful when PIM exists).
     kv_head_to_pim: Dict[int, str] = {}
     kv_heads_by_pim: Dict[str, List[int]] = {d.name: [] for d in pim_rr}
+    kv_layer_to_pim: Dict[int, str] = {}
+    kv_layers_by_pim: Dict[str, List[int]] = {d.name: [] for d in pim_rr}
+    kv_seq_shard_to_pim: Dict[int, str] = {}
+    kv_seq_shards_by_pim: Dict[str, List[int]] = {d.name: [] for d in pim_rr}
     kv_bytes_by_pim: Dict[str, int] = {d.name: 0 for d in pim_rr}
+    kv_partition_dim = 'kv_head'
 
     tp_qkv_eff = int(_effective_tp_qkv(cfg))
     kv_heads_total = int(n_kv_heads)
@@ -247,8 +327,48 @@ def _compute_kv_plan_info(
         s1 = min(kv_heads_total, (si + 1) * kv_heads_per_shard)
         head_shards.append(list(range(s0, s1)))
 
-    # Assign shards to PIMs (balanced).
-    if pim_rr:
+    # Assign shards to PIMs (balanced).  DeepSeek-V4 has one shared KV stream
+    # (n_kv_heads=1 in the bundled shapes), so head-based placement would pin
+    # all QK/SV/KV_WRITE work to PIM0.  The default for DeepSeek-V4 is therefore
+    # sequence/context-block sharding, which creates same-layer PIM concurrency.
+    if pim_rr and is_dsv4:
+        requested_dim = _requested_kv_partition_dim(cfg, is_dsv4=True, pim_count=len(pim_rr))
+        if requested_dim == 'seq':
+            kv_partition_dim = 'seq'
+            seq_shards = max(1, int(_requested_kv_seq_shards(cfg, pim_count=len(pim_rr))))
+            per_shard_base = int(KV_total_bytes) // int(seq_shards)
+            per_shard_rem = int(KV_total_bytes) % int(seq_shards)
+            for si in range(int(seq_shards)):
+                dev = pim_rr[int(si) % len(pim_rr)]
+                kv_seq_shard_to_pim[int(si)] = str(dev.name)
+                kv_seq_shards_by_pim[str(dev.name)].append(int(si))
+                shard_bytes = int(per_shard_base + (1 if si < per_shard_rem else 0))
+                kv_bytes_by_pim[str(dev.name)] = int(kv_bytes_by_pim.get(str(dev.name), 0) or 0) + int(shard_bytes)
+            if kv_heads_total > 0:
+                # Metadata only: shared-KV has one logical KV head, but runtime
+                # locality is driven by kv_seq_shard_to_pim.
+                kv_head_to_pim[0] = str(pim_rr[0].name)
+                kv_heads_by_pim[str(pim_rr[0].name)].append(0)
+        else:
+            kv_partition_dim = 'layer'
+            per_layer_bytes = _estimate_deepseek_v4_kv_bytes_by_layer(
+                cfg=cfg,
+                shape=shape,
+                kv_dtype_bytes=kv_dtype_bytes,
+            )
+            for l, layer_bytes in enumerate(per_layer_bytes):
+                dev = pim_rr[int(l) % len(pim_rr)]
+                kv_layer_to_pim[int(l)] = str(dev.name)
+                kv_layers_by_pim[str(dev.name)].append(int(l))
+                kv_bytes_by_pim[str(dev.name)] = int(kv_bytes_by_pim.get(str(dev.name), 0) or 0) + int(layer_bytes)
+
+            # Keep a single-head map only as metadata/fallback.  The scheduler will
+            # prefer kv_layer_to_pim when kv_partition_dim == 'layer'.
+            if kv_heads_total > 0:
+                kv_head_to_pim[0] = str(pim_rr[0].name)
+                kv_heads_by_pim[str(pim_rr[0].name)].append(0)
+
+    elif pim_rr:
         pn = len(pim_rr)
         base = len(head_shards) // pn
         rem = len(head_shards) % pn
@@ -294,6 +414,11 @@ def _compute_kv_plan_info(
         'pim_bytes_by_name': dict(pim_bytes_by_name),
         'kv_head_to_pim': dict(kv_head_to_pim),
         'kv_heads_by_pim': dict(kv_heads_by_pim),
+        'kv_layer_to_pim': dict(kv_layer_to_pim),
+        'kv_layers_by_pim': dict(kv_layers_by_pim),
+        'kv_seq_shard_to_pim': dict(kv_seq_shard_to_pim),
+        'kv_seq_shards_by_pim': dict(kv_seq_shards_by_pim),
+        'kv_partition_dim': str(kv_partition_dim),
         'kv_bytes_by_pim': dict(kv_bytes_by_pim),
         'feasible_pim': bool(feasible_pim),
         'best_npu_name': best_npu_name,
@@ -339,7 +464,7 @@ def _make_label_from_kv_plan(
     if kv_place_req == 'pim' and feasible_pim:
         kv_place_out = 'pim'
         kv_in_pim_out = True
-        pim_mode = 'kv_pim_by_head'
+        pim_mode = 'kv_pim_by_' + str(kv_plan.get('kv_partition_dim', 'kv_head'))
     elif kv_place_req == 'npu' and feasible_npu:
         kv_place_out = 'npu'
         kv_in_pim_out = False
@@ -371,7 +496,11 @@ def _make_label_from_kv_plan(
         kv_bytes_by_pim=(dict(kv_plan.get('kv_bytes_by_pim', {})) if (kv_place_out == 'pim' and feasible_pim) else {}),
         kv_head_to_pim=(dict(kv_plan.get('kv_head_to_pim', {})) if (kv_place_out == 'pim' and feasible_pim) else {}),
         kv_heads_by_pim=(dict(kv_plan.get('kv_heads_by_pim', {})) if (kv_place_out == 'pim' and feasible_pim) else {}),
-        kv_partition_dim='kv_head',
+        kv_layer_to_pim=(dict(kv_plan.get('kv_layer_to_pim', {})) if (kv_place_out == 'pim' and feasible_pim) else {}),
+        kv_layers_by_pim=(dict(kv_plan.get('kv_layers_by_pim', {})) if (kv_place_out == 'pim' and feasible_pim) else {}),
+        kv_seq_shard_to_pim=(dict(kv_plan.get('kv_seq_shard_to_pim', {})) if (kv_place_out == 'pim' and feasible_pim) else {}),
+        kv_seq_shards_by_pim=(dict(kv_plan.get('kv_seq_shards_by_pim', {})) if (kv_place_out == 'pim' and feasible_pim) else {}),
+        kv_partition_dim=(str(kv_plan.get('kv_partition_dim', 'kv_head')) if (kv_place_out == 'pim' and feasible_pim) else 'kv_head'),
         pim_weight_capacity_bytes=int(weight_budget),
     )
 
@@ -386,8 +515,8 @@ def _make_label_from_kv_plan(
     setattr(label, 'tp_qkv', int(cfg.get('tp_qkv', 1) or 1))
     setattr(label, 'tp_ffn', int(cfg.get('tp_ffn', 1) or 1))
     setattr(label, 'tp_ffn_effective', int(cfg.get('tp_ffn_effective', cfg.get('tp_ffn', 1)) or 1))
-    setattr(label, 'tp_moe', int(cfg.get('tp_moe', cfg.get('tp_ffn', 1)) or 1))
-    setattr(label, 'tp_moe_effective', int(cfg.get('tp_moe_effective', cfg.get('tp_moe', cfg.get('tp_ffn', 1))) or 1))
+    setattr(label, 'tp_moe', int(cfg.get('tp_moe', cfg.get('tp', cfg.get('tp_ffn', 1))) or 1))
+    setattr(label, 'tp_moe_effective', int(cfg.get('tp_moe_effective', cfg.get('tp_moe_total_effective', cfg.get('tp_moe', cfg.get('tp', cfg.get('tp_ffn', 1))))) or 1))
     setattr(label, 'pim_total_capacity_bytes', int(pim_bytes_total))
     setattr(label, 'weights_preloaded_on_pim', bool(weights_preloaded_on_pim))
 
@@ -592,6 +721,20 @@ def auto_select_kv_policy(
     """Choose KV placement by capacity only: prefer PIM, otherwise fall back to Host.
     """
     kv_plan = _compute_kv_plan_info(cfg=cfg, cluster=cluster, graph=graph, shape=shape)
+
+    forced = cfg.get('kv_place', cfg.get('force_kv_place', None))
+    if forced is not None:
+        forced_place = _normalize_kv_place(str(forced))
+        label_forced, ok_forced = _make_label_from_kv_plan(cfg=cfg, kv_plan=kv_plan, kv_place=forced_place)
+        if ok_forced and _infer_kv_place_from_label(label_forced) == forced_place:
+            setattr(label_forced, "kv_policy_selected", f"forced_{forced_place}")
+            setattr(label_forced, "kv_policy_scores", {"host": None, "npu": None, "pim": None})
+            if bool(capture_best_schedule):
+                setattr(label_forced, "_kv_policy_best_sim", None)
+            return label_forced
+        # If a forced PIM/NPU placement is infeasible, fall through to the
+        # existing capacity-safe policy instead of crashing long sweeps.
+
     label_host, _ = _make_label_from_kv_plan(cfg=cfg, kv_plan=kv_plan, kv_place='host')
     label_pim, ok_pim = _make_label_from_kv_plan(cfg=cfg, kv_plan=kv_plan, kv_place='pim')
 

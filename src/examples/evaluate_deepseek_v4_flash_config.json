@@ -3,29 +3,31 @@
   "model_variant": "flash",
   "dtype": "fp8",
   "batch": 4,
-  "prefill_len": 4096,
+  "prefill_len": 1024,
   "decode_len": 1024,
-  "decode_sample_stride": 16,
-  "decode_plan_refresh_stride": 16,
+  "decode_sample_stride": 2,
+  "decode_plan_refresh_stride": 2,
   "pim_config_path": "./aim_simulator/PIM_AiM.json",
   "ramulator_config_path": "./aim_simulator/example.yaml",
-  "simulation_log_file": "../../output/deepseek_v4_flash/pim_simulation.txt",
-  "result_dir": "../../output/deepseek_v4_flash/",
-  "hardware_json": "./examples/hardware_1npu_1pim_huawei.json",
+  "simulation_log_file": "../../output/deepseek_v4_flash_b4_p1024_d1024_huawei_1npu4pim_bifocal_pdffn/pim_simulation.txt",
+  "result_dir": "../../output/deepseek_v4_flash_b4_p1024_d1024_huawei_1npu4pim_bifocal_pdffn/",
+  "hardware_json": "./examples/hardware_1npu_4pim_huawei.json",
   "algo": [
     "Bifocal"
   ],
   "baselines": [
-    "PD+FFN",
-    "PD+Attn",
-    "PD+Linear",
-    "PD",
-    "AF"
+    "PD+FFN"
   ],
   "tp": 1,
   "tp_qkv": 1,
-  "npu_backend": "fast",
-  "dump_graph": true,
-  "dump_graph_dir": "../../output/deepseek_v4_flash/graph_dumps",
-  "pim_fast_mode": true
+  "npu_backend": "fast_mode",
+  "dump_graph": false,
+  "dump_graph_dir": "../../output/deepseek_v4_flash_b4_prefill1024_decode1024_huawei_1npu4pim_bifocal_pdffn/graph_dumps",
+  "pim_fast_mode": true,
+  "kv_place": "pim",
+  "kv_partition_dim": "seq",
+  "tp_ffn": 1,
+  "tp_moe": 6,
+  "kv_seq_shards": 4,
+  "pd_ffn_kv_place": "npu"
 }

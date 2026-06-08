@@ -1,0 +1,141 @@
+{
+  "hardware": {
+    "topology": "fc",
+    "devices": [
+      {
+        "name": "CPU0",
+        "type": "cpu",
+        "tflops": 0.001,
+        "mem_bw_GBs": 32768.0,
+        "mem_capacity_GB": 8192.0,
+        "cpu_read_latency_ns": 70.0,
+        "cpu_write_latency_ns": 85.0,
+        "cpu_cacheline_B": 64
+      },
+      {
+        "name": "Ascend_950DT_NPU0",
+        "type": "npu",
+        "tflops": 1024.0,
+        "mem_bw_GBs": 4096.0,
+        "mem_capacity_GB": 144.0,
+        "llmcompass_device": "A100_80GB_fp16",
+        "cube_tflops_fp8": 1024.0,
+        "vec_tflops": 64.0,
+        "arch": "Huawei_950DT",
+        "cube_tflops": 1024.0,
+        "vector_tflops": 64.0
+      },
+      {
+        "name": "PIM0",
+        "type": "pim",
+        "pim_type": "accel",
+        "tflops": 1024.0,
+        "mem_bw_GBs": 16384.0,
+        "mem_capacity_GB": 32.0,
+        "pim_read_latency_ns": 5.0,
+        "pim_write_latency_ns": 30.0,
+        "pim_memory": {
+          "addr_map_unit": "bits",
+          "addr_map": {
+            "row": 13,
+            "channel": 1,
+            "bank": 4,
+            "column": 8,
+            "offset": 12
+          }
+        },
+        "freq_ghz": 0.8,
+        "cube_tflops_fp8": 1000.0,
+        "vec_tflops": 64.0,
+        "dram_type": "3D_DRAM",
+        "cube_tflops": 1000.0,
+        "vector_tflops": 64.0
+      },
+      {
+        "name": "PIM1",
+        "type": "pim",
+        "pim_type": "accel",
+        "tflops": 1000.0,
+        "mem_bw_GBs": 16384.0,
+        "mem_capacity_GB": 32.0,
+        "pim_read_latency_ns": 5.0,
+        "pim_write_latency_ns": 30.0,
+        "pim_memory": {
+          "addr_map_unit": "bits",
+          "addr_map": {
+            "row": 13,
+            "channel": 1,
+            "bank": 4,
+            "column": 8,
+            "offset": 12
+          }
+        },
+        "freq_ghz": 0.8,
+        "cube_tflops_fp8": 1000.0,
+        "vec_tflops": 64.0,
+        "dram_type": "3D_DRAM",
+        "cube_tflops": 1000.0,
+        "vector_tflops": 64.0
+      },
+      {
+        "name": "PIM2",
+        "type": "pim",
+        "pim_type": "accel",
+        "tflops": 1000.0,
+        "mem_bw_GBs": 16384.0,
+        "mem_capacity_GB": 32.0,
+        "pim_read_latency_ns": 5.0,
+        "pim_write_latency_ns": 30.0,
+        "pim_memory": {
+          "addr_map_unit": "bits",
+          "addr_map": {
+            "row": 13,
+            "channel": 1,
+            "bank": 4,
+            "column": 8,
+            "offset": 12
+          }
+        },
+        "freq_ghz": 0.8,
+        "cube_tflops_fp8": 1000.0,
+        "vec_tflops": 64.0,
+        "dram_type": "3D_DRAM",
+        "cube_tflops": 1000.0,
+        "vector_tflops": 64.0
+      },
+      {
+        "name": "PIM3",
+        "type": "pim",
+        "pim_type": "accel",
+        "tflops": 1000.0,
+        "mem_bw_GBs": 16384.0,
+        "mem_capacity_GB": 32.0,
+        "pim_read_latency_ns": 5.0,
+        "pim_write_latency_ns": 30.0,
+        "pim_memory": {
+          "addr_map_unit": "bits",
+          "addr_map": {
+            "row": 13,
+            "channel": 1,
+            "bank": 4,
+            "column": 8,
+            "offset": 12
+          }
+        },
+        "freq_ghz": 0.8,
+        "cube_tflops_fp8": 1000.0,
+        "vec_tflops": 64.0,
+        "dram_type": "3D_DRAM",
+        "cube_tflops": 1000.0,
+        "vector_tflops": 64.0
+      }
+    ],
+    "fc_bw_GBs": 112.0,
+    "link_defaults": {
+      "latency_s": 0.0,
+      "overhead_s": 0.0,
+      "flit_size_B": 32,
+      "max_payload_B": 512
+    }
+  }
+}

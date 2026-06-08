@@ -446,7 +446,7 @@ def build_graph(cfg: Dict[str, Any]):
         # - if tp <= top_k: selected experts are distributed across tp shards and each
         #   expert FFN remains unsplit.
         # - if tp > top_k: each selected expert is split into tp / top_k FFN shards.
-        tp_moe_total_raw = cfg.get('tp', cfg.get('tp_ffn', cfg.get('tp_moe', 1)))
+        tp_moe_total_raw = cfg.get('tp_moe', cfg.get('tp', cfg.get('tp_ffn', 1)))
         try:
             tp_moe_total = max(1, int(tp_moe_total_raw or 1))
         except Exception:

@@ -26,7 +26,7 @@ class LinkSpec:
 class DeviceSpec:
     name: str
     type: str          # 'cpu' | 'npu' | 'pim'
-    tflops: float      # peak TFLOPS (FP16-equivalent)
+    tflops: float      # default peak TFLOPS used when no op-specific peak is configured
     mem_bw_GBs: float  # memory bandwidth GB/s (HBM/DRAM/near-memory)
     mem_capacity_GB: float
     pim_type: Optional[str] = None
@@ -45,6 +45,14 @@ class DeviceSpec:
     cpu_write_latency_ns: float = 0.0
     cpu_access_bytes_B: int = 64
     freq_ghz: float = 0.0
+    # Optional fast-mode peak-throughput split.  Matrix-multiply/GEMM-like ops may
+    # use cube_tflops/cube_tflops_fp8, while nonlinear/vector-like ops may use
+    # vec_tflops.  Missing values intentionally fall back to tflops.
+    cube_tflops: float = 0.0
+    cube_tflops_fp8: float = 0.0
+    cube_tflops_fp16: float = 0.0
+    cube_tflops_bf16: float = 0.0
+    vec_tflops: float = 0.0
 
 class Cluster:
     def __init__(self):
@@ -283,10 +291,24 @@ def demo_cluster(cfg: Dict | None = None) -> Cluster:
             cpu_access_bytes_B = max(1, int(cpu_access_raw)) if cpu_access_raw is not None else 64
         except Exception:
             cpu_access_bytes_B = 64
+        def _float_first(*keys: str, default: float = 0.0) -> float:
+            for key in keys:
+                if key in d and d.get(key) is not None:
+                    try:
+                        return float(d.get(key) or 0.0)
+                    except Exception:
+                        continue
+            return float(default)
+
         dev = DeviceSpec(
             name=d['name'],
             type=d['type'],
             tflops=float(d.get('tflops', 0)),
+            cube_tflops=_float_first('cube_tflops', 'matmul_tflops', 'matrix_tflops', 'tensor_tflops'),
+            cube_tflops_fp8=_float_first('cube_tflops_fp8', 'fp8_cube_tflops', 'cube_fp8_tflops'),
+            cube_tflops_fp16=_float_first('cube_tflops_fp16', 'fp16_cube_tflops', 'cube_fp16_tflops'),
+            cube_tflops_bf16=_float_first('cube_tflops_bf16', 'bf16_cube_tflops', 'cube_bf16_tflops'),
+            vec_tflops=_float_first('vec_tflops', 'vector_tflops', 'elementwise_tflops', 'nonlinear_tflops'),
             mem_bw_GBs=float(d.get('mem_bw_GBs', 0)),
             mem_capacity_GB=float(d.get('mem_capacity_GB', 0)),
             pim_type=d.get('pim_type'),

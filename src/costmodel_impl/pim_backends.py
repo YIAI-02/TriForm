@@ -72,7 +72,7 @@ class PimFastBackend(PimBackendBase):
         rd, wr = cm.estimate_activation_bytes(node, ctx.batch, ctx.seq_len, ctx.phase)
         mem_t = float(cm.pim_mem_time(int(rd), int(wr), dev))
         flops = float(cm.estimate_flops(node, ctx.batch, ctx.seq_len, ctx.phase))
-        compute_s = cm.flop_time(flops, dev)
+        compute_s = cm.op_flop_time(flops, dev, node=node)
         return max(compute_s, mem_t)
 
     def activation_read_s(self, cm: "CostModel", activation_bytes_nd: int) -> float:

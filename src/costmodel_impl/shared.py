@@ -281,14 +281,36 @@ NPU_NORM_KEYS = {
 NPU_GEMM_KEYS = {
     'q_proj','k_proj','v_proj','wo_proj','ffn_up','ffn_gate','ffn_down','score','output',
 }
+# Fast-mode analytical compute-pipe classification.  CUBE is used for
+# GEMM/BMM/MMAD/linear-projection-like work; VEC is used for nonlinear,
+# normalization, elementwise, and selection/combine work.  Unknown operators
+# deliberately fall back to the device's default ``tflops``.
+FAST_CUBE_OP_KEYS = {
+    *NPU_GEMM_KEYS,
+    'q', 'k', 'v', 'o', 'wo',
+    'ffn_w1', 'ffn_w2', 'ffn_w3', 'ffn_up', 'ffn_down', 'ffn_gate',
+    'dsv4_q_down', 'dsv4_q_up',
+    'dsv4_kv_compress', 'dsv4_index_kv_compress', 'dsv4_window_kv',
+    'dsv4_indexer_q', 'dsv4_index_score',
+    'dsv4_o_g1', 'dsv4_o_g2',
+    'mhc_mix', 'moe_router', 'router',
+}
+FAST_VEC_OP_KEYS = {
+    'softmax', 'add', 'identity', 'residual', 'dropout',
+    'kv_write', 'k_write', 'v_write', 'kv_read', 'k_read', 'v_read',
+    'allreduce', 'reduce', 'scatter',
+    'dsv4_topk', 'moe_combine', 'moe_shared_combine',
+    *NPU_ACT_KEYS,
+    *NPU_NORM_KEYS,
+}
 NPU_ROUTER_KEYS = {
     'router', 'moe_router',
     # DeepSeek-V4 custom fused/proxy operators use the analytic fallback in
     # LLMCompass/LUT backends because they combine GEMM, compression, routing,
     # top-k, and token-wise mixing semantics that are not single primitive ops.
-    'dsv4_q_down', 'dsv4_q_up', 'dsv4_kv_compress', 'dsv4_window_kv',
+    'dsv4_q_down', 'dsv4_q_up', 'dsv4_kv_compress', 'dsv4_index_kv_compress', 'dsv4_window_kv',
     'dsv4_indexer_q', 'dsv4_index_score', 'dsv4_topk',
-    'dsv4_o_g1', 'dsv4_o_g2', 'mhc_mix', 'moe_shared_combine',
+    'dsv4_o_g1', 'dsv4_o_g2', 'mhc_mix', 'moe_combine', 'moe_shared_combine',
     'reduce', 'scatter',
 }
 
@@ -309,6 +331,7 @@ def _normalize_npu_backend_safe(backend: Optional[str]) -> str:
 # Device-name matching helpers (hardware.json -> device-specific params)
 # --------------------------------------------------------------------------------------
 _DEVICE_NAME_FAMILY_PATTERNS = (
+    (re.compile(r'(?i)^ascend_?950dt(?:_|$)'), 'Ascend_950DT'),
     (re.compile(r'(?i)^ascend_?910b(?:_|$)'), 'Ascend_910B'),
     (re.compile(r'(?i)^ascend_?310b(?:_|$)'), 'Ascend_310B'),
     (re.compile(r'(?i)^(?:nvidia_)?a100(?:_|$)'), 'A100'),
@@ -411,6 +434,7 @@ _NPU_OP_ALIASES: Dict[str, str] = {
     'dsv4_q_down': 'dsv4_q_down',
     'dsv4_q_up': 'dsv4_q_up',
     'dsv4_kv_compress': 'dsv4_kv_compress',
+    'dsv4_index_kv_compress': 'dsv4_index_kv_compress',
     'dsv4_window_kv': 'dsv4_window_kv',
     'dsv4_indexer_q': 'dsv4_indexer_q',
     'dsv4_index_score': 'dsv4_index_score',
@@ -418,13 +442,14 @@ _NPU_OP_ALIASES: Dict[str, str] = {
     'dsv4_o_g1': 'dsv4_o_g1',
     'dsv4_o_g2': 'dsv4_o_g2',
     'mhc_mix': 'mhc_mix',
+    'moe_combine': 'moe_combine',
     'moe_shared_combine': 'moe_shared_combine',
 }
 
 
 # Token-level matcher for embedded op names.
 _NPU_OP_TOKEN_RE = re.compile(
-    r'(^|_)(qk|sv|softmax|ffn_w1|ffn_w2|ffn_w3|q_proj|k_proj|v_proj|wo_proj|moe_router|router|dsv4_q_down|dsv4_q_up|dsv4_kv_compress|dsv4_window_kv|dsv4_indexer_q|dsv4_index_score|dsv4_topk|dsv4_o_g1|dsv4_o_g2|mhc_mix|moe_shared_combine)($|_)'
+    r'(^|_)(qk|sv|softmax|ffn_w1|ffn_w2|ffn_w3|q_proj|k_proj|v_proj|wo_proj|moe_router|router|dsv4_q_down|dsv4_q_up|dsv4_kv_compress|dsv4_index_kv_compress|dsv4_window_kv|dsv4_indexer_q|dsv4_index_score|dsv4_topk|dsv4_o_g1|dsv4_o_g2|mhc_mix|moe_combine|moe_shared_combine)($|_)'
 )
 
 

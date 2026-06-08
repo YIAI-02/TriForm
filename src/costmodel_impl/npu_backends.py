@@ -83,7 +83,7 @@ class NpuBackendBase(ABC):
 
     def _fallback_fast_s(self, cm: "CostModel", node: TaskNode, dev: DeviceSpec, ctx: NpuOpContext) -> float:
         flops = float(cm.estimate_flops(node, ctx.batch, ctx.seq_len, ctx.phase))
-        compute_s = cm.flop_time(flops, dev)
+        compute_s = cm.op_flop_time(flops, dev, node=node)
         mem_s = ctx.mem_s
         return max(compute_s, mem_s)
 

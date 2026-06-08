@@ -10,9 +10,9 @@ Examples
 --------
 Scan one output subtree and write figures into a shared directory::
 
-    python plot_exp1_simulated.py \
-      --output-root ../../output/evaluate_single_test \
-      --out-dir ../../figs/exp1/simulated
+python plot_exp1_simulated.py \
+    --output-root ../../output/deepseek_len_sweep/hw_hardware_1npu_4pim_huawei\
+    --out-dir ../../figs/exp1/simulated/deepseek_len_sweep
 
 Plot one specific run directory that already contains
 ``baseline_compare_*.json`` files::

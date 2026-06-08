@@ -35,6 +35,29 @@ class CostModelEstimateMixin:
 
         return float(dtype_bytes(self.dtype, default='fp16'))
 
+    def _attention_partition_fraction(self, node) -> float:
+        """Fraction of the KV/context axis represented by an attention shard."""
+        try:
+            attrs = getattr(node, 'attrs', {}) or {}
+            for key in ('attention_partition_fraction', 'kv_seq_fraction', 'kv_block_fraction'):
+                if key in attrs and attrs.get(key) is not None:
+                    v = float(attrs.get(key))
+                    if math.isfinite(v) and v > 0.0:
+                        return max(1e-12, min(1.0, v))
+            shards = int(attrs.get('kv_seq_shards', attrs.get('attention_seq_shards', 1)) or 1)
+            if shards > 1:
+                return 1.0 / float(shards)
+        except Exception:
+            pass
+        return 1.0
+
+    def _scale_partitioned_count(self, value: int | float, frac: float) -> int:
+        v = int(max(0, int(value or 0)))
+        f = float(frac or 1.0)
+        if v <= 0 or f >= 0.999999999:
+            return int(v)
+        return int(max(1, math.ceil(float(v) * max(0.0, min(1.0, f)))))
+
     def _activation_density(self, node, phase: str) -> float:
         opt = self._node_opt(node)
         aspec = opt.get('activation_sparsity')
@@ -90,6 +113,10 @@ class CostModelEstimateMixin:
         attrs = getattr(node, 'attrs', {}) or {}
         kv_len = int(attrs.get('kv_len', attrs.get('past_kv_len', T)) or T)
         q_len = T if str(phase) == 'prefill' else 1
+        part_frac = float(self._attention_partition_fraction(node))
+
+        def _scale(v: int | float) -> int:
+            return self._scale_partitioned_count(v, part_frac)
 
         def tri(n: int) -> int:
             return n * (n + 1) // 2
@@ -107,12 +134,12 @@ class CostModelEstimateMixin:
         if not isinstance(aspec, dict):
             pat0 = str(attrs.get('attention_pattern', 'dense')).lower()
             if pat0 in ('dense', 'none', 'off', 'disabled'):
-                return int(dense_pairs)
+                return _scale(dense_pairs)
             aspec = {'pattern': pat0}
 
         pat = str(aspec.get('pattern', attrs.get('attention_pattern', 'dense'))).lower()
         if pat in ('dense', 'none', 'off', 'disabled'):
-            return int(dense_pairs)
+            return _scale(dense_pairs)
 
         # Local/sliding window (FlashAttention style window_size=(left,right))
         if pat in ('local', 'sliding', 'sliding_window', 'window'):
@@ -121,19 +148,19 @@ class CostModelEstimateMixin:
             if causal:
                 wr = 0
             if wl < 0 and wr < 0:
-                return int(dense_pairs)
+                return _scale(dense_pairs)
             # number of keys per query in the steady state
             per_q = int(max(1, (wl if wl >= 0 else kv_len) + (wr if wr >= 0 else 0) + 1))
             if str(phase) == 'prefill':
                 # causal local: sum_{i=1..T} min(i, per_q)
                 if causal:
                     if T <= per_q:
-                        return int(tri(T))
-                    return int(tri(per_q) + (T - per_q) * per_q)
+                        return _scale(tri(T))
+                    return _scale(tri(per_q) + (T - per_q) * per_q)
                 # non-causal: each token attends to up to per_q (clipped by sequence boundaries)
-                return int(T * min(T, per_q))
+                return _scale(T * min(T, per_q))
             # decode (single query at end)
-            return int(min(kv_len, per_q))
+            return _scale(min(kv_len, per_q))
 
         # Block-sparse: approximate as an effective local window over blocks
         if pat in ('block', 'block_sparse', 'blocksparse'):
@@ -146,10 +173,10 @@ class CostModelEstimateMixin:
             if str(phase) == 'prefill':
                 if causal:
                     if T <= per_q:
-                        return int(tri(T))
-                    return int(tri(per_q) + (T - per_q) * per_q)
-                return int(T * min(T, per_q))
-            return int(min(kv_len, per_q))
+                        return _scale(tri(T))
+                    return _scale(tri(per_q) + (T - per_q) * per_q)
+                return _scale(T * min(T, per_q))
+            return _scale(min(kv_len, per_q))
 
         # DeepSeek-V4 CSA / HCA: attention is performed over compressed KV
         # entries plus an explicit short sliding-window branch.  CSA adds a
@@ -177,8 +204,8 @@ class CostModelEstimateMixin:
                 return int(tri(w) + (n - w) * w)
 
             if str(phase) == 'prefill':
-                return int(sum_min_ceil(T, m, top_k) + sum_window(T, window))
-            return int(min(top_k, int(math.ceil(kv_len / float(m)))) + min(kv_len, window))
+                return _scale(sum_min_ceil(T, m, top_k) + sum_window(T, window))
+            return _scale(min(top_k, int(math.ceil(kv_len / float(m)))) + min(kv_len, window))
 
         if pat in ('deepseek_hca', 'hca', 'hierarchical_compressed_attention'):
             m = max(1, int(aspec.get('compression_rate', attrs.get('hca_compression_rate', 128)) or 128))
@@ -197,8 +224,8 @@ class CostModelEstimateMixin:
                 return int(tri(w) + (n - w) * w)
 
             if str(phase) == 'prefill':
-                return int(sum_ceil(T, m) + sum_window(T, window))
-            return int(int(math.ceil(kv_len / float(m))) + min(kv_len, window))
+                return _scale(sum_ceil(T, m) + sum_window(T, window))
+            return _scale(int(math.ceil(kv_len / float(m))) + min(kv_len, window))
 
         # Generic sparse attention matrix density
         if pat in ('matrix', 'sparse_matrix', 'sparse'):
@@ -208,10 +235,10 @@ class CostModelEstimateMixin:
             except Exception:
                 dens = 1.0
             if str(phase) == 'prefill':
-                return int(max(0, math.ceil(dense_pairs * dens)))
-            return int(max(0, math.ceil(kv_len * dens)))
+                return _scale(max(0, math.ceil(dense_pairs * dens)))
+            return _scale(max(0, math.ceil(kv_len * dens)))
 
-        return int(dense_pairs)
+        return _scale(dense_pairs)
 
     def _effective_kv_len_for_decode(self, node, seq_len: int, phase: str) -> int:
         attrs = getattr(node, 'attrs', {}) or {}
@@ -235,6 +262,11 @@ class CostModelEstimateMixin:
             return 0
         attrs = getattr(node, 'attrs', {}) or {}
         kv_len = int(attrs.get('kv_len', attrs.get('past_kv_len', T)) or T)
+        part_frac = float(self._attention_partition_fraction(node))
+
+        def _scale(v: int | float) -> int:
+            return self._scale_partitioned_count(v, part_frac)
+
         opt = self._node_opt(node)
         aspec = opt.get('attention_sparsity')
         if not isinstance(aspec, dict):
@@ -243,7 +275,7 @@ class CostModelEstimateMixin:
         window = max(0, int((aspec or {}).get('sliding_window', attrs.get('sliding_window', 0)) or 0)) if isinstance(aspec, dict) else max(0, int(attrs.get('sliding_window', 0) or 0))
 
         if pat in ('local', 'sliding', 'sliding_window', 'window'):
-            return int(min(kv_len if str(phase) != 'prefill' else T, window if window > 0 else kv_len))
+            return _scale(min(kv_len if str(phase) != 'prefill' else T, window if window > 0 else kv_len))
 
         if pat in ('deepseek_csa', 'csa', 'compressed_sparse_attention'):
             m = max(1, int((aspec or {}).get('compression_rate', attrs.get('csa_compression_rate', 4)) or 4)) if isinstance(aspec, dict) else max(1, int(attrs.get('csa_compression_rate', 4) or 4))
@@ -252,14 +284,14 @@ class CostModelEstimateMixin:
             compressed = int(math.ceil(float(n) / float(m)))
             if str(phase) != 'prefill':
                 compressed = min(int(top_k), int(compressed))
-            return int(compressed + min(int(n), int(window)))
+            return _scale(compressed + min(int(n), int(window)))
 
         if pat in ('deepseek_hca', 'hca', 'hierarchical_compressed_attention'):
             m = max(1, int((aspec or {}).get('compression_rate', attrs.get('hca_compression_rate', 128)) or 128)) if isinstance(aspec, dict) else max(1, int(attrs.get('hca_compression_rate', 128) or 128))
             n = T if str(phase) == 'prefill' else kv_len
-            return int(math.ceil(float(n) / float(m)) + min(int(n), int(window)))
+            return _scale(math.ceil(float(n) / float(m)) + min(int(n), int(window)))
 
-        return int(T if str(phase) == 'prefill' else kv_len)
+        return _scale(T if str(phase) == 'prefill' else kv_len)
 
     def _time_scale_hint(self, node, dev_type: str) -> float:
         """Optional heuristic speedup scale from node.opt['speedup'].
@@ -437,10 +469,17 @@ class CostModelEstimateMixin:
             normalize = float(b * q_len * nhc * nhc * sinkhorn_iters)
             return (mix + normalize) * a_den
 
+        if name == 'MOE_COMBINE' and D > 0:
+            inputs = max(1, int(attrs.get('combine_inputs', attrs.get('active_routed_experts', attrs.get('top_k', 1))) or 1))
+            return float(C_MATMUL * b * q_len * D * inputs) * a_den
+
         if name == 'MOE_SHARED_COMBINE' and D > 0:
             shared = max(0, int(attrs.get('shared_experts', 0) or 0))
             active = max(0, int(attrs.get('active_routed_experts', attrs.get('active_experts', 0)) or 0))
-            return float(b * q_len * D * max(1, shared + min(1, active))) * a_den
+            inputs = attrs.get('combine_inputs', None)
+            if inputs is None:
+                inputs = shared + min(1, active)
+            return float(b * q_len * D * max(1, int(inputs or 1))) * a_den
 
         # 1) LayerNorm
         if name == 'LN' and D > 0:
@@ -523,10 +562,7 @@ class CostModelEstimateMixin:
             C_TOPK = 2.0
             gate_topk = b * q_len * router_experts * C_TOPK
 
-            # 4) combine local expert outputs: sum_i p_i * y_i
-            combine = C_MATMUL * D * local_top_k * b * q_len
-
-            return float(gate_linear + gate_softmax + gate_topk + combine)
+            return float(gate_linear + gate_softmax + gate_topk)
 
         # 13)
         if name in ('K_WRITE', 'V_WRITE', 'KV_READ', 'KV_WRITE', 'ROPE', 'ALIBI', 'ALLREDUCE'):
@@ -536,6 +572,7 @@ class CostModelEstimateMixin:
 
     def estimate_activation_bytes(self, node, batch: int, seq_len: int, phase: str):
         attrs = getattr(node, 'attrs', {}) or {}
+        kv_seq_frac = float(self._attention_partition_fraction(node))
         # Activation dtype may be overridden by quantization annotations.
         dtype_bytes = float(self._act_dtype_bytes(node, phase))
         # If activations are assumed *stored* in compressed sparse form, scale bytes.
@@ -645,9 +682,17 @@ class CostModelEstimateMixin:
         if name == 'MHC_MIX' and D > 0:
             elems = dens_store * (b * q_len * D)
             return (to_bytes(elems), to_bytes(elems))
+        if name == 'MOE_COMBINE' and D > 0:
+            inputs = max(1, int(attrs.get('combine_inputs', attrs.get('active_routed_experts', attrs.get('top_k', 1))) or 1))
+            read_elems = dens_store * (b * q_len * D * inputs)
+            write_elems = dens_store * (b * q_len * D)
+            return (to_bytes(read_elems), to_bytes(write_elems))
         if name == 'MOE_SHARED_COMBINE' and D > 0:
             shared = max(0, int(attrs.get('shared_experts', 0) or 0))
-            read_elems = dens_store * (b * q_len * D * max(2, shared + 1))
+            inputs = attrs.get('combine_inputs', None)
+            if inputs is None:
+                inputs = max(2, shared + 1)
+            read_elems = dens_store * (b * q_len * D * max(1, int(inputs or 1)))
             write_elems = dens_store * (b * q_len * D)
             return (to_bytes(read_elems), to_bytes(write_elems))
         if name == 'LN' and D > 0:
@@ -735,14 +780,14 @@ class CostModelEstimateMixin:
                 else:
                     # Decode writes one local token plus an amortized compressed block entry.
                     entries = float(1.0 + 1.0 / float(comp))
-                elems = float(b * max(1, cache_width) * entries)
+                elems = float(b * max(1, cache_width) * entries) * float(kv_seq_frac)
                 return (0, int(math.ceil(max(0.0, elems) * kv_dtype_bytes)))
             write_tokens = q_len if name != 'KV_WRITE' else max(1, int(math.ceil(float(q_len) / float(comp))))
             if bool(attrs.get('kv_cache_shared', attrs.get('shared_kv', False))):
                 cache_width = int(attrs.get('kv_cache_dim', attrs.get('shared_kv_dim', hd)) or hd)
             else:
                 cache_width = int(attrs.get('kv_cache_dim', max(1, kvh * hd)) or max(1, kvh * hd))
-            elems = float(b * cache_width * write_tokens)
+            elems = float(b * cache_width * write_tokens) * float(kv_seq_frac)
             return (0, int(math.ceil(max(0.0, elems) * kv_dtype_bytes)))
         if 'ROUTER' in name and D > 0:
             tokens = float(b * q_len)
@@ -753,8 +798,6 @@ class CostModelEstimateMixin:
                 local_top_k = float(moe_top_k or 1)
             local_top_k = max(0.0, local_top_k)
             read_elems = tokens * D
-            if local_top_k > 0.0:
-                read_elems += tokens * local_top_k * D
             write_elems = tokens * D
             return (to_bytes(read_elems), to_bytes(write_elems))
         if D > 0:

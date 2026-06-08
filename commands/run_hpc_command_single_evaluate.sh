@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH -J single_eval
-#SBATCH --chdir=/lustre/home/2501111916/workspace/DOPS_0526_deepseek/Triform
+#SBATCH --chdir=/lustre/home/2501111916/workspace/DOPS_0526_deepseek/TriForm
 #SBATCH -p C064M0256G
 #SBATCH --qos=high
 #SBATCH -N 1
@@ -14,4 +14,4 @@ set -euo pipefail
 echo "SLURM_SUBMIT_DIR=${SLURM_SUBMIT_DIR:-}"
 echo "PWD=$PWD"
 
-bash /lustre/home/2501111916/workspace/DOPS_0526_deepseek/Triform/commands/command_single_evaluate.sh
+bash /lustre/home/2501111916/workspace/DOPS_0526_deepseek/TriForm/commands/command_single_evaluate.sh

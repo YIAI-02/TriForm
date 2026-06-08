@@ -199,7 +199,7 @@ class CostModelComputeMixin:
                     resident_weight_fmt=str(resident_weight_fmt or 'PIM-OPT'),
                 ))
                 flops = float(self.estimate_flops(node, batch, seq_len, phase))
-                b2 = float(self.flop_time(flops, dev))
+                b2 = float(self.op_flop_time(flops, dev, node=node))
                 b1 *= float(time_scale)
                 b2 *= float(time_scale)
                 core = max(float(b1), float(b2))
@@ -230,6 +230,167 @@ class CostModelComputeMixin:
             backend=f'{dev_type}_default',
             combine_rule='direct',
         )
+
+    def _normalize_fast_peak_kind(self, value: Any) -> Optional[str]:
+        """Normalize an optional op peak selector.
+
+        Returns:
+            'cube' for matrix-multiply/Cube throughput, 'vec' for vector throughput,
+            or None to keep the default dev.tflops path.
+        """
+        raw = str(value or '').strip().lower().replace('-', '_')
+        if not raw:
+            return None
+        if raw in ('cube', 'tensor', 'tensorcore', 'tensor_core', 'matmul', 'matrix', 'gemm', 'bmm', 'mmad', 'mma'):
+            return 'cube'
+        if raw in ('vec', 'vector', 'nonlinear', 'non_linear', 'elementwise', 'elem', 'scalar'):
+            return 'vec'
+        if raw in ('default', 'tflops', 'base', 'none', 'auto_default', 'auto'):
+            return None
+        return None
+
+    def _fast_peak_split_active(self, dev: DeviceSpec) -> bool:
+        """True only for analytical fast-mode compute on NPU/PIM."""
+        dev_type = str(getattr(dev, 'type', '') or '').strip().lower()
+        try:
+            self._ensure_backend_impls()
+        except Exception:
+            pass
+        if dev_type == 'npu':
+            return str(getattr(self, '_npu_backend_impl_name', '') or '').strip().lower() == 'fast'
+        if dev_type == 'pim':
+            return bool(getattr(self, 'pim_fast_mode', False))
+        return False
+
+    def _fast_op_peak_kind(self, node: Optional[TaskNode] = None, op_key: Optional[str] = None, dev: Optional[DeviceSpec] = None) -> Optional[str]:
+        """Classify a fast-mode op into cube/vec peak throughput, or None.
+
+        None intentionally means: preserve the legacy default dev.tflops estimate.
+        """
+        if dev is not None and not self._fast_peak_split_active(dev):
+            return None
+
+        attrs = getattr(node, 'attrs', {}) or {} if node is not None else {}
+
+        # Explicit per-node override, useful for future fused/custom graph nodes.
+        if isinstance(attrs, dict):
+            for key in ('compute_peak_kind', 'fast_compute_peak_kind', 'compute_unit', 'fast_compute_unit', 'peak_kind'):
+                if key in attrs:
+                    kind = self._normalize_fast_peak_kind(attrs.get(key))
+                    if kind is not None or str(attrs.get(key) or '').strip().lower() in ('default', 'tflops', 'base', 'none'):
+                        return kind
+
+        raw = str(op_key or '')
+        if not raw and node is not None:
+            raw = str(getattr(node, 'name', '') or getattr(node, 'id', '') or '')
+        op = _normalize_npu_op_key(raw)
+        op_l = str(op or '').strip().lower()
+        raw_l = str(raw or '').strip().lower().replace('-', '_').replace(' ', '_')
+        raw_u = str(raw or '').strip().upper().replace('-', '_').replace(' ', '_')
+
+        # Optional global override in config.py.  Values: 'cube', 'vec', or 'default'.
+        cfg_map = getattr(_config, 'FAST_MODE_OP_PEAK_KIND_BY_OP', None)
+        if isinstance(cfg_map, dict) and cfg_map:
+            # Exact lookup first, then case-insensitive/token suffix lookup for names like L0_FFN_W1_E0.
+            for key in (op_l, raw_l, raw_u):
+                if key in cfg_map:
+                    kind = self._normalize_fast_peak_kind(cfg_map.get(key))
+                    if kind is not None or str(cfg_map.get(key) or '').strip().lower() in ('default', 'tflops', 'base', 'none'):
+                        return kind
+            for key, value in cfg_map.items():
+                ks = str(key or '').strip().lower().replace('-', '_').replace(' ', '_')
+                if not ks:
+                    continue
+                if ks == op_l or ks == raw_l or raw_l.endswith('_' + ks) or (('_' + ks + '_') in ('_' + raw_l + '_')):
+                    kind = self._normalize_fast_peak_kind(value)
+                    if kind is not None or str(value or '').strip().lower() in ('default', 'tflops', 'base', 'none'):
+                        return kind
+
+        # Matrix-multiply / Cube-like kernels.
+        cube_ops = set(NPU_GEMM_KEYS) | {
+            'q', 'k', 'v', 'o', 'wo', 'qk', 'sv',
+            'ffn_w1', 'ffn_w2', 'ffn_w3', 'ffn_up', 'ffn_gate', 'ffn_down',
+            'linear', 'matmul', 'gemm', 'bmm', 'mmad', 'conv',
+            'dsv4_q_down', 'dsv4_q_up', 'dsv4_kv_compress', 'dsv4_index_kv_compress',
+            'dsv4_window_kv', 'dsv4_indexer_q', 'dsv4_index_score',
+            'dsv4_o_g1', 'dsv4_o_g2', 'mhc_mix', 'moe_router', 'router',
+        }
+        if op_l in cube_ops:
+            return 'cube'
+        if any(tok in raw_u for tok in (
+            'MATMUL', 'GEMM', 'MMAD', 'BMM', 'LINEAR', '_PROJ', 'PROJECTION',
+            'FFN_W1', 'FFN_W2', 'FFN_W3', 'FFN_UP', 'FFN_GATE', 'FFN_DOWN',
+            'DSV4_Q_DOWN', 'DSV4_Q_UP', 'DSV4_KV_COMPRESS', 'DSV4_INDEX_KV_COMPRESS',
+            'DSV4_WINDOW_KV', 'DSV4_INDEXER_Q', 'DSV4_INDEX_SCORE', 'DSV4_O_G1', 'DSV4_O_G2',
+        )):
+            return 'cube'
+        if raw_u in ('Q', 'K', 'V', 'O', 'QK', 'SV'):
+            return 'cube'
+
+        # Nonlinear/vector-like kernels.
+        vec_ops = set(NPU_ACT_KEYS) | set(NPU_NORM_KEYS) | {
+            'softmax', 'add', 'residual', 'identity', 'dropout', 'rope', 'alibi',
+            'topk', 'dsv4_topk', 'moe_combine', 'moe_shared_combine', 'reduce', 'scatter',
+            'allreduce', 'kv_write', 'k_write', 'v_write', 'kv_read',
+        }
+        if op_l in vec_ops or _is_norm_like(op_l):
+            return 'vec'
+        if any(tok in raw_u for tok in (
+            'SOFTMAX', 'GELU', 'SILU', 'SWIGLU', 'ACT', 'RELU', 'SIGMOID', 'TANH',
+            'NORM', 'LN', 'ADD', 'RESIDUAL', 'DROPOUT', 'ROPE', 'ALIBI', 'TOPK',
+            'KV_WRITE', 'K_WRITE', 'V_WRITE', 'KV_READ', 'ALLREDUCE', 'REDUCE', 'SCATTER',
+        )):
+            return 'vec'
+
+        # Unknown/unconfigured ops keep the legacy dev.tflops path.
+        return None
+
+    def _device_peak_tflops(self, dev: DeviceSpec, peak_kind: Optional[str] = None) -> float:
+        """Return the selected peak TFLOPS; missing cube/vec values fall back to dev.tflops."""
+        base = float(getattr(dev, "tflops", 0.0) or 0.0)
+        kind = self._normalize_fast_peak_kind(peak_kind)
+        peak = 0.0
+        if kind == 'cube':
+            # Prefer dtype-specific CUBE throughput, then generic CUBE throughput.
+            # If none is configured, fall back to the legacy device tflops.
+            dtype_tok = str(normalize_dtype_token(getattr(self, 'dtype', '') or '') or '').strip().lower()
+            dtype_tok = dtype_tok.replace('-', '_')
+            cube_keys: List[str] = []
+            if dtype_tok:
+                cube_keys.append(f'cube_tflops_{dtype_tok}')
+            cube_keys.extend(['cube_tflops', 'cube_tflops_fp8', 'cube_tflops_fp16', 'cube_tflops_bf16'])
+            seen = set()
+            for key in cube_keys:
+                if key in seen:
+                    continue
+                seen.add(key)
+                try:
+                    peak = float(getattr(dev, key, 0.0) or 0.0)
+                except Exception:
+                    peak = 0.0
+                if peak > 0.0:
+                    break
+        elif kind == 'vec':
+            peak = float(getattr(dev, 'vec_tflops', 0.0) or 0.0)
+        if peak > 0.0:
+            return float(peak)
+        return float(base)
+
+    def op_flop_time(
+        self,
+        flops: float,
+        dev: DeviceSpec,
+        *,
+        node: Optional[TaskNode] = None,
+        op_key: Optional[str] = None,
+    ) -> float:
+        """Fast-mode compute time with op-specific cube/vec peak selection.
+
+        If the op cannot be classified, or if the selected hardware peak is not present,
+        this falls back to the legacy dev.tflops behavior.
+        """
+        peak_kind = self._fast_op_peak_kind(node=node, op_key=op_key, dev=dev)
+        return float(self.flop_time(float(flops or 0.0), dev, peak_kind=peak_kind))
 
     def _compute_utilization(self, flops: float, dev: DeviceSpec) -> float:
         """Heuristic utilization of peak compute throughput for small workloads."""
@@ -340,9 +501,14 @@ class CostModelComputeMixin:
         return max(min(1.0, u), 1e-6)
 
 
-    def effective_tflops(self, flops: float, dev: DeviceSpec) -> float:
-        """Peak TFLOPS scaled by utilization."""
-        t = float(getattr(dev, "tflops", 0.0) or 0.0)
+    def effective_tflops(self, flops: float, dev: DeviceSpec, peak_kind: Optional[str] = None) -> float:
+        """Selected peak TFLOPS scaled by utilization.
+
+        peak_kind=None preserves the legacy behavior and uses dev.tflops.
+        peak_kind='cube'/'vec' uses optional fast-mode hardware peaks and falls
+        back to dev.tflops when the selected peak is absent.
+        """
+        t = float(self._device_peak_tflops(dev, peak_kind=peak_kind))
         if t <= 0.0:
             # For CPU, keep the previous behavior: do not treat missing tflops as "free".
             if str(getattr(dev, 'type', '') or '').lower() == 'cpu':
@@ -352,9 +518,9 @@ class CostModelComputeMixin:
         util = float(self._compute_utilization(float(flops or 0.0), dev))
         return float(t * max(util, 1e-6))
 
-    def flop_time(self, flops: float, dev: DeviceSpec) -> float:
-        """Compute-bound time lower-bound (seconds) using peak*util throughput."""
-        eff = float(self.effective_tflops(float(flops or 0.0), dev))
+    def flop_time(self, flops: float, dev: DeviceSpec, peak_kind: Optional[str] = None) -> float:
+        """Compute-bound time lower-bound (seconds) using selected peak*util throughput."""
+        eff = float(self.effective_tflops(float(flops or 0.0), dev, peak_kind=peak_kind))
         if eff <= 0.0:
             return float("inf")
         return float(flops) / (eff * 1e12)
