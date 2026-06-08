@@ -1,24 +1,21 @@
 #!/usr/bin/env python3
-"""Plot BurstGPT serving results as p50/p90 three-panel bar charts.
-
-python plot_exp4_serving_burstgpt.py \
-  /path/to/burstgpt_serving_summary.json \
-  --out_dir /path/to/output_dir \
-  --title "BurstGPT trace replay on Llama-7B / HP32"
+"""
+python ./experiment/experiment_fig/plot_exp4_serving_burstgpt.py \
+    /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/output/burstgpt_eval/qwen_1.8b_fp16_b1_s1/burstgpt_serving/burstgpt_serving_summary.json \
+    --out_dir ./figs/supp_exp/exp4_request \
+    --bar_width 0.05
 """
 from __future__ import annotations
 
 import argparse
 import json
 from pathlib import Path
-from typing import Dict, Iterable, List
+from typing import Dict, List
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-# User-specified colors. The experiment has six policies; the sixth color is a
-# matching pastel tone for Bifocal.
 POLICY_COLORS: Dict[str, str] = {
     "PD": "#b8add9",
     "AF": "#d8b6bd",
@@ -103,68 +100,153 @@ def _safe_speedup(pd_value: float, value: float) -> float:
     return float(pd_value) / float(value)
 
 
-def plot_one_percentile(df: pd.DataFrame, percentile: str, out_path: Path, title: str, log_scale: bool = True) -> None:
-    """Draw one PDF with three panels: TTFT, TBT, E2E."""
+def _draw_panel(
+    ax,
+    df: pd.DataFrame,
+    metric_name: str,
+    col: str,
+    ylabel: str,
+    scale: float,
+    row_label: str,
+    show_xticklabels: bool,
+    bar_width: float,
+    label_fontsize: float,
+    speedup_fontsize: float,
+) -> None:
     policies = df["policy"].tolist()
-    x = np.arange(len(policies))
-    fig, axes = plt.subplots(1, 3, figsize=(12.2, 3.6), constrained_layout=True)
+    # Center spacing == bar width => adjacent bars touch with no horizontal gap.
+    x = np.arange(len(policies), dtype=float) * bar_width
+    values = df[col].to_numpy(dtype=float) * scale
+    pd_raw = float(df.loc[df["policy"] == "PD", col].iloc[0]) if (df["policy"] == "PD").any() else float(df[col].iloc[0])
+    colors = [POLICY_COLORS.get(p, "#cccccc") for p in policies]
 
-    for ax, (metric_name, col, ylabel, scale) in zip(axes, _metric_config(percentile)):
-        values = df[col].to_numpy(dtype=float) * scale
-        pd_raw = float(df.loc[df["policy"] == "PD", col].iloc[0]) if (df["policy"] == "PD").any() else float(values[0] / scale)
-        colors = [POLICY_COLORS.get(p, "#cccccc") for p in policies]
-        bars = ax.bar(x, values, width=0.68, color=colors, edgecolor="black", linewidth=0.7)
+    bars = ax.bar(
+        x,
+        values,
+        width=bar_width,
+        color=colors,
+        edgecolor="black",
+        linewidth=0.45,
+    )
 
-        if log_scale:
-            positive = values[np.isfinite(values) & (values > 0)]
-            if len(positive) > 0:
-                ax.set_yscale("linear")
-                ax.set_ylim(0, ymax * 1.20)
-        else:
-            ymax = float(np.nanmax(values)) if len(values) else 1.0
-            ax.set_ylim(0, ymax * 1.22)
+    ymax = float(np.nanmax(values)) if len(values) and np.isfinite(np.nanmax(values)) else 1.0
+    if ymax <= 0:
+        ymax = 1.0
+    ax.set_ylim(0, ymax * 1.18)
 
-        for i, (bar, policy) in enumerate(zip(bars, policies)):
-            value_raw = float(df.loc[i, col])
-            speed = _safe_speedup(pd_raw, value_raw)
-            if np.isfinite(speed):
-                label = f"{speed:.2f}x"
-            else:
-                label = "-"
-            y = bar.get_height()
-            if log_scale:
-                y_text = y * 1.12
-            else:
-                y_text = y + 0.03 * max(values)
-            ax.text(
-                bar.get_x() + bar.get_width() / 2,
-                y_text,
-                label,
-                ha="center",
-                va="bottom",
-                fontsize=8,
-                color="black",
-                rotation=0,
-            )
+    # Tight frame on left/right: frame hugs the first and last bars.
+    ax.set_xlim(x[0] - bar_width / 2, x[-1] + bar_width / 2)
+    ax.margins(x=0)
 
-        ax.set_title(metric_name, fontsize=12)
-        ax.set_ylabel(ylabel + (", log scale" if log_scale else ""), fontsize=10)
-        ax.set_xticks(x)
-        ax.set_xticklabels(policies, rotation=28, ha="right", fontsize=9)
-        ax.grid(axis="y", which="both", linestyle="--", linewidth=0.45, alpha=0.55)
+    for i, bar in enumerate(bars):
+        value_raw = float(df.loc[i, col])
+        speed = _safe_speedup(pd_raw, value_raw)
+        label = f"{speed:.2f}x" if np.isfinite(speed) else "-"
+        y = bar.get_height()
+        y_text = y + 0.02 * ymax
         ax.text(
-            0.02, 0.98,
-            "Numbers: speedup over PD",
-            transform=ax.transAxes,
-            va="top",
-            ha="left",
-            fontsize=8,
-            bbox=dict(facecolor="white", edgecolor="none", alpha=0.75, pad=2.0),
+            bar.get_x() + bar.get_width() / 2,
+            y_text,
+            label,
+            ha="center",
+            va="bottom",
+            fontsize=speedup_fontsize,
+            rotation=90,
+            color="black",
+            clip_on=False,
         )
 
-    handles = [plt.Rectangle((0, 0), 1, 1, facecolor=POLICY_COLORS[p], edgecolor="black") for p in policies]
-    fig.legend(handles, policies, loc="upper center", ncol=min(len(policies), 6), frameon=False, bbox_to_anchor=(0.5, 1.05))
-    fig.suptitle(title, fontsize=13)
+    ax.set_title(metric_name, fontsize=16)
+    ax.set_ylabel(ylabel, fontsize=16)
+    ax.set_xticks(x)
+    if show_xticklabels:
+        ax.set_xticklabels(policies, rotation=90, ha="center", fontsize=label_fontsize)
+    else:
+        ax.set_xticklabels([])
+
+    ax.grid(axis="y", linestyle="--", linewidth=0.45, alpha=0.55)
+    ax.tick_params(axis="y", labelsize=13)
+    ax.tick_params(axis="x", pad=3)
+
+    # Keep the full frame visible.
+    for spine in ax.spines.values():
+        spine.set_visible(True)
+        spine.set_linewidth(0.8)
+
+    if row_label:
+        ax.text(
+            -0.11,
+            0.5,
+            row_label,
+            transform=ax.transAxes,
+            rotation=90,
+            va="center",
+            ha="center",
+            fontsize=16,
+            fontweight="bold",
+        )
+
+
+def plot_combined(
+    df: pd.DataFrame,
+    out_path: Path,
+    title: str,
+    bar_width: float = 0.28,
+    label_fontsize: float = 16,
+    speedup_fontsize: float = 16,
+) -> None:
+    fig, axes = plt.subplots(2, 3, figsize=(12.5, 6.9), constrained_layout=False)
+
+    for j, (metric_name, col, ylabel, scale) in enumerate(_metric_config("p50")):
+        _draw_panel(
+            axes[0, j],
+            df,
+            metric_name,
+            col,
+            ylabel,
+            scale,
+            row_label="p50" if j == 0 else "",
+            show_xticklabels=False,
+            bar_width=bar_width,
+            label_fontsize=label_fontsize,
+            speedup_fontsize=speedup_fontsize,
+        )
+
+    for j, (metric_name, col, ylabel, scale) in enumerate(_metric_config("p90")):
+        _draw_panel(
+            axes[1, j],
+            df,
+            metric_name,
+            col,
+            ylabel,
+            scale,
+            row_label="p90" if j == 0 else "",
+            show_xticklabels=True,
+            bar_width=bar_width,
+            label_fontsize=label_fontsize,
+            speedup_fontsize=speedup_fontsize,
+        )
+
+    handles = [
+        plt.Rectangle((0, 0), 1, 1, facecolor=POLICY_COLORS[p], edgecolor="black")
+        for p in df["policy"].tolist()
+    ]
+
+    # Reserve explicit vertical space to avoid title/legend overlap.
+    fig.subplots_adjust(left=0.08, right=0.985, bottom=0.13, top=0.88, wspace=0.22, hspace=0.14)
+    fig.legend(
+        handles,
+        df["policy"].tolist(),
+        loc="upper center",
+        ncol=min(len(df), 6),
+        frameon=False,
+        bbox_to_anchor=(0.5, 0.99),
+        fontsize=16,
+        handlelength=1.6,
+        columnspacing=1.6,
+    )
+    # fig.suptitle(title, fontsize=18, y=0.94)
+
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, format="pdf", bbox_inches="tight")
     plt.close(fig)
@@ -174,28 +256,24 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("input", help="Path to burstgpt_serving_summary.json, its directory, or a summary CSV")
     parser.add_argument("--out_dir", default=".", help="Output directory")
-    parser.add_argument("--title", help="Figure title prefix")
-    parser.add_argument("--linear", action="store_true", help="Use linear y-axis instead of log scale")
+    parser.add_argument("--title", default="BurstGPT Serving", help="Figure title")
+    parser.add_argument("--bar_width", type=float, default=0.28, help="Bar width; center spacing is the same value")
+    parser.add_argument("--label_fontsize", type=float, default=16, help="Font size for x tick labels")
+    parser.add_argument("--speedup_fontsize", type=float, default=16, help="Font size for speedup annotations")
     args = parser.parse_args()
 
     df = load_results(Path(args.input))
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    df.to_csv(out_dir / "burstgpt_result_table_policycolor_3panel.csv", index=False)
+    df.to_csv(out_dir / "burstgpt_result_table_policycolor_2x3.csv", index=False)
 
-    plot_one_percentile(
+    plot_combined(
         df,
-        "p50",
-        out_dir / "fig_burstgpt_serving_p50_3panel.pdf",
-        f"{args.title} - p50",
-        log_scale=not args.linear,
-    )
-    plot_one_percentile(
-        df,
-        "p90",
-        out_dir / "fig_burstgpt_serving_p90_3panel.pdf",
-        f"{args.title} - p90",
-        log_scale=not args.linear,
+        out_dir / "exp4_1.pdf",
+        args.title,
+        bar_width=args.bar_width,
+        label_fontsize=args.label_fontsize,
+        speedup_fontsize=args.speedup_fontsize,
     )
 
 

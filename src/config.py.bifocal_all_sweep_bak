@@ -167,6 +167,11 @@ def setup_logging(debug: bool, log_file: str = "./output/debug_log.txt"):
 # =========================
 SCHED_DEFAULT: str = "HEFT"  
 
+SCHED_BIFOCAL_READY_SCORE_ENABLE: bool = True
+SCHED_BIFOCAL_LOOKAHEAD_ENABLE: bool = True
+SCHED_BIFOCAL_PHASE_REUSE_ENABLE: bool = True
+SCHED_BIFOCAL_TOKEN_AMORT_ENABLE: bool = True
+
 # JointGraphScheduler rolling-window lookahead (receding horizon)
 # Used by JointGraphScheduler.schedule_joint() to reduce multi-hop communication thrashing
 # in large unrolled decode graphs.
@@ -181,8 +186,6 @@ SCHED_WEIGHT_BIAS_ETA: float = 0.1
 SCHED_DECODE_AMORT_ENABLE = True
 SCHED_DECODE_AMORT_ALPHA = 1
 SCHED_DECODE_AMORT_RMIN = 1
-# Optional reuse probability multiplier (useful later for MoE / gated subgraphs).
-# For dense decode, keep 1.0.
 SCHED_DECODE_AMORT_REUSE_PROB = 1.0
 # -------------------------------------------------------------------------------------------------
 # Peak compute utilization model 

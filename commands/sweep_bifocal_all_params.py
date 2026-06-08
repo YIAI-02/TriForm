@@ -15,18 +15,18 @@ Example:
 python3 commands/sweep_bifocal_all_params.py \
   --mode grid \
   --config-py ./config.py \
-  --h 2 3 4 \
-  --gamma 0 0.2 0.4 \
-  --lambda 0 3 5 \
+  --h 1 2 3 4 \
+  --gamma 0 0.1 0.2 0.4 0.6 \
+  --lambda 0 0.5 1 2 4 \
   --plan_hint_max 3 \
-  --eta 0.0 0.1 1 \
+  --eta 0.0 0.05 0.1 0.2 0.5 1.0 \
   --amort_enable true \
   --objective total \
   --outdir ./output/sweep_bifocal_all \
   --amort-enable true \
-  --amort-alpha 1 \
-  --amort-rmin 1.0 \
-  --amort-reuse-prob 0.5 1.0 \
+  --amort-alpha 0 0.5 1 2 \
+  --amort-rmin 1 4 8 \
+  --amort-reuse-prob 0.25 0.5 0.75 1.0 \
   --resume \
   --config ./src/examples/evaluate_test_config.json
 
@@ -427,15 +427,15 @@ def make_parser() -> argparse.ArgumentParser:
     ap.add_argument("--objective", choices=["total", "decode", "prefill"], default="total")
 
     # Explicit discrete candidate lists for all Bifocal-related knobs.
-    ap.add_argument("--h", type=int, nargs="*", default=[2, 3, 4], help="candidate SCHED_JOINT_LK_H values")
-    ap.add_argument("--gamma", type=float, nargs="*", default=[0.2, 0.4, 0.6, 0.8], help="candidate SCHED_JOINT_LK_GAMMA values")
-    ap.add_argument("--lambda", "--lambda_", dest="lambda_", type=float, nargs="*", default=[0.0, 1.0, 2.0, 4.0], help="candidate SCHED_JOINT_LK_CONSIST_LAMBDA values")
-    ap.add_argument("--plan-hint-max", "--plan_hint_max", dest="plan_hint_max", type=int, nargs="*", default=[1, 3, 5], help="candidate SCHED_JOINT_LK_PLAN_HINT_MAX values")
-    ap.add_argument("--eta", type=float, nargs="*", default=[1.0, 5.0, 10.0], help="candidate SCHED_WEIGHT_BIAS_ETA values")
+    ap.add_argument("--h", type=int, nargs="*", default=[1, 2, 3, 4], help="candidate SCHED_JOINT_LK_H values; H=1 is the no-window control")
+    ap.add_argument("--gamma", type=float, nargs="*", default=[0.0, 0.1, 0.2, 0.4, 0.6], help="candidate SCHED_JOINT_LK_GAMMA values in [0,1]; gamma=0 disables the window term")
+    ap.add_argument("--lambda", "--lambda_", dest="lambda_", type=float, nargs="*", default=[0.0, 0.5, 1.0, 2.0, 4.0], help="candidate SCHED_JOINT_LK_CONSIST_LAMBDA values")
+    ap.add_argument("--plan-hint-max", "--plan_hint_max", dest="plan_hint_max", type=int, nargs="*", default=[0, 1, 3, 5], help="candidate SCHED_JOINT_LK_PLAN_HINT_MAX values; 0 disables plan-hint retention")
+    ap.add_argument("--eta", type=float, nargs="*", default=[0.0, 0.05, 0.1, 0.2, 0.5, 1.0], help="candidate SCHED_WEIGHT_BIAS_ETA values")
     ap.add_argument("--amort-enable", "--amort_enable", dest="amort_enable", type=_parse_bool_token, nargs="*", default=[True, False], help="candidate SCHED_DECODE_AMORT_ENABLE values")
-    ap.add_argument("--amort-alpha", "--amort_alpha", dest="amort_alpha", type=float, nargs="*", default=[2.0, 4.0, 6.0], help="candidate SCHED_DECODE_AMORT_ALPHA values")
-    ap.add_argument("--amort-rmin", "--amort_rmin", dest="amort_rmin", type=float, nargs="*", default=[0.5, 1.0, 2.0], help="candidate SCHED_DECODE_AMORT_RMIN values")
-    ap.add_argument("--amort-reuse-prob", "--amort_reuse_prob", dest="amort_reuse_prob", type=float, nargs="*", default=[0.5, 1.0], help="candidate SCHED_DECODE_AMORT_REUSE_PROB values")
+    ap.add_argument("--amort-alpha", "--amort_alpha", dest="amort_alpha", type=float, nargs="*", default=[0.0, 0.5, 1.0, 2.0], help="candidate SCHED_DECODE_AMORT_ALPHA values")
+    ap.add_argument("--amort-rmin", "--amort_rmin", dest="amort_rmin", type=float, nargs="*", default=[1.0, 4.0, 8.0], help="candidate SCHED_DECODE_AMORT_RMIN values")
+    ap.add_argument("--amort-reuse-prob", "--amort_reuse_prob", dest="amort_reuse_prob", type=float, nargs="*", default=[0.25, 0.5, 0.75, 1.0], help="candidate SCHED_DECODE_AMORT_REUSE_PROB values in [0,1]")
 
     ap.add_argument("--trials", type=int, default=256, help="random mode: number of sampled combinations")
     ap.add_argument("--seed", type=int, default=0, help="random mode seed")

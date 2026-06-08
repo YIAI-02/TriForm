@@ -167,21 +167,26 @@ def setup_logging(debug: bool, log_file: str = "./output/debug_log.txt"):
 # =========================
 SCHED_DEFAULT: str = "HEFT"  
 
+SCHED_BIFOCAL_READY_SCORE_ENABLE: bool = True
+SCHED_BIFOCAL_LOOKAHEAD_ENABLE: bool = True
+SCHED_BIFOCAL_PHASE_REUSE_ENABLE: bool = True
+SCHED_BIFOCAL_TOKEN_AMORT_ENABLE: bool = True
+
 # JointGraphScheduler rolling-window lookahead (receding horizon)
 # Used by JointGraphScheduler.schedule_joint() to reduce multi-hop communication thrashing
 # in large unrolled decode graphs.
 SCHED_JOINT_LK_ENABLE: bool = True
-SCHED_JOINT_LK_H: int = 3
-SCHED_JOINT_LK_GAMMA: float = 0.0
-SCHED_JOINT_LK_CONSIST_LAMBDA: float = 0
-SCHED_JOINT_LK_PLAN_HINT_MAX: int =  3
+SCHED_JOINT_LK_H: int = 2
+SCHED_JOINT_LK_GAMMA: float = 0
+SCHED_JOINT_LK_CONSIST_LAMBDA: float = 4
+SCHED_JOINT_LK_PLAN_HINT_MAX: int =  1
 # Weight-reuse bias gain multiplier (eta in bias formula)
-SCHED_WEIGHT_BIAS_ETA: float = 0.1
+SCHED_WEIGHT_BIAS_ETA: float = 1
 #AMORT
 SCHED_DECODE_AMORT_ENABLE = True
-SCHED_DECODE_AMORT_ALPHA = 1
-SCHED_DECODE_AMORT_RMIN = 1
-SCHED_DECODE_AMORT_REUSE_PROB = 1.0
+SCHED_DECODE_AMORT_ALPHA = 0
+SCHED_DECODE_AMORT_RMIN = 4
+SCHED_DECODE_AMORT_REUSE_PROB = 1
 # -------------------------------------------------------------------------------------------------
 # Peak compute utilization model 
 # -------------------------------------------------------------------------------------------------

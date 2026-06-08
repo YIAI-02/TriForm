@@ -4,7 +4,19 @@ set -Eeuo pipefail
 trap 'rc=$?; echo "[FATAL] rc=$rc line=$LINENO cmd=$BASH_COMMAND"; exit $rc' ERR
 
 DEFAULT_CSV="/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/data/realworld/BurstGPT_without_fails_1.csv"
-CSV_PATH="${1:-$DEFAULT_CSV}"
+CSV_PATH="${BURSTGPT_CSV:-$DEFAULT_CSV}"
+EXTRA_ARGS=()
+if [[ $# -gt 0 ]]; then
+  case "$1" in
+    *.csv|/*/*.csv|./*.csv|../*.csv)
+      CSV_PATH="$1"
+      shift
+      ;;
+  esac
+fi
+if [[ $# -gt 0 ]]; then
+  EXTRA_ARGS=("$@")
+fi
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -54,6 +66,7 @@ CMD=(
   python -u -X faulthandler main.py burstgpt-evaluate
   --config examples/burstgpt_eval_config.json
   --burstgpt_csv "$CSV_PATH"
+  "${EXTRA_ARGS[@]}"
 )
 
 echo "[INFO] Running command:"

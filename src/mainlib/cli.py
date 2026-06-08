@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+
 from .shared import *
 
 
@@ -24,6 +26,31 @@ _OUTPUT_PATH_KEYS = {
     'baseline_out',
     'serve_out',
 }
+
+
+def _parse_bool_token(token: Any) -> bool:
+    s = str(token).strip().lower()
+    if s in {'1', 'true', 't', 'yes', 'y', 'on', 'enable', 'enabled'}:
+        return True
+    if s in {'0', 'false', 'f', 'no', 'n', 'off', 'disable', 'disabled'}:
+        return False
+    raise argparse.ArgumentTypeError(f'invalid boolean token: {token!r}')
+
+
+def _add_bifocal_override_args(sp) -> None:
+    sp.add_argument('--decode_horizon_len', type=int, help='Planning horizon visible to Bifocal token-amortization; defaults to decode_len.')
+    sp.add_argument('--bifocal-ready-score-enable', '--bifocal_ready_score_enable', dest='bifocal_ready_score_enable', type=_parse_bool_token)
+    sp.add_argument('--bifocal-lookahead-enable', '--bifocal_lookahead_enable', dest='bifocal_lookahead_enable', type=_parse_bool_token)
+    sp.add_argument('--bifocal-phase-reuse-enable', '--bifocal_phase_reuse_enable', dest='bifocal_phase_reuse_enable', type=_parse_bool_token)
+    sp.add_argument('--bifocal-token-amort-enable', '--bifocal_token_amort_enable', dest='bifocal_token_amort_enable', type=_parse_bool_token)
+    sp.add_argument('--bifocal-h', '--bifocal_h', dest='bifocal_h', type=int, help='Override SCHED_JOINT_LK_H.')
+    sp.add_argument('--bifocal-gamma', '--bifocal_gamma', dest='bifocal_gamma', type=float, help='Override SCHED_JOINT_LK_GAMMA.')
+    sp.add_argument('--bifocal-lambda', '--bifocal_lambda', dest='bifocal_lambda', type=float, help='Override SCHED_JOINT_LK_CONSIST_LAMBDA.')
+    sp.add_argument('--bifocal-plan-hint-max', '--bifocal_plan_hint_max', dest='bifocal_plan_hint_max', type=int, help='Override SCHED_JOINT_LK_PLAN_HINT_MAX.')
+    sp.add_argument('--bifocal-eta', '--bifocal_eta', dest='bifocal_eta', type=float, help='Override SCHED_WEIGHT_BIAS_ETA.')
+    sp.add_argument('--bifocal-amort-alpha', '--bifocal_amort_alpha', dest='bifocal_amort_alpha', type=float, help='Override SCHED_DECODE_AMORT_ALPHA.')
+    sp.add_argument('--bifocal-amort-rmin', '--bifocal_amort_rmin', dest='bifocal_amort_rmin', type=float, help='Override SCHED_DECODE_AMORT_RMIN.')
+    sp.add_argument('--bifocal-amort-reuse-prob', '--bifocal_amort_reuse_prob', dest='bifocal_amort_reuse_prob', type=float, help='Override SCHED_DECODE_AMORT_REUSE_PROB.')
 
 
 def parse_args():
@@ -72,6 +99,7 @@ def parse_args():
     sp_eval.add_argument('--tp_qkv', type=int, help='Tensor-parallel shard size for Q/K/V generation and attention head sharding.')
     sp_eval.add_argument('--tp_ffn', type=int, help='Tensor-parallel shard size for FFN intermediate dimension.')
     sp_eval.add_argument('--tp_moe', type=int, help='Expert-parallel shard size for MoE experts / Mixtral routing.')
+    _add_bifocal_override_args(sp_eval)
 
     sp_ws = sub.add_parser('weight-suggest', help='Run multi-pass SA to suggest weight formats and fixed baseline experiments.')
     sp_ws.add_argument('--config', required=True, type=str, help='Path to a JSON config with run parameters.')
@@ -117,6 +145,7 @@ def parse_args():
     sp_ws.add_argument('--tp_qkv', type=int, help='Tensor-parallel shard size for Q/K/V generation and attention head sharding.')
     sp_ws.add_argument('--tp_ffn', type=int, help='Tensor-parallel shard size for FFN intermediate dimension.')
     sp_ws.add_argument('--tp_moe', type=int, help='Expert-parallel shard size for MoE experts / Mixtral routing.')
+    _add_bifocal_override_args(sp_ws)
     sp_ws.add_argument(
         '--format_outer_max_iters',
         type=int,
@@ -155,6 +184,7 @@ def parse_args():
     sp_burst.add_argument('--tp_qkv', type=int)
     sp_burst.add_argument('--tp_ffn', type=int)
     sp_burst.add_argument('--tp_moe', type=int)
+    _add_bifocal_override_args(sp_burst)
     sp_burst.add_argument('--decode_sample_stride', type=int)
     sp_burst.add_argument('--decode_plan_refresh_stride', type=int)
 
@@ -269,4 +299,55 @@ def _apply_runtime_config_overrides(cfg: Dict) -> Dict[str, Any]:
 
     _apply_ratio('pim_weight_load_overlap_ratio', 'PIM_WEIGHT_LOAD_OVERLAP_RATIO')
     _apply_ratio('weight_load_compute_overlap_ratio', 'WEIGHT_LOAD_COMPUTE_OVERLAP_RATIO')
+
+    bifocal_map = {
+        'bifocal_ready_score_enable': ('SCHED_BIFOCAL_READY_SCORE_ENABLE', bool),
+        'bifocal_lookahead_enable': ('SCHED_BIFOCAL_LOOKAHEAD_ENABLE', bool),
+        'bifocal_phase_reuse_enable': ('SCHED_BIFOCAL_PHASE_REUSE_ENABLE', bool),
+        'bifocal_token_amort_enable': ('SCHED_BIFOCAL_TOKEN_AMORT_ENABLE', bool),
+        'bifocal_h': ('SCHED_JOINT_LK_H', int),
+        'bifocal_gamma': ('SCHED_JOINT_LK_GAMMA', float),
+        'bifocal_lambda': ('SCHED_JOINT_LK_CONSIST_LAMBDA', float),
+        'bifocal_plan_hint_max': ('SCHED_JOINT_LK_PLAN_HINT_MAX', int),
+        'bifocal_eta': ('SCHED_WEIGHT_BIAS_ETA', float),
+        'bifocal_amort_alpha': ('SCHED_DECODE_AMORT_ALPHA', float),
+        'bifocal_amort_rmin': ('SCHED_DECODE_AMORT_RMIN', float),
+        'bifocal_amort_reuse_prob': ('SCHED_DECODE_AMORT_REUSE_PROB', float),
+    }
+
+    def _coerce_runtime_value(raw: Any, caster: Any) -> Any:
+        if caster is bool:
+            return bool(_parse_bool_token(raw))
+        return caster(raw)
+
+    modules = [_runtime_config]
+    for mod_name in ('scheduler.scheduler_common', 'scheduler.scheduler_bifocal'):
+        try:
+            mod = sys.modules.get(mod_name)
+            if mod is not None:
+                modules.append(mod)
+        except Exception:
+            pass
+
+    for cfg_key, (runtime_key, caster) in bifocal_map.items():
+        if cfg_key not in cfg or cfg.get(cfg_key) is None:
+            continue
+        val = _coerce_runtime_value(cfg.get(cfg_key), caster)
+        if runtime_key == 'SCHED_JOINT_LK_H' and int(val) < 1:
+            raise ValueError(f'{cfg_key} must be >= 1, got {val!r}')
+        if runtime_key in {'SCHED_JOINT_LK_GAMMA', 'SCHED_DECODE_AMORT_REUSE_PROB'}:
+            fval = float(val)
+            if not math.isfinite(fval) or fval < 0.0 or fval > 1.0:
+                raise ValueError(f'{cfg_key} must be within [0, 1], got {val!r}')
+        if runtime_key in {'SCHED_JOINT_LK_CONSIST_LAMBDA', 'SCHED_WEIGHT_BIAS_ETA', 'SCHED_DECODE_AMORT_ALPHA', 'SCHED_DECODE_AMORT_RMIN'}:
+            fval = float(val)
+            if not math.isfinite(fval) or fval < 0.0:
+                raise ValueError(f'{cfg_key} must be non-negative, got {val!r}')
+        for mod in modules:
+            try:
+                setattr(mod, runtime_key, val)
+            except Exception:
+                pass
+        applied[runtime_key] = val
+
     return applied

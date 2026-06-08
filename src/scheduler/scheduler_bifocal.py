@@ -128,6 +128,8 @@ class BifocalScheduler(HEFTScheduler):
     def _decode_amort_enabled(self, phase: str) -> bool:
         if str(phase or "").lower() != "decode":
             return False
+        if not bool(SCHED_BIFOCAL_TOKEN_AMORT_ENABLE):
+            return False
         if self._decode_cur_token_idx is None or self._decode_total_tokens is None:
             return False
         raw = self._decode_cfg_value(
@@ -758,6 +760,9 @@ class BifocalScheduler(HEFTScheduler):
         Return the bias added to the score (negative encourages, positive penalizes).
         """
 
+        if not bool(SCHED_BIFOCAL_PHASE_REUSE_ENABLE):
+            return 0.0
+
         node = g.nodes[nid]
         wid = self._node_weight_id(node)
         wsize = int(self._node_weight_size(node))
@@ -921,6 +926,8 @@ class BifocalScheduler(HEFTScheduler):
         """
         Record: weight_id -> last chosen device type.
         """
+        if not bool(SCHED_BIFOCAL_PHASE_REUSE_ENABLE):
+            return
         try:
             node = g.nodes[nid]
         except Exception:
@@ -957,13 +964,18 @@ class BifocalScheduler(HEFTScheduler):
         # Config knobs (match paper notations).
         H = int(SCHED_JOINT_LK_H)
         gamma = float(SCHED_JOINT_LK_GAMMA)
-        use_lookahead = bool(SCHED_JOINT_LK_ENABLE) and H > 1 and gamma > 0.0
+        use_lookahead = (
+            bool(SCHED_BIFOCAL_LOOKAHEAD_ENABLE)
+            and bool(SCHED_JOINT_LK_ENABLE)
+            and H > 1
+            and gamma > 0.0
+        )
 
         # Multi-device selection: when there are multiple executors, don't rely on rank ordering.
         # Instead, pick from the whole READY set by the lookahead chain score.
         exec_types = tuple(self._executor_device_types())
         num_exec = int(sum(len(self.cluster.devices_by_type(t)) for t in exec_types))
-        use_chain_select = bool(use_lookahead) and num_exec > 1
+        use_chain_select = bool(SCHED_BIFOCAL_READY_SCORE_ENABLE) and num_exec > 1
 
         def _candidates_for(nid: str, node: TaskNode) -> Tuple[List[DeviceSpec], bool]:
             """Return (device_candidates, is_kv_write)."""
