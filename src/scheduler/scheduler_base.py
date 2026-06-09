@@ -67,15 +67,35 @@ class SchedulerBaseCoreMixin:
                     weight_cache_capacity_bytes=weight_cap,
                 )
 
-        # non-PIM activation budget
+        kv_in_npu = bool(getattr(self.label, 'kv_in_npu', False))
+        kv_bytes_by_npu = getattr(self.label, 'kv_bytes_by_npu', None) if kv_in_npu else None
+        kv_total_on_npu = int(getattr(self.label, 'kv_total_bytes_on_npu', 0) or 0) if kv_in_npu else 0
+        npu_devs_for_reserve = [d for d in self.cluster.devices.values() if str(getattr(d, 'type', '')).lower() == 'npu']
+        npu_total_runtime = 0
+        try:
+            npu_total_runtime = sum(max(0, int(PIM_RUNTIME_LRU_THRESHOLD * int(float(getattr(d, 'mem_capacity_GB', 0.0) or 0.0) * 1024**3))) for d in npu_devs_for_reserve)
+        except Exception:
+            npu_total_runtime = 0
+
         for name, d in self.cluster.devices.items():
             if d.type == 'pim':
                 continue
             phy = int(d.mem_capacity_GB * 1024**3)
             cap = max(0, int(PIM_RUNTIME_LRU_THRESHOLD * phy))
             self._runtime_cap[name] = cap
+            kv_reserve = 0
+            if kv_in_npu and str(getattr(d, 'type', '')).lower() == 'npu':
+                if isinstance(kv_bytes_by_npu, Mapping) and kv_bytes_by_npu:
+                    try:
+                        kv_reserve = max(0, int(kv_bytes_by_npu.get(name, kv_bytes_by_npu.get(str(name), 0)) or 0))
+                    except Exception:
+                        kv_reserve = 0
+                elif kv_total_on_npu > 0 and npu_total_runtime > 0:
+                    kv_reserve = int(kv_total_on_npu * (float(cap) / float(npu_total_runtime)))
+                kv_reserve = min(int(kv_reserve), int(cap))
+            weight_cap = max(0, int(cap - kv_reserve))
             self.buffer.register_runtime_device(
-                str(name),phy_bytes=int(phy),runtime_limit_bytes=int(cap),weight_cache_capacity_bytes=int(cap),
+                str(name),phy_bytes=int(phy),runtime_limit_bytes=int(cap),weight_cache_capacity_bytes=int(weight_cap),
             )
 
         #node schedule
@@ -497,14 +517,18 @@ class SchedulerBaseHelperMixin:
         return 'host'
 
     def _kv_npu_device(self, label: Optional[PlanLabel] = None) -> Optional[DeviceSpec]:
-        """Return the designated KV-storage NPU device (single-device KV), or None."""
+        """Return the legacy designated KV-storage NPU device, or None.
+
+        Multi-NPU KV placement is handled by _kv_npu_for_node(); this method is
+        only a fallback for old single-device labels or nodes without shard attrs.
+        """
         lb = label if label is not None else getattr(self, 'label', None)
         if lb is None:
             return None
         if self._kv_place(lb) != 'npu':
             return None
 
-        # Prefer explicit pinned device name
+        # Prefer explicit pinned device name.
         try:
             name = getattr(lb, 'kv_npu_device', None)
         except Exception:
@@ -513,7 +537,35 @@ class SchedulerBaseHelperMixin:
             dev = self.cluster.devices.get(str(name))
             if dev is not None and str(getattr(dev, 'type', '')).lower() == 'npu':
                 return dev
-        # Fallback: if not specified, choose the first available NPU
+
+        # A multi-NPU label intentionally has no default center device.  Exact
+        # placement must come from kv_*_to_npu shard maps; callers should treat
+        # None as "no single owner" rather than silently pinning to NPU0.
+        try:
+            active = [str(x) for x in (getattr(lb, 'kv_npu_devices', []) or []) if str(x)]
+            if len(active) > 1:
+                return None
+            if len(active) == 1:
+                dev = self.cluster.devices.get(str(active[0]))
+                if dev is not None and str(getattr(dev, 'type', '')).lower() == 'npu':
+                    return dev
+        except Exception:
+            pass
+
+        try:
+            by_npu = getattr(lb, 'kv_bytes_by_npu', None)
+            if isinstance(by_npu, Mapping) and by_npu:
+                active = [str(k) for k, v in by_npu.items() if int(v or 0) > 0]
+                if len(active) > 1:
+                    return None
+                if len(active) == 1:
+                    dev = self.cluster.devices.get(str(active[0]))
+                    if dev is not None and str(getattr(dev, 'type', '')).lower() == 'npu':
+                        return dev
+        except Exception:
+            pass
+
+        # Legacy fallback for old labels that did not carry shard metadata.
         try:
             npus = self.cluster.devices_by_type("npu") or []
             if npus:
@@ -522,6 +574,85 @@ class SchedulerBaseHelperMixin:
             pass
 
         return None
+
+    def _kv_npu_for_node(self, node: Any, label: Optional[PlanLabel] = None) -> Optional[DeviceSpec]:
+        """Return the peer NPU that owns this node's KV shard, if KV is on NPU."""
+
+        lb = label if label is not None else getattr(self, 'label', None)
+        if lb is None or self._kv_place(lb) != 'npu':
+            return None
+
+        try:
+            part_dim = str(getattr(lb, "kv_npu_partition_dim", "") or "").strip().lower()
+        except Exception:
+            part_dim = ""
+
+        seq_map = getattr(lb, "kv_seq_shard_to_npu", None)
+        if part_dim in ("seq", "sequence", "context", "kv_seq") or (isinstance(seq_map, Mapping) and seq_map):
+            shard_idx = self._node_kv_seq_shard(node)
+            if shard_idx is not None and isinstance(seq_map, Mapping) and seq_map:
+                npu_name = seq_map.get(int(shard_idx), seq_map.get(str(int(shard_idx))))
+                if npu_name is not None:
+                    dev = self.cluster.devices.get(str(npu_name))
+                    if dev is not None and str(getattr(dev, "type", "")).lower() == "npu":
+                        return dev
+            if part_dim in ("seq", "sequence", "context", "kv_seq"):
+                return None
+
+        layer_map = getattr(lb, "kv_layer_to_npu", None)
+        if part_dim == "layer" or (isinstance(layer_map, Mapping) and layer_map):
+            try:
+                attrs = getattr(node, "attrs", {}) or {}
+            except Exception:
+                attrs = {}
+            layer_idx = None
+            if isinstance(attrs, Mapping):
+                for key in ("layer", "layer_idx", "layer_id"):
+                    if key in attrs and attrs.get(key) is not None:
+                        try:
+                            layer_idx = int(attrs.get(key))
+                            break
+                        except Exception:
+                            pass
+            if layer_idx is None:
+                try:
+                    m = re.match(r"^L(\d+)_", str(getattr(node, "id", "") or getattr(node, "name", "") or ""))
+                    if m:
+                        layer_idx = int(m.group(1))
+                except Exception:
+                    layer_idx = None
+            if layer_idx is not None and isinstance(layer_map, Mapping) and layer_map:
+                npu_name = layer_map.get(int(layer_idx), layer_map.get(str(int(layer_idx))))
+                if npu_name is not None:
+                    dev = self.cluster.devices.get(str(npu_name))
+                    if dev is not None and str(getattr(dev, "type", "")).lower() == "npu":
+                        return dev
+
+        head_map = getattr(lb, "kv_head_to_npu", None)
+        if isinstance(head_map, Mapping) and head_map:
+            r = self._node_kv_head_range(node)
+            if r is not None:
+                hs, he = int(r[0]), int(r[1])
+                if hs < he:
+                    npu_name = head_map.get(hs, head_map.get(str(hs)))
+                    if npu_name is not None:
+                        for h in range(hs, he):
+                            if head_map.get(h, head_map.get(str(h))) != npu_name:
+                                return None
+                        dev = self.cluster.devices.get(str(npu_name))
+                        if dev is not None and str(getattr(dev, "type", "")).lower() == "npu":
+                            return dev
+
+            try:
+                uniq = {str(v) for v in head_map.values() if v is not None}
+            except Exception:
+                uniq = set()
+            if len(uniq) == 1:
+                dev = self.cluster.devices.get(next(iter(uniq)))
+                if dev is not None and str(getattr(dev, "type", "")).lower() == "npu":
+                    return dev
+
+        return self._kv_npu_device(lb)
 
     def _kv_pim_for_node(self, node: Any) -> Optional[DeviceSpec]:
 
@@ -635,7 +766,7 @@ class SchedulerBaseHelperMixin:
             return self._kv_pim_for_node(node)
 
         if kv_place == 'npu':
-            return self._kv_npu_device(self.label)
+            return self._kv_npu_for_node(node, self.label)
         return self.cost.get_host_device()
 
     def _node_allowed_on(self, node: TaskNode, dev: DeviceSpec) -> bool:
@@ -666,7 +797,7 @@ class SchedulerBaseHelperMixin:
             if kv_place == "npu":
                 if dev_type != "npu":
                     return False
-                tgt = self._kv_npu_device(self.label)
+                tgt = self._kv_npu_for_node(node, self.label)
                 if tgt is None:
                     return False
                 return dev_name == str(getattr(tgt, "name", ""))
@@ -696,6 +827,15 @@ class SchedulerBaseHelperMixin:
                 if mapped is None:
                     return False
                 return dev_type == "pim" and dev_name == str(getattr(mapped, "name", ""))
+
+        if kv_place == 'npu':
+            kv_local_ops = {"K", "V", "QK", "SOFTMAX", "SV"}
+            if name_up in kv_local_ops:
+                mapped = self._kv_npu_for_node(node, self.label)
+                if mapped is None:
+                    # No explicit shard map on this node; allow any NPU peer.
+                    return dev_type == "npu"
+                return dev_type == "npu" and dev_name == str(getattr(mapped, "name", ""))
 
         # ---- 3) operator-level allow-list ----
         allowed = getattr(node, "allowed", None)
@@ -1137,7 +1277,7 @@ class SchedulerBaseTimingMixin:
                 return float(start), float(finish)
 
             if kv_place == 'npu':
-                target_npu = self._kv_npu_device(label)
+                target_npu = self._kv_npu_for_node(node, label)
                 if target_npu is None:
                     # No NPU exists (or label inconsistent) -> fall back to host.
                     kv_place = 'host'
@@ -1324,7 +1464,7 @@ class SchedulerBaseTimingMixin:
 
                 # KV fixed on an NPU (kv_place='npu'): load KV from that NPU.
                 if kv_place == 'npu':
-                    src_npu = self._kv_npu_device(label)
+                    src_npu = self._kv_npu_for_node(node, label)
                     if src_npu is None:
                         kv_place = 'host'
                     else:

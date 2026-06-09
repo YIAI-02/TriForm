@@ -292,11 +292,13 @@ def _compute_kv_plan_info(
     pim_bytes_by_name = {d.name: int(d.mem_capacity_GB * (1024**3)) for d in pim_rr}
     pim_bytes_total = int(sum(pim_bytes_by_name.values()))
 
-    # NPU: choose the single best device for KV (largest capacity).
+    npu_rr = sorted(npu_devs, key=lambda d: str(d.name))
+    npu_bytes_by_name = {d.name: int(float(getattr(d, 'mem_capacity_GB', 0.0) or 0.0) * (1024**3)) for d in npu_rr}
+    npu_bytes_total = int(sum(npu_bytes_by_name.values()))
     best_npu = None
     best_npu_cap = 0
-    for d in npu_devs:
-        cap = int(float(getattr(d, 'mem_capacity_GB', 0.0) or 0.0) * (1024**3))
+    for d in npu_rr:
+        cap = int(npu_bytes_by_name.get(d.name, 0) or 0)
         if cap > best_npu_cap:
             best_npu_cap = cap
             best_npu = d
@@ -311,6 +313,15 @@ def _compute_kv_plan_info(
     kv_seq_shards_by_pim: Dict[str, List[int]] = {d.name: [] for d in pim_rr}
     kv_bytes_by_pim: Dict[str, int] = {d.name: 0 for d in pim_rr}
     kv_partition_dim = 'kv_head'
+
+    kv_head_to_npu: Dict[int, str] = {}
+    kv_heads_by_npu: Dict[str, List[int]] = {d.name: [] for d in npu_rr}
+    kv_layer_to_npu: Dict[int, str] = {}
+    kv_layers_by_npu: Dict[str, List[int]] = {d.name: [] for d in npu_rr}
+    kv_seq_shard_to_npu: Dict[int, str] = {}
+    kv_seq_shards_by_npu: Dict[str, List[int]] = {d.name: [] for d in npu_rr}
+    kv_bytes_by_npu: Dict[str, int] = {d.name: 0 for d in npu_rr}
+    kv_npu_partition_dim = 'kv_head'
 
     tp_qkv_eff = int(_effective_tp_qkv(cfg))
     kv_heads_total = int(n_kv_heads)
@@ -390,6 +401,60 @@ def _compute_kv_plan_info(
             hcnt = len(kv_heads_by_pim.get(str(dev.name), []) or [])
             kv_bytes_by_pim[str(dev.name)] = int(math.ceil(float(hcnt) * bytes_per_head_all_layers))
 
+    if npu_rr and is_dsv4:
+        requested_dim_npu = _requested_kv_partition_dim(cfg, is_dsv4=True, pim_count=max(1, len(npu_rr)))
+        if requested_dim_npu == 'seq':
+            kv_npu_partition_dim = 'seq'
+            seq_shards = max(1, int(_requested_kv_seq_shards(cfg, pim_count=max(1, len(npu_rr)))))
+            per_shard_base = int(KV_total_bytes) // int(seq_shards)
+            per_shard_rem = int(KV_total_bytes) % int(seq_shards)
+            for si in range(int(seq_shards)):
+                dev = npu_rr[int(si) % len(npu_rr)]
+                kv_seq_shard_to_npu[int(si)] = str(dev.name)
+                kv_seq_shards_by_npu[str(dev.name)].append(int(si))
+                shard_bytes = int(per_shard_base + (1 if si < per_shard_rem else 0))
+                kv_bytes_by_npu[str(dev.name)] = int(kv_bytes_by_npu.get(str(dev.name), 0) or 0) + int(shard_bytes)
+            if kv_heads_total > 0:
+                # Metadata only for shared-KV DSV4; runtime locality is by seq shard.
+                kv_head_to_npu[0] = str(npu_rr[0].name)
+                kv_heads_by_npu[str(npu_rr[0].name)].append(0)
+        else:
+            kv_npu_partition_dim = 'layer'
+            per_layer_bytes = _estimate_deepseek_v4_kv_bytes_by_layer(
+                cfg=cfg,
+                shape=shape,
+                kv_dtype_bytes=kv_dtype_bytes,
+            )
+            for l, layer_bytes in enumerate(per_layer_bytes):
+                dev = npu_rr[int(l) % len(npu_rr)]
+                kv_layer_to_npu[int(l)] = str(dev.name)
+                kv_layers_by_npu[str(dev.name)].append(int(l))
+                kv_bytes_by_npu[str(dev.name)] = int(kv_bytes_by_npu.get(str(dev.name), 0) or 0) + int(layer_bytes)
+            if kv_heads_total > 0:
+                kv_head_to_npu[0] = str(npu_rr[0].name)
+                kv_heads_by_npu[str(npu_rr[0].name)].append(0)
+
+    elif npu_rr:
+        nn = len(npu_rr)
+        base = len(head_shards) // nn
+        rem = len(head_shards) % nn
+        sh_idx = 0
+        for ni, dev in enumerate(npu_rr):
+            take = base + (1 if ni < rem else 0)
+            for _ in range(take):
+                if sh_idx >= len(head_shards):
+                    break
+                shard_heads = head_shards[sh_idx]
+                sh_idx += 1
+                for hid in shard_heads:
+                    kv_head_to_npu[int(hid)] = str(dev.name)
+                kv_heads_by_npu[str(dev.name)].extend(int(h) for h in shard_heads)
+
+        bytes_per_head_all_layers = float(KV_total_bytes) / float(max(1, kv_heads_total))
+        for dev in npu_rr:
+            hcnt = len(kv_heads_by_npu.get(str(dev.name), []) or [])
+            kv_bytes_by_npu[str(dev.name)] = int(math.ceil(float(hcnt) * bytes_per_head_all_layers))
+
     # Feasibility summaries (used when building specific labels).
     feasible_pim = False
     if pim_bytes_total > 0 and KV_total_bytes <= pim_bytes_total:
@@ -401,7 +466,15 @@ def _compute_kv_plan_info(
                 feasible_pim = False
                 break
 
-    feasible_npu = bool(best_npu is not None and int(best_npu_cap) > 0 and int(KV_total_bytes) <= int(best_npu_cap))
+    feasible_npu = False
+    if npu_bytes_total > 0 and KV_total_bytes <= npu_bytes_total:
+        feasible_npu = True
+        for d in npu_rr:
+            need = int(kv_bytes_by_npu.get(d.name, 0))
+            cap = int(npu_bytes_by_name.get(d.name, 0))
+            if need > cap:
+                feasible_npu = False
+                break
 
     return {
         'kv_total_bytes_all': int(KV_total_bytes),
@@ -412,6 +485,8 @@ def _compute_kv_plan_info(
         'tp_qkv_effective': int(tp_qkv_eff),
         'pim_total_capacity_bytes': int(pim_bytes_total),
         'pim_bytes_by_name': dict(pim_bytes_by_name),
+        'npu_total_capacity_bytes': int(npu_bytes_total),
+        'npu_bytes_by_name': dict(npu_bytes_by_name),
         'kv_head_to_pim': dict(kv_head_to_pim),
         'kv_heads_by_pim': dict(kv_heads_by_pim),
         'kv_layer_to_pim': dict(kv_layer_to_pim),
@@ -420,6 +495,14 @@ def _compute_kv_plan_info(
         'kv_seq_shards_by_pim': dict(kv_seq_shards_by_pim),
         'kv_partition_dim': str(kv_partition_dim),
         'kv_bytes_by_pim': dict(kv_bytes_by_pim),
+        'kv_head_to_npu': dict(kv_head_to_npu),
+        'kv_heads_by_npu': dict(kv_heads_by_npu),
+        'kv_layer_to_npu': dict(kv_layer_to_npu),
+        'kv_layers_by_npu': dict(kv_layers_by_npu),
+        'kv_seq_shard_to_npu': dict(kv_seq_shard_to_npu),
+        'kv_seq_shards_by_npu': dict(kv_seq_shards_by_npu),
+        'kv_npu_partition_dim': str(kv_npu_partition_dim),
+        'kv_bytes_by_npu': dict(kv_bytes_by_npu),
         'feasible_pim': bool(feasible_pim),
         'best_npu_name': best_npu_name,
         'best_npu_cap_bytes': int(best_npu_cap),
@@ -442,6 +525,13 @@ def _make_label_from_kv_plan(
     feasible_pim = bool(kv_plan.get('feasible_pim', False))
     feasible_npu = bool(kv_plan.get('feasible_npu', False))
     best_npu_name = kv_plan.get('best_npu_name', None)
+    kv_bytes_by_npu_plan = dict(kv_plan.get('kv_bytes_by_npu', {}) or {})
+    active_npu_names = sorted([str(k) for k, v in kv_bytes_by_npu_plan.items() if int(v or 0) > 0])
+    legacy_single_npu_name = None
+    if len(active_npu_names) == 1:
+        legacy_single_npu_name = active_npu_names[0]
+    elif not active_npu_names and best_npu_name:
+        legacy_single_npu_name = str(best_npu_name)
 
     # PIM preload/weight budget depends on whether KV is placed on PIM.
     if kv_place_req == 'pim':
@@ -488,7 +578,16 @@ def _make_label_from_kv_plan(
         kv_total_bytes=int(kv_bytes_in_pim),
         kv_place=str(kv_place_out),
         kv_in_npu=bool(kv_place_out == 'npu' and feasible_npu),
-        kv_npu_device=str(best_npu_name) if (kv_place_out == 'npu' and best_npu_name) else None,
+        kv_npu_device=(str(legacy_single_npu_name) if (kv_place_out == 'npu' and legacy_single_npu_name) else None),
+        kv_npu_devices=(list(active_npu_names) if kv_place_out == 'npu' else []),
+        kv_bytes_by_npu=(dict(kv_plan.get('kv_bytes_by_npu', {})) if (kv_place_out == 'npu' and feasible_npu) else {}),
+        kv_head_to_npu=(dict(kv_plan.get('kv_head_to_npu', {})) if (kv_place_out == 'npu' and feasible_npu) else {}),
+        kv_heads_by_npu=(dict(kv_plan.get('kv_heads_by_npu', {})) if (kv_place_out == 'npu' and feasible_npu) else {}),
+        kv_layer_to_npu=(dict(kv_plan.get('kv_layer_to_npu', {})) if (kv_place_out == 'npu' and feasible_npu) else {}),
+        kv_layers_by_npu=(dict(kv_plan.get('kv_layers_by_npu', {})) if (kv_place_out == 'npu' and feasible_npu) else {}),
+        kv_seq_shard_to_npu=(dict(kv_plan.get('kv_seq_shard_to_npu', {})) if (kv_place_out == 'npu' and feasible_npu) else {}),
+        kv_seq_shards_by_npu=(dict(kv_plan.get('kv_seq_shards_by_npu', {})) if (kv_place_out == 'npu' and feasible_npu) else {}),
+        kv_npu_partition_dim=(str(kv_plan.get('kv_npu_partition_dim', 'kv_head')) if (kv_place_out == 'npu' and feasible_npu) else 'kv_head'),
         kv_total_bytes_all=int(KV_total_bytes),
         kv_total_bytes_on_pim=int(kv_bytes_in_pim),
         kv_total_bytes_on_npu=int(KV_total_bytes) if kv_place_out == 'npu' else 0,

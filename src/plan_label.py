@@ -47,6 +47,15 @@ class PlanLabel:
     kv_in_npu: bool = False
 
     kv_npu_device: Optional[str] = None
+    kv_npu_devices: List[str] = field(default_factory=list)
+    kv_head_to_npu: Dict[int, str] = field(default_factory=dict)
+    kv_heads_by_npu: Dict[str, List[int]] = field(default_factory=dict)
+    kv_layer_to_npu: Dict[int, str] = field(default_factory=dict)
+    kv_layers_by_npu: Dict[str, List[int]] = field(default_factory=dict)
+    kv_seq_shard_to_npu: Dict[int, str] = field(default_factory=dict)
+    kv_seq_shards_by_npu: Dict[str, List[int]] = field(default_factory=dict)
+    kv_bytes_by_npu: Dict[str, int] = field(default_factory=dict)
+    kv_npu_partition_dim: str = "kv_head"
 
     kv_total_bytes_all: int = 0
     kv_total_bytes_on_pim: int = 0

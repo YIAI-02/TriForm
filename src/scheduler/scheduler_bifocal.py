@@ -635,53 +635,53 @@ class BifocalScheduler(HEFTScheduler):
         first_eft: float,
         phase: str,
     ) -> Tuple[float, Dict[str, str]]:
-        """Enumerate a small number of device-type patterns to estimate window completion."""
+
         if len(chain) <= 1:
             return float(first_eft), {}
 
-        rep_npu = self._rep_device_by_type("npu")
-        rep_pim = self._rep_device_by_type("pim")
+        exec_types = tuple(self._executor_device_types())
 
-        # Representative pool used for *future* nodes.
-        rep_by_type: Dict[str, Optional[DeviceSpec]] = {"npu": rep_npu, "pim": rep_pim}
-
-        # Collect per-node allowed type options for the (h-1) future nodes.
-        type_options: List[List[str]] = []
+        # Collect per-node concrete device options for the (h-1) future nodes.
+        device_options: List[List[DeviceSpec]] = []
         for nid in chain[1:]:
             node = g.nodes[nid]
-            opts: List[str] = []
-            for t in ("npu", "pim"):
-                rep = rep_by_type.get(t)
-                if rep is None:
-                    continue
+            opts: List[DeviceSpec] = []
+
+            if self._is_comm_node(node):
+                host = self.cost.get_host_device()
+                if host is not None:
+                    opts.append(host)
+            else:
+                for dev_type in exec_types:
+                    for dev in self.cluster.devices_by_type(dev_type):
+                        try:
+                            if self._node_allowed_on(node, dev):
+                                opts.append(dev)
+                        except Exception:
+                            # If allowed() check fails, be conservative and keep
+                            # the actual device as an option rather than falling
+                            # back to a representative device.
+                            opts.append(dev)
+
+            # Deduplicate by device name while preserving a deterministic order.
+            by_name: Dict[str, DeviceSpec] = {}
+            for dev in opts:
                 try:
-                    if self._node_allowed_on(node, rep):
-                        opts.append(t)
+                    by_name[str(dev.name)] = dev
                 except Exception:
-                    # If allowed() check fails, be conservative and allow.
-                    opts.append(t)
+                    continue
+            opts = [by_name[k] for k in sorted(by_name.keys(), key=lambda name: (float(self.avail.get(name, 0.0)), name))]
+
             if not opts:
-                # No representative device can run this node; fall back to no-lookahead.
+                # No concrete device can run this node; fall back to no-lookahead.
                 return float(first_eft), {}
-            type_options.append(opts)
+            device_options.append(opts)
 
         best_finish = float("inf")
         best_assign: Dict[str, str] = {}
 
-        # Enumerate a constant number of patterns (<= 2^(H-1)).
-        for types_combo in itertools.product(*type_options):
-            devs: List[DeviceSpec] = [first_dev]
-
-            valid = True
-            for t in types_combo:
-                rep = rep_by_type.get(t)
-                if rep is None:
-                    valid = False
-                    break
-                devs.append(rep)
-            if not valid:
-                continue
-
+        for dev_combo in itertools.product(*device_options):
+            devs: List[DeviceSpec] = [first_dev] + list(dev_combo)
             finish, assign = self._simulate_chain_finish(
                 g,
                 chain=chain,
