@@ -48,12 +48,24 @@ DEFAULT_HW = SRC_DIR / "examples" / "hardware_1npu_2aim.json"
 # Representative Section-6-style points: Fig. 7 uses HP32, Llama-7B b16 and
 # Qwen-1.8B b8, prefill in {128,1024}, decode in {128,512,1024}.
 DEFAULT_WORKLOADS = [
-    "llama:7b:fp16:16:128:128",
-    "llama:7b:fp16:16:128:512",
-    "llama:7b:fp16:16:128:1024",
-    "llama:7b:fp16:16:1024:128",
-    "llama:7b:fp16:16:1024:512",
-    "llama:7b:fp16:16:1024:1024",
+    "llama:7b:fp16:4:128:128",
+    "llama:7b:fp16:4:128:512",
+    "llama:7b:fp16:4:128:1024",
+    "llama:7b:fp16:4:1024:128",
+    "llama:7b:fp16:4:1024:512",
+    "llama:7b:fp16:4:1024:1024",
+    "qwen:1.8b:fp16:4:128:128",
+    "qwen:1.8b:fp16:4:128:512",
+    "qwen:1.8b:fp16:4:128:1024",
+    "qwen:1.8b:fp16:4:1024:128",
+    "qwen:1.8b:fp16:4:1024:512",
+    "qwen:1.8b:fp16:4:1024:1024",
+    "llama:7b:fp16:8:128:128",
+    "llama:7b:fp16:8:128:512",
+    "llama:7b:fp16:8:128:1024",
+    "llama:7b:fp16:8:1024:128",
+    "llama:7b:fp16:8:1024:512",
+    "llama:7b:fp16:8:1024:1024",
     "qwen:1.8b:fp16:8:128:128",
     "qwen:1.8b:fp16:8:128:512",
     "qwen:1.8b:fp16:8:128:1024",
@@ -735,8 +747,8 @@ def make_parser() -> argparse.ArgumentParser:
     ap.add_argument("--variants", nargs="*", help="Explicit variants. Choices: " + ", ".join(VARIANTS))
     ap.add_argument("--horizon-suite", default="oracle", help="Comma list: oracle,fixed,workload")
     ap.add_argument("--fixed-horizon", type=int, default=256, help="Non-oracle planning horizon for --horizon-suite fixed")
-    ap.add_argument("--decode-sample-stride", type=int, default=8)
-    ap.add_argument("--decode-plan-refresh-stride", type=int, default=8)
+    ap.add_argument("--decode-sample-stride", type=int, default=2)
+    ap.add_argument("--decode-plan-refresh-stride", type=int, default=2)
     ap.add_argument("--best-json", type=str, help="best_result.json produced by sweep_bifocal_all_params.py")
     ap.add_argument("--config-py", default=str(SRC_DIR / "config.py"), help="config.py used only for default hparams when --best-json/CLI does not set them")
     ap.add_argument("--h", type=int)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 python ./experiment/experiment_fig/plot_exp4_serving_burstgpt.py \
-    /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/output/burstgpt_eval/qwen_1.8b_fp16_b1_s1/burstgpt_serving/burstgpt_serving_summary.json \
+    /lustre/home/2501111916/workspace/DOPS_0606_rebuttal/TriForm/output/burstgpt_eval_backlog/llama_7b_fp16_b1_s1/burstgpt_serving/burstgpt_serving_summary.json \
     --out_dir ./figs/supp_exp/exp4_request \
     --bar_width 0.05
 """
@@ -265,11 +265,11 @@ def main() -> None:
     df = load_results(Path(args.input))
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    df.to_csv(out_dir / "burstgpt_result_table_policycolor_2x3.csv", index=False)
+    # df.to_csv(out_dir / "burstgpt_result_table_policycolor_2x3.csv", index=False)
 
     plot_combined(
         df,
-        out_dir / "exp4_1.pdf",
+        out_dir / "exp4_llama.pdf",
         args.title,
         bar_width=args.bar_width,
         label_fontsize=args.label_fontsize,

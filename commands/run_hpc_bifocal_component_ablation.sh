@@ -10,11 +10,6 @@
 
 set -eo pipefail
 
-# Slurm often executes a copied batch script from /var/spool/slurmd.
-# In that case BASH_SOURCE[0] no longer points to this repository, so
-# resolving PROJECT_ROOT from the script path is unsafe.  Prefer an
-# explicit PROJECT_ROOT, then SLURM_SUBMIT_DIR, and only fall back to
-# BASH_SOURCE for non-Slurm/local execution.
 if [[ -n "${PROJECT_ROOT:-}" ]]; then
   PROJECT_ROOT="$(cd "${PROJECT_ROOT}" && pwd)"
 elif [[ -n "${SLURM_SUBMIT_DIR:-}" && -f "${SLURM_SUBMIT_DIR}/commands/run_bifocal_component_ablation.py" ]]; then
@@ -35,7 +30,7 @@ fi
 
 cd "${PROJECT_ROOT}"
 echo "[bifocal-ablation] PROJECT_ROOT=${PROJECT_ROOT}"
-echo "[bifocal-ablation] OUTDIR=${OUTDIR:-${PROJECT_ROOT}/output/bifocal_component_ablation}"
+echo "[bifocal-ablation] OUTDIR=${OUTDIR:-${PROJECT_ROOT}/output/bifocal_component_ablation_llama7b_qwen1p8b_b4}"
 echo "[bifocal-ablation] SLURM_CPUS_PER_TASK=${SLURM_CPUS_PER_TASK:-<unset>}"
 
 source ~/.bashrc
@@ -52,7 +47,7 @@ BEST_JSON=${BEST_JSON:-}
 # Number of independent evaluate subprocesses to run concurrently.
 # 0 means the Python driver will choose a conservative value from SLURM_CPUS_PER_TASK
 # and cap it at 8. Increase PARALLEL_JOBS only after checking memory pressure.
-PARALLEL_JOBS=${PARALLEL_JOBS:-0}
+PARALLEL_JOBS=${PARALLEL_JOBS:-16}
 THREADS_PER_RUN=${THREADS_PER_RUN:-1}
 
 BEST_ARGS=()
