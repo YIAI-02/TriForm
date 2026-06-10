@@ -26,19 +26,6 @@
         "vector_tflops": 64.0
       },
       {
-        "name": "Ascend_950DT_NPU1",
-        "type": "npu",
-        "tflops": 1024.0,
-        "mem_bw_GBs": 4096.0,
-        "mem_capacity_GB": 144.0,
-        "llmcompass_device": "A100_80GB_fp16",
-        "cube_tflops_fp8": 1024.0,
-        "vec_tflops": 64.0,
-        "arch": "Huawei_950DT",
-        "cube_tflops": 1024.0,
-        "vector_tflops": 64.0
-      },
-      {
         "name": "PIM0",
         "type": "pim",
         "pim_type": "accel",

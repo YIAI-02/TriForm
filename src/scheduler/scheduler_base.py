@@ -1312,7 +1312,29 @@ class SchedulerBaseTimingMixin:
             ready_kv = self._ready_time_for_device(g, nid, dev, phase_eff, commit)
             conv_start = max(float(self.avail.get(dev.name, 0.0)), float(ready_kv))
             conv_cost = self.cost.format_conversion_time(size_nd, self.cost.device_preferred_fmt(dev), "ND", dev)
-            _, l2e = self.comm.reserve(dev.name, host.name, size_nd, earliest=conv_start + conv_cost, commit=commit, tag="kv_write")
+            _, l2e = self.comm.reserve(
+                dev.name,
+                host.name,
+                size_nd,
+                earliest=conv_start + conv_cost,
+                commit=commit,
+                tag="kv_write",
+                extra={
+                    'payload': 'kv_cache',
+                    'action': 'write',
+                    'route': 'host',
+                    'hop': 'producer_to_host',
+                    'node_id': str(nid),
+                    'op': str(getattr(node, 'name', '') or ''),
+                    'prod_node': str(nid),
+                    'producer_node_id': str(nid),
+                    'bytes_nd': int(out_write_nd),
+                    'src_fmt': str(self.cost.device_preferred_fmt(dev)),
+                    'wire_fmt': 'ND',
+                    'dst_fmt': 'ND',
+                    'kv_place': 'host',
+                },
+            )
             finish = float(l2e)
             logger.debug(
                 "[kv-write] node=%s dev=%s -> host start=%.4f finish=%.4f", nid, dev.name, conv_start, finish
@@ -1352,6 +1374,13 @@ class SchedulerBaseTimingMixin:
 
         #---------------------2.  If this node consumes cached KV (QK/SV), add KV load before compute
         kv_ready = float(ready)
+        # Local same-device KV reads are not independent device ops.  The QK/SV
+        # kernel cost already includes its local operand read as a memory lower
+        # bound, so charging an extra pre-op read on self.avail creates artificial
+        # bubbles between QK_seq* / SV_seq* siblings.  We still record them as
+        # local-memory timeline events in comm.csv for visibility, but they do not
+        # delay the consumer op.
+        pending_kv_local_reads: List[Dict[str, Any]] = []
         if node.name.upper() in ("QK", "SV"):
             kv_bytes = int(self.cost.estimate_kv_cache_read_bytes(node, batch, seq_len, phase_eff))
             if kv_bytes > 0:
@@ -1374,6 +1403,8 @@ class SchedulerBaseTimingMixin:
                         'action': 'load',
                         'node_id': kv_node_id,
                         'op': str(getattr(node, 'name', '') or ''),
+                        'cons_node': str(kv_node_id),
+                        'consumer_node_id': str(kv_node_id),
                         # QK consumes K-cache; SV consumes V-cache (for attention).
                         'kv_role': ('K' if str(getattr(node, 'name', '')).upper() == 'QK' else ('V' if str(getattr(node, 'name', '')).upper() == 'SV' else '')),
                         'kv_place': str(kv_place_used),
@@ -1417,15 +1448,30 @@ class SchedulerBaseTimingMixin:
                         ):
                             pass
                         else:
-                            # Read from src PIM memory (serialize by PIM availability)
+                            # Read from src PIM memory.  A cross-device KV fetch is a real
+                            # pre-transfer source read and serializes on the source device in this
+                            # coarse model.  A same-device fetch is folded into the consumer kernel
+                            # latency and must not reserve the compute stream.
                             rd_t = float(self.cost.activation_read_time_pim(int(kv_bytes)))
-                            rd_start = max(float(self.avail.get(src_pim.name, 0.0)), float(ready))
+                            same_kv_dev = (str(dev.name) == str(src_pim.name))
+                            rd_start = float(ready) if same_kv_dev else max(float(self.avail.get(src_pim.name, 0.0)), float(ready))
                             rd_end = rd_start + rd_t
-                            if commit:
+                            if commit and (not same_kv_dev):
                                 self.avail[src_pim.name] = rd_end
 
-                            if str(dev.name) == str(src_pim.name):
-                                kv_ready = max(kv_ready, rd_end)
+                            if same_kv_dev:
+                                # Same-device local KV read: the consumer kernel already accounts
+                                # for local memory traffic in node_device_cost().  Do not advance the
+                                # compute stream or kv_ready here; otherwise sequential QK/SV shards
+                                # get artificial gaps of one KV-read time each.  Keep a trace-only
+                                # local-memory event so ops.csv+comm.csv still explains the access.
+                                if rd_t > 0.0:
+                                    pending_kv_local_reads.append({
+                                        'dev_name': str(dev.name),
+                                        'bytes': int(size_nd),
+                                        'duration_s': float(rd_t),
+                                        'extra': _kv_extra(kv_place_used='pim', route='local', hop='local_mem'),
+                                    })
                             else:
                                 # Transfer KV to target device (prefer direct, otherwise via host)
                                 host = self.cost.get_host_device()
@@ -1468,17 +1514,32 @@ class SchedulerBaseTimingMixin:
                     if src_npu is None:
                         kv_place = 'host'
                     else:
-                        # Read from src NPU memory (serialize by NPU availability)
+                        # Read from src NPU memory.  Cross-device KV fetches need a
+                        # pre-transfer source read; same-device reads are part of the QK/SV
+                        # kernel's local memory traffic and should not serialize the compute lane.
                         rd_t = float(self.cost.mem_time(int(size_nd), src_npu))
-                        rd_start = max(float(self.avail.get(src_npu.name, 0.0)), float(ready))
+                        same_kv_dev = (str(dev.name) == str(src_npu.name))
+                        rd_start = float(ready) if same_kv_dev else max(float(self.avail.get(src_npu.name, 0.0)), float(ready))
                         rd_end = rd_start + rd_t
-                        if commit:
+                        if commit and (not same_kv_dev):
                             self.avail[src_npu.name] = rd_end
 
-                        if str(dev.name) == str(src_npu.name):
-                            # Local read; include optional ND->dev_fmt conversion.
+                        if same_kv_dev:
+                            # Same-device local KV read: QK/SV latency already includes the
+                            # K/V operand memory lower bound.  Avoid adding a separate pre-read
+                            # to the NPU compute stream, which used to create visible bubbles
+                            # between L*_QK_seq0/1/2/3 or L*_SV_seq0/1/2/3.  Only a format
+                            # conversion, if any, remains an explicit prerequisite.
                             conv_t = float(self.cost.format_conversion_time(int(size_nd), "ND", dev_fmt, dev))
-                            kv_ready = max(kv_ready, float(rd_end) + conv_t)
+                            if rd_t > 0.0:
+                                pending_kv_local_reads.append({
+                                    'dev_name': str(dev.name),
+                                    'bytes': int(size_nd),
+                                    'duration_s': float(rd_t),
+                                    'extra': _kv_extra(kv_place_used='npu', route='local', hop='local_mem'),
+                                })
+                            if conv_t > 0.0:
+                                kv_ready = max(kv_ready, float(ready) + conv_t)
                         else:
                             # Transfer KV to target device (prefer direct, otherwise via host)
                             host = self.cost.get_host_device()
@@ -1561,6 +1622,39 @@ class SchedulerBaseTimingMixin:
             finish = start + float(compute)
 
         if commit:
+            # Emit trace-only local KV-cache memory reads.  They are intentionally
+            # logged after `start`/`finish` are known and placed on a separate MEM
+            # lane; they do not reserve an FC link and do not alter device avail.
+            if pending_kv_local_reads and getattr(self, 'stats', None) is not None:
+                for _mem_ev in pending_kv_local_reads:
+                    try:
+                        _dev_name = str(_mem_ev.get('dev_name') or dev.name)
+                        _bytes = int(_mem_ev.get('bytes') or 0)
+                        _dt = max(0.0, float(_mem_ev.get('duration_s') or 0.0))
+                        _s = float(start)
+                        _e = min(float(finish), float(_s + _dt)) if float(finish) >= float(_s) else float(_s + _dt)
+                        _extra = dict(_mem_ev.get('extra') or {})
+                        _extra.update({
+                            'payload': 'kv_cache',
+                            'action': 'local_read',
+                            'route': 'local',
+                            'hop': 'local_mem',
+                            'memory_scope': 'local_device',
+                            'overlap': 'consumer_kernel',
+                            'track': f"MEM:{_dev_name}",
+                            'lane': f"MEM:{_dev_name}",
+                        })
+                        self.stats.log_comm(
+                            src=_dev_name,
+                            dst=_dev_name,
+                            bytes=_bytes,
+                            start=_s,
+                            end=_e,
+                            tag='kv_local_read',
+                            extra=_extra,
+                        )
+                    except Exception:
+                        pass
             self.avail[dev.name] = finish
             self._node_finish_time[nid] = finish
             self._node_placement[nid] = dev.name
@@ -1666,7 +1760,26 @@ class SchedulerBaseTimingMixin:
         else:
             # STAR fallback: reduce->host + broadcast scatter.
             host = self.cost.get_host_device()
-            red_end = float(reduce_to_host(comm=self.comm, cost=self.cost, cluster=self.cluster, participants=ring, tensor_bytes=int(tensor_bytes), start=float(start), commit=commit, tag='reduce', host_name=str(getattr(host, 'name', ''))))
+            red_end = float(reduce_to_host(
+                comm=self.comm,
+                cost=self.cost,
+                cluster=self.cluster,
+                participants=ring,
+                tensor_bytes=int(tensor_bytes),
+                start=float(start),
+                commit=commit,
+                tag='reduce',
+                extra_base={
+                    'payload': 'collective',
+                    'action': 'allreduce_reduce',
+                    'node_id': str(nid),
+                    'comm_node_id': str(nid),
+                    'consumer_node_id': str(nid),
+                    'op': str(getattr(node, 'name', '') or ''),
+                    'bytes_nd': int(tensor_bytes),
+                },
+                host_name=str(getattr(host, 'name', '')),
+            ))
             # host accumulation time (adds).
             try:
                 dtype_b = float(self.cost._act_dtype_bytes(node, phase_v))
@@ -1676,7 +1789,26 @@ class SchedulerBaseTimingMixin:
             flops = float(max(0, len(ring) - 1)) * float(elems)
             acc_t = float(self.cost.flop_time(flops, host))
             red_end2 = float(red_end + acc_t)
-            end = float(scatter_from_host(comm=self.comm, cost=self.cost, cluster=self.cluster, targets=ring, bytes_per_target=int(tensor_bytes), start=float(red_end2), commit=commit, tag='scatter', host_name=str(getattr(host, 'name', ''))))
+            end = float(scatter_from_host(
+                comm=self.comm,
+                cost=self.cost,
+                cluster=self.cluster,
+                targets=ring,
+                bytes_per_target=int(tensor_bytes),
+                start=float(red_end2),
+                commit=commit,
+                tag='scatter',
+                extra_base={
+                    'payload': 'collective',
+                    'action': 'allreduce_scatter',
+                    'node_id': str(nid),
+                    'comm_node_id': str(nid),
+                    'consumer_node_id': str(nid),
+                    'op': str(getattr(node, 'name', '') or ''),
+                    'bytes_nd': int(tensor_bytes),
+                },
+                host_name=str(getattr(host, 'name', '')),
+            ))
 
         if commit:
             canon = ring[0]
@@ -1735,7 +1867,26 @@ class SchedulerBaseTimingMixin:
                 self._collective_output_devs[nid] = {host_name}
             return (float(start), float(end))
 
-        red_end = float(reduce_to_host(comm=self.comm, cost=self.cost, cluster=self.cluster, participants=sources, tensor_bytes=int(tensor_bytes), start=float(start), commit=commit, tag='reduce', host_name=str(getattr(host, 'name', ''))))
+        red_end = float(reduce_to_host(
+            comm=self.comm,
+            cost=self.cost,
+            cluster=self.cluster,
+            participants=sources,
+            tensor_bytes=int(tensor_bytes),
+            start=float(start),
+            commit=commit,
+            tag='reduce',
+            extra_base={
+                'payload': 'collective',
+                'action': 'reduce',
+                'node_id': str(nid),
+                'comm_node_id': str(nid),
+                'consumer_node_id': str(nid),
+                'op': str(getattr(node, 'name', '') or ''),
+                'bytes_nd': int(tensor_bytes),
+            },
+            host_name=str(getattr(host, 'name', '')),
+        ))
         # Accumulation at host (adds).
         try:
             dtype_b = float(self.cost._act_dtype_bytes(node, phase_v))
@@ -1798,7 +1949,26 @@ class SchedulerBaseTimingMixin:
                 self._node_out_fmt[nid] = "ND"
                 self._collective_output_devs[nid] = {host_name}
             return (float(start), float(end))
-        end = float(gather_to_host(comm=self.comm, cost=self.cost, cluster=self.cluster, participants=sources, tensor_bytes=int(tensor_bytes), start=float(start), commit=commit, tag='gather', host_name=str(getattr(host, 'name', ''))))
+        end = float(gather_to_host(
+            comm=self.comm,
+            cost=self.cost,
+            cluster=self.cluster,
+            participants=sources,
+            tensor_bytes=int(tensor_bytes),
+            start=float(start),
+            commit=commit,
+            tag='gather',
+            extra_base={
+                'payload': 'collective',
+                'action': 'gather',
+                'node_id': str(nid),
+                'comm_node_id': str(nid),
+                'consumer_node_id': str(nid),
+                'op': str(getattr(node, 'name', '') or ''),
+                'bytes_nd': int(tensor_bytes),
+            },
+            host_name=str(getattr(host, 'name', '')),
+        ))
         if commit:
             self._node_finish_time[nid] = float(end)
             self._node_placement[nid] = host_name
@@ -1865,7 +2035,26 @@ class SchedulerBaseTimingMixin:
             per = int(math.ceil(float(tensor_bytes) / float(max(1, len(targets)))))
         else:
             per = int(tensor_bytes)
-        end = float(scatter_from_host(comm=self.comm, cost=self.cost, cluster=self.cluster, targets=targets, bytes_per_target=int(per), start=float(start), commit=commit, tag='scatter', host_name=str(getattr(host, 'name', ''))))
+        end = float(scatter_from_host(
+            comm=self.comm,
+            cost=self.cost,
+            cluster=self.cluster,
+            targets=targets,
+            bytes_per_target=int(per),
+            start=float(start),
+            commit=commit,
+            tag='scatter',
+            extra_base={
+                'payload': 'collective',
+                'action': 'scatter',
+                'node_id': str(nid),
+                'comm_node_id': str(nid),
+                'consumer_node_id': str(nid),
+                'op': str(getattr(node, 'name', '') or ''),
+                'bytes_nd': int(per),
+            },
+            host_name=str(getattr(host, 'name', '')),
+        ))
 
         if commit:
             self._node_finish_time[nid] = float(end)
@@ -1925,7 +2114,32 @@ class SchedulerBaseTimingMixin:
         # Earliest start based on predecessor completion and device availability
         pred_finish = float(max((float(self._node_finish_time.get(u, 0.0)) for u in g.predecessors(nid)), default=0.0))
         start = float(max(pred_finish, float(self.avail.get(src, 0.0)), float(self.avail.get(dst, 0.0))))
-        end = float(transfer_p2p(comm=self.comm, cost=self.cost, cluster=self.cluster, src=src, dst=dst, bytes_amount=int(tensor_bytes), start=float(start), commit=commit, tag='transfer'))
+        preds_for_transfer = list(g.predecessors(nid))
+        transfer_prod = str(preds_for_transfer[0]) if preds_for_transfer else ''
+        end = float(transfer_p2p(
+            comm=self.comm,
+            cost=self.cost,
+            cluster=self.cluster,
+            src=src,
+            dst=dst,
+            bytes_amount=int(tensor_bytes),
+            start=float(start),
+            commit=commit,
+            tag='transfer',
+            extra={
+                'payload': 'activation',
+                'action': 'transfer',
+                'route': 'direct',
+                'node_id': str(nid),
+                'comm_node_id': str(nid),
+                'op': str(getattr(node, 'name', '') or ''),
+                'prod_node': str(transfer_prod),
+                'producer_node_id': str(transfer_prod),
+                'cons_node': str(nid),
+                'consumer_node_id': str(nid),
+                'bytes_nd': int(tensor_bytes),
+            },
+        ))
         if commit:
             self._node_finish_time[nid] = float(end)
             self._node_placement[nid] = str(dst)
@@ -1978,6 +2192,7 @@ class SchedulerBaseTimingMixin:
         src_fmt: str,
         pred_finish: float,
         commit: bool,
+        cons_nid: Optional[str] = None,
     ) -> Tuple[float, float]:
 
         dst_fmt = self.cost.device_preferred_fmt(dst_dev)
@@ -1986,7 +2201,7 @@ class SchedulerBaseTimingMixin:
 
         def _via_host(commit_flag:bool) -> Tuple[float, float]:
             host_ready = self._ensure_host_store(
-                prod_nid, src_dev, bytes_nd, src_fmt, pred_finish, commit_flag)
+                prod_nid, src_dev, bytes_nd, src_fmt, pred_finish, commit_flag, cons_nid=cons_nid)
             l2s, l2e = self.comm.reserve(
                 host.name, dst_dev.name, size_nd,
                 earliest=host_ready,
@@ -1997,6 +2212,9 @@ class SchedulerBaseTimingMixin:
                     'action': 'load',
                     'route': 'host',
                     'prod_node': str(prod_nid),
+                    'producer_node_id': str(prod_nid),
+                    'cons_node': str(cons_nid or ''),
+                    'consumer_node_id': str(cons_nid or ''),
                     'bytes_nd': int(bytes_nd),
                     'src_fmt': 'ND',
                     'dst_fmt': str(dst_fmt),
@@ -2033,6 +2251,9 @@ class SchedulerBaseTimingMixin:
                     'action': 'move',
                     'route': 'direct',
                     'prod_node': str(prod_nid),
+                    'producer_node_id': str(prod_nid),
+                    'cons_node': str(cons_nid or ''),
+                    'consumer_node_id': str(cons_nid or ''),
                     'bytes_nd': int(bytes_nd),
                     'src_fmt': str(src_fmt),
                     'wire_fmt': 'ND',
@@ -2105,7 +2326,7 @@ class SchedulerBaseTimingMixin:
                     inbound_end_times.append(pred_finish)
                 else:
                     # Need host round-trip
-                    host_ready = self._ensure_host_store(u, pred_dev, pred_write, src_fmt, pred_finish, commit)
+                    host_ready = self._ensure_host_store(u, pred_dev, pred_write, src_fmt, pred_finish, commit, cons_nid=nid)
                     size_nd = self.cost.format_size(pred_write, 'ND')
                     host_dev = self.cost.get_host_device()
                     l2s, l2e = self.comm.reserve(
@@ -2138,6 +2359,7 @@ class SchedulerBaseTimingMixin:
                     prod_nid=u,
                     src_dev=pred_dev,
                     dst_dev=dev,
+                    cons_nid=nid,
                     bytes_nd=pred_write,
                     src_fmt=src_fmt,
                     pred_finish=pred_finish,
@@ -2352,7 +2574,16 @@ class SchedulerBaseTimingMixin:
         return (float(queue_wait_s), float(load_join.total_s), prof)
 
 
-    def _ensure_host_store(self, u: str, pred_dev: DeviceSpec,bytes_nd: int, src_fmt: str, pred_finish: float, commit: bool) -> float:
+    def _ensure_host_store(
+        self,
+        u: str,
+        pred_dev: DeviceSpec,
+        bytes_nd: int,
+        src_fmt: str,
+        pred_finish: float,
+        commit: bool,
+        cons_nid: Optional[str] = None,
+    ) -> float:
         t_done = self._node_host_store_end.get(u)
         if t_done is not None:
             return t_done
@@ -2383,6 +2614,9 @@ class SchedulerBaseTimingMixin:
                 'action': 'store',
                 'route': 'host',
                 'prod_node': str(u),
+                'producer_node_id': str(u),
+                'cons_node': str(cons_nid or ''),
+                'consumer_node_id': str(cons_nid or ''),
                 'bytes_nd': int(bytes_nd),
                 'src_fmt': str(src_fmt),
                 'wire_fmt': 'ND',

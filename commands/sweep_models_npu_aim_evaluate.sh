@@ -8,7 +8,7 @@ cd "${PROJECT_ROOT}"
 set -uo pipefail
 shopt -s nullglob
 
-CONFIG_FILE="${CONFIG_FILE:-./src/examples/evaluate_deepseek_v4_flash_config.json}"
+CONFIG_FILE="${CONFIG_FILE:-./src/examples/evaluate_deepseek_v4_flash_1npu4pim.json}"
 OUTPUT_ROOT="${OUTPUT_ROOT:-./output/deepseek_pdffn_huawei_4pim}"
 
 MODELS_STR="${MODELS:-${MODEL_FAMILY_VARIANTS:-deepseek_v4:flash}}"

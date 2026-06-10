@@ -9,9 +9,9 @@
   "decode_plan_refresh_stride": 2,
   "pim_config_path": "./aim_simulator/PIM_AiM.json",
   "ramulator_config_path": "./aim_simulator/example.yaml",
-  "simulation_log_file": "../../output/deepseek_v4_flash_b4_prefill1024_decode1024_huawei_2npu2pim_bifocal_pdffn/pim_simulation.txt",
-  "result_dir": "../../output/deepseek_v4_flash_b4_prefill1024_decode1024_huawei_2npu2pim_bifocal_pdffn/",
-  "hardware_json": "./examples/hardware_2npu_2pim_huawei.json",
+  "simulation_log_file": "../../output/deepseek_v4_flash_1npu4pim/pim_simulation.txt",
+  "result_dir": "../../output/deepseek_v4_flash_1npu4pim/",
+  "hardware_json": "./examples/hardware_1npu_4pim_huawei.json",
   "algo": [
     "Bifocal"
   ],

@@ -18,6 +18,8 @@ class StatsRecorder:
     op_device_events: List[Dict[str, Any]] = field(default_factory=list)
     op_cp_events: List[Dict[str, Any]] = field(default_factory=list)
     comm_events: List[Dict[str, Any]] = field(default_factory=list)
+    _op_seq: int = 0
+    _comm_seq: int = 0
 
     # -------------------- phase control --------------------
     def set_phase(self, phase: Optional[str]) -> None:
@@ -27,6 +29,8 @@ class StatsRecorder:
         self.op_device_events.clear()
         self.op_cp_events.clear()
         self.comm_events.clear()
+        self._op_seq = 0
+        self._comm_seq = 0
 
     # -------------------- logging --------------------
     def log_op_device(
@@ -43,20 +47,32 @@ class StatsRecorder:
     ) -> None:
         s = float(start)
         e = float(end)
-        self.op_device_events.append(
-            {
-                "phase": self.phase,
-                "node_id": nid,
-                "op": op,
-                "device": device,
-                "device_type": device_type,
-                "mode": mode,
-                "start": s,
-                "end": e,
-                "duration": float(e - s),
-                **(extra or {}),
-            }
-        )
+        self._op_seq += 1
+        phase = self._phase_norm(self.phase)
+        nid_s = str(nid)
+        op_s = str(op)
+        dev_s = str(device)
+        event_id = f"op-{self._op_seq:08d}"
+        row = {
+            "event_type": "op",
+            "event_id": event_id,
+            "timeline_id": event_id,
+            "phase": phase,
+            "node_id": nid_s,
+            "op": op_s,
+            "device": dev_s,
+            "device_type": str(device_type),
+            "mode": mode,
+            "track": dev_s,
+            "lane": dev_s,
+            "label": f"{nid_s} | {op_s}",
+            "tooltip": f"op={op_s}; node={nid_s}; device={dev_s}; start={s:.9g}s; end={e:.9g}s",
+            "start": s,
+            "end": e,
+            "duration": float(e - s),
+        }
+        row.update(extra or {})
+        self.op_device_events.append(row)
 
     def log_op_cp(
         self,
@@ -72,7 +88,7 @@ class StatsRecorder:
         e = float(end)
         self.op_cp_events.append(
             {
-                "phase": self.phase,
+                "phase": self._phase_norm(self.phase),
                 "node_id": nid,
                 "op": op,
                 "mode": mode,
@@ -107,48 +123,355 @@ class StatsRecorder:
 
         s = float(start)
         e = float(end)
-        self.comm_events.append(
-            {
-                "phase": self.phase,
-                "src": src,
-                "src_type": _type(src),
-                "dst": dst,
-                "dst_type": _type(dst),
-                "bytes": int(bytes) if bytes is not None else 0,
-                "start": s,
-                "end": e,
-                "duration": float(e - s),
-                "tag": tag,
-                **(extra or {}),
-            }
-        )
+        self._comm_seq += 1
+        event_id = f"comm-{self._comm_seq:08d}"
+        src_s = str(src)
+        dst_s = str(dst)
+        row = {
+            "event_type": "comm",
+            "event_id": event_id,
+            "comm_id": event_id,
+            "timeline_id": event_id,
+            "phase": self._phase_norm(self.phase),
+            "src": src_s,
+            "src_type": _type(src_s),
+            "dst": dst_s,
+            "dst_type": _type(dst_s),
+            "src_device": src_s,
+            "src_device_type": _type(src_s),
+            "dst_device": dst_s,
+            "dst_device_type": _type(dst_s),
+            "link": f"{src_s}->{dst_s}",
+            "track": f"COMM:{src_s}->{dst_s}",
+            "lane": f"COMM:{src_s}->{dst_s}",
+            "bytes": int(bytes) if bytes is not None else 0,
+            "start": s,
+            "end": e,
+            "duration": float(e - s),
+            "tag": tag,
+        }
+        row.update(extra or {})
+        # Re-assert physical link fields after merging extra metadata so that
+        # graph-level fields named src/dst cannot accidentally hide devices.
+        row["src"] = src_s
+        row["dst"] = dst_s
+        row["src_type"] = _type(src_s)
+        row["dst_type"] = _type(dst_s)
+        row["src_device"] = src_s
+        row["dst_device"] = dst_s
+        row["src_device_type"] = _type(src_s)
+        row["dst_device_type"] = _type(dst_s)
+        row["link"] = f"{src_s}->{dst_s}"
+        row["track"] = row.get("track") or f"COMM:{src_s}->{dst_s}"
+        row["lane"] = row.get("lane") or f"COMM:{src_s}->{dst_s}"
+        self.comm_events.append(row)
 
-    # -------------------- 1) raw trace export --------------------
+    # -------------------- 1) trace export --------------------
+    @staticmethod
+    def _bytes_human(n: Any) -> str:
+        try:
+            v = float(int(n or 0))
+        except Exception:
+            return ""
+        units = ["B", "KiB", "MiB", "GiB", "TiB"]
+        i = 0
+        while v >= 1024.0 and i < len(units) - 1:
+            v /= 1024.0
+            i += 1
+        if i == 0:
+            return f"{int(v)} {units[i]}"
+        return f"{v:.3f} {units[i]}"
+
+    @staticmethod
+    def _infer_payload(tag: Any) -> str:
+        t = str(tag or "").lower()
+        if t.startswith("act_") or t in ("act", "activation"):
+            return "activation"
+        if t.startswith("kv_") or t == "kv":
+            return "kv_cache"
+        if "weight" in t:
+            return "weight"
+        if t in ("reduce", "gather", "scatter", "transfer", "allreduce", "all_reduce"):
+            return "collective" if t != "transfer" else "activation"
+        return "comm"
+
+    @staticmethod
+    def _infer_action(tag: Any, payload: str) -> str:
+        t = str(tag or "").lower()
+        if t.startswith("act_"):
+            return t[len("act_"):]
+        if t.startswith("kv_"):
+            return t[len("kv_"):]
+        if t.startswith("weight_"):
+            return t[len("weight_"):]
+        if t:
+            return t
+        return payload or "comm"
+
+    @staticmethod
+    def _get_first(row: Dict[str, Any], *keys: str) -> Any:
+        for k in keys:
+            if k in row:
+                v = row.get(k)
+                if v is not None and str(v) != "":
+                    return v
+        return None
+
+    @staticmethod
+    def _op_sort_key(row: Dict[str, Any]) -> Tuple[float, float, str]:
+        def f(x: Any) -> float:
+            try:
+                return float(x)
+            except Exception:
+                return 0.0
+        return (f(row.get("start")), f(row.get("end")), str(row.get("event_id", "")))
+
+    def _build_op_index(self, op_rows: List[Dict[str, Any]]) -> Dict[Tuple[str, str], List[Dict[str, Any]]]:
+        idx: Dict[Tuple[str, str], List[Dict[str, Any]]] = defaultdict(list)
+        for r in op_rows:
+            phase = self._phase_norm(r.get("phase"))
+            nid = str(r.get("node_id", "") or "")
+            if nid:
+                idx[(phase, nid)].append(r)
+        for k in list(idx.keys()):
+            idx[k].sort(key=self._op_sort_key)
+        return idx
+
+    def _lookup_op_for_comm(
+        self,
+        op_idx: Dict[Tuple[str, str], List[Dict[str, Any]]],
+        phase: str,
+        node_id: Any,
+        *,
+        role: str,
+        comm_start: float,
+        comm_end: float,
+    ) -> Optional[Dict[str, Any]]:
+        nid = str(node_id or "")
+        if not nid:
+            return None
+        rows = op_idx.get((self._phase_norm(phase), nid)) or []
+        if not rows:
+            return None
+        try:
+            cs = float(comm_start)
+            ce = float(comm_end)
+        except Exception:
+            cs = ce = 0.0
+
+        def st(r: Dict[str, Any]) -> float:
+            try:
+                return float(r.get("start", 0.0))
+            except Exception:
+                return 0.0
+
+        def en(r: Dict[str, Any]) -> float:
+            try:
+                return float(r.get("end", 0.0))
+            except Exception:
+                return 0.0
+
+        # Prefer an op interval overlapping the transfer. This helps weight/KV
+        # loads whose time is folded into the consumer op interval.
+        overlap = [r for r in rows if st(r) <= ce + 1e-15 and en(r) >= cs - 1e-15]
+        if overlap:
+            return sorted(overlap, key=lambda r: (abs(st(r) - cs), abs(en(r) - ce)))[0]
+        if role == "producer":
+            before = [r for r in rows if en(r) <= cs + 1e-15]
+            if before:
+                return max(before, key=en)
+        if role == "consumer":
+            after = [r for r in rows if st(r) >= ce - 1e-15]
+            if after:
+                return min(after, key=st)
+        return rows[0]
+
+    def _prepare_ops_rows(self) -> List[Dict[str, Any]]:
+        rows: List[Dict[str, Any]] = []
+        for i, e in enumerate(self.op_device_events, start=1):
+            r = dict(e) if isinstance(e, dict) else {}
+            r.setdefault("event_type", "op")
+            r.setdefault("event_id", f"op-{i:08d}")
+            r.setdefault("timeline_id", r.get("event_id"))
+            r["phase"] = self._phase_norm(r.get("phase"))
+            r.setdefault("track", str(r.get("device", "")))
+            r.setdefault("lane", str(r.get("track", r.get("device", ""))))
+            if not r.get("label"):
+                r["label"] = f"{r.get('node_id','')} | {r.get('op','')}"
+            if not r.get("tooltip"):
+                r["tooltip"] = (
+                    f"op={r.get('op','')}; node={r.get('node_id','')}; "
+                    f"device={r.get('device','')}; start={r.get('start','')}s; end={r.get('end','')}s"
+                )
+            rows.append(r)
+        return rows
+
+    def _prepare_comm_rows(self, op_rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        op_idx = self._build_op_index(op_rows)
+        out: List[Dict[str, Any]] = []
+        for i, e in enumerate(self.comm_events, start=1):
+            r = dict(e) if isinstance(e, dict) else {}
+            r.setdefault("event_type", "comm")
+            r.setdefault("event_id", f"comm-{i:08d}")
+            r.setdefault("comm_id", r.get("event_id"))
+            r.setdefault("timeline_id", r.get("event_id"))
+            phase = self._phase_norm(r.get("phase"))
+            r["phase"] = phase
+            tag = r.get("tag", "")
+            payload = str(r.get("payload") or self._infer_payload(tag))
+            action = str(r.get("action") or self._infer_action(tag, payload))
+            r["payload"] = payload
+            r["action"] = action
+            try:
+                cs = float(r.get("start", 0.0))
+            except Exception:
+                cs = 0.0
+            try:
+                ce = float(r.get("end", cs))
+            except Exception:
+                ce = cs
+
+            producer_node = self._get_first(r, "producer_node_id", "prod_node", "src_node_id")
+            consumer_node = self._get_first(r, "consumer_node_id", "cons_node", "dst_node_id")
+
+            # Weight and KV-cache traffic are not edge activations, but they
+            # still have a graph-side consumer that can be joined to ops.csv.
+            if payload == "weight":
+                consumer_node = consumer_node or self._get_first(r, "node_id")
+                wid = self._get_first(r, "weight_id", "wid")
+                producer_node = producer_node or (f"WEIGHT:{wid}" if wid else "WEIGHT")
+            elif payload == "kv_cache":
+                if action in ("load", "read", "reload", "local_read", "local_load"):
+                    consumer_node = consumer_node or self._get_first(r, "node_id")
+                    role = str(self._get_first(r, "kv_role") or "KV")
+                    place = str(self._get_first(r, "kv_place", "kv_place_used") or "")
+                    shard = self._get_first(r, "kv_seq_shard", "kv_head_start")
+                    suffix = f":shard{shard}" if shard is not None else ""
+                    producer_node = producer_node or f"KV_CACHE:{place}:{role}{suffix}"
+                elif action in ("write", "store"):
+                    producer_node = producer_node or self._get_first(r, "node_id")
+                    place = str(self._get_first(r, "kv_place", "kv_place_used") or str(r.get("dst", "")))
+                    consumer_node = consumer_node or f"KV_CACHE:{place}"
+            elif payload in ("activation", "collective"):
+                producer_node = producer_node or self._get_first(r, "source_node", "input_node")
+                consumer_node = consumer_node or self._get_first(r, "node_id", "comm_node_id")
+
+            prod_op_row = self._lookup_op_for_comm(op_idx, phase, producer_node, role="producer", comm_start=cs, comm_end=ce)
+            cons_op_row = self._lookup_op_for_comm(op_idx, phase, consumer_node, role="consumer", comm_start=cs, comm_end=ce)
+
+            producer_op = self._get_first(r, "producer_op", "prod_op", "src_op")
+            consumer_op = self._get_first(r, "consumer_op", "cons_op", "dst_op")
+            if prod_op_row is not None:
+                producer_op = producer_op or prod_op_row.get("op")
+                r["producer_device"] = r.get("producer_device") or prod_op_row.get("device")
+                r["producer_device_type"] = r.get("producer_device_type") or prod_op_row.get("device_type")
+                r["producer_start"] = r.get("producer_start") or prod_op_row.get("start")
+                r["producer_end"] = r.get("producer_end") or prod_op_row.get("end")
+            if cons_op_row is not None:
+                consumer_op = consumer_op or cons_op_row.get("op")
+                r["consumer_device"] = r.get("consumer_device") or cons_op_row.get("device")
+                r["consumer_device_type"] = r.get("consumer_device_type") or cons_op_row.get("device_type")
+                r["consumer_start"] = r.get("consumer_start") or cons_op_row.get("start")
+                r["consumer_end"] = r.get("consumer_end") or cons_op_row.get("end")
+
+            if not producer_op:
+                if str(producer_node or "").startswith("WEIGHT:"):
+                    producer_op = "WEIGHT"
+                elif str(producer_node or "").startswith("KV_CACHE:"):
+                    producer_op = "KV_CACHE"
+                elif producer_node:
+                    producer_op = str(producer_node)
+            if not consumer_op:
+                if str(consumer_node or "").startswith("KV_CACHE:"):
+                    consumer_op = "KV_CACHE"
+                elif consumer_node:
+                    consumer_op = str(consumer_node)
+
+            r["producer_node_id"] = str(producer_node or "")
+            r["producer_op"] = str(producer_op or "")
+            r["consumer_node_id"] = str(consumer_node or "")
+            r["consumer_op"] = str(consumer_op or "")
+            # Short aliases that make a CSV concat with ops.csv convenient.
+            r["src_node_id"] = r["producer_node_id"]
+            r["src_op"] = r["producer_op"]
+            r["src_node_device"] = r.get("producer_device", "")
+            r["dst_node_id"] = r["consumer_node_id"]
+            r["dst_op"] = r["consumer_op"]
+            r["dst_node_device"] = r.get("consumer_device", "")
+
+            src_dev = str(r.get("src_device", r.get("src", "")) or "")
+            dst_dev = str(r.get("dst_device", r.get("dst", "")) or "")
+            r["src_device"] = src_dev
+            r["dst_device"] = dst_dev
+            r.setdefault("link", f"{src_dev}->{dst_dev}")
+            r.setdefault("track", f"COMM:{src_dev}->{dst_dev}")
+            r.setdefault("lane", r.get("track"))
+            if "bytes_nd" not in r or r.get("bytes_nd") in (None, ""):
+                r["bytes_nd"] = r.get("bytes", 0)
+            r["bytes_human"] = self._bytes_human(r.get("bytes", 0))
+
+            if r["producer_node_id"] and r["consumer_node_id"]:
+                r["edge_id"] = f"{phase}:{r['producer_node_id']}->{r['consumer_node_id']}"
+                r["edge"] = f"{r['producer_node_id']} -> {r['consumer_node_id']}"
+            else:
+                r["edge_id"] = ""
+                r["edge"] = ""
+
+            if not r.get("label"):
+                left = r["producer_node_id"] or src_dev
+                right = r["consumer_node_id"] or dst_dev
+                r["label"] = f"{payload}/{action}: {left} -> {right} ({r['bytes_human']})"
+            if not r.get("tooltip"):
+                r["tooltip"] = (
+                    f"payload={payload}; action={action}; tag={tag}; route={r.get('route','')}; hop={r.get('hop','')}; "
+                    f"link={src_dev}->{dst_dev}; producer={r['producer_node_id']}[{r['producer_op']}]; "
+                    f"consumer={r['consumer_node_id']}[{r['consumer_op']}]; bytes={r.get('bytes',0)}; "
+                    f"start={r.get('start','')}s; end={r.get('end','')}s"
+                )
+            out.append(r)
+        return out
+
+    @staticmethod
+    def _ordered_fields(base_fields: List[str], rows: List[Dict[str, Any]]) -> List[str]:
+        seen = set()
+        fields: List[str] = []
+        for k in base_fields:
+            if k not in seen:
+                fields.append(k)
+                seen.add(k)
+        keys = set()
+        for e in rows:
+            if isinstance(e, dict):
+                keys.update(e.keys())
+        for k in sorted(keys):
+            if k not in seen:
+                fields.append(k)
+                seen.add(k)
+        return fields
+
     def dump_trace_csv(self, ops_csv_path: Path | str, comms_csv_path: Path | str) -> None:
-        """Export the raw ops and comm trace tables."""
+        """Export ops and communication traces in a joinable timeline schema.
+
+        ``ops.csv`` and ``comm.csv`` now share common fields
+        (event_type/event_id/phase/track/lane/label/start/end/duration), while
+        ``comm.csv`` additionally carries producer/consumer node ids and op
+        names whenever a transfer is attached to graph operators.
+        """
         ops_csv_path = Path(ops_csv_path)
         comms_csv_path = Path(comms_csv_path)
         ops_csv_path.parent.mkdir(parents=True, exist_ok=True)
         comms_csv_path.parent.mkdir(parents=True, exist_ok=True)
 
+        op_rows = self._prepare_ops_rows()
+        comm_rows = self._prepare_comm_rows(op_rows)
+
         base_ops_fields = [
-            "phase", "node_id", "op", "device", "device_type", "mode",
-            "start", "end", "duration"
+            "event_type", "event_id", "timeline_id", "phase",
+            "node_id", "op", "device", "device_type", "mode",
+            "track", "lane", "label", "tooltip",
+            "start", "end", "duration",
         ]
-        op_rows = [dict(e) if isinstance(e, dict) else {} for e in self.op_device_events]
-
-        ops_extra_keys: list[str] = []
-        try:
-            keys = set()
-            for e in op_rows:
-                if isinstance(e, dict):
-                    keys.update(e.keys())
-            keys.difference_update(base_ops_fields)
-            ops_extra_keys = sorted(keys)
-        except Exception:
-            ops_extra_keys = []
-
-        ops_fields = list(base_ops_fields) + list(ops_extra_keys)
+        ops_fields = self._ordered_fields(base_ops_fields, op_rows)
         with ops_csv_path.open("w", newline="", encoding="utf-8") as f:
             w = csv.DictWriter(f, fieldnames=ops_fields)
             w.writeheader()
@@ -156,26 +479,23 @@ class StatsRecorder:
                 w.writerow({k: (e.get(k) if isinstance(e, dict) else "") for k in ops_fields})
 
         base_comm_fields = [
-            "phase", "src", "src_type", "dst", "dst_type",
-            "bytes", "start", "end", "duration", "tag",
+            "event_type", "event_id", "comm_id", "timeline_id", "phase",
+            "tag", "payload", "action", "route", "hop",
+            "src", "src_type", "dst", "dst_type",
+            "src_device", "src_device_type", "dst_device", "dst_device_type",
+            "link", "track", "lane", "label", "tooltip",
+            "producer_node_id", "producer_op", "producer_device", "producer_device_type", "producer_start", "producer_end",
+            "consumer_node_id", "consumer_op", "consumer_device", "consumer_device_type", "consumer_start", "consumer_end",
+            "src_node_id", "src_op", "src_node_device", "dst_node_id", "dst_op", "dst_node_device",
+            "edge_id", "edge",
+            "bytes", "bytes_human", "bytes_nd", "src_fmt", "wire_fmt", "dst_fmt",
+            "start", "end", "duration",
         ]
-
-        extra_keys: list[str] = []
-        try:
-            keys = set()
-            for e in self.comm_events:
-                if isinstance(e, dict):
-                    keys.update(e.keys())
-            keys.difference_update(base_comm_fields)
-            extra_keys = sorted(keys)
-        except Exception:
-            extra_keys = []
-
-        comm_fields = list(base_comm_fields) + list(extra_keys)
+        comm_fields = self._ordered_fields(base_comm_fields, comm_rows)
         with comms_csv_path.open("w", newline="", encoding="utf-8") as f:
             w = csv.DictWriter(f, fieldnames=comm_fields)
             w.writeheader()
-            for e in self.comm_events:
+            for e in comm_rows:
                 w.writerow({k: (e.get(k) if isinstance(e, dict) else "") for k in comm_fields})
 
     # -------------------- 2) overlap export (stride-aware) --------------------

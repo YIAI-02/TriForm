@@ -1,0 +1,290 @@
+Sweep parallel jobs : 12
+Config              : ./src/examples/evaluate_deepseek_v4_flash_config.json
+Output root         : ./output/deepseek_pdffn
+Models              : deepseek_v4:flash
+Batches             : 4 8 16
+Hardware            : ./src/examples/hardware_2npu_2pim_huawei.json
+Compare             : Bifocal vs PD+FFN
+KV place            : pim
+PD+FFN KV place     : npu
+[1;33m[1m███████  PIM FAST MODE: ON  ███████[0m
+Config                : ./src/examples/evaluate_deepseek_v4_flash_config.json
+Output root           : /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn
+Models                : deepseek_v4:flash
+Prefills              : 1024 2048
+Decodes               : 128 512 1024
+Batches               : 4 8 16
+Hardwares             : ./src/examples/hardware_2npu_2pim_huawei.json
+TP_QKV / TP_FFN       : 1 / 1
+TP_MOE sweep          : 6
+KV place              : pim
+PD+FFN KV place       : npu
+KV partition dim      : seq
+KV seq shards         : 2
+Algo override         : Bifocal
+Baselines override    : PD+FFN
+Sample stride         : 2
+Plan refresh stride   : 2
+DType                 : fp8
+Parallel jobs         : 12
+====================================
+
+[1;36m[1m--- HW=hardware_2npu_2pim_huawei | deepseek_v4:flash | prefill=1024 decode=128 | batch=4 | tp_moe=6 | dtype=fp8 ---[0m
+Expected result_dir   : /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b4_s2
+
+[1;36m[1m--- HW=hardware_2npu_2pim_huawei | deepseek_v4:flash | prefill=1024 decode=512 | batch=4 | tp_moe=6 | dtype=fp8 ---[0m
+Expected result_dir   : /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b4_s2
+
+[1;36m[1m--- HW=hardware_2npu_2pim_huawei | deepseek_v4:flash | prefill=1024 decode=1024 | batch=4 | tp_moe=6 | dtype=fp8 ---[0m
+Expected result_dir   : /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b4_s2
+
+[1;36m[1m--- HW=hardware_2npu_2pim_huawei | deepseek_v4:flash | prefill=2048 decode=128 | batch=4 | tp_moe=6 | dtype=fp8 ---[0m
+Expected result_dir   : /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b4_s2
+
+[1;36m[1m--- HW=hardware_2npu_2pim_huawei | deepseek_v4:flash | prefill=2048 decode=512 | batch=4 | tp_moe=6 | dtype=fp8 ---[0m
+Expected result_dir   : /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b4_s2
+
+[1;36m[1m--- HW=hardware_2npu_2pim_huawei | deepseek_v4:flash | prefill=2048 decode=1024 | batch=4 | tp_moe=6 | dtype=fp8 ---[0m
+Expected result_dir   : /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b4_s2
+
+[1;36m[1m--- HW=hardware_2npu_2pim_huawei | deepseek_v4:flash | prefill=1024 decode=128 | batch=8 | tp_moe=6 | dtype=fp8 ---[0m
+Expected result_dir   : /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b8_s2
+
+[1;36m[1m--- HW=hardware_2npu_2pim_huawei | deepseek_v4:flash | prefill=1024 decode=512 | batch=8 | tp_moe=6 | dtype=fp8 ---[0m
+Expected result_dir   : /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b8_s2
+
+[1;36m[1m--- HW=hardware_2npu_2pim_huawei | deepseek_v4:flash | prefill=1024 decode=1024 | batch=8 | tp_moe=6 | dtype=fp8 ---[0m
+Expected result_dir   : /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b8_s2
+
+[1;36m[1m--- HW=hardware_2npu_2pim_huawei | deepseek_v4:flash | prefill=2048 decode=128 | batch=8 | tp_moe=6 | dtype=fp8 ---[0m
+Expected result_dir   : /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b8_s2
+
+[1;36m[1m--- HW=hardware_2npu_2pim_huawei | deepseek_v4:flash | prefill=2048 decode=512 | batch=8 | tp_moe=6 | dtype=fp8 ---[0m
+Expected result_dir   : /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b8_s2
+
+[1;36m[1m--- HW=hardware_2npu_2pim_huawei | deepseek_v4:flash | prefill=2048 decode=1024 | batch=8 | tp_moe=6 | dtype=fp8 ---[0m
+Expected result_dir   : /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b8_s2
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN'] result_dir=/lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b8_s2 tag=1024x128
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b8_s2/baseline_compare_1024x128.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              forced_npu       0.1719       0.0790       0.2508
+algo:Bifocal             forced_pim       0.1200       0.0401       0.1601
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN'] result_dir=/lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b8_s2 tag=2048x128
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b8_s2/baseline_compare_2048x128.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              forced_npu       0.3445       0.0792       0.4237
+algo:Bifocal             forced_pim       0.2415       0.0401       0.2816
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN'] result_dir=/lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b4_s2 tag=2048x128
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b4_s2/baseline_compare_2048x128.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              forced_npu       0.1723       0.0714       0.2437
+algo:Bifocal             forced_pim       0.1208       0.0361       0.1569
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN'] result_dir=/lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b4_s2 tag=1024x128
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b4_s2/baseline_compare_1024x128.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              forced_npu       0.0912       0.0688       0.1600
+algo:Bifocal             forced_pim       0.0637       0.0348       0.0985
+
+[1;36m[1m--- HW=hardware_2npu_2pim_huawei | deepseek_v4:flash | prefill=1024 decode=128 | batch=16 | tp_moe=6 | dtype=fp8 ---[0m
+Expected result_dir   : /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b16_s2
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN'] result_dir=/lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b16_s2 tag=1024x128
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b16_s2/baseline_compare_1024x128.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              forced_npu       0.3437       0.1045       0.4482
+algo:Bifocal             forced_pim       0.2400       0.0519       0.2919
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN'] result_dir=/lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b8_s2 tag=1024x512
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b8_s2/baseline_compare_1024x512.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              forced_npu       0.1719       0.2734       0.4453
+algo:Bifocal             forced_pim       0.1200       0.1306       0.2506
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN'] result_dir=/lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b8_s2 tag=2048x512
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b8_s2/baseline_compare_2048x512.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              forced_npu       0.3445       0.2741       0.6186
+algo:Bifocal             forced_pim       0.2420       0.1307       0.3727
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN'] result_dir=/lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b4_s2 tag=2048x512
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b4_s2/baseline_compare_2048x512.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              forced_npu       0.1723       0.2421       0.4144
+algo:Bifocal             forced_pim       0.1207       0.1091       0.2298
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN'] result_dir=/lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b4_s2 tag=1024x512
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b4_s2/baseline_compare_1024x512.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              forced_npu       0.0912       0.2393       0.3305
+algo:Bifocal             forced_pim       0.0637       0.1085       0.1722
+
+[1;36m[1m--- HW=hardware_2npu_2pim_huawei | deepseek_v4:flash | prefill=1024 decode=512 | batch=16 | tp_moe=6 | dtype=fp8 ---[0m
+Expected result_dir   : /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b16_s2
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN'] result_dir=/lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b8_s2 tag=1024x1024
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b8_s2/baseline_compare_1024x1024.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              forced_npu       0.1719       0.5330       0.7049
+algo:Bifocal             forced_pim       0.1202       0.2479       0.3681
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN'] result_dir=/lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b8_s2 tag=2048x1024
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b8_s2/baseline_compare_2048x1024.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              forced_npu       0.3445       0.5340       0.8785
+algo:Bifocal             forced_pim       0.2415       0.2497       0.4911
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN'] result_dir=/lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b16_s2 tag=1024x512
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b16_s2/baseline_compare_1024x512.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              forced_npu       0.3437       0.3514       0.6951
+algo:Bifocal             forced_pim       0.2399       0.1782       0.4181
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN'] result_dir=/lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b4_s2 tag=1024x1024
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b4_s2/baseline_compare_1024x1024.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              forced_npu       0.0912       0.4668       0.5580
+algo:Bifocal             forced_pim       0.0637       0.2043       0.2680
+
+[1;36m[1m--- HW=hardware_2npu_2pim_huawei | deepseek_v4:flash | prefill=1024 decode=1024 | batch=16 | tp_moe=6 | dtype=fp8 ---[0m
+Expected result_dir   : /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b16_s2
+
+[1;36m[1m--- HW=hardware_2npu_2pim_huawei | deepseek_v4:flash | prefill=2048 decode=128 | batch=16 | tp_moe=6 | dtype=fp8 ---[0m
+Expected result_dir   : /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b16_s2
+
+[1;36m[1m--- HW=hardware_2npu_2pim_huawei | deepseek_v4:flash | prefill=2048 decode=512 | batch=16 | tp_moe=6 | dtype=fp8 ---[0m
+Expected result_dir   : /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b16_s2
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN'] result_dir=/lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b4_s2 tag=2048x1024
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b4_s2/baseline_compare_2048x1024.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              forced_npu       0.1723       0.4698       0.6420
+algo:Bifocal             forced_pim       0.1208       0.2044       0.3252
+
+[1;36m[1m--- HW=hardware_2npu_2pim_huawei | deepseek_v4:flash | prefill=2048 decode=1024 | batch=16 | tp_moe=6 | dtype=fp8 ---[0m
+Expected result_dir   : /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b16_s2
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN'] result_dir=/lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b16_s2 tag=2048x128
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b16_s2/baseline_compare_2048x128.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              forced_npu       0.6890       0.1050       0.7940
+algo:Bifocal             forced_pim       0.4829       0.0505       0.5334
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN'] result_dir=/lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b16_s2 tag=2048x512
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b16_s2/baseline_compare_2048x512.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              forced_npu       0.6890       0.3528       1.0419
+algo:Bifocal             forced_pim       0.4841       0.1769       0.6610
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN'] result_dir=/lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b16_s2 tag=2048x1024
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b16_s2/baseline_compare_2048x1024.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              forced_npu       0.6890       0.6833       1.3724
+algo:Bifocal             forced_pim       0.4832       0.3430       0.8262
+[evaluate] algos=['Bifocal'] baselines=['PD+FFN'] result_dir=/lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b16_s2 tag=1024x1024
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+DEBUG: Loaded hardware config from /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/src/examples/hardware_2npu_2pim_huawei.json
+[REPORT] Combined comparison saved to: /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn/hw_hardware_2npu_2pim_huawei/kvseq_seq2/tpmoe6_sst2_rst2/deepseek_v4_flash_fp8_b16_s2/baseline_compare_1024x1024.json
+
+=== Strategy/Baseline Comparison ===
+Policy                   PIM        Prefill(s)    Decode(s)     Total(s)
+------------------------------------------------------------------------
+algo:PD+FFN              forced_npu       0.3437       0.6814       1.0252
+algo:Bifocal             forced_pim       0.2400       0.3440       0.5840
+====================================
+Runs attempted : 18
+Runs succeeded : 18
+Runs failed    : 0
+[1;32m[1mAll sweeps completed successfully.[0m
+Result root           : /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn
+Combined result JSONs : find /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn -name 'baseline_compare_*.json' | sort
+Per-policy summaries  : find /lustre/home/2501111916/workspace/DOPS_0608_decenter/TriForm/output/deepseek_pdffn -name 'best_summary_*.json' | sort

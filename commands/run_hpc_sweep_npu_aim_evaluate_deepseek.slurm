@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -J ds_flash_bifocal_pdffn
+#SBATCH -J ds_0610_1npu4pim
 #SBATCH -p C064M0256G
 #SBATCH --qos=high
 #SBATCH -N 1
@@ -16,13 +16,13 @@ conda activate triform310
 SUBMIT_DIR="${SLURM_SUBMIT_DIR:-$(pwd)}"
 
 JOBS="${JOBS:-12}"
-CONFIG_FILE="${CONFIG_FILE:-./src/examples/evaluate_deepseek_v4_flash_config.json}"
-OUTPUT_ROOT="${OUTPUT_ROOT:-./output/deepseek_pdffn_huawei_4pim}"
+CONFIG_FILE="${CONFIG_FILE:-./src/examples/evaluate_deepseek_v4_flash_1npu4pim.json}"
+OUTPUT_ROOT="${OUTPUT_ROOT:-./output/deepseek_pdffn}"
 MODELS="${MODELS:-deepseek_v4:flash}"
 PREFILLS="${PREFILLS:-1024 2048}"
 DECODES="${DECODES:-128 512 1024}"
 BATCHES="${BATCHES:-4 8 16}"
-HARDWARES="${HARDWARES:-./src/examples/hardware_2npu_2pim_huawei.json}"
+HARDWARES="${HARDWARES:-./src/examples/hardware_1npu_4pim_huawei.json}"
 ALGO="${ALGO:-Bifocal}"
 BASELINES="${BASELINES:-PD+FFN}"
 TP_QKV="${TP_QKV:-1}"
@@ -31,7 +31,7 @@ TP_MOE="${TP_MOE:-6}"
 KV_PLACE="${KV_PLACE:-pim}"
 PD_FFN_KV_PLACE="${PD_FFN_KV_PLACE:-npu}"
 KV_PARTITION_DIM="${KV_PARTITION_DIM:-seq}"
-KV_SEQ_SHARDS="${KV_SEQ_SHARDS:-2}"
+KV_SEQ_SHARDS="${KV_SEQ_SHARDS:-4}"
 DECODE_SAMPLE_STRIDE="${DECODE_SAMPLE_STRIDE:-${SAMPLE_STRIDE:-2}}"
 DECODE_PLAN_REFRESH_STRIDE="${DECODE_PLAN_REFRESH_STRIDE:-${PLAN_REFRESH_STRIDE:-2}}"
 DTYPE="${DTYPE:-fp8}"

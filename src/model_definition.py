@@ -1625,13 +1625,18 @@ class DeepSeekV4Def(MixtralDef):
         *,
         l: int,
         tag: str,
-        input_nid: str,
+        input_nid: Optional[str],
         shape: ModelShape,
         dtype_bytes: float,
         base_attr: Dict,
     ) -> str:
         nhc = max(1, int(getattr(shape, "mhc_expansion_factor", getattr(shape, "m_hc_expansion_factor", 1)) or 1))
         if nhc <= 1:
+            if input_nid is None:
+                # Degenerate mHC-disabled first-layer input: keep an explicit source-like node.
+                nid = f"L{l}_mHC_{tag}_Identity"
+                g.add_node(TaskNode(nid, "MHC_MIX", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("MHC_MIX")))
+                return nid
             return input_nid
         dim = int(shape.dim)
         sinkhorn_iters = int(getattr(shape, "sinkhorn_iters", 20) or 20)
@@ -1661,7 +1666,8 @@ class DeepSeekV4Def(MixtralDef):
                 allowed=get_op_allowed("MHC_MIX"),
             )
         )
-        g.add_edge(input_nid, nid)
+        if input_nid is not None:
+            g.add_edge(input_nid, nid)
         return nid
 
     @staticmethod
@@ -2169,16 +2175,10 @@ class DeepSeekV4Def(MixtralDef):
         g.add_edge(attn_out_nid, nid_OG1)
         g.add_edge(nid_OG1, nid_OG2)
 
-        nid_POST = DeepSeekV4Def._add_mhc_mix(
-            g,
-            l=l,
-            tag="PostAttn",
-            input_nid=nid_OG2,
-            shape=shape,
-            dtype_bytes=float(dtype_bytes),
-            base_attr=base_attr,
-        )
-        g.add_edge(nid_POST, add1_nid)
+        # Attention produces a standard sub-layer output.  mHC write-back is modeled
+        # after the residual add in build(); placing it here would make the mix consume
+        # only the attention branch and would incorrectly execute before Add1.
+        g.add_edge(nid_OG2, add1_nid)
         if x_in is not None:
             g.add_edge(x_in, add1_nid)
 
@@ -2278,50 +2278,62 @@ class DeepSeekV4Def(MixtralDef):
             if router_jitter_noise is not None:
                 base_attr["router_jitter_noise"] = float(router_jitter_noise)
 
-            # Pre-LN attention with optional mHC residual mixing.
-            nid_LN1 = f"L{l}_LN1"
-            g.add_node(TaskNode(nid_LN1, "LN", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("LN")))
-            if l > 0:
-                g.add_edge(f"L{l-1}_Add2", nid_LN1)
+            # mHC is a residual-stream read/write mix.  Keep LayerNorm inside each
+            # sub-layer: residual_in -> mHC_Pre* -> LN -> branch -> Add -> mHC_Post*.
+            layer_input_nid = f"L{l-1}_mHC_PostMoE" if l > 0 else None
             nid_ATT_IN = self._add_mhc_mix(
                 g,
                 l=l,
                 tag="PreAttn",
-                input_nid=nid_LN1,
+                input_nid=layer_input_nid,
                 shape=shape,
                 dtype_bytes=float(dtype_bytes),
                 base_attr=base_attr,
             )
 
+            nid_LN1 = f"L{l}_LN1"
+            g.add_node(TaskNode(nid_LN1, "LN", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("LN")))
+            g.add_edge(nid_ATT_IN, nid_LN1)
+
             nid_Add1 = f"L{l}_Add1"
             g.add_node(TaskNode(nid_Add1, "Add", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("Add")))
-            x_in = f"L{l-1}_Add2" if l > 0 else None
             self._add_deepseek_v4_attention(
                 g,
                 l=l,
                 shape=shape,
                 dtype_bytes=float(dtype_bytes),
                 base_attr=base_attr,
-                ln_nid=nid_ATT_IN,
-                x_in=x_in,
+                ln_nid=nid_LN1,
+                x_in=nid_ATT_IN,
                 add1_nid=nid_Add1,
                 kind=attn_kind,
                 cfg=cfg,
             )
 
-            # DeepSeekMoE block: top-k routed experts plus shared experts.
-            nid_LN2 = f"L{l}_LN2"
-            g.add_node(TaskNode(nid_LN2, "LN", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("LN")))
-            g.add_edge(nid_Add1, nid_LN2)
-            nid_MOE_IN = self._add_mhc_mix(
+            nid_POST_ATTN = self._add_mhc_mix(
                 g,
                 l=l,
-                tag="PreMoE",
-                input_nid=nid_LN2,
+                tag="PostAttn",
+                input_nid=nid_Add1,
                 shape=shape,
                 dtype_bytes=float(dtype_bytes),
                 base_attr=base_attr,
             )
+
+            # DeepSeekMoE block: top-k routed experts plus shared experts.
+            nid_MOE_IN = self._add_mhc_mix(
+                g,
+                l=l,
+                tag="PreMoE",
+                input_nid=nid_POST_ATTN,
+                shape=shape,
+                dtype_bytes=float(dtype_bytes),
+                base_attr=base_attr,
+            )
+
+            nid_LN2 = f"L{l}_LN2"
+            g.add_node(TaskNode(nid_LN2, "LN", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("LN")))
+            g.add_edge(nid_MOE_IN, nid_LN2)
 
             shared_outputs: List[str] = []
             for sid in range(max(0, int(shared_experts))):
@@ -2332,7 +2344,7 @@ class DeepSeekV4Def(MixtralDef):
                         shape=shape,
                         dtype_bytes=float(dtype_bytes),
                         base_attr=base_attr,
-                        ln_nid=nid_MOE_IN,
+                        ln_nid=nid_LN2,
                         shared_id=int(sid),
                     )
                 )
@@ -2366,7 +2378,7 @@ class DeepSeekV4Def(MixtralDef):
                     allowed=get_op_allowed("MoE_Router"),
                 )
             )
-            g.add_edge(nid_MOE_IN, nid_router)
+            g.add_edge(nid_LN2, nid_router)
 
             expert_outputs: Dict[int, str] = {}
             for rank, e in enumerate(selected_experts):
@@ -2402,20 +2414,20 @@ class DeepSeekV4Def(MixtralDef):
                     g.add_edge(so, nid_combine)
                 moe_out = nid_combine
 
-            moe_out = self._add_mhc_mix(
+            nid_Add2 = f"L{l}_Add2"
+            g.add_node(TaskNode(nid_Add2, "Add", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("Add")))
+            g.add_edge(nid_MOE_IN, nid_Add2)
+            g.add_edge(moe_out, nid_Add2)
+
+            self._add_mhc_mix(
                 g,
                 l=l,
                 tag="PostMoE",
-                input_nid=moe_out,
+                input_nid=nid_Add2,
                 shape=shape,
                 dtype_bytes=float(dtype_bytes),
                 base_attr=base_attr,
             )
-
-            nid_Add2 = f"L{l}_Add2"
-            g.add_node(TaskNode(nid_Add2, "Add", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("Add")))
-            g.add_edge(nid_Add1, nid_Add2)
-            g.add_edge(moe_out, nid_Add2)
 
         return g
 

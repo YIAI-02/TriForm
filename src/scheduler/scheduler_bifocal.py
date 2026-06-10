@@ -470,6 +470,85 @@ class BifocalScheduler(HEFTScheduler):
         except Exception:
             return int(16 * 1024)
 
+    def _activation_locality_bias(self, g: TaskGraph, nid: str, dev: DeviceSpec, phase: str) -> float:
+        """Penalty for moving small activation-only/vector nodes away from their local neighborhood.
+
+        `_earliest_finish_on_device` already charges transfers from scheduled predecessors.  This
+        bias adds the missing opposite-side locality term for branch-local activation nodes such
+        as `SwiGLU` in W1/W3 -> SwiGLU -> W2 chains, where the successor is commonly placed
+        with the same expert weights.  It is deliberately a soft penalty, not a device pin.
+        """
+        try:
+            node = g.nodes[nid]
+        except Exception:
+            return 0.0
+
+        op = str(getattr(node, 'name', '') or '').upper()
+        locality_ops = {
+            'SWIGLU', 'SILU_GLU', 'GELU',
+            'LN', 'ADD', 'MHC_MIX',
+            'MOE_COMBINE', 'MOE_SHARED_COMBINE',
+        }
+        if op not in locality_ops:
+            return 0.0
+        try:
+            if self._node_weight_id(node):
+                return 0.0
+        except Exception:
+            pass
+
+        # Configurable; default to one avoided activation transfer.
+        lam = float(self._decode_cfg_value(
+            'activation_locality_lambda',
+            'sched_activation_locality_lambda',
+            'SCHED_ACTIVATION_LOCALITY_LAMBDA',
+            default=1.0,
+        ) or 0.0)
+        if lam <= 0.0:
+            return 0.0
+
+        votes: Dict[str, float] = defaultdict(float)
+
+        # Already-scheduled producers are concrete and are the strongest signal.
+        try:
+            for u in g.predecessors(nid):
+                pdn = self._node_placement.get(u)
+                if pdn:
+                    # Weight by edge payload so W1/W3-like large activations dominate tiny control edges.
+                    votes[str(pdn)] += float(max(1, self._edge_data_bytes(g, u, nid, phase)))
+        except Exception:
+            pass
+
+        # Lookahead hints are used only when available; this captures successor-side locality
+        # without recursively rescheduling the successor.
+        try:
+            for v in g.successors(nid):
+                h = self._plan_hint.get(v)
+                if h:
+                    votes[str(h)] += 0.5 * float(max(1, self._edge_data_bytes(g, nid, v, phase)))
+        except Exception:
+            pass
+
+        if not votes:
+            return 0.0
+
+        # Majority/maximum-payload neighborhood device.  Deterministic tie-break on name.
+        target_name = sorted(votes.items(), key=lambda kv: (-float(kv[1]), str(kv[0])))[0][0]
+        if str(target_name) == str(getattr(dev, 'name', '')):
+            return 0.0
+        target = self.cluster.devices.get(str(target_name))
+        if target is None:
+            return 0.0
+        try:
+            if not self._node_allowed_on(node, target):
+                return 0.0
+        except Exception:
+            return 0.0
+
+        bytes_act = int(self._representative_activation_bytes(g, nid, phase))
+        src_fmt = str(self.cost.device_preferred_fmt(dev))
+        return float(lam) * float(self._estimate_transfer_time(dev, target, bytes_act, src_fmt=src_fmt))
+
     def _build_lookahead_chain(
         self,
         g: TaskGraph,
@@ -1037,7 +1116,10 @@ class BifocalScheduler(HEFTScheduler):
                 # Strategy 3: long-horizon decode amortization bias (cross-token only).
                 decode_phase_bias = float(self._decode_phase_amortization_bias(g, nid, dev, phase=phase))
 
-                score = float((1.0 - gamma) * eft + gamma * float(window_est) + bias + decode_phase_bias)
+                # Strategy 4: activation-neighborhood locality for lightweight/vector ops.
+                locality_bias = float(self._activation_locality_bias(g, nid, dev, phase=phase))
+
+                score = float((1.0 - gamma) * eft + gamma * float(window_est) + bias + decode_phase_bias + locality_bias)
 
                 # Tie-breakers: prefer lower EFT, then random.
                 if (score < best_score) or (
