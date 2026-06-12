@@ -5,10 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>LLM Schedule Demo (DAG)</title>
 
-  <!-- Front-end deps: Cytoscape + dagre layout plugin (CDN) -->
-  <script src="https://unpkg.com/cytoscape/dist/cytoscape.min.js"></script>
-  <script src="https://unpkg.com/dagre/dist/dagre.min.js"></script>
-  <script src="https://unpkg.com/cytoscape-dagre/cytoscape-dagre.js"></script>
+  <!-- Standalone build: no external JavaScript dependencies are required. -->
 
   <style>
     *, *::before, *::after{ box-sizing: border-box; }
@@ -402,6 +399,57 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
+
+    /* Native SVG fallback/standalone graph renderer. */
+    .simpleGraphSvg{
+      width:100%;
+      height:100%;
+      display:block;
+      overflow:hidden;
+      user-select:none;
+    }
+    .simple-graph-edge{
+      stroke: rgba(148,163,184,0.70);
+      stroke-width: 1.35;
+      fill:none;
+    }
+    .simple-graph-node{
+      opacity:1;
+      transition: opacity .12s ease;
+    }
+    .simple-graph-node.notStarted{ opacity:.26; }
+    .simple-graph-node.running{ opacity:1; }
+    .simple-graph-node.done{ opacity:1; }
+    .simple-graph-node .node-shape{
+      stroke: #111827;
+      stroke-width: 1.8;
+    }
+    .simple-graph-node.running .node-shape{
+      stroke: #000000;
+      stroke-width: 3.0;
+    }
+    .simple-graph-node text{
+      fill:#111827;
+      stroke:none;
+      stroke-width:0;
+      paint-order:normal;
+      font-size:12px;
+      font-weight:650;
+      text-anchor:middle;
+      dominant-baseline:middle;
+      pointer-events:none;
+    }
+    .simple-graph-empty{
+      color:var(--muted);
+      height:100%;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:13px;
+      text-align:center;
+      padding:20px;
+    }
+
   </style>
 </head>
 
@@ -413,11 +461,9 @@
     <div class="control">
       <label>Model topology</label>
       <select id="model">
-        <option value="auto" selected>auto (infer from trace)</option>
-        <option value="llama">llama</option>
-        <option value="mixtral">mixtral</option>
-        <option value="mpt">mpt</option>
-        <option value="palm">palm</option>
+        <option value="auto" selected>auto (infer MoE / non-MoE)</option>
+        <option value="non_moe">non-MoE</option>
+        <option value="moe">MoE</option>
       </select>
     </div>
 
@@ -470,13 +516,6 @@
       </select>
     </div>
 
-    <div class="control">
-      <label>Bundled example</label>
-      <select id="exampleSelect" title="Registered examples are read from ./examples/manifest.json.">
-        <option value="">manual / auto match</option>
-      </select>
-      <div class="filetag" id="exampleName">Registered examples live under ./examples/</div>
-    </div>
 
     <div class="legend" aria-label="Operator shape legend">
       <div class="legendTitle"></div>
@@ -544,13 +583,13 @@
     <div class="control">
       <label>Baseline trace (CSV)</label>
       <input id="fileBase" type="file" accept=".csv,text/csv" />
-      <div class="filetag" id="baseName">Auto-load: based on prefill/decode selectors</div>
+      <div class="filetag" id="baseName">Select a baseline _ops_trace.csv file.</div>
     </div>
 
     <div class="control">
       <label>Heuristic trace (CSV)</label>
       <input id="fileHeu" type="file" accept=".csv,text/csv" />
-      <div class="filetag" id="heuName">Auto-load: based on prefill/decode selectors</div>
+      <div class="filetag" id="heuName">Select a heuristic/Bifocal _ops_trace.csv file.</div>
     </div>
 
     <hr />
@@ -1305,103 +1344,378 @@ function buildLayerEdgesMixtral(nodesById, L){
 }
 
 function buildLayerEdgesByModel(nodesById, L, modelFamily){
-  const m = String(modelFamily || '').toLowerCase();
-  if (m === 'palm') return buildLayerEdgesPalm(nodesById, L);
-  if (m === 'mpt') return buildLayerEdgesMpt(nodesById, L);
-  if (m === 'mixtral') return buildLayerEdgesMixtral(nodesById, L);
-  // default: llama-like
+  const m = normalizeModelFamily(modelFamily);
+  if (m === 'moe') return buildLayerEdgesMixtral(nodesById, L);
+  // The non-MoE traces used here follow the LLaMA/Qwen-style block DAG.
   return buildLayerEdgesLlamaLike(nodesById, L);
 }
 
 /* =========================
    Cytoscape view
 ========================= */
-function makeCy(container){
-  const cy = cytoscape({
-    container,
-    layout: { name: 'dagre', rankDir: 'LR', nodeSep: 28, rankSep: 64, edgeSep: 14 },
-    style: [
-      {
-        selector: 'node',
-        style: {
-          'shape': ele => {
-            const t = ele.data('type');
-            return ({
-              attention: 'diamond',
-              matmul: 'square',
-              norm: 'ellipse',
-              softmax: 'tag',
-              activation: 'ellipse',
-              elementwise: 'hexagon',
-              io: 'triangle',
-              moe: 'vee',
-              other: 'round-rectangle'
-            })[t] || 'round-rectangle';
-          },
-          'background-color': ele => ele.data('color') || UNKNOWN_COLOR,
-          'label': ele => ele.data('labelShort') || ele.data('label') || ele.id(),
-          'color': '#ffffff',
-          'font-size': 12,
-          'min-zoomed-font-size': 8,
-          'text-wrap': 'wrap',
-          'text-max-width': 140,
-          'padding': 10,
-          'border-width': 1.5,
-          'border-color': 'rgba(255,255,255,0.18)',
-          'text-outline-width': 3,
-          'text-outline-color': 'rgba(0,0,0,0.35)',
-          'opacity': 1
-        }
-      },
+class SimpleSvgNodeHandle{
+  constructor(graph, id, empty=false){
+    this.graph = graph;
+    this._id = id;
+    this._empty = empty;
+  }
+  id(){ return this._id; }
+  empty(){ return this._empty || !this.graph.nodeMap.has(this._id); }
+  _node(){ return this.graph.nodeMap.get(this._id) || null; }
+  position(axis){
+    const n = this._node();
+    if (!n) return 0;
+    if (axis === 'x') return n.x || 0;
+    if (axis === 'y') return n.y || 0;
+    return { x: n.x || 0, y: n.y || 0 };
+  }
+  renderedPosition(){
+    const n = this._node();
+    if (!n) return { x:0, y:0 };
+    return this.graph.worldToRendered(n.x || 0, n.y || 0);
+  }
+  addClass(cls){
+    const n = this._node();
+    if (!n) return this;
+    n.classes.add(String(cls));
+    this.graph.updateNodeDomClass(n);
+    return this;
+  }
+  removeClass(cls){
+    const n = this._node();
+    if (!n) return this;
+    n.classes.delete(String(cls));
+    this.graph.updateNodeDomClass(n);
+    return this;
+  }
+}
 
-      {
-        selector: 'node[dev = "HYBRID"]',
-        style: {
-          'background-color': 'rgba(17,24,39,0.9)',
-          'pie-size': '100%',
-          'pie-1-background-color': 'data(pie1Color)',
-          'pie-1-background-size': 'data(pie1Size)',
-          'pie-2-background-color': 'data(pie2Color)',
-          'pie-2-background-size': 'data(pie2Size)',
-          'pie-3-background-color': 'data(pie3Color)',
-          'pie-3-background-size': 'data(pie3Size)'
-        }
-      },
-      {
-        selector: 'node.notStarted',
-        style: {
-          'opacity': 0.18
-        }
-      },
-      {
-        selector: 'node.running',
-        style: {
-          'opacity': 1,
-          'border-width': 5,
-          'border-color': 'rgba(255,255,255,0.85)'
-        }
-      },
-      {
-        selector: 'node.done',
-        style: {
-          'opacity': 1
-        }
-      },
-      {
-        selector: 'edge',
-        style: {
-          'width': 2.2,
-          'line-color': 'rgba(148,163,184,0.75)',
-          'target-arrow-shape': 'triangle',
-          'target-arrow-color': 'rgba(148,163,184,0.75)',
-          'curve-style': 'bezier'
-        }
-      },
-      { selector: 'node:selected', style: { 'border-width': 4, 'border-color': '#60a5fa' } },
-      { selector: 'edge:selected', style: { 'line-color': '#60a5fa', 'target-arrow-color': '#60a5fa', 'width': 3 } }
-    ]
-  });
-  return cy;
+class SimpleSvgGraph{
+  constructor(container){
+    this.container = container;
+    this.nodesData = [];
+    this.edgesData = [];
+    this.nodeMap = new Map();
+    this.edgeMap = new Map();
+    this.viewBox = { x:0, y:0, w:1000, h:500 };
+    this.ns = 'http://www.w3.org/2000/svg';
+
+    container.innerHTML = '';
+    this.svg = document.createElementNS(this.ns, 'svg');
+    this.svg.setAttribute('class', 'simpleGraphSvg');
+    this.svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+
+    const defs = document.createElementNS(this.ns, 'defs');
+    const marker = document.createElementNS(this.ns, 'marker');
+    marker.setAttribute('id', 'simpleArrow-' + Math.random().toString(36).slice(2));
+    this.markerId = marker.getAttribute('id');
+    marker.setAttribute('viewBox', '0 0 10 10');
+    marker.setAttribute('refX', '8');
+    marker.setAttribute('refY', '5');
+    marker.setAttribute('markerWidth', '5');
+    marker.setAttribute('markerHeight', '5');
+    marker.setAttribute('orient', 'auto-start-reverse');
+    const arrow = document.createElementNS(this.ns, 'path');
+    arrow.setAttribute('d', 'M 0 0 L 10 5 L 0 10 z');
+    arrow.setAttribute('fill', 'rgba(148,163,184,0.76)');
+    marker.appendChild(arrow);
+    defs.appendChild(marker);
+    this.svg.appendChild(defs);
+
+    this.edgeLayer = document.createElementNS(this.ns, 'g');
+    this.nodeLayer = document.createElementNS(this.ns, 'g');
+    this.svg.appendChild(this.edgeLayer);
+    this.svg.appendChild(this.nodeLayer);
+    container.appendChild(this.svg);
+  }
+
+  elements(){
+    const self = this;
+    return {
+      remove(){ self.clear(); return this; },
+      forEach(cb){ [...self.nodes(), ...self.edges()].forEach(cb); }
+    };
+  }
+
+  clear(){
+    this.nodesData = [];
+    this.edgesData = [];
+    this.nodeMap.clear();
+    this.edgeMap.clear();
+    if (this.edgeLayer) this.edgeLayer.innerHTML = '';
+    if (this.nodeLayer) this.nodeLayer.innerHTML = '';
+    this._emptyMessage(false);
+  }
+
+  add(elements){
+    this.clear();
+    const arr = Array.isArray(elements) ? elements : [];
+    for (const el of arr){
+      const d = el && el.data ? el.data : {};
+      if (!d || !d.id) continue;
+      if (d.source && d.target){
+        this.edgesData.push({ id:String(d.id), source:String(d.source), target:String(d.target), data:d });
+      } else {
+        const pos = el.position || {};
+        const node = {
+          id:String(d.id),
+          data:d,
+          x:Number.isFinite(+pos.x) ? +pos.x : 0,
+          y:Number.isFinite(+pos.y) ? +pos.y : 0,
+          classes:new Set(),
+          g:null,
+          shapeEl:null,
+          textEl:null
+        };
+        this.nodesData.push(node);
+        this.nodeMap.set(node.id, node);
+      }
+    }
+    for (const e of this.edgesData) this.edgeMap.set(e.id, e);
+    this.render();
+    return this;
+  }
+
+  nodes(){
+    return this.nodesData.map(n => new SimpleSvgNodeHandle(this, n.id));
+  }
+
+  edges(){ return []; }
+
+  getElementById(id){
+    const sid = String(id);
+    if (!this.nodeMap.has(sid)) return new SimpleSvgNodeHandle(this, sid, true);
+    return new SimpleSvgNodeHandle(this, sid, false);
+  }
+
+  layout(opts){
+    const self = this;
+    return {
+      run(){
+        const name = String(opts?.name || '').toLowerCase();
+        if (name !== 'preset') self.computeLayout();
+        self.render();
+        self.fit(null, 30);
+        return this;
+      }
+    };
+  }
+
+  fit(_eles, padding=30){
+    if (!this.nodesData.length){
+      this.viewBox = { x:0, y:0, w:1000, h:360 };
+      this.svg.setAttribute('viewBox', '0 0 1000 360');
+      return;
+    }
+    let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
+    for (const n of this.nodesData){
+      minX = Math.min(minX, n.x - 58);
+      maxX = Math.max(maxX, n.x + 58);
+      minY = Math.min(minY, n.y - 38);
+      maxY = Math.max(maxY, n.y + 38);
+    }
+    const pad = Number(padding) || 0;
+    const w = Math.max(100, maxX - minX + 2*pad);
+    const h = Math.max(100, maxY - minY + 2*pad);
+    this.viewBox = { x:minX-pad, y:minY-pad, w, h };
+    this.svg.setAttribute('viewBox', `${this.viewBox.x} ${this.viewBox.y} ${this.viewBox.w} ${this.viewBox.h}`);
+  }
+
+  off(){ return this; }
+  on(){ return this; }
+
+  png(){
+    const data = new XMLSerializer().serializeToString(this.svg);
+    return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(data);
+  }
+
+  worldToRendered(x, y){
+    const rect = this.container.getBoundingClientRect();
+    const vb = this.viewBox || { x:0, y:0, w:1, h:1 };
+    const cw = rect.width || this.container.clientWidth || 1;
+    const ch = rect.height || this.container.clientHeight || 1;
+    return {
+      x: ((x - vb.x) / Math.max(vb.w, 1e-9)) * cw,
+      y: ((y - vb.y) / Math.max(vb.h, 1e-9)) * ch
+    };
+  }
+
+  _emptyMessage(show){
+    let msg = this.container.querySelector('.simple-graph-empty');
+    if (show){
+      if (!msg){
+        msg = document.createElement('div');
+        msg.className = 'simple-graph-empty';
+        msg.textContent = 'No visible operators for this phase/layer/token. Try another token, layer, or CSV pair.';
+        this.container.appendChild(msg);
+      }
+      if (this.svg) this.svg.style.display = 'none';
+    } else {
+      if (msg) msg.remove();
+      if (this.svg) this.svg.style.display = '';
+    }
+  }
+
+  computeLayout(){
+    const nodes = this.nodesData;
+    if (!nodes.length) return;
+
+    const ids = new Set(nodes.map(n => n.id));
+    const incoming = {};
+    const outgoing = {};
+    for (const n of nodes){ incoming[n.id] = 0; outgoing[n.id] = []; }
+    for (const e of this.edgesData){
+      if (!ids.has(e.source) || !ids.has(e.target)) continue;
+      outgoing[e.source].push(e.target);
+      incoming[e.target] = (incoming[e.target] || 0) + 1;
+    }
+
+    const opRankHint = (id) => {
+      const u = String(id).toUpperCase();
+      const order = [
+        ['_X',0], ['_LN1',1], ['_LN',1], ['_Q',2], ['_K',2], ['_V',2],
+        ['K_WRITE',3], ['V_WRITE',3], ['K_READ',3], ['V_READ',3], ['_QK',4],
+        ['SOFTMAX',5], ['_SV',6], ['_O',7], ['O_MERGE',8], ['ADD1',9],
+        ['_LN2',10], ['ROUTER',11], ['FFN_W1',12], ['FFN_W3',12], ['ACT',13], ['SWIGLU',13],
+        ['FFN_W2',14], ['FFN_MERGE',15], ['ADD2',16]
+      ];
+      for (const [pat, r] of order){ if (u.includes(pat)) return r; }
+      return 20;
+    };
+
+    const rank = {};
+    for (const n of nodes) rank[n.id] = opRankHint(n.id);
+
+    // Relax ranks along visible DAG edges. This gives the native SVG renderer a
+    // deterministic LR layout even when the dagre plugin is not available.
+    for (let pass=0; pass<nodes.length+2; pass++){
+      let changed = false;
+      for (const e of this.edgesData){
+        if (!ids.has(e.source) || !ids.has(e.target)) continue;
+        const nr = Math.max(rank[e.target] || 0, (rank[e.source] || 0) + 1);
+        if (nr !== rank[e.target]){ rank[e.target] = nr; changed = true; }
+      }
+      if (!changed) break;
+    }
+
+    const groups = new Map();
+    const sorted = nodes.slice().sort((a,b) => {
+      const ra = rank[a.id] || 0, rb = rank[b.id] || 0;
+      if (ra !== rb) return ra - rb;
+      return a.id.localeCompare(b.id);
+    });
+    for (const n of sorted){
+      const r = rank[n.id] || 0;
+      if (!groups.has(r)) groups.set(r, []);
+      groups.get(r).push(n);
+    }
+
+    const ranks = [...groups.keys()].sort((a,b)=>a-b);
+    const rankToX = new Map();
+    ranks.forEach((r,i) => rankToX.set(r, 70 + i * 120));
+
+    const maxRows = Math.max(...[...groups.values()].map(g => g.length));
+    const yGap = maxRows > 5 ? 54 : 68;
+    for (const r of ranks){
+      const g = groups.get(r);
+      const y0 = 70 - ((g.length - 1) * yGap / 2);
+      g.forEach((n, idx) => {
+        n.x = rankToX.get(r);
+        n.y = y0 + idx * yGap;
+      });
+    }
+  }
+
+  render(){
+    if (!this.svg) return;
+    this._emptyMessage(this.nodesData.length === 0);
+    if (!this.nodesData.length) return;
+
+    this.edgeLayer.innerHTML = '';
+    this.nodeLayer.innerHTML = '';
+
+    for (const e of this.edgesData){
+      const s = this.nodeMap.get(e.source);
+      const t = this.nodeMap.get(e.target);
+      if (!s || !t) continue;
+      const line = document.createElementNS(this.ns, 'line');
+      line.setAttribute('class', 'simple-graph-edge');
+      line.setAttribute('x1', String(s.x + 44));
+      line.setAttribute('y1', String(s.y));
+      line.setAttribute('x2', String(t.x - 48));
+      line.setAttribute('y2', String(t.y));
+      line.setAttribute('marker-end', `url(#${this.markerId})`);
+      this.edgeLayer.appendChild(line);
+    }
+
+    for (const n of this.nodesData){
+      const g = document.createElementNS(this.ns, 'g');
+      n.g = g;
+      g.setAttribute('data-id', n.id);
+      g.setAttribute('transform', `translate(${n.x},${n.y})`);
+      this.updateNodeDomClass(n);
+
+      const shape = this.createShape(n);
+      n.shapeEl = shape;
+      g.appendChild(shape);
+
+      const txt = document.createElementNS(this.ns, 'text');
+      n.textEl = txt;
+      const label = String(n.data?.labelShort || n.data?.label || n.id);
+      txt.textContent = label.length > 14 ? label.slice(0, 13) + '…' : label;
+      txt.setAttribute('x', '0');
+      txt.setAttribute('y', '1');
+      g.appendChild(txt);
+
+      this.nodeLayer.appendChild(g);
+    }
+  }
+
+  updateNodeDomClass(n){
+    if (!n || !n.g) return;
+    n.g.setAttribute('class', 'simple-graph-node ' + [...n.classes].join(' '));
+  }
+
+  createShape(n){
+    const type = String(n.data?.type || 'other');
+    const fill = String(n.data?.color || UNKNOWN_COLOR);
+    const make = (tag) => document.createElementNS(this.ns, tag);
+    let el;
+    const w = 84, h = 40;
+
+    if (type === 'attention'){
+      el = make('polygon');
+      el.setAttribute('points', `0,${-h/2} ${w/2},0 0,${h/2} ${-w/2},0`);
+    } else if (type === 'matmul'){
+      el = make('rect'); el.setAttribute('x', String(-w/2)); el.setAttribute('y', String(-h/2)); el.setAttribute('width', String(w)); el.setAttribute('height', String(h)); el.setAttribute('rx', '2');
+    } else if (type === 'norm' || type === 'activation'){
+      el = make('ellipse'); el.setAttribute('cx', '0'); el.setAttribute('cy', '0'); el.setAttribute('rx', String(w/2)); el.setAttribute('ry', String(h/2));
+    } else if (type === 'softmax'){
+      el = make('polygon');
+      el.setAttribute('points', `${-w/2},${-h/2} ${w/2-14},${-h/2} ${w/2},0 ${w/2-14},${h/2} ${-w/2},${h/2}`);
+    } else if (type === 'elementwise'){
+      el = make('polygon');
+      el.setAttribute('points', `${-w/2+12},${-h/2} ${w/2-12},${-h/2} ${w/2},0 ${w/2-12},${h/2} ${-w/2+12},${h/2} ${-w/2},0`);
+    } else if (type === 'io'){
+      el = make('polygon');
+      el.setAttribute('points', `0,${-h/2} ${w/2},${h/2} ${-w/2},${h/2}`);
+    } else if (type === 'moe'){
+      el = make('polygon');
+      el.setAttribute('points', `${-w/2},${-h/2} 0,${h/2} ${w/2},${-h/2} ${w/2-18},${-h/2} 0,${h/2-10} ${-w/2+18},${-h/2}`);
+    } else {
+      el = make('rect'); el.setAttribute('x', String(-w/2)); el.setAttribute('y', String(-h/2)); el.setAttribute('width', String(w)); el.setAttribute('height', String(h)); el.setAttribute('rx', '12');
+    }
+
+    el.setAttribute('class', 'node-shape');
+    el.setAttribute('fill', fill);
+    return el;
+  }
+}
+
+function makeCy(container){
+  // Use the native SVG renderer unconditionally so the demo works when opened
+  // directly from disk and does not depend on CDN access.
+  return new SimpleSvgGraph(container);
 }
 
 function applyElements(cy, elements, posMap){
@@ -1510,32 +1824,34 @@ const MODEL_DEF_OPS_COMMON = new Set([
 ]);
 
 const MODEL_DEF_OPS = {
-  llama: new Set([
+  non_moe: new Set([
     ...MODEL_DEF_OPS_COMMON,
-    'FFN_W1', 'FFN_W2', 'FFN_W3', 'ACT', 'SWIGLU'
+    'FFN_W1', 'FFN_W2', 'FFN_W3', 'ACT', 'SWIGLU', 'GELU'
   ]),
-  mpt: new Set([
-    ...MODEL_DEF_OPS_COMMON,
-    'FFN_W1', 'FFN_W2', 'GELU'
-  ]),
-  palm: new Set([
-    ...MODEL_DEF_OPS_COMMON,
-    'FFN_W1', 'FFN_W2', 'GELU'
-  ]),
-  mixtral: new Set([
+  moe: new Set([
     ...MODEL_DEF_OPS_COMMON,
     'FFN_W1', 'FFN_W2', 'FFN_W3', 'ACT', 'SWIGLU'
   ])
 };
 
+function normalizeModelFamily(modelFamily){
+  const m = String(modelFamily || '').trim().toLowerCase().replace(/[ -]/g, '_');
+  if (m === 'moe' || m === 'mixtral') return 'moe';
+  return 'non_moe';
+}
+
+function niceModelName(modelFamily){
+  return normalizeModelFamily(modelFamily) === 'moe' ? 'MoE' : 'non-MoE';
+}
+
 function opInModelDefinition(opKey, modelFamily){
   const k = String(opKey || '').trim().toUpperCase();
-  const m = String(modelFamily || 'llama').trim().toLowerCase();
-  const set = MODEL_DEF_OPS[m] || MODEL_DEF_OPS.llama;
+  const m = normalizeModelFamily(modelFamily);
+  const set = MODEL_DEF_OPS[m] || MODEL_DEF_OPS.non_moe;
   if (set.has(k)) return true;
 
-  // Mixtral expert patterns (if used).
-  if (m === 'mixtral'){
+  // MoE expert patterns.
+  if (m === 'moe'){
     if (/^FFN_W[123]_E\d+$/i.test(k)) return true;
     if (/^(ACT|SWIGLU)_E\d+$/i.test(k)) return true;
   }
@@ -1765,14 +2081,25 @@ function buildLayerSegment(rows, origToMerged, keepMergedIds){
 /* =========================
    Trace object from CSV
 ========================= */
-function buildTrace(rowsRaw){
+function medianNumber(vals){
+  const a = (vals || []).map(Number).filter(Number.isFinite).sort((x,y)=>x-y);
+  if (!a.length) return 0;
+  const mid = Math.floor(a.length / 2);
+  return (a.length % 2) ? a[mid] : (a[mid - 1] + a[mid]) / 2;
+}
+
+function buildTrace(rowsRaw, sourceName){
   const rows = [];
   const layers = new Set();
   const devices = new Set();
   const deviceType = {};
+  const warnings = [];
+  const opKeys = new Set();
+  const opLabels = new Set();
+  const nodeIdSamples = new Set();
 
-  // Normalize
-  for (const rr of rowsRaw){
+  // Normalize the CSV rows into the compact schema used by the viewer.
+  for (const rr of rowsRaw || []){
     const phase = String(rr.phase || rr.Phase || '').trim().toLowerCase();
     const node_id = String(rr.node_id || rr.nodeId || rr.id || '').trim();
     if (!phase || !node_id) continue;
@@ -1790,11 +2117,15 @@ function buildTrace(rowsRaw){
     const op_display = String(rr.op || '').trim() || op_key;
 
     const device = normalizeDevice(rr.device);
-    const device_type = String(rr.device_type || '').trim().toLowerCase() || (deviceFamily(device) === 'NPU' ? 'npu' : (deviceFamily(device) === 'PIM' ? 'pim' : 'other'));
+    const device_type = String(rr.device_type || '').trim().toLowerCase() ||
+      (deviceFamily(device) === 'NPU' ? 'npu' : (deviceFamily(device) === 'PIM' ? 'pim' : 'other'));
     const mode = String(rr.mode || '').trim();
 
     layers.add(layer);
     devices.add(device);
+    opKeys.add(String(op_key || '').toUpperCase());
+    opLabels.add(String(op_display || '').toUpperCase());
+    if (nodeIdSamples.size < 6000) nodeIdSamples.add(node_id);
     if (!deviceType[device]) deviceType[device] = device_type;
 
     rows.push({
@@ -1813,35 +2144,81 @@ function buildTrace(rowsRaw){
 
   const layerList = [...layers].sort((a,b)=>a-b);
 
-  // Prefill / decode split
+  // Prefill / decode split. Keep file order. Do not sort by timestamp: heuristic
+  // traces can overlap adjacent decode steps in time, and timestamp sorting would
+  // mix tokens.
   const prefill = rows.filter(r => r.phase === 'prefill');
-  const decode = rows.filter(r => r.phase === 'decode');
+  const decodeOrdered = rows.filter(r => r.phase === 'decode');
 
   const prefillEnd = prefill.reduce((m,r)=>Math.max(m, Number(r.end)||0), 0);
 
-  // Token indexing for decode
-  const nodesPerToken = prefill.length;
-
-  // Keep decode rows in CSV/file order when assigning token_idx.
-  // Some heuristic traces overlap work across adjacent decode steps in time;
-  // sorting by start time can then mix rows from neighboring tokens.
-  const decodeOrdered = decode.slice();
-  const tokenCount = (nodesPerToken > 0) ? Math.floor(decodeOrdered.length / nodesPerToken) : 0;
-
-  // Assign token_idx
-  for (let i=0;i<decodeOrdered.length;i++){
-    const t = (nodesPerToken > 0) ? Math.floor(i / nodesPerToken) : 0;
-    decodeOrdered[i].token_idx = t;
+  const prefillLayerEnds = {};
+  for (const r of prefill){
+    const e = Number(r.end);
+    if (Number.isFinite(e)) prefillLayerEnds[r.layer] = Math.max(Number(prefillLayerEnds[r.layer] || 0), e);
   }
 
-  // Build per-token start/end using the full decode (all layers)
+  // Robust decode-token indexing.
+  // Older versions assumed "rows per decode token == number of prefill rows".
+  // That fails when a CSV is truncated, when baseline/heuristic traces have
+  // different decode lengths, or when a partial final token is present.  The
+  // traces generated by this repo are token-major in file order; the first
+  // decode node (normally L0_LN/L0_LN1) reappears once per token.  We use those
+  // repeats as token boundaries and ignore only clearly incomplete tail fragments.
+  const fallbackRowsPerToken = prefill.length;
+  let tokenStarts = [];
+  let rowsPerToken = fallbackRowsPerToken;
+  let tokenCount = 0;
+  let tokenRanges = [];
+
+  if (decodeOrdered.length){
+    const firstDecodeNode = decodeOrdered[0].node_id;
+    for (let i=0;i<decodeOrdered.length;i++){
+      if (decodeOrdered[i].node_id === firstDecodeNode) tokenStarts.push(i);
+    }
+
+    if (tokenStarts.length >= 2){
+      const diffs = [];
+      for (let i=0;i<tokenStarts.length-1;i++) diffs.push(tokenStarts[i+1] - tokenStarts[i]);
+      const med = medianNumber(diffs);
+      rowsPerToken = med || fallbackRowsPerToken || 0;
+
+      let usableStarts = tokenStarts.slice();
+      const lastLen = decodeOrdered.length - tokenStarts[tokenStarts.length - 1];
+
+      // Drop a severely incomplete final fragment, but keep nearly-complete
+      // tails (e.g. a CSV that is missing only one bookkeeping row).
+      if (med > 0 && lastLen > 0 && lastLen < Math.max(4, 0.5 * med)){
+        usableStarts = tokenStarts.slice(0, -1);
+        warnings.push(`Ignored an incomplete final decode fragment (${lastLen}/${Math.round(med)} rows).`);
+      }
+
+      tokenCount = usableStarts.length;
+      for (let t=0;t<tokenCount;t++){
+        const a = usableStarts[t];
+        const b = (t + 1 < usableStarts.length) ? usableStarts[t + 1] : decodeOrdered.length;
+        tokenRanges.push([a, b]);
+      }
+    } else if (fallbackRowsPerToken > 0){
+      rowsPerToken = fallbackRowsPerToken;
+      tokenCount = Math.floor(decodeOrdered.length / fallbackRowsPerToken);
+      for (let t=0;t<tokenCount;t++) tokenRanges.push([t * fallbackRowsPerToken, (t + 1) * fallbackRowsPerToken]);
+    }
+  }
+
+  // Assign token_idx only for complete/playable token ranges.
+  for (const r of decodeOrdered) r.token_idx = -1;
+  for (let t=0;t<tokenRanges.length;t++){
+    const [a,b] = tokenRanges[t];
+    for (let i=a;i<b && i<decodeOrdered.length;i++) decodeOrdered[i].token_idx = t;
+  }
+
   const decodeTokenStarts = [];
   const decodeTokenEnds = [];
-  for (let t=0;t<tokenCount;t++){
+  for (let t=0;t<tokenRanges.length;t++){
     let sMin = Infinity, eMax = -Infinity;
-    const a = t * nodesPerToken;
-    const b = (t+1) * nodesPerToken;
-    for (let i=a;i<b;i++){
+    const [a,b] = tokenRanges[t];
+    for (let i=a;i<b && i<decodeOrdered.length;i++){
       const r = decodeOrdered[i];
       const s = Number(r.start), e = Number(r.end);
       if (Number.isFinite(s)) sMin = Math.min(sMin, s);
@@ -1851,7 +2228,12 @@ function buildTrace(rowsRaw){
     decodeTokenEnds.push(Number.isFinite(eMax) ? eMax : 0);
   }
 
-  // Build row index for quick retrieval: phase -> layer -> token(optional) -> rows
+  const declared = inferSeqLensFromFilename(sourceName || '');
+  if (declared?.decode && tokenCount && tokenCount < declared.decode){
+    warnings.push(`Filename indicates decode=${declared.decode}, but this CSV contains ${tokenCount} complete/playable decode tokens; playback uses the actual CSV content.`);
+  }
+
+  // Build row index for quick retrieval: phase -> layer -> token(optional) -> rows.
   const idxPrefill = {};
   for (const r of prefill){
     (idxPrefill[r.layer] ||= []).push(r);
@@ -1859,22 +2241,32 @@ function buildTrace(rowsRaw){
 
   const idxDecode = {};
   for (const r of decodeOrdered){
-    const t = r.token_idx || 0;
+    const t = Number(r.token_idx);
+    if (!Number.isFinite(t) || t < 0) continue;
     idxDecode[t] ||= {};
     (idxDecode[t][r.layer] ||= []).push(r);
   }
 
   const modes = [...new Set(rows.map(r => r.mode).filter(Boolean))].sort();
 
+  const sampleRows = prefill.slice(0, 2000).concat(decodeOrdered.slice(0, 400));
+
   return {
-    rows,
+    rows: sampleRows,
     layerList,
     devices: [...devices].filter(d => d !== UNKNOWN_DEVICE).sort(),
     deviceType,
     modes,
+    warnings,
+    sourceName: String(sourceName || ''),
+    declaredSeqLens: declared || null,
+    opKeys: [...opKeys],
+    opLabels: [...opLabels],
+    nodeIdSamples: [...nodeIdSamples],
 
     prefillEnd,
-    nodesPerToken,
+    prefillLayerEnds,
+    nodesPerToken: rowsPerToken,
     tokenCount,
     decodeTokenStarts,
     decodeTokenEnds,
@@ -1890,6 +2282,7 @@ function buildTrace(rowsRaw){
     }
   };
 }
+
 
 /* =========================
    Global app state
@@ -1911,8 +2304,6 @@ const UI = {
   prefillLen: document.getElementById('prefillLen'),
   decodeLen: document.getElementById('decodeLen'),
   dtype: document.getElementById('dtype'),
-  exampleSelect: document.getElementById('exampleSelect'),
-  exampleName: document.getElementById('exampleName'),
   fileBase: document.getElementById('fileBase'),
   fileHeu: document.getElementById('fileHeu'),
   baseName: document.getElementById('baseName'),
@@ -1955,130 +2346,6 @@ const UI = {
   chartTitle: document.getElementById('chartTitle'),
   chartSub: document.getElementById('chartSub')
 };
-
-let demoExamples = [];
-
-function normalizeDemoManifest(payload){
-  if (Array.isArray(payload)) return payload;
-  if (payload && Array.isArray(payload.examples)) return payload.examples;
-  return [];
-}
-
-function resolveDemoUrl(path){
-  const s = String(path || '').trim();
-  if (!s) return '';
-  if (/^(https?:)?\/\//i.test(s) || s.startsWith('data:')) return s;
-  if (s.startsWith('./') || s.startsWith('../')) return s;
-  return './' + s.replace(/^\/+/, '');
-}
-
-function exampleLabel(ex){
-  return String(ex?.label || ex?.id || '').trim() || 'unnamed example';
-}
-
-function exampleId(ex, idx){
-  return String(ex?.id || `example_${idx}`).trim();
-}
-
-function setExampleStatus(msg){
-  if (UI.exampleName) UI.exampleName.textContent = msg;
-}
-
-function populateDemoExampleSelector(){
-  const sel = UI.exampleSelect;
-  if (!sel) return;
-  sel.innerHTML = '';
-
-  const defaultOpt = document.createElement('option');
-  defaultOpt.value = '';
-  defaultOpt.textContent = demoExamples.length ? 'manual / auto match' : 'manual / auto match (no registered examples)';
-  sel.appendChild(defaultOpt);
-
-  demoExamples.forEach((ex, idx) => {
-    const opt = document.createElement('option');
-    opt.value = exampleId(ex, idx);
-    opt.textContent = exampleLabel(ex);
-    sel.appendChild(opt);
-  });
-
-  setExampleStatus(demoExamples.length
-    ? `Loaded ${demoExamples.length} registered example(s) from ./examples/manifest.json`
-    : 'No registered examples. Add cases under ./examples/ and update manifest.json.');
-}
-
-async function loadDemoManifest(){
-  try{
-    const r = await fetch('./examples/manifest.json', { cache: 'no-store' });
-    if (!r.ok){
-      demoExamples = [];
-      populateDemoExampleSelector();
-      return;
-    }
-    const payload = await r.json();
-    demoExamples = normalizeDemoManifest(payload).filter(ex => ex && (ex.baseline || ex.base) && (ex.heuristic || ex.heu));
-    populateDemoExampleSelector();
-  }catch(e){
-    demoExamples = [];
-    populateDemoExampleSelector();
-    setExampleStatus('Could not read ./examples/manifest.json; manual CSV loading is still available.');
-    console.warn('Failed to load demo manifest:', e);
-  }
-}
-
-function applyExampleMetadata(ex){
-  if (!ex) return;
-  if (ex.model) ensureSelectHasValue(UI.model, String(ex.model));
-  if (ex.batch) ensureSelectHasValue(UI.batch, ex.batch);
-  if (ex.prefill) ensureSelectHasValue(UI.prefillLen, ex.prefill);
-  if (ex.decode) ensureSelectHasValue(UI.decodeLen, ex.decode);
-  if (ex.dtype) ensureSelectHasValue(UI.dtype, String(ex.dtype));
-}
-
-async function loadRegisteredExampleById(id){
-  const idx = demoExamples.findIndex((ex, i) => exampleId(ex, i) === String(id));
-  if (idx < 0) return false;
-
-  const ex = demoExamples[idx];
-  const baseUrl = resolveDemoUrl(ex.baseline || ex.base);
-  const heuUrl = resolveDemoUrl(ex.heuristic || ex.heu);
-  if (!baseUrl || !heuUrl){
-    setStatus('Registered example is missing baseline or heuristic path.');
-    return false;
-  }
-
-  setStatus(`Loading registered example: ${exampleLabel(ex)}…`);
-  setExampleStatus(ex.notes ? String(ex.notes) : exampleLabel(ex));
-
-  const baseTrace = await tryAutoLoad(baseUrl, false);
-  if (!baseTrace){
-    setStatus(`Failed to load baseline trace: ${stripLocalPrefix(baseUrl)}`);
-    return false;
-  }
-
-  const heuTrace = await tryAutoLoad(heuUrl, false);
-  if (!heuTrace){
-    setStatus(`Failed to load heuristic trace: ${stripLocalPrefix(heuUrl)}`);
-    return false;
-  }
-
-  traceBase = baseTrace;
-  traceHeu = heuTrace;
-  inferredModel = null;
-  posMapByLayer = {};
-
-  applyExampleMetadata(ex);
-  maybeApplySeqLensFromFilename(baseUrl);
-  maybeApplySeqLensFromFilename(heuUrl);
-
-  UI.baseName.textContent = `Example: ${stripLocalPrefix(baseUrl)}`;
-  UI.heuName.textContent = `Example: ${stripLocalPrefix(heuUrl)}`;
-  populateLayerSelector();
-  setStatus(`Ready. Loaded ${exampleLabel(ex)}. Decode tokens: ${traceBase.tokenCount}`);
-  await rebuildAndRender();
-  return true;
-}
-
-
 
 /* =========================
    Infer prefill/decode lengths from trace filename
@@ -2150,146 +2417,15 @@ function uniqStrings(list){
   return out;
 }
 
-function stripLocalPrefix(path){
-  return String(path || '').replace(/^\.\//, '');
-}
-
-function numericSelectValues(sel){
-  return Array.from(sel?.options || [])
-    .map(opt => Number(opt.value || opt.textContent || 0))
-    .filter(v => Number.isFinite(v));
-}
-
-function currentSeqLens(){
-  return {
-    prefill: Number(UI.prefillLen?.value || 0),
-    decode: Number(UI.decodeLen?.value || 0)
-  };
-}
-
-function buildAutoLoadCandidates(kind, prefill, decode){
-  const p = Math.trunc(Number(prefill));
-  const d = Math.trunc(Number(decode));
-  if (!Number.isFinite(p) || !Number.isFinite(d) || p <= 0 || d <= 0) return [];
-
-  const simple = `${p}x${d}_ops_trace.csv`;
-  const tagged = [
-    `prefill-${p}xdecode_${d}_ops_trace.csv`,
-    `prefill_${p}xdecode_${d}_ops_trace.csv`
-  ];
-
-  const dirs = [
-    './',
-    `./examples/${p}x${d}/`,
-    `./examples/prefill-${p}xdecode_${d}/`,
-    `./examples/prefill_${p}xdecode_${d}/`
-  ];
-
-  const out = [];
-  const pushEverywhere = (name) => {
-    for (const dir of dirs) out.push(`${dir}${name}`);
-  };
-
-  if (String(kind).toLowerCase() === 'base'){
-    pushEverywhere(simple);
-    pushEverywhere(`linear_${simple}`);
-    pushEverywhere(`pd_${simple}`);
-    pushEverywhere(`PD_linear_${simple}`);
-    pushEverywhere(`baseline_${simple}`);
-    for (const core of tagged){
-      pushEverywhere(core);
-      pushEverywhere(`linear_${core}`);
-      pushEverywhere(`pd_${core}`);
-      pushEverywhere(`PD_linear_${core}`);
-      pushEverywhere(`baseline_${core}`);
-    }
-  } else {
-    pushEverywhere(`hefthint_${simple}`);
-    pushEverywhere(`hefthint_linear_${simple}`);
-    pushEverywhere(`heft_hint_${simple}`);
-    pushEverywhere(`Bifocal_linear_${simple}`);
-    for (const core of tagged){
-      pushEverywhere(`hefthint_${core}`);
-      pushEverywhere(`hefthint_linear_${core}`);
-      pushEverywhere(`heft_hint_${core}`);
-      pushEverywhere(`Bifocal_linear_${core}`);
-    }
-  }
-  return uniqStrings(out);
-}
-
-function formatAutoLoadHint(kind, prefill, decode){
-  const cands = buildAutoLoadCandidates(kind, prefill, decode).map(stripLocalPrefix);
-  if (!cands.length) return 'Auto-load: —';
-  const shown = cands.slice(0, 2);
-  const tail = cands.length > shown.length ? ' / ...' : '';
-  return `Auto-load: ${shown.join(' / ')}${tail}`;
-}
-
-function refreshAutoLoadHints(){
-  const { prefill, decode } = currentSeqLens();
-
+function refreshFilePickerHints(){
   if (!(UI.fileBase?.files?.length)){
-    UI.baseName.textContent = formatAutoLoadHint('base', prefill, decode);
+    UI.baseName.textContent = 'Select a baseline _ops_trace.csv file.';
   }
   if (!(UI.fileHeu?.files?.length)){
-    UI.heuName.textContent = formatAutoLoadHint('heu', prefill, decode);
+    UI.heuName.textContent = 'Select a heuristic/Bifocal _ops_trace.csv file.';
   }
 }
 
-async function tryAutoLoadCandidates(urls){
-  for (const url of uniqStrings(urls || [])){
-    const tr = await tryAutoLoad(url, false);
-    if (tr) return { trace: tr, url };
-  }
-  return null;
-}
-
-function candidateSeqPairs(){
-  const prefills = numericSelectValues(UI.prefillLen);
-  const decodes = numericSelectValues(UI.decodeLen);
-  const cur = currentSeqLens();
-
-  const out = [];
-  const seen = new Set();
-  const push = (p, d) => {
-    const pn = Math.trunc(Number(p));
-    const dn = Math.trunc(Number(d));
-    if (!Number.isFinite(pn) || !Number.isFinite(dn)) return;
-    const key = `${pn}x${dn}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    out.push({ prefill: pn, decode: dn });
-  };
-
-  push(cur.prefill, cur.decode);
-  for (const p of prefills){
-    for (const d of decodes){
-      push(p, d);
-    }
-  }
-  return out;
-}
-
-async function autoLoadMatchingPair(){
-  for (const pair of candidateSeqPairs()){
-    const baseHit = await tryAutoLoadCandidates(buildAutoLoadCandidates('base', pair.prefill, pair.decode));
-    if (!baseHit) continue;
-
-    const heuHit = await tryAutoLoadCandidates(buildAutoLoadCandidates('heu', pair.prefill, pair.decode));
-    if (!heuHit) continue;
-
-    return {
-      prefill: pair.prefill,
-      decode: pair.decode,
-      baseUrl: baseHit.url,
-      heuUrl: heuHit.url,
-      baseTrace: baseHit.trace,
-      heuTrace: heuHit.trace
-    };
-  }
-  return null;
-}
 const player = {
   playing: false,
   segIdx: 0,
@@ -2301,7 +2437,7 @@ const player = {
   segBase: null,
   segHeu: null,
 
-  model: 'llama',
+  model: 'non_moe',
   layersToPlay: [],
 
   // control how long a segment takes in wall time at speed = 1
@@ -2339,59 +2475,59 @@ function canRun(){
 
 let inferredModel = null;
 
+function traceLooksMoe(trace){
+  if (!trace) return false;
+  const values = []
+    .concat(trace.opKeys || [])
+    .concat(trace.opLabels || [])
+    .concat(trace.nodeIdSamples || []);
+
+  return values.some(v => {
+    const s = String(v || '').toUpperCase();
+    return s.includes('MOE') || s.includes('ROUTER') || /_E\d+(?:_|$)/.test(s) || /FFN_W[123]_E\d+/.test(s);
+  });
+}
+
+function inferModelFromTrace(trace){
+  return traceLooksMoe(trace) ? 'moe' : 'non_moe';
+}
+
 function inferModelFromTraces(){
-  const ids = [];
-  const take = (tr) => {
-    if (!tr || !tr.rows) return;
-    // Only sample a subset for speed.
-    for (let i=0;i<tr.rows.length && ids.length < 1200;i++){
-      const r = tr.rows[i];
-      if (r && r.phase === 'prefill') ids.push(String(r.node_id || ''));
-    }
-  };
-  take(traceBase);
-  take(traceHeu);
+  return (traceLooksMoe(traceBase) || traceLooksMoe(traceHeu)) ? 'moe' : 'non_moe';
+}
 
-  const has = (re) => ids.some(id => re.test(id));
-
-  const hasAdd1 = has(/_Add1\b/i);
-  const hasLN1  = has(/_LN1\b/i);
-  const hasLN2  = has(/_LN2\b/i);
-  const hasFFNW3 = has(/_FFN_W3\b/i);
-  const hasAct  = has(/_Act(\b|_)/i);
-  const hasGELU = has(/_GELU\b/i);
-  const hasRouter = has(/_Router(\b|_)/i) || has(/_MoE_Router(\b|_)/i);
-  const hasExpert = has(/_FFN_W[123]_E\d+/i) || has(/_(Act|SwiGLU)_E\d+/i);
-  const hasPalmLN = has(/_LN\b/i) && !hasLN1;
-
-  if (hasRouter || hasExpert) return 'mixtral';
-
-  // PaLM-style blocks: a single LN feeding both attn + MLP, no Add1/LN2.
-  if (!hasAdd1 && !hasLN1 && hasPalmLN) return 'palm';
-
-  // LLaMA-like blocks: SwiGLU path.
-  if (hasFFNW3 || hasAct) return 'llama';
-
-  // MPT-style blocks: GELU MLP with Add1/LN2 residual structure.
-  if (hasGELU || (hasAdd1 && hasLN2)) return 'mpt';
-
-  return 'llama';
+function selectedModelFamily(){
+  const sel = String(UI.model.value || 'auto').toLowerCase();
+  if (sel === 'auto') return null;
+  return normalizeModelFamily(sel);
 }
 
 function resolveModelFamily(){
-  const sel = String(UI.model.value || 'auto').toLowerCase();
-  if (sel !== 'auto') return sel;
+  const manual = selectedModelFamily();
+  if (manual) return manual;
 
   if (!inferredModel){
     inferredModel = inferModelFromTraces();
   }
-  return inferredModel || 'llama';
+  return inferredModel || 'non_moe';
+}
+
+function validateSelectedModelAgainstTrace(){
+  const manual = selectedModelFamily();
+  if (!manual || !traceBase || !traceHeu) return;
+
+  const inferred = inferredModel || inferModelFromTraces();
+  if (manual !== inferred){
+    throw new Error(`Selected model topology is ${niceModelName(manual)}, but the loaded operators indicate ${niceModelName(inferred)}. Choose auto or ${niceModelName(inferred)}.`);
+  }
 }
 
 function modelLabel(){
-  const sel = String(UI.model.value || 'auto').toLowerCase();
+  const manual = selectedModelFamily();
+  if (manual) return niceModelName(manual);
+
   const resolved = resolveModelFamily();
-  return (sel === 'auto') ? `auto→${resolved}` : resolved;
+  return `auto→${niceModelName(resolved)}`;
 }
 
 /* =========================
@@ -3182,6 +3318,7 @@ async function stepOnce(){
    Rebuild from UI
 ========================= */
 function rebuildSegmentList(){
+  validateSelectedModelAgainstTrace();
   player.model = resolveModelFamily();
 
   updatePhaseUI();
@@ -3220,9 +3357,11 @@ function rebuildSegmentList(){
   }
 
   if (phases.includes('decode')){
-    const maxTok = Math.max(0, (traceBase?.tokenCount || 0) - 1);
+    const playableTok = playableDecodeTokenCount();
+    applyAllDecodeTokenDefault(false);
+    const maxTok = Math.max(0, playableTok - 1);
     const startTok = clamp(Number(UI.tokStart.value || 0), 0, maxTok);
-    const countTok = clamp(Number(UI.tokCount.value || 1), 1, Math.max(1, (traceBase?.tokenCount || 1) - startTok));
+    const countTok = clamp(Number(UI.tokCount.value || playableTok || 1), 1, Math.max(1, playableTok - startTok));
     UI.tokStart.value = String(startTok);
     UI.tokCount.value = String(countTok);
 
@@ -3251,8 +3390,15 @@ function rebuildSegmentList(){
 
 async function rebuildAndRender(){
   if (!canRun()) return;
-  rebuildSegmentList();
-  await gotoSegment(0);
+  try{
+    rebuildSegmentList();
+    await gotoSegment(0);
+  }catch(e){
+    player.playing = false;
+    UI.play.textContent = 'Play';
+    setStatus(`ERROR: ${e?.message || e}`);
+    console.error(e);
+  }
 }
 
 /* =========================
@@ -3276,8 +3422,8 @@ UI.layerCount.onchange = () => { player.playing = false; UI.play.textContent = '
 UI.model.onchange = () => { player.playing = false; UI.play.textContent = 'Play'; inferredModel = null; posMapByLayer = {}; updateInfoTitle(); rebuildAndRender(); };
 UI.batch.onchange = () => { updateInfoTitle(); };
 UI.dtype.onchange = () => { updateInfoTitle(); };
-UI.prefillLen.onchange = () => { refreshAutoLoadHints(); updateInfoTitle(); };
-UI.decodeLen.onchange = () => { refreshAutoLoadHints(); updateInfoTitle(); };
+UI.prefillLen.onchange = () => { refreshFilePickerHints(); updateInfoTitle(); };
+UI.decodeLen.onchange = () => { refreshFilePickerHints(); updateInfoTitle(); };
 
 UI.tokStart.onchange = () => { player.playing = false; UI.play.textContent = 'Play'; rebuildAndRender(); };
 UI.tokCount.onchange = () => { player.playing = false; UI.play.textContent = 'Play'; rebuildAndRender(); };
@@ -3289,135 +3435,279 @@ UI.export.onclick = () => {
   if (!cyHeu) return;
   const png = cyHeu.png({ full: true, scale: 2 });
   const a = document.createElement('a');
-  a.href = png; a.download = 'dag_schedule.png'; a.click();
+  a.href = png; a.download = png.startsWith('data:image/svg+xml') ? 'dag_schedule.svg' : 'dag_schedule.png'; a.click();
 };
 
 /* =========================
    File loading
 ========================= */
-async function loadTraceFromFileInput(inputEl, labelEl){
-  const f = inputEl.files?.[0];
-  if (!f) return null;
-  const text = await f.text();
-  const parsed = parseCsvText(text);
-  const trace = buildTrace(parsed);
-  labelEl.textContent = `Loaded: ${f.name}`;
-  maybeApplySeqLensFromFilename(f.name);
+function parseCsvLineSimple(line){
+  const s = String(line || '').replace(/\r$/, '');
+
+  // Fast path for the trace CSVs generated by this repo: no quoted commas.
+  if (!s.includes('"')) return s.split(',');
+
+  // Minimal quoted-field fallback.
+  const out = [];
+  let cur = '';
+  let inQ = false;
+  for (let i=0;i<s.length;i++){
+    const ch = s[i];
+    if (ch === '"'){
+      if (inQ && s[i+1] === '"'){
+        cur += '"';
+        i++;
+      } else {
+        inQ = !inQ;
+      }
+    } else if (ch === ',' && !inQ){
+      out.push(cur);
+      cur = '';
+    } else {
+      cur += ch;
+    }
+  }
+  out.push(cur);
+  return out;
+}
+
+function rowObjectFromCsvParts(header, parts){
+  const row = {};
+  for (let c=0;c<header.length;c++){
+    row[header[c]] = String(parts[c] ?? '').trim();
+  }
+  return row;
+}
+
+function yieldToBrowser(){
+  return new Promise(resolve => setTimeout(resolve, 0));
+}
+
+async function parseCsvFileToTrace(file, labelEl){
+  if (!file) return null;
+
+  const rows = [];
+  let header = null;
+  let lineNo = 0;
+
+  const consumeLine = (line) => {
+    if (line == null) return;
+    const clean = String(line).replace(/\r$/, '');
+    if (!clean.trim()) return;
+
+    lineNo++;
+    const parts = parseCsvLineSimple(clean);
+
+    if (!header){
+      header = parts.map(x => String(x || '').replace(/^\ufeff/, '').trim());
+      return;
+    }
+
+    if (parts.length < header.length) return;
+    rows.push(rowObjectFromCsvParts(header, parts));
+  };
+
+  // Stream the file when possible. This avoids materializing a giant array of
+  // lines and makes the large Mixtral/Qwen CSVs much less likely to freeze the
+  // browser when the HTML is opened directly from disk.
+  if (file.stream && window.TextDecoder){
+    const reader = file.stream().getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+    let bytesRead = 0;
+    let lastUi = performance.now();
+
+    while (true){
+      const { value, done } = await reader.read();
+      if (done) break;
+      bytesRead += value.byteLength || 0;
+      buffer += decoder.decode(value, { stream: true });
+
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) consumeLine(line);
+
+      const now = performance.now();
+      if (now - lastUi > 80){
+        const pct = file.size ? Math.min(100, (bytesRead / file.size) * 100) : 0;
+        if (labelEl) labelEl.textContent = `Loading: ${file.name} (${pct.toFixed(1)}%)`;
+        await yieldToBrowser();
+        lastUi = performance.now();
+      }
+    }
+
+    buffer += decoder.decode();
+    if (buffer) consumeLine(buffer);
+  } else {
+    const text = await file.text();
+    const lines = String(text || '').split(/\r?\n/);
+    for (const line of lines) consumeLine(line);
+  }
+
+  if (!header) throw new Error('CSV header was not found.');
+  const required = ['phase', 'node_id', 'op', 'device', 'device_type', 'mode', 'start', 'end', 'duration'];
+  const missing = required.filter(k => !header.includes(k));
+  if (missing.length){
+    throw new Error(`CSV is missing required columns: ${missing.join(', ')}`);
+  }
+
+  const trace = buildTrace(rows, file.name);
+  maybeApplySeqLensFromFilename(file.name);
   return trace;
 }
 
-async function tryAutoLoad(url, applySeqFromName = true){
-  try{
-    const r = await fetch(url, { cache: 'no-store' });
-    if (!r.ok) return null;
-    const text = await r.text();
-    const parsed = parseCsvText(text);
-    const tr = buildTrace(parsed);
-    if (applySeqFromName) maybeApplySeqLensFromFilename(url);
-    return tr;
-  }catch(e){
-    return null;
+async function loadTraceFromFileInput(inputEl, labelEl){
+  const f = inputEl.files?.[0];
+  if (!f) return null;
+  const trace = await parseCsvFileToTrace(f, labelEl);
+  const warn = trace?.warnings?.length ? ` (${trace.warnings[0]})` : '';
+  labelEl.textContent = `Loaded: ${f.name}${warn}`;
+  return trace;
+}
+
+function classifyTraceRole(trace){
+  if (!trace) return 'unknown';
+
+  const name = String(trace.sourceName || '').toUpperCase();
+  const modes = (trace.modes || []).map(x => String(x || '').toUpperCase());
+  const joined = [name, ...modes].join(' ');
+
+  const hasAlgorithmName = /BIFOCAL|HEURISTIC|ALGORITHM|COMMAWARE|COMM_AWARE/.test(joined);
+  const hasBaselineName = /(^|[^A-Z0-9])PD([^A-Z0-9]|$)|BASELINE|NAIVE/.test(joined);
+
+  if (hasAlgorithmName && !hasBaselineName) return 'algorithm';
+  if (hasBaselineName && !hasAlgorithmName) return 'baseline';
+  if (hasAlgorithmName && hasBaselineName) return 'ambiguous';
+  return 'unknown';
+}
+
+function validateTraceSlot(trace, slot){
+  const role = classifyTraceRole(trace);
+  if (slot === 'baseline' && role === 'algorithm'){
+    throw new Error('The file selected for Baseline looks like a Bifocal/algorithm trace. Please put the PD/NAIVE/baseline CSV in the Baseline slot.');
+  }
+  if (slot === 'heuristic' && role === 'baseline'){
+    throw new Error('The file selected for Heuristic looks like a PD/NAIVE/baseline trace. Please put the Bifocal/algorithm CSV in the Heuristic slot.');
+  }
+  return role;
+}
+
+function validateTracePair(){
+  if (!traceBase || !traceHeu) return;
+
+  validateTraceSlot(traceBase, 'baseline');
+  validateTraceSlot(traceHeu, 'heuristic');
+
+  const mb = inferModelFromTrace(traceBase);
+  const mh = inferModelFromTrace(traceHeu);
+  if (mb !== mh){
+    throw new Error(`Baseline/Heuristic model-topology mismatch: baseline is ${niceModelName(mb)}, heuristic is ${niceModelName(mh)}.`);
+  }
+
+  const lb = Number(traceBase.layerList?.length || 0);
+  const lh = Number(traceHeu.layerList?.length || 0);
+  if (lb && lh && lb !== lh){
+    throw new Error(`Baseline/Heuristic layer-count mismatch: baseline has ${lb} layers, heuristic has ${lh} layers.`);
+  }
+
+  const sb = traceBase.declaredSeqLens;
+  const sh = traceHeu.declaredSeqLens;
+  if (sb && sh && (Number(sb.prefill) !== Number(sh.prefill) || Number(sb.decode) !== Number(sh.decode))){
+    throw new Error(`Baseline/Heuristic sequence-length mismatch: baseline prefill=${sb.prefill}, decode=${sb.decode}; heuristic prefill=${sh.prefill}, decode=${sh.decode}.`);
   }
 }
 
-UI.fileBase.addEventListener('change', async () => {
-  try{
-    traceBase = await loadTraceFromFileInput(UI.fileBase, UI.baseName);
-    inferredModel = null;
-    posMapByLayer = {};
-    setStatus('Baseline trace loaded. Load heuristic trace…');
-    if (traceBase && traceHeu){
-      populateLayerSelector();
-      setStatus(`Ready. Decode tokens: ${traceBase.tokenCount}`);
-      rebuildAndRender();
-    }
-  }catch(e){
-    setStatus('Failed to load baseline trace.');
-    console.error(e);
-  }
-});
-
-UI.fileHeu.addEventListener('change', async () => {
-  try{
-    traceHeu = await loadTraceFromFileInput(UI.fileHeu, UI.heuName);
-    inferredModel = null;
-    posMapByLayer = {};
-    setStatus('Heuristic trace loaded. Load baseline trace…');
-    if (traceBase && traceHeu){
-      populateLayerSelector();
-      setStatus(`Ready. Decode tokens: ${traceBase.tokenCount}`);
-      rebuildAndRender();
-    }
-  }catch(e){
-    setStatus('Failed to load heuristic trace.');
-    console.error(e);
-  }
-});
-
-if (UI.exampleSelect){
-  UI.exampleSelect.addEventListener('change', async () => {
-    const id = UI.exampleSelect.value;
-    if (!id){
-      refreshAutoLoadHints();
-      setStatus('Manual or auto-matching CSV loading is active.');
-      return;
-    }
-    try{
-      await loadRegisteredExampleById(id);
-    }catch(e){
-      setStatus('Failed to load registered demo example.');
-      console.error(e);
-    }
-  });
+function playableDecodeTokenCount(){
+  if (!traceBase || !traceHeu) return 0;
+  return Math.min(Number(traceBase.tokenCount || 0), Number(traceHeu.tokenCount || 0));
 }
 
-async function boot(){
-  await loadDemoManifest();
+function applyAllDecodeTokenDefault(force=false){
+  const p = playableDecodeTokenCount();
+  if (!p) return;
 
+  if (UI.tokStart){
+    UI.tokStart.min = '0';
+    UI.tokStart.max = String(Math.max(0, p - 1));
+    if (force) UI.tokStart.value = '0';
+  }
+
+  if (UI.tokCount){
+    UI.tokCount.min = '1';
+    UI.tokCount.max = String(p);
+    if (force || !Number.isFinite(+UI.tokCount.value) || Number(UI.tokCount.value) <= 0){
+      UI.tokCount.value = String(p);
+    }
+  }
+}
+
+function readyStatusText(){
+  if (!traceBase || !traceHeu) return 'Waiting for CSV traces…';
+  const b = Number(traceBase.tokenCount || 0);
+  const h = Number(traceHeu.tokenCount || 0);
+  const p = playableDecodeTokenCount();
+  const warns = [...(traceBase.warnings || []), ...(traceHeu.warnings || [])];
+  let msg = `Ready. Playable decode tokens: ${p} (baseline ${b}, heuristic ${h}). Tokens to play defaults to all playable decode steps.`;
+  if (b !== h) msg += ' Token counts differ; playback uses the overlapping prefix.';
+  if (warns.length) msg += ' ' + warns[0];
+  return msg;
+}
+
+async function handleTraceFileChange(slot){
+  const isBaseline = slot === 'baseline';
+  const inputEl = isBaseline ? UI.fileBase : UI.fileHeu;
+  const labelEl = isBaseline ? UI.baseName : UI.heuName;
+  const slotLabel = isBaseline ? 'baseline' : 'heuristic';
+
+  try{
+    const loaded = await loadTraceFromFileInput(inputEl, labelEl);
+    if (!loaded) return;
+
+    validateTraceSlot(loaded, slot);
+
+    if (isBaseline) traceBase = loaded;
+    else traceHeu = loaded;
+
+    inferredModel = null;
+    posMapByLayer = {};
+    chartState.cacheKey = null;
+
+    if (traceBase && traceHeu){
+      validateTracePair();
+      inferredModel = inferModelFromTraces();
+      populateLayerSelector();
+      applyAllDecodeTokenDefault(true);
+      setStatus(readyStatusText());
+      await rebuildAndRender();
+    } else {
+      const next = isBaseline ? 'heuristic' : 'baseline';
+      setStatus(`${slotLabel[0].toUpperCase() + slotLabel.slice(1)} trace loaded (${loaded?.tokenCount || 0} decode tokens). Load ${next} trace…`);
+      updateInfoTitle();
+    }
+  }catch(e){
+    if (isBaseline) traceBase = null;
+    else traceHeu = null;
+
+    if (inputEl) inputEl.value = '';
+    if (labelEl) labelEl.textContent = `Error: ${e?.message || e}`;
+    setStatus(`ERROR: ${e?.message || e}`);
+    console.error(e);
+  }
+}
+
+UI.fileBase.addEventListener('change', () => handleTraceFileChange('baseline'));
+UI.fileHeu.addEventListener('change', () => handleTraceFileChange('heuristic'));
+
+function boot(){
   updatePhaseUI();
   updateLayerModeUI();
   window.addEventListener('resize', () => { updateSpeedChart(); });
   UI.speedVal.textContent = Number(UI.speed.value).toFixed(2) + '×';
   player.speed = Number(UI.speed.value);
 
-  refreshAutoLoadHints();
+  refreshFilePickerHints();
   updateInfoTitle();
-  setStatus('Auto-loading traces…');
-
-  const selectedExample = UI.exampleSelect?.value || '';
-  if (selectedExample){
-    const ok = await loadRegisteredExampleById(selectedExample);
-    if (ok) return;
-  }
-
-  const hit = await autoLoadMatchingPair();
-  if (hit){
-    traceBase = hit.baseTrace;
-    traceHeu = hit.heuTrace;
-
-    ensureSelectHasValue(UI.prefillLen, hit.prefill);
-    ensureSelectHasValue(UI.decodeLen, hit.decode);
-    maybeApplySeqLensFromFilename(hit.baseUrl);
-    maybeApplySeqLensFromFilename(hit.heuUrl);
-
-    UI.baseName.textContent = `Auto: ${stripLocalPrefix(hit.baseUrl)}`;
-    UI.heuName.textContent = `Auto: ${stripLocalPrefix(hit.heuUrl)}`;
-  }
-
-  inferredModel = null;
-  posMapByLayer = {};
-
-  if (traceBase && traceHeu){
-    populateLayerSelector();
-    const sourceText = hit
-      ? `Auto-loaded ${stripLocalPrefix(hit.baseUrl)} + ${stripLocalPrefix(hit.heuUrl)}`
-      : 'Loaded traces';
-    setStatus(`Ready. ${sourceText}. Decode tokens: ${traceBase.tokenCount}`);
-    await rebuildAndRender();
-  } else {
-    refreshAutoLoadHints();
-    setStatus('Please load both baseline and heuristic CSV traces, or register a case in ./examples/manifest.json.');
-  }
+  setStatus('Open this HTML file directly, then select both baseline and heuristic CSV traces.');
 }
 
 boot();
