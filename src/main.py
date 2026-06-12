@@ -57,6 +57,7 @@ from mainlib.cli import (
     _normalize_list_field,
     parse_args,
 )
+from mainlib.burstgpt_serving_eval import evaluate_burstgpt_suite, load_burstgpt_csv
 from mainlib.evaluate import (
     _ensure_dir,
     _eval_one_baseline,
@@ -141,6 +142,8 @@ __all__ = [
     "PD_BASELINES",
     "auto_select_kv_policy",
     "evaluate_suite",
+    "evaluate_burstgpt_suite",
+    "load_burstgpt_csv",
     "main",
     "mapping_diff_ratio",
     "parse_args",

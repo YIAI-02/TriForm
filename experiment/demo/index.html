@@ -470,6 +470,14 @@
       </select>
     </div>
 
+    <div class="control">
+      <label>Bundled example</label>
+      <select id="exampleSelect" title="Registered examples are read from ./examples/manifest.json.">
+        <option value="">manual / auto match</option>
+      </select>
+      <div class="filetag" id="exampleName">Registered examples live under ./examples/</div>
+    </div>
+
     <div class="legend" aria-label="Operator shape legend">
       <div class="legendTitle"></div>
       <div class="legendGrid">
@@ -1903,6 +1911,8 @@ const UI = {
   prefillLen: document.getElementById('prefillLen'),
   decodeLen: document.getElementById('decodeLen'),
   dtype: document.getElementById('dtype'),
+  exampleSelect: document.getElementById('exampleSelect'),
+  exampleName: document.getElementById('exampleName'),
   fileBase: document.getElementById('fileBase'),
   fileHeu: document.getElementById('fileHeu'),
   baseName: document.getElementById('baseName'),
@@ -1945,6 +1955,128 @@ const UI = {
   chartTitle: document.getElementById('chartTitle'),
   chartSub: document.getElementById('chartSub')
 };
+
+let demoExamples = [];
+
+function normalizeDemoManifest(payload){
+  if (Array.isArray(payload)) return payload;
+  if (payload && Array.isArray(payload.examples)) return payload.examples;
+  return [];
+}
+
+function resolveDemoUrl(path){
+  const s = String(path || '').trim();
+  if (!s) return '';
+  if (/^(https?:)?\/\//i.test(s) || s.startsWith('data:')) return s;
+  if (s.startsWith('./') || s.startsWith('../')) return s;
+  return './' + s.replace(/^\/+/, '');
+}
+
+function exampleLabel(ex){
+  return String(ex?.label || ex?.id || '').trim() || 'unnamed example';
+}
+
+function exampleId(ex, idx){
+  return String(ex?.id || `example_${idx}`).trim();
+}
+
+function setExampleStatus(msg){
+  if (UI.exampleName) UI.exampleName.textContent = msg;
+}
+
+function populateDemoExampleSelector(){
+  const sel = UI.exampleSelect;
+  if (!sel) return;
+  sel.innerHTML = '';
+
+  const defaultOpt = document.createElement('option');
+  defaultOpt.value = '';
+  defaultOpt.textContent = demoExamples.length ? 'manual / auto match' : 'manual / auto match (no registered examples)';
+  sel.appendChild(defaultOpt);
+
+  demoExamples.forEach((ex, idx) => {
+    const opt = document.createElement('option');
+    opt.value = exampleId(ex, idx);
+    opt.textContent = exampleLabel(ex);
+    sel.appendChild(opt);
+  });
+
+  setExampleStatus(demoExamples.length
+    ? `Loaded ${demoExamples.length} registered example(s) from ./examples/manifest.json`
+    : 'No registered examples. Add cases under ./examples/ and update manifest.json.');
+}
+
+async function loadDemoManifest(){
+  try{
+    const r = await fetch('./examples/manifest.json', { cache: 'no-store' });
+    if (!r.ok){
+      demoExamples = [];
+      populateDemoExampleSelector();
+      return;
+    }
+    const payload = await r.json();
+    demoExamples = normalizeDemoManifest(payload).filter(ex => ex && (ex.baseline || ex.base) && (ex.heuristic || ex.heu));
+    populateDemoExampleSelector();
+  }catch(e){
+    demoExamples = [];
+    populateDemoExampleSelector();
+    setExampleStatus('Could not read ./examples/manifest.json; manual CSV loading is still available.');
+    console.warn('Failed to load demo manifest:', e);
+  }
+}
+
+function applyExampleMetadata(ex){
+  if (!ex) return;
+  if (ex.model) ensureSelectHasValue(UI.model, String(ex.model));
+  if (ex.batch) ensureSelectHasValue(UI.batch, ex.batch);
+  if (ex.prefill) ensureSelectHasValue(UI.prefillLen, ex.prefill);
+  if (ex.decode) ensureSelectHasValue(UI.decodeLen, ex.decode);
+  if (ex.dtype) ensureSelectHasValue(UI.dtype, String(ex.dtype));
+}
+
+async function loadRegisteredExampleById(id){
+  const idx = demoExamples.findIndex((ex, i) => exampleId(ex, i) === String(id));
+  if (idx < 0) return false;
+
+  const ex = demoExamples[idx];
+  const baseUrl = resolveDemoUrl(ex.baseline || ex.base);
+  const heuUrl = resolveDemoUrl(ex.heuristic || ex.heu);
+  if (!baseUrl || !heuUrl){
+    setStatus('Registered example is missing baseline or heuristic path.');
+    return false;
+  }
+
+  setStatus(`Loading registered example: ${exampleLabel(ex)}…`);
+  setExampleStatus(ex.notes ? String(ex.notes) : exampleLabel(ex));
+
+  const baseTrace = await tryAutoLoad(baseUrl, false);
+  if (!baseTrace){
+    setStatus(`Failed to load baseline trace: ${stripLocalPrefix(baseUrl)}`);
+    return false;
+  }
+
+  const heuTrace = await tryAutoLoad(heuUrl, false);
+  if (!heuTrace){
+    setStatus(`Failed to load heuristic trace: ${stripLocalPrefix(heuUrl)}`);
+    return false;
+  }
+
+  traceBase = baseTrace;
+  traceHeu = heuTrace;
+  inferredModel = null;
+  posMapByLayer = {};
+
+  applyExampleMetadata(ex);
+  maybeApplySeqLensFromFilename(baseUrl);
+  maybeApplySeqLensFromFilename(heuUrl);
+
+  UI.baseName.textContent = `Example: ${stripLocalPrefix(baseUrl)}`;
+  UI.heuName.textContent = `Example: ${stripLocalPrefix(heuUrl)}`;
+  populateLayerSelector();
+  setStatus(`Ready. Loaded ${exampleLabel(ex)}. Decode tokens: ${traceBase.tokenCount}`);
+  await rebuildAndRender();
+  return true;
+}
 
 
 
@@ -2046,26 +2178,41 @@ function buildAutoLoadCandidates(kind, prefill, decode){
     `prefill_${p}xdecode_${d}_ops_trace.csv`
   ];
 
+  const dirs = [
+    './',
+    `./examples/${p}x${d}/`,
+    `./examples/prefill-${p}xdecode_${d}/`,
+    `./examples/prefill_${p}xdecode_${d}/`
+  ];
+
   const out = [];
+  const pushEverywhere = (name) => {
+    for (const dir of dirs) out.push(`${dir}${name}`);
+  };
+
   if (String(kind).toLowerCase() === 'base'){
-    out.push(`./${simple}`);
-    out.push(`./linear_${simple}`);
-    out.push(`./pd_${simple}`);
-    out.push(`./baseline_${simple}`);
+    pushEverywhere(simple);
+    pushEverywhere(`linear_${simple}`);
+    pushEverywhere(`pd_${simple}`);
+    pushEverywhere(`PD_linear_${simple}`);
+    pushEverywhere(`baseline_${simple}`);
     for (const core of tagged){
-      out.push(`./${core}`);
-      out.push(`./linear_${core}`);
-      out.push(`./pd_${core}`);
-      out.push(`./baseline_${core}`);
+      pushEverywhere(core);
+      pushEverywhere(`linear_${core}`);
+      pushEverywhere(`pd_${core}`);
+      pushEverywhere(`PD_linear_${core}`);
+      pushEverywhere(`baseline_${core}`);
     }
   } else {
-    out.push(`./hefthint_${simple}`);
-    out.push(`./hefthint_linear_${simple}`);
-    out.push(`./heft_hint_${simple}`);
+    pushEverywhere(`hefthint_${simple}`);
+    pushEverywhere(`hefthint_linear_${simple}`);
+    pushEverywhere(`heft_hint_${simple}`);
+    pushEverywhere(`Bifocal_linear_${simple}`);
     for (const core of tagged){
-      out.push(`./hefthint_${core}`);
-      out.push(`./hefthint_linear_${core}`);
-      out.push(`./heft_hint_${core}`);
+      pushEverywhere(`hefthint_${core}`);
+      pushEverywhere(`hefthint_linear_${core}`);
+      pushEverywhere(`heft_hint_${core}`);
+      pushEverywhere(`Bifocal_linear_${core}`);
     }
   }
   return uniqStrings(out);
@@ -3207,7 +3354,26 @@ UI.fileHeu.addEventListener('change', async () => {
   }
 });
 
+if (UI.exampleSelect){
+  UI.exampleSelect.addEventListener('change', async () => {
+    const id = UI.exampleSelect.value;
+    if (!id){
+      refreshAutoLoadHints();
+      setStatus('Manual or auto-matching CSV loading is active.');
+      return;
+    }
+    try{
+      await loadRegisteredExampleById(id);
+    }catch(e){
+      setStatus('Failed to load registered demo example.');
+      console.error(e);
+    }
+  });
+}
+
 async function boot(){
+  await loadDemoManifest();
+
   updatePhaseUI();
   updateLayerModeUI();
   window.addEventListener('resize', () => { updateSpeedChart(); });
@@ -3217,6 +3383,12 @@ async function boot(){
   refreshAutoLoadHints();
   updateInfoTitle();
   setStatus('Auto-loading traces…');
+
+  const selectedExample = UI.exampleSelect?.value || '';
+  if (selectedExample){
+    const ok = await loadRegisteredExampleById(selectedExample);
+    if (ok) return;
+  }
 
   const hit = await autoLoadMatchingPair();
   if (hit){
@@ -3237,11 +3409,14 @@ async function boot(){
 
   if (traceBase && traceHeu){
     populateLayerSelector();
-    setStatus(`Ready. Auto-loaded ${stripLocalPrefix(hit.baseUrl)} + ${stripLocalPrefix(hit.heuUrl)}. Decode tokens: ${traceBase.tokenCount}`);
+    const sourceText = hit
+      ? `Auto-loaded ${stripLocalPrefix(hit.baseUrl)} + ${stripLocalPrefix(hit.heuUrl)}`
+      : 'Loaded traces';
+    setStatus(`Ready. ${sourceText}. Decode tokens: ${traceBase.tokenCount}`);
     await rebuildAndRender();
   } else {
     refreshAutoLoadHints();
-    setStatus('Please load both baseline and heuristic CSV traces.');
+    setStatus('Please load both baseline and heuristic CSV traces, or register a case in ./examples/manifest.json.');
   }
 }
 

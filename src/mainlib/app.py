@@ -11,6 +11,7 @@ from .cli import (
     parse_args,
 )
 from .evaluate import evaluate_suite
+from .burstgpt_serving_eval import evaluate_burstgpt_suite
 from .kv_policy import _ensure_weight_suggest_supported, _normalize_npu_backend
 from .log_utils import _set_weight_suggest_debug_summary_only, _setup_weight_suggest_al_logger
 from .runner import run
@@ -20,7 +21,10 @@ from .storage import _build_result_dir, _build_tag
 def main():
     args = parse_args()
 
-    if getattr(args, 'mode', None) in ('evaluate', 'weight-suggest'):
+    if str(os.environ.get('DOPS_BURSTGPT_DEBUG', '')).lower() in {'1', 'true', 'yes', 'on'}:
+        print(f"[app-debug] parsed mode={getattr(args, 'mode', None)!r} args={vars(args)}", flush=True)
+
+    if getattr(args, 'mode', None) in ('evaluate', 'weight-suggest', 'burstgpt-evaluate'):
         cfg = _load_cfg_from_json(getattr(args, 'config'))
         requested_debug = bool(getattr(args, 'debug', False)) or cfg.get('debug', False)
         cfg['debug'] = bool(requested_debug)
@@ -66,6 +70,24 @@ def main():
             'format_outer_stop_eps',
             'format_block_layer_span',
             'format_reload_count_mode',
+            'burstgpt_csv',
+            'workload_path',
+            'request_trace_path',
+            'num_requests',
+            'arrival_time_scale',
+            'burstgpt_model_filter',
+            'skip_zero_output',
+            'min_input_len',
+            'min_output_len',
+            'max_input_len',
+            'max_output_len',
+            'serving_batch_size',
+            'batch_timeout_s',
+            'prompt_bucket_size',
+            'output_bucket_size',
+            'output_horizon',
+            'output_horizon_fixed',
+            'serve_out',
         ]
         for key in override_fields:
             val = getattr(args, key, None)
@@ -134,6 +156,30 @@ def main():
             run(cfg)
             return
 
+
+        if args.mode == 'burstgpt-evaluate':
+            algos = _normalize_list_field(cfg.get('algo', 'Bifocal'))
+            baselines = _normalize_list_field(cfg.get('baselines', 'PD,AF,PD+Linear,PD+Attn,PD+FFN'))
+            serve_dir = str(Path(result_dir) / "burstgpt_serving")
+            Path(serve_dir).mkdir(parents=True, exist_ok=True)
+            cfg['result_dir'] = serve_dir
+            serve_out = cfg.get('serve_out') or str(Path(serve_dir) / "burstgpt_serving_summary.json")
+            print(
+                f"[burstgpt-evaluate] algos={[ _display_policy_name(a) for a in algos ]} "
+                f"baselines={[ _display_policy_name(b) for b in baselines ]} "
+                f"csv={cfg.get('burstgpt_csv') or cfg.get('workload_path') or cfg.get('request_trace_path')} "
+                f"result_dir={serve_dir}",
+                flush=True,
+            )
+            evaluate_burstgpt_suite(
+                cfg,
+                algos=algos,
+                baselines=baselines,
+                result_dir=serve_dir,
+                combined_out=serve_out,
+            )
+            return
+
         if args.mode == 'evaluate':
             algos = _normalize_list_field(cfg.get('algo', 'HEFT'))
             baselines = _normalize_list_field(cfg.get('baselines', 'PD,weights_on_pim,AF'))
@@ -152,3 +198,5 @@ def main():
                 combined_out=baseline_out,
             )
             return
+
+    raise SystemExit(f"Unhandled mode: {getattr(args, 'mode', None)!r}")

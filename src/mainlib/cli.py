@@ -9,6 +9,9 @@ _INPUT_PATH_KEYS = {
     'hardware_json',
     'pim_config_path',
     'ramulator_config_path',
+    'burstgpt_csv',
+    'workload_path',
+    'request_trace_path',
 }
 
 _OUTPUT_PATH_KEYS = {
@@ -19,6 +22,7 @@ _OUTPUT_PATH_KEYS = {
     'best_summary_json',
     'weight_format_json',
     'baseline_out',
+    'serve_out',
 }
 
 
@@ -133,9 +137,52 @@ def parse_args():
         help='Use raw reload totals or normalize by the number of devices of each type when comparing NPU vs PIM reload pressure.',
     )
 
+
+    sp_burst = sub.add_parser('burstgpt-evaluate', help='Replay a BurstGPT CSV trace and report TTFT/TBT/E2E p50/p90.')
+    sp_burst.add_argument('--config', required=True, type=str, help='Path to a JSON config with model/hardware/policy settings.')
+    sp_burst.add_argument('--debug', action='store_true', help='Enable verbose logging.')
+    sp_burst.add_argument('--model_family', type=str)
+    sp_burst.add_argument('--model_variant', type=str)
+    sp_burst.add_argument('--dtype', type=str)
+    sp_burst.add_argument('--result_dir', type=str)
+    sp_burst.add_argument('--hardware_json', type=str, help='Path to a JSON file with hardware topology (devices + links).')
+    sp_burst.add_argument('--algo', type=str, help='Algorithm list, for example "Bifocal".')
+    sp_burst.add_argument('--baselines', type=str, help='Baseline list, for example "PD,AF,PD+Linear,PD+Attn,PD+FFN".')
+    sp_burst.add_argument('--npu_backend', type=str, default=None, choices=['fast', 'fast_mode', 'lut', 'ascend_310b_json', 'llmcompass'])
+    sp_burst.add_argument('--pim_fast_mode', action='store_true', default=None)
+    sp_burst.add_argument('--pim-weight-load-overlap-ratio', dest='pim_weight_load_overlap_ratio', type=float)
+    sp_burst.add_argument('--weight-load-compute-overlap-ratio', dest='weight_load_compute_overlap_ratio', type=float)
+    sp_burst.add_argument('--tp_qkv', type=int)
+    sp_burst.add_argument('--tp_ffn', type=int)
+    sp_burst.add_argument('--tp_moe', type=int)
+    sp_burst.add_argument('--decode_sample_stride', type=int)
+    sp_burst.add_argument('--decode_plan_refresh_stride', type=int)
+
+    # BurstGPT trace controls.
+    sp_burst.add_argument('--burstgpt_csv', type=str, help='Path to BurstGPT_without_fails_*.csv or BurstGPT_*.csv.')
+    sp_burst.add_argument('--workload_path', type=str, help='Alias of --burstgpt_csv for compatibility.')
+    sp_burst.add_argument('--request_trace_path', type=str, help='Alias of --burstgpt_csv for compatibility.')
+    sp_burst.add_argument('--num_requests', type=int, help='Use only the first N valid requests from the CSV.')
+    sp_burst.add_argument('--arrival_time_scale', type=float, help='Scale BurstGPT timestamps; 0.1 compresses time by 10x and increases load.')
+    sp_burst.add_argument('--burstgpt_model_filter', type=str, help='Optional model filter, e.g. "ChatGPT" or "GPT-4".')
+    sp_burst.add_argument('--skip_zero_output', action='store_true', default=None)
+    sp_burst.add_argument('--min_input_len', type=int)
+    sp_burst.add_argument('--min_output_len', type=int)
+    sp_burst.add_argument('--max_input_len', type=int)
+    sp_burst.add_argument('--max_output_len', type=int)
+
+    # Serving replay controls.
+    sp_burst.add_argument('--serving_batch_size', type=int, help='Maximum FCFS micro-batch size. Use 1 for no batching.')
+    sp_burst.add_argument('--batch_timeout_s', type=float, help='Optional max wait to form a micro-batch.')
+    sp_burst.add_argument('--prompt_bucket_size', type=int, help='Round prompt lengths up to this multiple before profiling.')
+    sp_burst.add_argument('--output_bucket_size', type=int, help='Round output lengths up to this multiple before profiling.')
+    sp_burst.add_argument('--output_horizon', type=str, choices=['p90', 'fixed', 'oracle'], help='Decode horizon hint seen by Bifocal. p90 is the non-oracle default.')
+    sp_burst.add_argument('--output_horizon_fixed', type=int, help='Fixed decode horizon when --output_horizon fixed is used.')
+    sp_burst.add_argument('--serve_out', type=str, help='Output summary JSON path.')
+
     args, _unknown = parser.parse_known_args()
     if args.mode is None:
-        parser.error("Please specify a mode: 'evaluate' or 'weight-suggest'.")
+        parser.error("Please specify a mode: 'evaluate', 'weight-suggest', or 'burstgpt-evaluate'.")
     return args
 
 

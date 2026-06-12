@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -J single_eval
 #SBATCH --chdir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm
-#SBATCH -p C064M0256G
+#SBATCH -p C064M1024G
 #SBATCH --qos=high
 #SBATCH -N 1
 #SBATCH --ntasks=1

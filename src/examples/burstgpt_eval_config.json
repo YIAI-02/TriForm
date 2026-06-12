@@ -1,0 +1,35 @@
+{
+  "model_family": "llama",
+  "model_variant": "7b",
+  "dtype": "fp16",
+  "pim_config_path": "./aim_simulator/PIM_AiM.json",
+  "ramulator_config_path": "./aim_simulator/example.yaml",
+  "hardware_json": "./examples/hardware_1npu_2aim.json",
+  "result_dir": "../../output/burstgpt_eval",
+
+  "burstgpt_csv": "/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/data/realworld/BurstGPT_without_fails_1.csv",
+
+  "algo": ["Bifocal"],
+  "baselines": ["PD", "AF", "PD+Linear", "PD+Attn", "PD+FFN"],
+
+  "tp_qkv": 2,
+  "tp_ffn": 2,
+  "npu_backend": "lut",
+  "pim_fast_mode": false,
+
+  "num_requests": 50,
+  "arrival_time_scale": 0.1,
+  "skip_zero_output": true,
+  "max_input_len": 4096,
+  "max_output_len": 4096,
+
+  "serving_batch_size": 4,
+  "batch_timeout_s": 0.0,
+  "prompt_bucket_size": 32,
+  "output_bucket_size": 32,
+  "decode_sample_stride": 1,
+  "decode_plan_refresh_stride": 1,
+  "output_horizon": "p90",
+
+  "policy_parallel_workers": 3
+}

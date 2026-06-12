@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "examples": [
+    {
+      "id": "mixtral_8x7b_int8_b1_p2048_d512",
+      "label": "mixtral_8x7b_int8_b1_p2048_d512",
+      "baseline": "examples/mixtral_8x7b_int8_b1_p2048_d512/PD_linear_prefill-2048xdecode_128_ops_trace.csv",
+      "heuristic": "examples/mixtral_8x7b_int8_b1_p2048_d512/Bifocal_linear_prefill-2048xdecode_512_ops_trace.csv",
+      "notes": "Auto-generated demo example entry."
+    },
+    {
+      "id": "mixtral_8x7b_int8_b4_p1024_d1024",
+      "label": "mixtral_8x7b_int8_b4_p1024_d1024",
+      "baseline": "examples/mixtral_8x7b_int8_b4_p1024_d1024/PD_linear_prefill-1024xdecode_1024_ops_trace.csv",
+      "heuristic": "examples/mixtral_8x7b_int8_b4_p1024_d1024/Bifocal_linear_prefill-1024xdecode_1024_ops_trace.csv",
+      "notes": "Auto-generated demo example entry."
+    },
+    {
+      "id": "qwen14b_fp16_b8_p1024_d512",
+      "label": "qwen14b_fp16_b8_p1024_d512",
+      "baseline": "examples/qwen14b_fp16_b8_p1024_d512/PD_linear_prefill-1024xdecode_512_ops_trace.csv",
+      "heuristic": "examples/qwen14b_fp16_b8_p1024_d512/Bifocal_linear_prefill-1024xdecode_512_ops_trace.csv",
+      "notes": "Auto-generated demo example entry."
+    },
+    {
+      "id": "qwen1p8b_b16_p2048_d128",
+      "label": "qwen1p8b_b16_p2048_d128",
+      "baseline": "examples/qwen1p8b_b16_p2048_d128/PD_linear_prefill-2048xdecode_128_ops_trace.csv",
+      "heuristic": "examples/qwen1p8b_b16_p2048_d128/Bifocal_linear_prefill-2048xdecode_128_ops_trace.csv",
+      "notes": "Auto-generated demo example entry."
+    },
+    {
+      "id": "qwen7b_fp16_b16_p512_d512",
+      "label": "qwen7b_fp16_b16_p512_d512",
+      "baseline": "examples/qwen7b_fp16_b16_p512_d512/PD_linear_prefill-512xdecode_512_ops_trace.csv",
+      "heuristic": "examples/qwen7b_fp16_b16_p512_d512/Bifocal_linear_prefill-512xdecode_512_ops_trace.csv",
+      "notes": "Auto-generated demo example entry."
+    }
+  ]
+}
