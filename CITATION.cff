@@ -1,5 +1,5 @@
 cff-version: 1.2.0
-message: "If you use this software, please cite the archived software release and the associated MICRO 2026 paper."
+message: "If you use this software, please cite the associated MICRO 2026 paper."
 title: "DOPS: Dynamic OPerator Sorting for Heterogeneous NPU-PIM LLM Inference"
 type: software
 license: MIT
@@ -33,7 +33,7 @@ authors:
   - family-names: Yan
     given-names: Bonan
 repository-code: "https://github.com/YIAI-02/TriForm"
-version: "1.0.0"
+version: "1.0.1"
 preferred-citation:
   type: conference-paper
   title: "Beyond Prefill-Decode Disaggregation: Dissecting LLM Inference for Heterogeneous Platforms via Dynamic Operator Scheduling"
