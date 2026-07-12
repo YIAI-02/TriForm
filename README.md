@@ -562,7 +562,6 @@ Use `weight-suggest` when you want to compare a fixed global layout against a se
 ├── configs/                             # Model shape cards resolved by `src/model_parser.py`.
 ├── experiment/                          # Paper-figure scripts and interactive schedule visualization.
 ├── measurements/                        # Microbenchmarks, profiling utilities, LUT-generation scripts.
-├── scripts/                             # Release archive builder and fail-closed package checker.
 └── submodules/                          # Partial optional LLMCompass and CENT source snapshots; see notices.
 ```
 
