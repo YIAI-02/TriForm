@@ -16,7 +16,7 @@
 
 DOPS is a simulation and analysis framework for studying decoder-only LLM inference on heterogeneous **NPU–PIM** platforms. It accompanies the paper **Beyond Prefill-Decode Disaggregation: Dissecting LLM Inference for Heterogeneous Platforms via Dynamic OPerator Scheduling** and provides a practical codebase for computation-graph construction, hardware abstraction, runtime modeling, scheduling, weight-layout search, trace export, and result analysis.
 
-**Quick links:** [Artifact Evaluation Guide](./ARTIFACT_EVALUATION.md) · [Demo video](https://vimeo.com/1178735972) · [Configuration Reference](./docs/CONFIG_REFERENCE.md)
+**Quick links:** [Demo video](https://vimeo.com/1178735972) · [Configuration Reference](./docs/CONFIG_REFERENCE.md)
 
 </div>
 
@@ -91,8 +91,16 @@ python -m pip install -r requirements-core.txt
 bash ae/run_smoke.sh
 ```
 
-The final line must report `[AE] PASS`. See the [Artifact Evaluation Guide](./ARTIFACT_EVALUATION.md) for the
-scope, expected files, and Zenodo release procedure.
+The required reviewer workflow is designed for Linux x86-64 with at least 4 CPU
+cores, 8 GB RAM, and 2 GB of free disk space. It does not require a GPU, NPU,
+PIM device, external dataset, or model weights. The smoke test runs a fixed-seed
+Qwen-1.8B workload through the PD and Bifocal scheduling paths, then validates
+the generated comparison, summary, operator-trace, and communication-trace
+artifacts. The final line must report `[AE] PASS`.
+
+This short workflow supports the **Artifacts Evaluated — Functional** claim. It
+checks that the released implementation installs and executes correctly; it is
+not intended to reproduce every numerical result in the paper.
 
 ### Longer bundled evaluation
 
@@ -501,7 +509,6 @@ Use `weight-suggest` when you want to compare a fixed global layout against a se
 
 ```text
 .
-├── ARTIFACT_EVALUATION.md               # Reviewer-facing Functional-badge workflow and release checklist.
 ├── ae/                                  # Small analytical smoke configuration, launcher, and automatic verifier.
 ├── requirements-core.txt                # Pinned dependency for the required smoke workflow.
 ├── CITATION.cff                         # Software and associated-paper citation metadata.
@@ -660,6 +667,12 @@ experiment/demo/examples/qwen7b_fp16_b16_p512_d512/
 DOPS-authored code is released under the [MIT License](./LICENSE). Bundled or
 referenced third-party components remain under their own licenses; see
 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
+
+## 📝 Citation
+
+If you use DOPS, please cite the archived software release and the associated
+MICRO 2026 paper using the metadata in [CITATION.cff](./CITATION.cff). The
+Zenodo DOI will be added here after the GitHub release is archived.
 
 
 

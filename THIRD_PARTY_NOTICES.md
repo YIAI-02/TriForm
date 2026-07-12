@@ -20,10 +20,10 @@ omits its nested `cost_model/supply_chain` gitlink at
 mode bits match the listed upstream commit. Do not remove or replace the
 license files shipped with either component.
 
-The prebuilt `src/ramulator2` executable is intentionally excluded from the
-Zenodo archive because the current repository snapshot does not record its
-build provenance. The required Functional workflow uses the analytical PIM
-backend and does not depend on that executable.
+The previous prebuilt `src/ramulator2` executable is intentionally excluded
+from the AE release because its build provenance was not recorded. The required
+Functional workflow uses the analytical PIM backend and does not depend on that
+executable.
 
 Optional CENT/Ramulator2 and LLMCompass workflows require obtaining the missing
 nested dependencies from their upstream projects at documented revisions; the
