@@ -52,28 +52,27 @@ From these inputs, DOPS:
 
 ### Minimal installation for the core CLI flow
 
-The reviewer-facing analytical fast-mode workflow only needs the pinned core
-dependency:
+The analytical fast-mode workflow only needs the pinned core dependency:
 
 ```bash
 python -m pip install -r requirements-core.txt
 ```
 
 PyTorch is only needed by selected trace conversion, profiling, or optional
-backend utilities; it is not required by `ae/run_smoke.sh`.
+backend utilities; it is not required by the quick test below.
 
 ### Optional external runtimes and toolchains
 
 These are only needed for specific backends or reproduction workflows.
 
 - **Ramulator2 / trace-based PIM flow**  
-  Needed when you want the trace-based PIM backend instead of the analytical fast path. The release includes a partial reference snapshot under `submodules/CENT/`; obtain the missing nested dependency and follow the upstream build instructions recorded in `THIRD_PARTY_NOTICES.md`.
+  Needed when you want the trace-based PIM backend instead of the analytical fast path.
 
 - **Huawei CANN / Ascend-C / msprof**  
   Needed for reproducing measured results.
 
 - **LLMCompass**  
-  Needed when `npu_backend=llmcompass`. The release includes a partial reference snapshot under `submodules/LLMCompass/`; obtain its missing `cost_model/supply_chain` dependency and follow the upstream instructions recorded in `THIRD_PARTY_NOTICES.md`.
+  Needed when `npu_backend=llmcompass`.
 
 - **Plotting / analysis stack**  
   The full paper-reproduction workflow may additionally use a standard scientific Python stack such as `numpy`, `pandas`, `matplotlib`, `scipy`, `seaborn`, and graph/IO helpers, depending on the scripts you run.
@@ -82,25 +81,33 @@ These are only needed for specific backends or reproduction workflows.
 
 ## 🚀 Quick Start
 
-For Artifact Evaluation, start with the short, automatically checked workflow:
+Create a Python environment and run a small analytical PD/Bifocal comparison
+directly from the repository root:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements-core.txt
-bash ae/run_smoke.sh
+python3 src/main.py evaluate \
+  --config src/examples/evaluate_test_config.json \
+  --model_family qwen \
+  --model_variant 1.8b \
+  --batch 1 \
+  --prefill_len 8 \
+  --decode_len 4 \
+  --decode_sample_stride 1 \
+  --decode_plan_refresh_stride 1 \
+  --result_dir ../../output/readme_smoke \
+  --algo Bifocal \
+  --baselines PD \
+  --npu_backend fast \
+  --pim_fast_mode
 ```
 
-The required reviewer workflow is designed for Linux x86-64 with at least 4 CPU
-cores, 8 GB RAM, and 2 GB of free disk space. It does not require a GPU, NPU,
-PIM device, external dataset, or model weights. The smoke test runs a fixed-seed
-Qwen-1.8B workload through the PD and Bifocal scheduling paths, then validates
-the generated comparison, summary, operator-trace, and communication-trace
-artifacts. The final line must report `[AE] PASS`.
-
-This short workflow supports the **Artifacts Evaluated — Functional** claim. It
-checks that the released implementation installs and executes correctly; it is
-not intended to reproduce every numerical result in the paper.
+This test does not require a GPU, NPU, PIM device, external dataset, or model
+weights. A successful run prints both `PD` and `Bifocal` in the comparison table
+and writes their summaries plus operator and communication traces under
+`output/readme_smoke/`.
 
 ### Longer bundled evaluation
 
@@ -509,10 +516,8 @@ Use `weight-suggest` when you want to compare a fixed global layout against a se
 
 ```text
 .
-├── ae/                                  # Small analytical smoke configuration, launcher, and automatic verifier.
-├── requirements-core.txt                # Pinned dependency for the required smoke workflow.
+├── requirements-core.txt                # Pinned dependency for the quick analytical workflow.
 ├── CITATION.cff                         # Software and associated-paper citation metadata.
-├── THIRD_PARTY_NOTICES.md               # Provenance and licenses for bundled third-party snapshots.
 ├── src/                                 # Main implementation of DOPS
 │   ├── main.py                          # CLI entry point. Supports `evaluate` and `weight-suggest`.
 │   ├── mainlib/                         # High-level workflow logic for CLI parsing, evaluation, simulation, and storage helpers.
@@ -562,7 +567,7 @@ Use `weight-suggest` when you want to compare a fixed global layout against a se
 ├── configs/                             # Model shape cards resolved by `src/model_parser.py`.
 ├── experiment/                          # Paper-figure scripts and interactive schedule visualization.
 ├── measurements/                        # Microbenchmarks, profiling utilities, LUT-generation scripts.
-└── submodules/                          # Partial optional LLMCompass and CENT source snapshots; see notices.
+└── submodules/                          # Optional LLMCompass and CENT source snapshots.
 ```
 
 ---
@@ -663,15 +668,12 @@ experiment/demo/examples/qwen7b_fp16_b16_p512_d512/
 
 ## 📄 License
 
-DOPS-authored code is released under the [MIT License](./LICENSE). Bundled or
-referenced third-party components remain under their own licenses; see
-[THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
+DOPS-authored code is released under the [MIT License](./LICENSE).
 
 ## 📝 Citation
 
-If you use DOPS, please cite the archived software release and the associated
-MICRO 2026 paper using the metadata in [CITATION.cff](./CITATION.cff). The
-Zenodo DOI will be added here after the GitHub release is archived.
+If you use DOPS, please cite the associated MICRO 2026 paper using the metadata
+in [CITATION.cff](./CITATION.cff).
 
 
 

@@ -37,3 +37,11 @@ src/pkl/pim_latency_cache.pkl
 
 # Locally supplied datasets
 data/realworld/BurstGPT_without_fails_1.csv
+
+# Generated Ascend-C profiling and benchmark outputs
+measurements/ascendc/**/*.csv
+measurements/ascendc/**/profile_*_log*.toml
+measurements/ascendc/**/fusion_result.json
+measurements/ascendc/**/op_runner
+measurements/ascendc/**/ascendc_kernels_bbit
+measurements/**/batch_summary.json
