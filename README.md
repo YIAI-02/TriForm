@@ -4,6 +4,8 @@
 
 # DOPS: Dynamic OPerator Sorting for Heterogeneous NPU–PIM LLM Inference
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21320084.svg)](https://doi.org/10.5281/zenodo.21320084)
+
 <p>
   <a href="./docs/framework.pdf">
     <img src="./docs/framework_preview.png" alt="DOPS framework overview" width="980" />
