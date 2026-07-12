@@ -22,13 +22,13 @@ fi
 
 mkdir -p "${OUT_DIR}"
 COMMIT_SHA="$(git rev-parse HEAD)"
-ARCHIVE="${OUT_DIR}/${RELEASE_NAME}-${COMMIT_SHA:0:12}.tar.gz"
+ARCHIVE="${OUT_DIR}/${RELEASE_NAME}-${COMMIT_SHA:0:12}.zip"
 
-git archive --format=tar --prefix="${RELEASE_NAME}/" HEAD | gzip -n > "${ARCHIVE}"
+git archive --format=zip --prefix="${RELEASE_NAME}/" --output="${ARCHIVE}" HEAD
 
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "${TMP_DIR}"' EXIT
-tar -xzf "${ARCHIVE}" -C "${TMP_DIR}"
+"${PYTHON_BIN}" -m zipfile -e "${ARCHIVE}" "${TMP_DIR}"
 "${PYTHON_BIN}" "${TMP_DIR}/${RELEASE_NAME}/scripts/check_release.py" \
   "${TMP_DIR}/${RELEASE_NAME}"
 

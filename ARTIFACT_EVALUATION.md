@@ -104,7 +104,8 @@ small smoke workload reproduces every numerical result in the paper.
 2. Run the smoke test in the final clean environment.
 3. Commit all release changes and ensure `git status --short` is empty.
 4. Run `bash scripts/make_zenodo_archive.sh`.
-5. Upload the generated archive and `SHA256SUMS` to Zenodo.
+5. Upload the generated ZIP archive to Zenodo. Keep `SHA256SUMS` with the
+   release records and copy the checksum into the Zenodo description or notes.
 6. Publish the Zenodo record, then add its DOI URL to HotCRP.
 
 Do not archive an arbitrary working directory or a moving branch. Archive the
