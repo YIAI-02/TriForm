@@ -4,20 +4,27 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SRC_DIR="${PROJECT_ROOT}/src"
-PYTHON_BIN="${PYTHON_BIN:-python}"
+PYTHON_BIN="${PYTHON_BIN:-python3}"
 CONFIG="${CONFIG:-${SRC_DIR}/examples/evaluate_test_config.json}"
-NPU_BACKEND="${NPU_BACKEND:-lut}"
-PIM_FAST_MODE="${PIM_FAST_MODE:-0}"
+NPU_BACKEND="${NPU_BACKEND:-fast}"
+PIM_FAST_MODE="${PIM_FAST_MODE:-1}"
 
 # Examples:
 #   CONFIG=./src/examples/evaluate_quant_sparse_config.json bash commands/command_single_evaluate.sh
 #   CONFIG=./src/examples/evaluate_test_config.json NPU_BACKEND=llmcompass bash commands/command_single_evaluate.sh
+#   NPU_BACKEND=lut PIM_FAST_MODE=0 bash commands/command_single_evaluate.sh  # trace-based PIM
 
 cd "${PROJECT_ROOT}"
+
+echo "CONFIG=${CONFIG}"
+echo "NPU_BACKEND=${NPU_BACKEND}"
+echo "PIM_FAST_MODE=${PIM_FAST_MODE}"
 
 PIM_ARGS=()
 if [[ "${PIM_FAST_MODE}" =~ ^(1|true|TRUE|yes|YES|on|ON)$ ]]; then
   PIM_ARGS+=(--pim_fast_mode)
+else
+  PIM_ARGS+=(--no-pim_fast_mode)
 fi
 
 "${PYTHON_BIN}" "${SRC_DIR}/main.py" evaluate \

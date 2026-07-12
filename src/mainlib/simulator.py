@@ -159,7 +159,17 @@ def simulate_decode_progressive(sched: SchedulerBase, cfg: Dict, graph: TaskGrap
 
     return (float(global_end - prefill_end), steps_serialized)
 
-def _make_scheduler(name: str, cluster: Cluster, cost: CostModel, label: PlanLabel, batch: int, seq_len: int, buffer: GlobalMemoryManager):
+def _make_scheduler(
+    name: str,
+    cluster: Cluster,
+    cost: CostModel,
+    label: PlanLabel,
+    batch: int,
+    seq_len: int,
+    buffer: GlobalMemoryManager,
+    *,
+    rand_seed: int | None = None,
+):
     """Factory for scheduler strategies used by evaluate-suite."""
 
     strategy = _normalize_algo_name(name or 'HEFT')
@@ -169,7 +179,16 @@ def _make_scheduler(name: str, cluster: Cluster, cost: CostModel, label: PlanLab
             raise ImportError(
                 "BifocalScheduler is not available. Please export it from the scheduler package."
             )
-        return BifocalScheduler(cluster, cost, label, batch=batch, seq_len=seq_len, buffer=buffer)
+        seed = None if rand_seed is None else int(rand_seed)
+        return BifocalScheduler(
+            cluster,
+            cost,
+            label,
+            batch=batch,
+            seq_len=seq_len,
+            buffer=buffer,
+            rand_seed=seed,
+        )
 
     if strategy == 'HEFT':
         return HEFTScheduler(cluster, cost, label, batch=batch, seq_len=seq_len, buffer=buffer)
@@ -178,4 +197,3 @@ def _make_scheduler(name: str, cluster: Cluster, cost: CostModel, label: PlanLab
         return NaiveTopoScheduler(cluster, cost, label, batch=batch, seq_len=seq_len, buffer=buffer)
 
     raise ValueError(f"Unknown scheduler strategy: {name}")
-

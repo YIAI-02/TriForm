@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """
-export RAMU_EXE=/lustre/home/2501111916/workspace/DOPS_0330_merge/TriForm/algorithms/ramulator2
-export RELAYOUT_DIR=/lustre/home/2501111916/workspace/DOPS_0330_merge/TriForm/measurements/relayout
-export LD_LIBRARY_PATH="/lustre/home/2501111916/workspace/XPUPIM_0226_gpupim_parameter/TriForm/submodules/CENT/aim_simulator${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export PROJECT_ROOT=/path/to/TriForm
+export RAMU_REPO=${PROJECT_ROOT}/src
+export RAMU_EXE=${PROJECT_ROOT}/src/ramulator2
+export RELAYOUT_DIR=${PROJECT_ROOT}/measurements/relayout
+export LD_LIBRARY_PATH="${PROJECT_ROOT}/submodules/CENT/aim_simulator${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
 python3 ${RELAYOUT_DIR}/run_layout_mode.py \
   --mode pimopt_rw_host \

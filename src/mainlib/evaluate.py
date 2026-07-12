@@ -301,7 +301,16 @@ def _run_strategy_once(
         total_time = float(sim_best.get("total_s", t_prefill + t_decode) or (t_prefill + t_decode))
     else:
         buffer_mgr = GlobalMemoryManager()
-        sched = _make_scheduler(strategy_token, cluster, cost, label, batch=batch, seq_len=prefill_len, buffer=buffer_mgr)
+        sched = _make_scheduler(
+            strategy_token,
+            cluster,
+            cost,
+            label,
+            batch=batch,
+            seq_len=prefill_len,
+            buffer=buffer_mgr,
+            rand_seed=cfg.get("scheduler_seed"),
+        )
         sched.reset_state()
         sched.set_storage_format_map(weight_fmt_map)
 

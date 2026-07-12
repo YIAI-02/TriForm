@@ -1,0 +1,58 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the associated MICRO 2026 paper."
+title: "DOPS: Dynamic Operator Scheduling for Heterogeneous NPU-PIM LLM Inference"
+type: software
+license: MIT
+abstract: >-
+  DOPS is a simulation and analysis framework for heterogeneous NPU-PIM large
+  language model inference. It builds stage-aware execution graphs, evaluates
+  dynamic operator placement policies, explores persistent weight layouts, and
+  exports schedule summaries plus operator and communication traces.
+keywords:
+  - large language model inference
+  - heterogeneous computing
+  - processing-in-memory
+  - dynamic scheduling
+  - artifact evaluation
+authors:
+  - family-names: Yang
+    given-names: Jiaqi
+  - family-names: Li
+    given-names: Jiayi
+  - family-names: Fu
+    given-names: Yihan
+  - family-names: Zhao
+    given-names: Hongxiao
+  - family-names: Chen
+    given-names: Zhan
+  - family-names: Wu
+    given-names: Qiuping
+  - family-names: Yang
+    given-names: Yuchao
+  - family-names: Yan
+    given-names: Bonan
+repository-code: "https://github.com/YIAI-02/TriForm"
+version: "0.1.0-ae"
+preferred-citation:
+  type: conference-paper
+  title: "Beyond Prefill-Decode Disaggregation: Dissecting LLM Inference for Heterogeneous Platforms via Dynamic Operator Scheduling"
+  authors:
+    - family-names: Yang
+      given-names: Jiaqi
+    - family-names: Li
+      given-names: Jiayi
+    - family-names: Fu
+      given-names: Yihan
+    - family-names: Zhao
+      given-names: Hongxiao
+    - family-names: Chen
+      given-names: Zhan
+    - family-names: Wu
+      given-names: Qiuping
+    - family-names: Yang
+      given-names: Yuchao
+    - family-names: Yan
+      given-names: Bonan
+  conference:
+    name: "59th IEEE/ACM International Symposium on Microarchitecture (MICRO 2026)"
+  year: 2026

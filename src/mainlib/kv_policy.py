@@ -431,7 +431,16 @@ def _estimate_total_time_for_label(
 
     buffer_mgr = GlobalMemoryManager()
     try:
-        sched = _make_scheduler(strategy, cluster, cost, label, batch=batch, seq_len=prefill_len, buffer=buffer_mgr)
+        sched = _make_scheduler(
+            strategy,
+            cluster,
+            cost,
+            label,
+            batch=batch,
+            seq_len=prefill_len,
+            buffer=buffer_mgr,
+            rand_seed=cfg.get("scheduler_seed"),
+        )
     except Exception:
         # Fallback: baseline HEFT if an unknown strategy name is supplied.
         sched = _make_scheduler("HEFT", cluster, cost, label, batch=batch, seq_len=prefill_len, buffer=buffer_mgr)
@@ -538,4 +547,3 @@ def auto_select_kv_policy(
     if bool(capture_best_schedule):
         setattr(label_host, "_kv_policy_best_sim", None)
     return label_host
-

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-export RELAYOUT_DIR=/lustre/home/2501111916/workspace/DOPS_0330_merge/TriForm/measurements/relayout
-export RAMU_EXE=/lustre/home/2501111916/workspace/DOPS_0330_merge/TriForm/algorithms/ramulator2
-export RAMU_REPO=/lustre/home/2501111916/workspace/DOPS_0330_merge/TriForm/algorithms
+export PROJECT_ROOT=/path/to/TriForm
+export RELAYOUT_DIR=${PROJECT_ROOT}/measurements/relayout
+export RAMU_EXE=${PROJECT_ROOT}/src/ramulator2
+export RAMU_REPO=${PROJECT_ROOT}/src
 
 python3 ${RELAYOUT_DIR}/batch_linear_to_pimopt.py \
   --runner ${RELAYOUT_DIR}/run_linear_to_pimopt.py \

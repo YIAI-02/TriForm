@@ -1,0 +1,2 @@
+# Tested locally with CPython 3.12.13 for the analytical fast-mode AE workflow.
+typing_extensions==4.16.0

@@ -1,9 +1,0 @@
-{
-    "files.associations": {
-        "__split_buffer": "cpp",
-        "deque": "cpp",
-        "vector": "cpp"
-    },
-    "python.languageServer": "None",
-    "cmake.sourceDirectory": "/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/measurements/ascendc/softmax/kernel_launch_method_by_direct"
-}
