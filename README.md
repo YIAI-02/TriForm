@@ -52,11 +52,9 @@ From these inputs, DOPS:
 
 ### Minimal installation for the core CLI flow
 
-The analytical fast-mode workflow only needs the pinned core dependency:
-
-```bash
-python -m pip install -r requirements-core.txt
-```
+The analytical fast-mode workflow uses only the Python standard library on
+Python 3.12+. On Python 3.10 or 3.11, install the compatibility helper with
+`python -m pip install typing_extensions`.
 
 PyTorch is only needed by selected trace conversion, profiling, or optional
 backend utilities; it is not required by the quick test below.
@@ -87,7 +85,6 @@ directly from the repository root:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install -r requirements-core.txt
 python3 src/main.py evaluate \
   --config src/examples/evaluate_test_config.json \
   --model_family qwen \
@@ -516,7 +513,6 @@ Use `weight-suggest` when you want to compare a fixed global layout against a se
 
 ```text
 .
-├── requirements-core.txt                # Pinned dependency for the quick analytical workflow.
 ├── CITATION.cff                         # Software and associated-paper citation metadata.
 ├── src/                                 # Main implementation of DOPS
 │   ├── main.py                          # CLI entry point. Supports `evaluate` and `weight-suggest`.
