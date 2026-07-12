@@ -1,39 +1,39 @@
-/measurements/**/build/**
-/algorithms/debug_log.txt
-/algorthms/output/
-/algorithms/output_test2/
-/algorithms/pkl/
-/algorithms/output_test/
-/algorithms/job*/
-output/
-# Python cache
+# Python
 __pycache__/
 *.py[cod]
-# OS
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Editors and OS
 .DS_Store
-# generated results
+.vscode/
+*.bak
+*~
+
+# Generated outputs and logs
+output/
+dist/
+job.*
+*.out
+*.log
+**/build/
+**/out/
+**/profile/
+**/kernel_meta/
+**/*_ops_trace.csv
 **/*_comms_trace.csv
 **/best_summary_*.json
+**/baseline_compare_*.json
 **/debug_*.txt
 **/pim_sim_*.txt
-#
-submodules/CENT
-submodules/LLMCompass
-verify/sst64_rst64
-verify/sst8_rst8
-verify/sst2_rst2
-/algorithms/*.out
-/algorithms/*.sh
-/algorithms/*.slurm
-/verify/hw_hardware_1gpu_2aim/
-/verify/hw_hardware_1npu_2aim/measurements/relayout/**/*.trace
-measurements/relayout/**/sim_stdout.txt
-measurements/relayout/**/summary.json
-readme.md.bak
-data/realworld/BurstGPT_without_fails_1.csv.bak
+**/sim_stdout.txt
+**/summary.json
+
+# Generated caches
 src/pkl/pim_latency_cache.pkl
-job.*
-.vscode/settings.json
-src/pkl/pim_latency_cache.pkl
-src/pkl/pim_latency_cache.pkl
-src/pkl/pim_latency_cache.pkl
+
+# Locally supplied datasets
+data/realworld/BurstGPT_without_fails_1.csv

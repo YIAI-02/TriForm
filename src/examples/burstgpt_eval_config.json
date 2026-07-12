@@ -7,7 +7,7 @@
   "hardware_json": "./examples/hardware_1npu_2aim.json",
   "result_dir": "../../output/burstgpt_eval",
 
-  "burstgpt_csv": "/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/data/realworld/BurstGPT_without_fails_1.csv",
+  "burstgpt_csv": "../../data/realworld/BurstGPT_without_fails_1.csv",
 
   "algo": ["Bifocal"],
   "baselines": ["PD", "AF", "PD+Linear", "PD+Attn", "PD+FFN"],

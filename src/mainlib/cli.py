@@ -56,7 +56,7 @@ def parse_args():
         choices=['fast', 'fast_mode', 'lut', 'ascend_310b_json', 'llmcompass'],
         help='NPU operator-latency backend: fast/lut/llmcompass. Must be explicitly specified in config JSON or CLI.',
     )
-    sp_eval.add_argument('--pim_fast_mode', action='store_true', default=None)
+    sp_eval.add_argument('--pim_fast_mode', action=argparse.BooleanOptionalAction, default=None)
     sp_eval.add_argument(
         '--pim-weight-load-overlap-ratio',
         dest='pim_weight_load_overlap_ratio',
@@ -101,7 +101,7 @@ def parse_args():
         choices=['fast', 'fast_mode', 'lut', 'ascend_310b_json', 'llmcompass'],
         help='NPU operator-latency backend: fast/lut/llmcompass. Must be explicitly specified in config JSON or CLI.',
     )
-    sp_ws.add_argument('--pim_fast_mode', action='store_true', default=None)
+    sp_ws.add_argument('--pim_fast_mode', action=argparse.BooleanOptionalAction, default=None)
     sp_ws.add_argument(
         '--pim-weight-load-overlap-ratio',
         dest='pim_weight_load_overlap_ratio',
@@ -149,7 +149,7 @@ def parse_args():
     sp_burst.add_argument('--algo', type=str, help='Algorithm list, for example "Bifocal".')
     sp_burst.add_argument('--baselines', type=str, help='Baseline list, for example "PD,AF,PD+Linear,PD+Attn,PD+FFN".')
     sp_burst.add_argument('--npu_backend', type=str, default=None, choices=['fast', 'fast_mode', 'lut', 'ascend_310b_json', 'llmcompass'])
-    sp_burst.add_argument('--pim_fast_mode', action='store_true', default=None)
+    sp_burst.add_argument('--pim_fast_mode', action=argparse.BooleanOptionalAction, default=None)
     sp_burst.add_argument('--pim-weight-load-overlap-ratio', dest='pim_weight_load_overlap_ratio', type=float)
     sp_burst.add_argument('--weight-load-compute-overlap-ratio', dest='weight_load_compute_overlap_ratio', type=float)
     sp_burst.add_argument('--tp_qkv', type=int)

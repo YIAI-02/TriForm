@@ -1,6 +1,5 @@
 #!/bin/bash
 #SBATCH -J single_eval
-#SBATCH --chdir=/lustre/home/2501111916/workspace/DOPS_0407_final/TriForm
 #SBATCH -p C064M1024G
 #SBATCH --qos=high
 #SBATCH -N 1
@@ -14,4 +13,6 @@ set -euo pipefail
 echo "SLURM_SUBMIT_DIR=${SLURM_SUBMIT_DIR:-}"
 echo "PWD=$PWD"
 
-bash /lustre/home/2501111916/workspace/DOPS_0407_final/TriForm/commands/command_single_evaluate.sh
+PROJECT_ROOT="${DOPS_ROOT:-${SLURM_SUBMIT_DIR:-$(pwd)}}"
+cd "${PROJECT_ROOT}"
+bash commands/command_single_evaluate.sh

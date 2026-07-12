@@ -52,24 +52,28 @@ From these inputs, DOPS:
 
 ### Minimal installation for the core CLI flow
 
-If you only need the roofline model or operator model, the smallest practical dependency set is:
+The reviewer-facing analytical fast-mode workflow only needs the pinned core
+dependency:
 
 ```bash
-pip install torch typing_extensions
+python -m pip install -r requirements-core.txt
 ```
+
+PyTorch is only needed by selected trace conversion, profiling, or optional
+backend utilities; it is not required by `ae/run_smoke.sh`.
 
 ### Optional external runtimes and toolchains
 
 These are only needed for specific backends or reproduction workflows.
 
 - **Ramulator2 / trace-based PIM flow**  
-  Needed when you want the trace-based PIM backend instead of the analytical fast path. Place the submodule under `submodules/CENT/` and install the dependencies required by it.
+  Needed when you want the trace-based PIM backend instead of the analytical fast path. The release includes a partial reference snapshot under `submodules/CENT/`; obtain the missing nested dependency and follow the upstream build instructions recorded in `THIRD_PARTY_NOTICES.md`.
 
 - **Huawei CANN / Ascend-C / msprof**  
   Needed for reproducing measured results.
 
 - **LLMCompass**  
-  Needed when `npu_backend=llmcompass`. Place the submodule under `submodules/LLMCompass/` and install the dependencies required by that project.
+  Needed when `npu_backend=llmcompass`. The release includes a partial reference snapshot under `submodules/LLMCompass/`; obtain its missing `cost_model/supply_chain` dependency and follow the upstream instructions recorded in `THIRD_PARTY_NOTICES.md`.
 
 - **Plotting / analysis stack**  
   The full paper-reproduction workflow may additionally use a standard scientific Python stack such as `numpy`, `pandas`, `matplotlib`, `scipy`, `seaborn`, and graph/IO helpers, depending on the scripts you run.
@@ -77,6 +81,28 @@ These are only needed for specific backends or reproduction workflows.
 ---
 
 ## 🚀 Quick Start
+
+For Artifact Evaluation, start with the short, automatically checked workflow:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements-core.txt
+bash ae/run_smoke.sh
+```
+
+The required reviewer workflow is designed for Linux x86-64 with at least 4 CPU
+cores, 8 GB RAM, and 2 GB of free disk space. It does not require a GPU, NPU,
+PIM device, external dataset, or model weights. The smoke test runs a fixed-seed
+Qwen-1.8B workload through the PD and Bifocal scheduling paths, then validates
+the generated comparison, summary, operator-trace, and communication-trace
+artifacts. The final line must report `[AE] PASS`.
+
+This short workflow supports the **Artifacts Evaluated — Functional** claim. It
+checks that the released implementation installs and executes correctly; it is
+not intended to reproduce every numerical result in the paper.
+
+### Longer bundled evaluation
 
 The current repository is organized around a `src/` code tree and a `commands/` launcher tree. The fastest way to test the framework  is to stay at the project root and use the provided wrapper script, which already enables simulation based on roofline models (fast NPU and fast PIM in code).
 
@@ -89,9 +115,9 @@ bash commands/command_single_evaluate.sh
 `commands/command_single_evaluate.sh` is a thin wrapper around:
 
 ```bash
-python src/main.py evaluate \
+python3 src/main.py evaluate \
   --config src/examples/evaluate_test_config.json \
-  --npu_backend fast_mode \
+  --npu_backend fast \
   --pim_fast_mode \
   --debug
 ```
@@ -106,7 +132,7 @@ With the bundled example config, outputs are written under:
 
 ```text
 ./output/evaluate_single_test/hardware_1npu_2aim_evaluate/
-└── qwen_7b_fp16_b8_s2/
+└── qwen_7b_fp16_b4_s2/
 ```
 
 A successful run produces at least:
@@ -252,6 +278,7 @@ A representative fast-mode evaluation config looks like this:
   "tp_ffn": 2,
   "npu_backend": "fast",
   "pim_fast_mode": true,
+  "scheduler_seed": 0,
   "dump_graph": false,
   "dump_graph_dir": "./output/evaluate_single_test/hardware_1npu_2aim/graph_dumps"
 }
@@ -260,6 +287,7 @@ A representative fast-mode evaluation config looks like this:
 A few details are easy to miss:
 
 - `algo` and `baselines` now use the **paper-aligned names** such as `Bifocal`, `HEFT`, `PD`, `AF`, `PD+Linear`, `PD+Attn`, and `PD+FFN`.
+- `scheduler_seed` makes Bifocal's random tie-breaking reproducible; omit it only when intentionally exploring equivalent tie outcomes.
 - Relative paths in the config are resolved relative to the config JSON first, then `src/`, then the current working directory.
 
 > 📘 For the meaning of each key, see the [Configuration Reference](./docs/CONFIG_REFERENCE.md).
@@ -323,9 +351,9 @@ bash commands/command_single_evaluate.sh
 **Direct CLI:**
 
 ```bash
-python src/main.py evaluate \
+python3 src/main.py evaluate \
   --config src/examples/evaluate_test_config.json \
-  --npu_backend fast_mode \
+  --npu_backend fast \
   --pim_fast_mode \
   --debug
 ```
@@ -481,6 +509,10 @@ Use `weight-suggest` when you want to compare a fixed global layout against a se
 
 ```text
 .
+├── ae/                                  # Small analytical smoke configuration, launcher, and automatic verifier.
+├── requirements-core.txt                # Pinned dependency for the required smoke workflow.
+├── CITATION.cff                         # Software and associated-paper citation metadata.
+├── THIRD_PARTY_NOTICES.md               # Provenance and licenses for bundled third-party snapshots.
 ├── src/                                 # Main implementation of DOPS
 │   ├── main.py                          # CLI entry point. Supports `evaluate` and `weight-suggest`.
 │   ├── mainlib/                         # High-level workflow logic for CLI parsing, evaluation, simulation, and storage helpers.
@@ -530,7 +562,8 @@ Use `weight-suggest` when you want to compare a fixed global layout against a se
 ├── configs/                             # Model shape cards resolved by `src/model_parser.py`.
 ├── experiment/                          # Paper-figure scripts and interactive schedule visualization.
 ├── measurements/                        # Microbenchmarks, profiling utilities, LUT-generation scripts.
-└── submodules/                          # Optional external backends such as LLMCompass and CENT / Ramulator flows.
+├── scripts/                             # Release archive builder and fail-closed package checker.
+└── submodules/                          # Partial optional LLMCompass and CENT source snapshots; see notices.
 ```
 
 ---
@@ -628,6 +661,18 @@ experiment/demo/examples/qwen7b_fp16_b16_p512_d512/
 **Demo assets**
 
 - [Demo trace examples guide](./experiment/demo/examples/README.md)
+
+## 📄 License
+
+DOPS-authored code is released under the [MIT License](./LICENSE). Bundled or
+referenced third-party components remain under their own licenses; see
+[THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
+
+## 📝 Citation
+
+If you use DOPS, please cite the archived software release and the associated
+MICRO 2026 paper using the metadata in [CITATION.cff](./CITATION.cff). The
+Zenodo DOI will be added here after the GitHub release is archived.
 
 
 

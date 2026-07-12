@@ -25,7 +25,7 @@ python plot_exp3_layout_compare.py \
   --csv ../../algorithms/output/ws_overlap_1p0_low_npu_bw_nz0p95_qwen14b/shards/75w/results.csv \
   --outdir ../../figs/exp3/compare_qwen14b \
   --fig-format png \
-  --path-remap /lustre/home/2501111916/workspace/DOPS_0402_exp3/TriForm/algorithms/output/ws_overlap_1p0_low_npu_bw_nz0p95_qwen=/lustre/home/2501111916/workspace/DOPS_0402_exp3/TriForm/algorithms/output/ws_overlap_1p0_low_npu_bw_nz0p95_qwen14b \
+  --path-remap /path/to/original/results=/path/to/remapped/results \
   --share-y \
   --max-panels-per-figure 6 \
   --verbose-pie
