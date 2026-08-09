@@ -18,6 +18,7 @@
     "hardware_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
     "dops_revision": "0123456789abcdef0123456789abcdef01234567",
     "source_artifact_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+    "source_artifact_path": "dops-prior-golden-v1.source.json",
     "policy": "Bifocal",
     "parallelism": {"tp": 1, "pp": 1, "ep": 1},
     "model": {"family": "llama", "variant": "7b"},

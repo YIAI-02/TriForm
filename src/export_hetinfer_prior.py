@@ -95,7 +95,12 @@ def main() -> int:
         legacy_best_summary=None if records else summary,
         producer_revision=args.dops_revision,
     )
-    output = write_artifact(artifact, args.output)
+    output = write_artifact(
+        artifact,
+        args.output,
+        candidate_records=records or None,
+        legacy_best_summary=None if records else summary,
+    )
     print(f"[Het-Infer] wrote {output}")
     if artifact["provenance"]["status"] != "complete":
         print(

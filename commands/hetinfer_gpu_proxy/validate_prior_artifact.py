@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from hetinfer_prior import load_json, validate_artifact
+from hetinfer_prior import load_artifact_bundle
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -19,8 +19,7 @@ def _parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = _parser().parse_args()
-    artifact = load_json(args.artifact)
-    validate_artifact(artifact)
+    artifact, source_artifact = load_artifact_bundle(args.artifact)
 
     provenance = artifact["provenance"]
     workload = provenance["workload"]
@@ -65,7 +64,8 @@ def main() -> int:
         "[PRIOR-VALID] "
         f"artifact_id={artifact['artifact_id']} profiles={len(profiles)} "
         f"operators={len(operators)} dynamic={len(dynamic)} "
-        f"devices={','.join(devices)} provenance={provenance['status']}"
+        f"devices={','.join(devices)} provenance={provenance['status']} "
+        f"source={source_artifact.name}"
     )
     return 0
 

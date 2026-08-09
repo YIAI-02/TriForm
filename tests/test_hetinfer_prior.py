@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -19,6 +21,7 @@ from hardware import Cluster, DeviceSpec  # noqa: E402
 from hetinfer_prior import (  # noqa: E402
     PriorValidationError,
     build_artifact,
+    load_artifact_bundle,
     validate_artifact,
     write_artifact,
 )
@@ -141,9 +144,103 @@ class HetInferPriorTests(unittest.TestCase):
         self.assertEqual(len(provenance["source_artifact_sha256"]), 64)
 
         with tempfile.TemporaryDirectory() as tmp:
-            path = write_artifact(artifact, Path(tmp) / "prior.json")
+            path = write_artifact(
+                artifact,
+                Path(tmp) / "prior.json",
+                candidate_records=records,
+            )
             loaded = json.loads(path.read_text(encoding="utf-8"))
             self.assertFalse(loaded["semantics"]["timeline_is_runtime_contract"])
+            verified, source_path = load_artifact_bundle(path)
+            self.assertEqual(
+                verified["provenance"]["source_artifact_path"],
+                source_path.name,
+            )
+            self.assertEqual(
+                verified["provenance"]["source_artifact_sha256"],
+                hashlib.sha256(source_path.read_bytes()).hexdigest(),
+            )
+
+    def test_bundle_validation_rejects_tampered_source(self) -> None:
+        records = [
+            _record("prefill", 1, 128, None),
+            _record("decode", 2, 128, 0),
+        ]
+        artifact = build_artifact(
+            cfg=_cfg(),
+            graph=_graph(),
+            cluster=_cluster(),
+            candidate_records=records,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            path = write_artifact(
+                artifact,
+                Path(tmp) / "prior.json",
+                candidate_records=records,
+            )
+            _, source_path = load_artifact_bundle(path)
+            source_path.write_text('{"tampered":true}\n', encoding="utf-8")
+            with self.assertRaisesRegex(PriorValidationError, "SHA256 mismatch"):
+                load_artifact_bundle(path)
+
+    def test_grid_manifest_lists_the_complete_training_bundle(self) -> None:
+        records = [
+            _record("prefill", 1, 128, None),
+            _record("decode", 2, 128, 0),
+        ]
+        artifact = build_artifact(
+            cfg=_cfg(),
+            graph=_graph(),
+            cluster=_cluster(),
+            candidate_records=records,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            case_root = root / "b4_p128_d32"
+            prior = write_artifact(
+                artifact,
+                case_root / "prior.json",
+                candidate_records=records,
+            )
+            environment = dict(os.environ)
+            environment["PYTHONPATH"] = str(SRC_ROOT)
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(
+                        REPO_ROOT
+                        / "commands"
+                        / "hetinfer_gpu_proxy"
+                        / "build_prior_grid_manifest.py"
+                    ),
+                    "--grid-root",
+                    str(root),
+                    "--require-count",
+                    "1",
+                ],
+                cwd=REPO_ROOT,
+                env=environment,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            manifest = json.loads(
+                (root / "prior_grid_manifest.json").read_text(encoding="utf-8")
+            )
+            entry = manifest["artifacts"][0]
+            _, source_path = load_artifact_bundle(prior)
+            self.assertEqual(
+                entry["bundle_files"],
+                [
+                    str(prior.relative_to(root)),
+                    str(source_path.relative_to(root)),
+                ],
+            )
+            self.assertEqual(
+                entry["source_artifact_sha256"],
+                artifact["provenance"]["source_artifact_sha256"],
+            )
 
     def test_validator_rejects_unmasked_baseline(self) -> None:
         artifact = build_artifact(
@@ -372,6 +469,12 @@ class HetInferPriorTests(unittest.TestCase):
             )
             self.assertEqual(completed.returncode, 0, completed.stderr)
             artifact = json.loads(output.read_text(encoding="utf-8"))
+            verified, source_path = load_artifact_bundle(output)
+            self.assertEqual(verified["artifact_id"], artifact["artifact_id"])
+            self.assertEqual(
+                artifact["provenance"]["source_artifact_path"],
+                source_path.name,
+            )
             self.assertEqual(artifact["provenance"]["status"], "complete")
             self.assertEqual(
                 artifact["provenance"]["hardware"]["source_path"],
@@ -394,6 +497,54 @@ class HetInferPriorTests(unittest.TestCase):
         )
         validate_artifact(golden)
         self.assertEqual(set(golden["profiles"][0]["phases"]), {"prefill", "decode"})
+
+    def test_heterollm_loader_verifies_written_bundle_when_available(self) -> None:
+        heterollm_root_raw = os.environ.get("HETEROLLM_ROOT")
+        if not heterollm_root_raw:
+            self.skipTest("set HETEROLLM_ROOT for the cross-repository loader check")
+        heterollm_root = Path(heterollm_root_raw).expanduser().resolve()
+        heterollm_src = heterollm_root / "src"
+        if not (heterollm_src / "heterollm" / "planning" / "prior.py").is_file():
+            self.fail(f"HETEROLLM_ROOT has no HetInfer loader: {heterollm_root}")
+
+        records = [
+            _record("prefill", 1, 128, None),
+            _record("decode", 2, 128, 0),
+        ]
+        artifact = build_artifact(
+            cfg=_cfg(),
+            graph=_graph(),
+            cluster=_cluster(),
+            candidate_records=records,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            path = write_artifact(
+                artifact,
+                Path(tmp) / "prior.json",
+                candidate_records=records,
+            )
+            environment = dict(os.environ)
+            environment["PYTHONPATH"] = str(heterollm_src)
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "-c",
+                    (
+                        "from heterollm.planning import load_dops_prior_library; "
+                        "p=load_dops_prior_library(__import__('sys').argv[1]).profiles()[0]; "
+                        "assert p.provenance.source_artifact_verified; "
+                        "print('HETEROLLM_DOPS_SOURCE_VERIFIED', p.profile_id)"
+                    ),
+                    str(path),
+                ],
+                cwd=heterollm_root,
+                env=environment,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIn("HETEROLLM_DOPS_SOURCE_VERIFIED", completed.stdout)
 
 
 if __name__ == "__main__":

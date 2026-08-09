@@ -24,7 +24,8 @@
       "type": "object",
       "required": [
         "model_family", "model_revision", "graph_sha256", "hardware_sha256",
-        "dops_revision", "source_artifact_sha256", "policy", "parallelism",
+        "dops_revision", "source_artifact_sha256", "source_artifact_path",
+        "policy", "parallelism",
         "model", "workload", "hardware", "graph", "producer"
       ],
       "properties": {
@@ -34,6 +35,11 @@
         "hardware_sha256": {"$ref": "#/$defs/sha256"},
         "dops_revision": {"type": "string", "minLength": 1},
         "source_artifact_sha256": {"$ref": "#/$defs/sha256"},
+        "source_artifact_path": {
+          "type": "string",
+          "pattern": "^[^/\\\\]+$",
+          "minLength": 1
+        },
         "policy": {"type": "string", "minLength": 1},
         "parallelism": {"type": "object"},
         "model": {"type": "object"},

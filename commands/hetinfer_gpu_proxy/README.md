@@ -69,6 +69,13 @@ export PYTHONPATH="${DOPS_ROOT}/src"
 The corresponding expected counts are 3 for `ramulator-scaled` and 1 for
 `ramulator-strict`.
 
+Each `prior.json` is accompanied by a uniquely named canonical
+`<artifact_id>.source.json`. Treat those two files as one bundle. The manifest
+records both relative paths under `bundle_files`; a training-stage copy must
+preserve both files in the same directory and must not rename the source
+sidecar. Het-Infer intentionally rejects a `DQN_PRIOR` whose source companion
+is absent or whose byte digest differs.
+
 ## What this does and does not prove
 
 Successful jobs prove that DOPS can build the Qwen 1.8B DAG, score legal

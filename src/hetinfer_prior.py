@@ -17,11 +17,14 @@ import math
 import os
 from pathlib import Path
 import subprocess
+import tempfile
 from typing import Any, Dict, Iterable, Mapping, Optional, Sequence, Tuple
 
 
 SCHEMA_NAME = "dops.hetinfer_prior.v1"
 SCHEMA_VERSION = 1
+SOURCE_SCHEMA_NAME = "dops.hetinfer_prior_source.v1"
+SOURCE_SCHEMA_VERSION = 1
 SCORE_FIELDS = (
     "dops_score_s",
     "eft_s",
@@ -76,6 +79,77 @@ def digest_file(path: str | os.PathLike[str] | None) -> Optional[str]:
         for chunk in iter(lambda: f.read(1024 * 1024), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def _source_artifact_document(
+    *,
+    candidate_records: Optional[Iterable[Mapping[str, Any]]] = None,
+    legacy_best_summary: Optional[Mapping[str, Any]] = None,
+) -> Dict[str, Any]:
+    records = list(candidate_records or [])
+    if records and legacy_best_summary is not None:
+        raise PriorValidationError(
+            "source artifact must contain candidate records or a legacy best summary, not both"
+        )
+    if records:
+        return {
+            "schema": SOURCE_SCHEMA_NAME,
+            "schema_version": SOURCE_SCHEMA_VERSION,
+            "kind": "bifocal_candidate_records",
+            "candidate_records": _jsonable(records),
+        }
+    if legacy_best_summary is not None:
+        return {
+            "schema": SOURCE_SCHEMA_NAME,
+            "schema_version": SOURCE_SCHEMA_VERSION,
+            "kind": "legacy_best_summary",
+            "legacy_best_summary": _jsonable(dict(legacy_best_summary)),
+        }
+    raise PriorValidationError(
+        "source artifact requires candidate_records or legacy_best_summary"
+    )
+
+
+def _source_artifact_bytes(source: Mapping[str, Any]) -> bytes:
+    """Return the canonical on-disk representation hashed by consumers."""
+
+    if source.get("schema") != SOURCE_SCHEMA_NAME:
+        raise PriorValidationError(
+            f"source artifact schema must equal {SOURCE_SCHEMA_NAME!r}"
+        )
+    if source.get("schema_version") != SOURCE_SCHEMA_VERSION:
+        raise PriorValidationError(
+            f"source artifact schema_version must equal {SOURCE_SCHEMA_VERSION}"
+        )
+    kind = source.get("kind")
+    if kind == "bifocal_candidate_records":
+        records = source.get("candidate_records")
+        if not isinstance(records, list) or not records:
+            raise PriorValidationError(
+                "bifocal source artifact requires non-empty candidate_records"
+            )
+    elif kind == "legacy_best_summary":
+        if not isinstance(source.get("legacy_best_summary"), Mapping):
+            raise PriorValidationError(
+                "legacy source artifact requires a legacy_best_summary object"
+            )
+    else:
+        raise PriorValidationError(f"unsupported source artifact kind {kind!r}")
+    return _stable_json_bytes(source) + b"\n"
+
+
+def _source_artifact_name(value: Any) -> str:
+    name = _require_nonempty_str(value, "provenance.source_artifact_path")
+    candidate = Path(name)
+    if candidate.is_absolute() or len(candidate.parts) != 1 or candidate.name != name:
+        raise PriorValidationError(
+            "provenance.source_artifact_path must be a relative adjacent filename"
+        )
+    if name in {".", ".."}:
+        raise PriorValidationError(
+            "provenance.source_artifact_path must name a JSON sidecar file"
+        )
+    return name
 
 
 def _float_or_none(value: Any, *, field: str) -> Optional[float]:
@@ -184,6 +258,7 @@ def validate_artifact(artifact: Mapping[str, Any]) -> None:
         "hardware_sha256",
         "dops_revision",
         "source_artifact_sha256",
+        "source_artifact_path",
         "policy",
     ):
         _require_nonempty_str(provenance.get(field), f"provenance.{field}")
@@ -191,6 +266,7 @@ def validate_artifact(artifact: Mapping[str, Any]) -> None:
         value = str(provenance.get(field, ""))
         if not re_full_sha256(value):
             raise PriorValidationError(f"provenance.{field} must be a lowercase 64-hex SHA256")
+    _source_artifact_name(provenance.get("source_artifact_path"))
     if not isinstance(provenance.get("parallelism"), Mapping):
         raise PriorValidationError("provenance.parallelism must be an object")
     for axis in ("tp", "pp", "ep"):
@@ -889,9 +965,14 @@ def build_artifact(
         producer_revision=producer_revision,
     )
     records = list(candidate_records or [])
-    provenance["source_artifact_sha256"] = digest_json(
-        records if records else dict(legacy_best_summary or {})
+    source_artifact = _source_artifact_document(
+        candidate_records=records or None,
+        legacy_best_summary=legacy_best_summary,
     )
+    source_artifact_sha256 = hashlib.sha256(
+        _source_artifact_bytes(source_artifact)
+    ).hexdigest()
+    provenance["source_artifact_sha256"] = source_artifact_sha256
     if records:
         profiles = profiles_from_candidate_records(records, cfg=cfg)
     elif legacy_best_summary is not None:
@@ -905,12 +986,15 @@ def build_artifact(
         "config_digest": provenance["config"]["digest"],
         "graph_digest": provenance["graph"]["digest"],
         "hardware_digest": provenance["hardware"]["digest"],
+        "source_artifact_sha256": source_artifact_sha256,
         "profiles": profiles,
     }
+    artifact_id = "dops-prior-" + digest_json(identity_core)[:20]
+    provenance["source_artifact_path"] = f"{artifact_id}.source.json"
     artifact = {
         "schema": SCHEMA_NAME,
         "schema_version": SCHEMA_VERSION,
-        "artifact_id": "dops-prior-" + digest_json(identity_core)[:20],
+        "artifact_id": artifact_id,
         "created_at": created_at or datetime.now(timezone.utc).isoformat(),
         "semantics": {
             "role": "offline_placement_prior",
@@ -925,11 +1009,62 @@ def build_artifact(
     return artifact
 
 
-def write_artifact(artifact: Mapping[str, Any], output: str | os.PathLike[str]) -> Path:
+def _write_bytes_atomic(path: Path, payload: bytes) -> None:
+    descriptor, temporary_name = tempfile.mkstemp(
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+def write_artifact(
+    artifact: Mapping[str, Any],
+    output: str | os.PathLike[str],
+    *,
+    candidate_records: Optional[Iterable[Mapping[str, Any]]] = None,
+    legacy_best_summary: Optional[Mapping[str, Any]] = None,
+) -> Path:
+    """Atomically write a prior and its source-verified adjacent sidecar."""
+
     validate_artifact(artifact)
     path = Path(output)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(_jsonable(artifact), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    source = _source_artifact_document(
+        candidate_records=candidate_records,
+        legacy_best_summary=legacy_best_summary,
+    )
+    source_bytes = _source_artifact_bytes(source)
+    actual_source_sha256 = hashlib.sha256(source_bytes).hexdigest()
+    provenance = artifact["provenance"]
+    expected_source_sha256 = str(provenance["source_artifact_sha256"])
+    if actual_source_sha256 != expected_source_sha256:
+        raise PriorValidationError(
+            "source artifact payload does not match provenance.source_artifact_sha256: "
+            f"expected {expected_source_sha256}, got {actual_source_sha256}"
+        )
+    source_name = _source_artifact_name(provenance["source_artifact_path"])
+    source_path = path.parent / source_name
+    if source_path == path:
+        raise PriorValidationError("prior output cannot overwrite its source artifact")
+
+    prior_bytes = (
+        json.dumps(_jsonable(artifact), ensure_ascii=False, indent=2) + "\n"
+    ).encode("utf-8")
+    # Publish the source first. A crash can leave an unreferenced sidecar, but
+    # can never publish a prior whose referenced source has not been written.
+    _write_bytes_atomic(source_path, source_bytes)
+    _write_bytes_atomic(path, prior_bytes)
+    load_artifact_bundle(path)
     return path
 
 
@@ -940,16 +1075,50 @@ def load_json(path: str | os.PathLike[str]) -> Dict[str, Any]:
     return value
 
 
+def load_artifact_bundle(
+    path: str | os.PathLike[str],
+) -> Tuple[Dict[str, Any], Path]:
+    """Load a prior and fail closed unless its adjacent source hashes exactly."""
+
+    prior_path = Path(path).expanduser().resolve(strict=True)
+    artifact = load_json(prior_path)
+    validate_artifact(artifact)
+    provenance = artifact["provenance"]
+    source_name = _source_artifact_name(provenance["source_artifact_path"])
+    source_path = prior_path.parent / source_name
+    if not source_path.is_file():
+        raise PriorValidationError(
+            f"source artifact does not exist: {source_path}"
+        )
+    expected = str(provenance["source_artifact_sha256"])
+    actual = digest_file(source_path)
+    if actual != expected:
+        raise PriorValidationError(
+            "source artifact SHA256 mismatch: "
+            f"expected {expected}, got {actual} for {source_path}"
+        )
+    source_raw = load_json(source_path)
+    canonical = _source_artifact_bytes(source_raw)
+    if source_path.read_bytes() != canonical:
+        raise PriorValidationError(
+            f"source artifact is not in canonical JSON encoding: {source_path}"
+        )
+    return artifact, source_path
+
+
 __all__ = [
     "CandidatePrior",
     "PriorValidationError",
     "SCHEMA_NAME",
     "SCHEMA_VERSION",
+    "SOURCE_SCHEMA_NAME",
+    "SOURCE_SCHEMA_VERSION",
     "SCORE_FIELDS",
     "build_artifact",
     "build_provenance",
     "digest_file",
     "digest_json",
+    "load_artifact_bundle",
     "load_json",
     "profiles_from_candidate_records",
     "validate_artifact",

@@ -746,7 +746,13 @@ def run(cfg: Dict):
             shape=shape,
             candidate_records=candidate_records,
         )
-        hetinfer_prior_path = str(write_hetinfer_prior_artifact(artifact, output_path))
+        hetinfer_prior_path = str(
+            write_hetinfer_prior_artifact(
+                artifact,
+                output_path,
+                candidate_records=candidate_records,
+            )
+        )
         _debug(f'[Het-Infer] Saved best-layout placement prior to: {hetinfer_prior_path}')
 
     # ------------------------------------------------------------

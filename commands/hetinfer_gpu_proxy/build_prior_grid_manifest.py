@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from hetinfer_prior import load_json, validate_artifact
+from hetinfer_prior import load_artifact_bundle
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -42,8 +42,7 @@ def main() -> int:
     seen_workloads: set[tuple[int, int, int]] = set()
 
     for path in sorted(root.glob("*/prior.json")):
-        artifact = load_json(path)
-        validate_artifact(artifact)
+        artifact, source_artifact = load_artifact_bundle(path)
         workload = artifact["provenance"]["workload"]
         key = (
             int(workload["batch"]),
@@ -63,6 +62,12 @@ def main() -> int:
                 "profile_count": len(artifact["profiles"]),
                 "path": str(path.relative_to(root)),
                 "sha256": _sha256(path),
+                "source_artifact_path": str(source_artifact.relative_to(root)),
+                "source_artifact_sha256": _sha256(source_artifact),
+                "bundle_files": [
+                    str(path.relative_to(root)),
+                    str(source_artifact.relative_to(root)),
+                ],
                 "provenance_status": artifact["provenance"]["status"],
                 "evidence_class": config_snapshot.get("evidence_class"),
             }

@@ -78,8 +78,19 @@ again before every DQN action.
 Each artifact records the full normalized graph and hardware snapshots plus
 their SHA-256 digests, the complete input config snapshot, model family and
 revision, TP/PP/EP fields, DOPS git revision, policy, and source-capture digest.
-SHA-256 fields are canonical lowercase 64-hex strings; `digest_algorithm` is
-stored separately where applicable.
+Every exported prior also writes an adjacent canonical source sidecar named
+`<artifact_id>.source.json`. `provenance.source_artifact_path` is that relative
+filename and `source_artifact_sha256` is the SHA-256 of the sidecar's exact
+bytes. The bundle validator rejects a missing, modified, or non-canonically
+encoded sidecar. SHA-256 fields are canonical lowercase 64-hex strings;
+`digest_algorithm` is stored separately where applicable.
+
+The prior and source sidecar are one indivisible handoff bundle. When staging
+a prior for Het-Infer DQN training, copy both files into the same destination
+directory without renaming the sidecar; then point `DQN_PRIOR` or
+`--dops-prior` at the copied prior JSON. Copying only `prior.json` is expected
+to fail closed in Het-Infer. Grid manifests expose the exact pair in each
+entry's `bundle_files` list and separately record both SHA-256 values.
 
 `provenance.status=partial` and `missing_fields` are explicit. Consumers that
 require reproducible graph/hardware identity should reject a partial artifact.
@@ -103,4 +114,5 @@ DQN-bootstrap training data. Use the live Bifocal hook for scored alternatives.
 The machine-readable schema is
 `schemas/dops.hetinfer_prior.v1.schema.json`. The Python validator additionally
 checks cross-field invariants: unique profiles/operators, baseline membership,
-and exact equality between candidate keys and legal devices.
+exact equality between candidate keys and legal devices, and the adjacent
+source sidecar's byte-level digest.
