@@ -13,6 +13,7 @@ _INPUT_PATH_KEYS = {
     'burstgpt_csv',
     'workload_path',
     'request_trace_path',
+    'gpu_runtime_model_json',
 }
 
 _OUTPUT_PATH_KEYS = {
@@ -283,4 +284,50 @@ def _apply_runtime_config_overrides(cfg: Dict) -> Dict[str, Any]:
 
     _apply_ratio('pim_weight_load_overlap_ratio', 'PIM_WEIGHT_LOAD_OVERLAP_RATIO')
     _apply_ratio('weight_load_compute_overlap_ratio', 'WEIGHT_LOAD_COMPUTE_OVERLAP_RATIO')
+
+    runtime_model_path = cfg.get('gpu_runtime_model_json')
+    if runtime_model_path not in (None, ''):
+        backend = str(cfg.get('npu_backend', '') or '').strip().lower().replace('-', '_')
+        if backend not in {'fast', 'fast_mode', 'fastmode'}:
+            raise ValueError(
+                "gpu_runtime_model_json is only valid with npu_backend=fast; "
+                f"got npu_backend={cfg.get('npu_backend')!r}"
+            )
+        path = Path(str(runtime_model_path)).expanduser()
+        try:
+            runtime_model = json.loads(path.read_text(encoding='utf-8'))
+        except Exception as exc:
+            raise ValueError(f"Failed to read gpu_runtime_model_json={path}: {exc}") from exc
+        if not isinstance(runtime_model, dict):
+            raise ValueError("gpu_runtime_model_json must contain a JSON object")
+        if runtime_model.get('schema') != 'dops.gpu_runtime_model.v1':
+            raise ValueError(
+                "gpu_runtime_model_json schema must equal 'dops.gpu_runtime_model.v1'"
+            )
+        prefix = str(runtime_model.get('device_name_prefix', '') or '').strip()
+        if not prefix:
+            raise ValueError("gpu_runtime_model_json.device_name_prefix must be non-empty")
+        compute = runtime_model.get('compute_utilization')
+        launch = runtime_model.get('kernel_launch_overhead')
+        if not isinstance(compute, dict) or not compute:
+            raise ValueError("gpu_runtime_model_json.compute_utilization must be a non-empty object")
+        if not isinstance(launch, dict) or not launch:
+            raise ValueError("gpu_runtime_model_json.kernel_launch_overhead must be a non-empty object")
+
+        compute_root = dict(getattr(_runtime_config, 'COMPUTE_UTILIZATION', {}) or {})
+        compute_by_name = dict(compute_root.get('by_device_name', compute_root.get('by_name', {})) or {})
+        compute_by_name[prefix] = dict(compute)
+        compute_root['by_device_name'] = compute_by_name
+        _runtime_config.COMPUTE_UTILIZATION = compute_root
+
+        launch_root = dict(getattr(_runtime_config, 'KERNEL_LAUNCH_OVERHEAD', {}) or {})
+        launch_by_name = dict(launch_root.get('by_device_name', launch_root.get('by_name', {})) or {})
+        launch_by_name[prefix] = dict(launch)
+        launch_root['by_device_name'] = launch_by_name
+        _runtime_config.KERNEL_LAUNCH_OVERHEAD = launch_root
+        applied['GPU_RUNTIME_MODEL'] = {
+            'path': str(path.resolve()),
+            'device_name_prefix': prefix,
+            'source_fit_sha256': runtime_model.get('source_fit_sha256'),
+        }
     return applied
