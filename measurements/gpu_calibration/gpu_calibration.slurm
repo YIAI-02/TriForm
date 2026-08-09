@@ -11,8 +11,10 @@ set -euo pipefail
 
 # No partition is embedded here. Submit with:
 #   sbatch --partition=<actual GPU partition> --export=ALL .../gpu_calibration.slurm
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="${DOPS_ROOT:-${SLURM_SUBMIT_DIR:-$(cd "${SCRIPT_DIR}/../.." && pwd)}}"
+PROJECT_ROOT="${DOPS_ROOT:-${SLURM_SUBMIT_DIR:-$(pwd)}}"
+# Slurm executes a spool copy of this script, so BASH_SOURCE points under
+# /var/spool rather than at the checkout.  Derive every helper from DOPS_ROOT.
+SCRIPT_DIR="${PROJECT_ROOT}/measurements/gpu_calibration"
 PYTHON_BIN="${DOPS_PYTHON:-python3}"
 BENCHMARK_CONFIG="${DOPS_GPU_BENCHMARK_CONFIG:-${SCRIPT_DIR}/benchmark_qwen1p8b_fp16.json}"
 BASE_HARDWARE="${DOPS_GPU_BASE_HARDWARE:-${PROJECT_ROOT}/configs/hetinfer_gpu_proxy/hardware_gpu0_pim0_a100_llmcompass_proxy.json}"
