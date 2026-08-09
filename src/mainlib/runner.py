@@ -8,13 +8,18 @@ from .storage import (
     ALL_PASSES_RESULT_PATH,
     BEST_PASS_SUMMARY_PATH,
     _artifact_tag_token,
+    _best_summary_config_snapshot,
     _build_result_dir,
+    _build_tag,
     _build_uniform_weight_storage_map,
     _collect_weight_ids_from_graph,
     _normalize_weight_storage_fmt,
+    _resolve_hetinfer_prior_output,
     _storage_mode_display_name,
     _weight_map_summary,
 )
+from hetinfer_prior import build_artifact as build_hetinfer_prior_artifact
+from hetinfer_prior import write_artifact as write_hetinfer_prior_artifact
 from .weight_formats import (
     _build_weight_blocks,
     _coerce_fraction,
@@ -34,6 +39,20 @@ from .kv_policy import (
 )
 from .simulator import simulate_decode_progressive, simulate_prefill
 from .evaluate import _eval_one_baseline, _run_strategy_once
+
+
+def _comparison_cfg_without_prior_export(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    """Isolate fixed comparison runs from the selected-layout prior output.
+
+    ``weight-suggest`` writes the Het-Infer prior exactly once, immediately
+    after re-evaluating ``best_map``.  The later Bifocal+Linear/Dual comparison
+    runs must not inherit the same output path and overwrite that artifact.
+    """
+
+    out = dict(cfg)
+    out.pop("hetinfer_prior_out", None)
+    return out
+
 
 def run(cfg: Dict):
     _ensure_weight_suggest_supported(cfg)
@@ -353,6 +372,10 @@ def run(cfg: Dict):
     def _evaluate_map(fmt_map_eval: Dict[str, str], *, tag: str) -> Tuple[float, float, float, Any, Any, Dict, Any]:
         """Run prefill+decode simulation under a given host format map."""
         sched = SchedCls(cluster, cost, label, batch=batch, seq_len=prefill_len, buffer=buffer_mgr)
+        if str(tag) == 'hetinfer_prior_best_layout':
+            enable_capture = getattr(sched, 'enable_hetinfer_candidate_capture', None)
+            if callable(enable_capture):
+                enable_capture(True)
         sched.reset_state()
         sched.set_storage_format_map(fmt_map_eval)
         graph_eval = graph_kv
@@ -684,6 +707,48 @@ def run(cfg: Dict):
         json.dump(full_map, f, indent=2, sort_keys=True)
     _debug(str(f'[INFO] Full weight storage map (ND search) saved to: {full_path}'))
 
+    # Optional control-plane artifact: re-evaluate only the selected best
+    # layout so candidate scores correspond to the map that is handed to
+    # Het-Infer. Existing AE summaries/timelines remain unchanged.
+    hetinfer_prior_path = None
+    requested_prior_out = cfg.get('hetinfer_prior_out')
+    if requested_prior_out not in (None, ''):
+        if algo_name != 'Bifocal':
+            raise ValueError('--hetinfer-prior-out in weight-suggest requires algo=Bifocal')
+        (
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+            prior_sched,
+        ) = _evaluate_map(dict(best_map or {}), tag='hetinfer_prior_best_layout')
+        exporter = getattr(prior_sched, 'export_hetinfer_candidate_records', None)
+        if not callable(exporter):
+            raise RuntimeError('Bifocal scheduler does not expose Het-Infer candidate records')
+        candidate_records = list(exporter() or [])
+        if not candidate_records:
+            raise RuntimeError('Bifocal produced no exact candidate records for Het-Infer export')
+        output_path = _resolve_hetinfer_prior_output(
+            str(requested_prior_out),
+            result_dir=str(result_dir),
+            tag=_build_tag(cfg),
+        )
+        if output_path is None:
+            raise RuntimeError('failed to resolve Het-Infer prior output path')
+        prior_cfg = dict(cfg)
+        prior_cfg['algo'] = algo_name
+        artifact = build_hetinfer_prior_artifact(
+            cfg=prior_cfg,
+            graph=graph_kv,
+            cluster=cluster,
+            shape=shape,
+            candidate_records=candidate_records,
+        )
+        hetinfer_prior_path = str(write_hetinfer_prior_artifact(artifact, output_path))
+        _debug(f'[Het-Infer] Saved best-layout placement prior to: {hetinfer_prior_path}')
+
     # ------------------------------------------------------------
     # 2: fixed baseline experiments
     # ------------------------------------------------------------
@@ -723,10 +788,11 @@ def run(cfg: Dict):
         _debug(
             f"[BASELINE][{exp_id}] start algo={algo_for_row} storage={storage_mode_name}"
         )
+        comparison_cfg = _comparison_cfg_without_prior_export(cfg)
 
         if runner == 'baseline':
             result = _eval_one_baseline(
-                cfg,
+                comparison_cfg,
                 algo_for_row,
                 shared_graph=graph,
                 shared_shape=shape,
@@ -736,7 +802,7 @@ def run(cfg: Dict):
         else:
             result = _run_strategy_once(
                 algo_for_row,
-                cfg,
+                comparison_cfg,
                 shared_graph=graph,
                 shared_shape=shape,
                 uniform_weight_storage_fmt=storage_fmt,
@@ -841,6 +907,7 @@ def run(cfg: Dict):
     with open(best_path, 'w', encoding='utf-8') as f:
         json.dump(
             {
+                'config': _best_summary_config_snapshot(cfg),
                 'search_format': str(search_start_mode),
                 'best_pass': int(best_rec.get('pass', best_pass)),
                 'best_times': best_rec.get('times', {}),
@@ -857,6 +924,7 @@ def run(cfg: Dict):
                 'best_weight_format_json': str(weight_format_path),
                 'best_weight_format_full_json': str(full_path),
                 'weight_format_compare_json': str(compare_path),
+                'hetinfer_prior_path': hetinfer_prior_path,
             },
             f,
             ensure_ascii=False,
@@ -900,4 +968,3 @@ def run(cfg: Dict):
         pass
 
     return
-

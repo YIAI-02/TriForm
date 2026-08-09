@@ -7,6 +7,7 @@ from .shared import *
 
 _INPUT_PATH_KEYS = {
     'hardware_json',
+    'shape_file',
     'pim_config_path',
     'ramulator_config_path',
     'burstgpt_csv',
@@ -20,6 +21,7 @@ _OUTPUT_PATH_KEYS = {
     'dump_graph_dir',
     'all_passes_json',
     'best_summary_json',
+    'hetinfer_prior_out',
     'weight_format_json',
     'baseline_out',
     'serve_out',
@@ -72,6 +74,12 @@ def parse_args():
     sp_eval.add_argument('--tp_qkv', type=int, help='Tensor-parallel shard size for Q/K/V generation and attention head sharding.')
     sp_eval.add_argument('--tp_ffn', type=int, help='Tensor-parallel shard size for FFN intermediate dimension.')
     sp_eval.add_argument('--tp_moe', type=int, help='Expert-parallel shard size for MoE experts / Mixtral routing.')
+    sp_eval.add_argument(
+        '--hetinfer-prior-out',
+        dest='hetinfer_prior_out',
+        type=str,
+        help='Write a separate dops.hetinfer_prior.v1 artifact (Bifocal only). A directory gets an automatic filename.',
+    )
 
     sp_ws = sub.add_parser('weight-suggest', help='Run multi-pass SA to suggest weight formats and fixed baseline experiments.')
     sp_ws.add_argument('--config', required=True, type=str, help='Path to a JSON config with run parameters.')
@@ -117,6 +125,12 @@ def parse_args():
     sp_ws.add_argument('--tp_qkv', type=int, help='Tensor-parallel shard size for Q/K/V generation and attention head sharding.')
     sp_ws.add_argument('--tp_ffn', type=int, help='Tensor-parallel shard size for FFN intermediate dimension.')
     sp_ws.add_argument('--tp_moe', type=int, help='Expert-parallel shard size for MoE experts / Mixtral routing.')
+    sp_ws.add_argument(
+        '--hetinfer-prior-out',
+        dest='hetinfer_prior_out',
+        type=str,
+        help='After choosing the best layout, re-evaluate it with Bifocal and write dops.hetinfer_prior.v1.',
+    )
     sp_ws.add_argument(
         '--format_outer_max_iters',
         type=int,

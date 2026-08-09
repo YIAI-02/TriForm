@@ -29,6 +29,20 @@ class BifocalScheduler(HEFTScheduler):
         self._decode_total_tokens: Optional[int] = None
         self._decode_cfg_map: Dict[str, Any] = {}
         self._decode_amort_eval_cache: Dict[Tuple[str, str, str, int, int, int], float] = {}
+        self._hetinfer_candidate_records: List[Dict[str, Any]] = []
+        self._hetinfer_schedule_call_index: int = 0
+        self._hetinfer_capture_enabled: bool = False
+
+    def enable_hetinfer_candidate_capture(self, enabled: bool = True) -> None:
+        """Enable/disable score capture without changing scheduling semantics."""
+        self._hetinfer_capture_enabled = bool(enabled)
+
+    def clear_hetinfer_candidate_records(self) -> None:
+        self._hetinfer_candidate_records.clear()
+
+    def export_hetinfer_candidate_records(self) -> List[Dict[str, Any]]:
+        """Return an isolated copy of all exact Bifocal decision snapshots."""
+        return copy.deepcopy(self._hetinfer_candidate_records)
 
     def reset_state(self, *, clear_caches: bool = True) -> None:
         """Reset runtime state and clear Bifocal lookahead hints."""
@@ -939,6 +953,8 @@ class BifocalScheduler(HEFTScheduler):
             self.stats.set_phase(phase)
 
         self.reset_state(clear_caches=False)
+        self._hetinfer_schedule_call_index += 1
+        capture_call_index = int(self._hetinfer_schedule_call_index)
         idx = self._get_graph_index(g)
 
         # Step 1: HEFT priority (upward ranks).
@@ -994,12 +1010,20 @@ class BifocalScheduler(HEFTScheduler):
                         cands.append(dev)
             return cands, is_kv_write
 
-        def _best_assignment_for(nid: str) -> Tuple[float, float, str, Optional[DeviceSpec], Optional[dict], Dict[str, str]]:
-            """Return (best_score, best_eft, best_mode, best_dev, best_hy_est, best_hint_assign)."""
+        def _best_assignment_for(nid: str) -> Tuple[
+            float,
+            float,
+            str,
+            Optional[DeviceSpec],
+            Optional[dict],
+            Dict[str, str],
+            Dict[str, Dict[str, Optional[float]]],
+        ]:
+            """Return the best placement plus the exact legal-candidate score snapshot."""
             node = g.nodes[nid]
             cands, is_kv_write = _candidates_for(nid, node)
             if not cands:
-                return (float("inf"), float("inf"), "DEV", None, None, {})
+                return (float("inf"), float("inf"), "DEV", None, None, {}, {})
 
             # Lookahead chain for this ready node.
             chain = [nid]
@@ -1016,9 +1040,13 @@ class BifocalScheduler(HEFTScheduler):
             best_dev: Optional[DeviceSpec] = None
             best_hy: Optional[dict] = None
             best_hint: Dict[str, str] = {}
+            candidate_metrics: Dict[str, Dict[str, Optional[float]]] = {}
 
             for dev in cands:
-                _, eft = self._earliest_finish_on_device(g, nid, dev, self.label, phase, commit=False)
+                cand_start, eft = self._earliest_finish_on_device(
+                    g, nid, dev, self.label, phase, commit=False
+                )
+                component_extra = dict(getattr(self, "_last_candidate_component_extra", {}) or {})
                 eft = float(eft)
                 if not math.isfinite(eft):
                     continue
@@ -1039,6 +1067,30 @@ class BifocalScheduler(HEFTScheduler):
 
                 score = float((1.0 - gamma) * eft + gamma * float(window_est) + bias + decode_phase_bias)
 
+                # ``comm_s`` is the critical-path delay from predecessor/KV
+                # movement before this candidate can start.  It is not a sum
+                # of all link reservations and therefore remains meaningful
+                # under overlap.  Weight-transfer service remains part of the
+                # separately exported reload_s component.
+                pred_ready = max(
+                    (float(self._node_finish_time.get(p, 0.0)) for p in g.predecessors(nid)),
+                    default=0.0,
+                )
+                no_move_ready = max(float(self.avail.get(dev.name, 0.0)), float(pred_ready))
+                comm_s = max(0.0, float(cand_start) - float(no_move_ready))
+                compute_raw = component_extra.get("compute_s")
+                reload_raw = component_extra.get("reload_s")
+                candidate_metrics[str(dev.name)] = {
+                    "dops_score_s": float(score),
+                    "eft_s": float(eft),
+                    "window_s": float(window_est),
+                    "compute_s": (None if compute_raw is None else float(compute_raw)),
+                    "reload_s": (None if reload_raw is None else float(reload_raw)),
+                    "comm_s": float(comm_s),
+                    "weight_reuse_bias_s": float(bias),
+                    "decode_amort_bias_s": float(decode_phase_bias),
+                }
+
                 # Tie-breakers: prefer lower EFT, then random.
                 if (score < best_score) or (
                     abs(score - best_score) < 1e-9
@@ -1051,31 +1103,63 @@ class BifocalScheduler(HEFTScheduler):
                     best_hy = None
                     best_hint = dict(hint_assign)
 
-            return best_score, best_eft, best_mode, best_dev, best_hy, best_hint
+            return (
+                best_score,
+                best_eft,
+                best_mode,
+                best_dev,
+                best_hy,
+                best_hint,
+                candidate_metrics,
+            )
 
         while ready:
             # Pick a ready node.
             if use_chain_select:
                 best_tuple = (float("inf"), float("inf"), float("inf"), float("inf"))
                 pick: Optional[str] = None
-                pick_res: Optional[Tuple[float, float, str, Optional[DeviceSpec], Optional[dict], Dict[str, str]]] = None
+                pick_res: Optional[Tuple[
+                    float,
+                    float,
+                    str,
+                    Optional[DeviceSpec],
+                    Optional[dict],
+                    Dict[str, str],
+                    Dict[str, Dict[str, Optional[float]]],
+                ]] = None
                 for nid in list(ready):
-                    score, eft, mode, dev_obj, hy_est, hint = _best_assignment_for(nid)
+                    score, eft, mode, dev_obj, hy_est, hint, candidate_metrics = _best_assignment_for(nid)
                     # Tie-break: prefer higher rank_u when scores equal.
                     key = (float(score), float(eft), -float(rank_u.get(nid, 0.0)), float(topo_pos.get(nid, 0)))
                     if key < best_tuple:
                         best_tuple = key
                         pick = nid
-                        pick_res = (score, eft, mode, dev_obj, hy_est, hint)
+                        pick_res = (score, eft, mode, dev_obj, hy_est, hint, candidate_metrics)
                 if pick is None or pick_res is None:
                     raise RuntimeError("No schedulable ready node (all placements infeasible)")
                 nid = pick
-                _, _, best_mode, best_choice, best_hy, best_hint_assignments = pick_res
+                (
+                    _,
+                    _,
+                    best_mode,
+                    best_choice,
+                    best_hy,
+                    best_hint_assignments,
+                    best_candidate_metrics,
+                ) = pick_res
             else:
                 # Classic HEFT: pick by rank_u.
                 nid = max(ready, key=lambda n: (float(rank_u.get(n, 0.0)), -int(topo_pos.get(n, 0))))
                 node = g.nodes[nid]
-                _, _, best_mode, best_choice, best_hy, best_hint_assignments = _best_assignment_for(nid)
+                (
+                    _,
+                    _,
+                    best_mode,
+                    best_choice,
+                    best_hy,
+                    best_hint_assignments,
+                    best_candidate_metrics,
+                ) = _best_assignment_for(nid)
 
             ready.discard(nid)
             if nid in scheduled:
@@ -1108,6 +1192,51 @@ class BifocalScheduler(HEFTScheduler):
             trace_dev_type = "comm" if is_comm else dev.type
             schedule.append(ScheduledTask(nid, trace_dev, float(start), float(finish)))
             self._after_commit_consume_predecessors(g, nid)
+
+            if self._hetinfer_capture_enabled:
+                wid = self._node_weight_id(node)
+                legal_devices = list(best_candidate_metrics.keys())
+                op_type = str((getattr(node, "attrs", {}) or {}).get("op") or getattr(node, "name", ""))
+                is_fixed_primitive = bool(self._is_comm_node(node))
+                is_kv_write = str(getattr(node, "name", "") or "").upper() in {
+                    "K_WRITE",
+                    "V_WRITE",
+                    "KV_WRITE",
+                }
+                self._hetinfer_candidate_records.append(
+                    {
+                        "schedule_call_index": capture_call_index,
+                        "node_id": str(nid),
+                        "op_type": op_type,
+                        "phase": str(phase),
+                        "batch": int(self._node_batch(g, nid, phase)),
+                        "seq_len": int(self._node_seq_len(g, nid, phase)),
+                        "token_idx": (
+                            int(self._decode_cur_token_idx)
+                            if str(phase).lower() == "decode" and self._decode_cur_token_idx is not None
+                            else None
+                        ),
+                        "baseline_device": str(dev.name),
+                        "legal_devices": legal_devices,
+                        "candidates": copy.deepcopy(best_candidate_metrics),
+                        "gamma": float(gamma),
+                        "constraints": {
+                            "operator_allowed_device_types": copy.deepcopy(
+                                getattr(node, "allowed", {}) or {}
+                            ),
+                            "kv_pinned": bool(is_kv_write and len(legal_devices) == 1),
+                            "communication_primitive": bool(is_fixed_primitive),
+                        },
+                        "dynamic_eligible": bool(
+                            len(legal_devices) > 1 and not is_fixed_primitive and not is_kv_write
+                        ),
+                        "weight": {
+                            "weight_id": wid,
+                            "size_bytes": int(self._node_weight_size(node) or 0),
+                            "storage_layout": str(self._weight_storage_format_for_wid(wid)),
+                        },
+                    }
+                )
 
             # Record the per-weight hint.
             self._update_weight_hint_after_commit(g, nid, str(getattr(dev, "type", "")))

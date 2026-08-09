@@ -6,12 +6,16 @@ from .shared import *
 from .log_utils import _debug
 from .storage import (
     _artifact_tag_token,
+    _best_summary_config_snapshot,
     _build_uniform_weight_storage_map,
     _collect_weight_ids_from_graph,
     _normalize_weight_storage_fmt,
+    _resolve_hetinfer_prior_output,
     _storage_mode_display_name,
     _weight_map_summary,
 )
+from hetinfer_prior import build_artifact as build_hetinfer_prior_artifact
+from hetinfer_prior import write_artifact as write_hetinfer_prior_artifact
 from .graph_utils import _clone_graph, _fallback_npu_to_cpu_if_needed, _fallback_pim_to_cpu_if_needed
 from .baselines import PD_BASELINES, _BASELINE_REGISTRY, _apply_policy_on_graph
 from .kv_policy import (
@@ -311,6 +315,10 @@ def _run_strategy_once(
             buffer=buffer_mgr,
             rand_seed=cfg.get("scheduler_seed"),
         )
+        if cfg.get('hetinfer_prior_out') not in (None, ''):
+            enable_capture = getattr(sched, 'enable_hetinfer_candidate_capture', None)
+            if callable(enable_capture):
+                enable_capture(True)
         sched.reset_state()
         sched.set_storage_format_map(weight_fmt_map)
 
@@ -368,6 +376,36 @@ def _run_strategy_once(
     except Exception:
         pim_trace = None
 
+    hetinfer_prior_path = None
+    requested_prior_out = cfg.get("hetinfer_prior_out")
+    if requested_prior_out not in (None, "") and strategy_token == "Bifocal":
+        exporter = getattr(best_sched, "export_hetinfer_candidate_records", None)
+        if not callable(exporter):
+            raise RuntimeError("Bifocal scheduler does not expose Het-Infer candidate records")
+        candidate_records = list(exporter() or [])
+        if not candidate_records:
+            raise RuntimeError("Bifocal produced no exact candidate records for Het-Infer export")
+        output_path = _resolve_hetinfer_prior_output(
+            str(requested_prior_out),
+            result_dir=str(cfg.get("result_dir", "./output")),
+            tag=f"{int(cfg.get('prefill_len', 0) or 0)}x{int(cfg.get('decode_len', 0) or 0)}",
+        )
+        if output_path is None:
+            raise RuntimeError("failed to resolve Het-Infer prior output path")
+        prior_cfg = dict(cfg)
+        # ``cfg['algo']`` may be a multi-algorithm list. Provenance must name
+        # the concrete scheduler whose candidate scores are in this file.
+        prior_cfg["algo"] = strategy_token
+        artifact = build_hetinfer_prior_artifact(
+            cfg=prior_cfg,
+            graph=graph_kv,
+            cluster=cluster,
+            shape=shape,
+            candidate_records=candidate_records,
+        )
+        hetinfer_prior_path = str(write_hetinfer_prior_artifact(artifact, output_path))
+        _debug(f"[Het-Infer] Saved versioned placement prior to: {hetinfer_prior_path}")
+
     return {
         "policy": _policy_label(strategy_token),
         "strategy": strategy_name,
@@ -389,6 +427,7 @@ def _run_strategy_once(
         "weight_storage_format": _normalize_weight_storage_fmt(uniform_weight_storage_fmt or 'ND'),
         "weight_storage_map_summary": _weight_map_summary(_collect_weight_ids_from_graph(graph), weight_fmt_map),
         "label": best_label,
+        "hetinfer_prior_path": hetinfer_prior_path,
     }
 
 def _ensure_dir(p:Path):
@@ -429,7 +468,7 @@ def _save_best_json(algo_dir: Path, tag: str, policy: str, *, times: Dict, prefi
     payload = {
         'policy': policy,
         'pim_strategy': times.get('pim_strategy', 'unknown'),
-        'config': {'batch': int((cfg or {}).get('batch', 1)), 'prefill_len': int((cfg or {}).get('prefill_len', 0)), 'decode_len': int((cfg or {}).get('decode_len', 0)), 'dtype': (cfg or {}).get('dtype')},
+        'config': _best_summary_config_snapshot(cfg),
         'best_times': {'prefill': float(times.get('prefill_time_s', 0.0)), 'decode': float(times.get('decode_time_s', 0.0)), 'total': float(times.get('total_time_s', 0.0))},
     }
 
@@ -448,6 +487,8 @@ def _save_best_json(algo_dir: Path, tag: str, policy: str, *, times: Dict, prefi
     # Also record the KV policy comparison numbers if present.
     if 'pim_strategy_scores' in times:
         payload['pim_strategy_scores'] = times.get('pim_strategy_scores')
+    if times.get('hetinfer_prior_path'):
+        payload['hetinfer_prior_path'] = str(times.get('hetinfer_prior_path'))
     path = algo_dir / f"best_summary_{tag}.json"
     with open(path,'w', encoding='utf-8') as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
@@ -510,6 +551,9 @@ def evaluate_suite(cfg: Dict, *, algos: List[str], baselines: List[str], result_
         if token and token not in alist:
             alist.append(token)
 
+    if cfg.get('hetinfer_prior_out') not in (None, '') and 'Bifocal' not in alist:
+        raise ValueError('--hetinfer-prior-out requires Bifocal in the evaluate algorithm list')
+
     for a in alist:
         algo_dir = _ensure_dir(base_dir / _policy_dir_name(a))
         try:
@@ -537,6 +581,7 @@ def evaluate_suite(cfg: Dict, *, algos: List[str], baselines: List[str], result_
             'kv_in_pim': bool(res.get('kv_in_pim', False)),
             'kv_total_bytes': int(res.get('kv_total_bytes', 0) or 0),
             'pim_weight_capacity_bytes': int(res.get('pim_weight_capacity_bytes', 0) or 0),
+            'hetinfer_prior_path': res.get('hetinfer_prior_path'),
             **{k: res[k] for k in ('prefill_time_s', 'decode_time_s', 'total_time_s')},
         })
 

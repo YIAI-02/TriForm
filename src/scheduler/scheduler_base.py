@@ -92,6 +92,10 @@ class SchedulerBaseCoreMixin:
         self._weight_proto_node: Dict[str, TaskNode] = {}
         self._pim_weight_desc_cache: Dict[Tuple[str, str], Any] = {}
         self._last_op_trace_extra: Dict[str, Any] = {}
+        # Side-channel populated by commit=False candidate evaluations.  It is
+        # read immediately by Bifocal's Het-Infer prior capture and never feeds
+        # back into scheduling decisions.
+        self._last_candidate_component_extra: Dict[str, Any] = {}
 
     def set_seq_len(self, seq_len: int) -> None:
         self.seq_len = int(seq_len)
@@ -354,6 +358,7 @@ class SchedulerBaseHelperMixin:
         self._act_resident.clear()
         self._act_refcnt.clear()
         self._last_op_trace_extra = {}
+        self._last_candidate_component_extra = {}
         self._collective_output_devs = {}
         # KV/activation runtime states on PIM are centrally managed in buffer manager
         try:
@@ -1041,6 +1046,8 @@ class SchedulerBaseTimingMixin:
         phase: str,
         commit: bool,
     ) -> Tuple[float, float]:
+        if not commit:
+            self._last_candidate_component_extra = {}
         node = g.nodes[nid]
         phase_eff = self._node_phase(g, nid, phase)
         batch = self._node_batch(g, nid, phase_eff)
@@ -1354,6 +1361,24 @@ class SchedulerBaseTimingMixin:
         else:
             compute = self.cost.node_device_cost(node, dev, label, batch, seq_len, phase_eff)
             finish = start + float(compute)
+
+        if not commit:
+            if weight_extra:
+                self._last_candidate_component_extra = {
+                    "compute_s": float(weight_extra.get("compute_total_s", 0.0) or 0.0),
+                    # End-to-end weight reload service.  This already accounts
+                    # for configured load/load and load/compute overlap.
+                    "reload_s": float(weight_extra.get("load_total_s", 0.0) or 0.0),
+                    "weight_load_comm_s": float(weight_extra.get("load_comm_s", 0.0) or 0.0),
+                    "cache_state": str(weight_extra.get("cache_state", "") or ""),
+                }
+            else:
+                self._last_candidate_component_extra = {
+                    "compute_s": float(max(0.0, float(finish) - float(start))),
+                    "reload_s": 0.0,
+                    "weight_load_comm_s": 0.0,
+                    "cache_state": "not_applicable",
+                }
 
         if commit:
             self.avail[dev.name] = finish

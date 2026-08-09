@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/YIAI-02/DOPS/schemas/dops.hetinfer_prior.v1.schema.json",
+  "title": "DOPS Het-Infer Placement Prior v1",
+  "type": "object",
+  "required": ["schema", "schema_version", "artifact_id", "created_at", "semantics", "provenance", "profiles"],
+  "properties": {
+    "schema": {"const": "dops.hetinfer_prior.v1"},
+    "schema_version": {"const": 1},
+    "artifact_id": {"type": "string", "minLength": 1},
+    "created_at": {"type": "string", "format": "date-time"},
+    "semantics": {
+      "type": "object",
+      "required": ["role", "timeline_is_runtime_contract", "online_device_selection_required", "score_units"],
+      "properties": {
+        "role": {"const": "offline_placement_prior"},
+        "timeline_is_runtime_contract": {"const": false},
+        "online_device_selection_required": {"const": true},
+        "score_units": {"const": "seconds"}
+      },
+      "additionalProperties": true
+    },
+    "provenance": {
+      "type": "object",
+      "required": [
+        "model_family", "model_revision", "graph_sha256", "hardware_sha256",
+        "dops_revision", "source_artifact_sha256", "policy", "parallelism",
+        "model", "workload", "hardware", "graph", "producer"
+      ],
+      "properties": {
+        "model_family": {"type": "string", "minLength": 1},
+        "model_revision": {"type": "string", "minLength": 1},
+        "graph_sha256": {"$ref": "#/$defs/sha256"},
+        "hardware_sha256": {"$ref": "#/$defs/sha256"},
+        "dops_revision": {"type": "string", "minLength": 1},
+        "source_artifact_sha256": {"$ref": "#/$defs/sha256"},
+        "policy": {"type": "string", "minLength": 1},
+        "parallelism": {"type": "object"},
+        "model": {"type": "object"},
+        "workload": {"type": "object"},
+        "hardware": {"type": "object"},
+        "graph": {"type": "object"},
+        "producer": {"type": "object"}
+      },
+      "additionalProperties": true
+    },
+    "profiles": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/profile"}
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "nullableSeconds": {"type": ["number", "null"]},
+    "nonnegativeNullableSeconds": {"type": ["number", "null"], "minimum": 0},
+    "candidate": {
+      "type": "object",
+      "required": [
+        "dops_score_s", "eft_s", "window_s", "compute_s", "reload_s", "comm_s",
+        "weight_reuse_bias_s", "decode_amort_bias_s"
+      ],
+      "properties": {
+        "dops_score_s": {"$ref": "#/$defs/nullableSeconds"},
+        "eft_s": {"$ref": "#/$defs/nonnegativeNullableSeconds"},
+        "window_s": {"$ref": "#/$defs/nonnegativeNullableSeconds"},
+        "compute_s": {"$ref": "#/$defs/nonnegativeNullableSeconds"},
+        "reload_s": {"$ref": "#/$defs/nonnegativeNullableSeconds"},
+        "comm_s": {"$ref": "#/$defs/nonnegativeNullableSeconds"},
+        "weight_reuse_bias_s": {"$ref": "#/$defs/nullableSeconds"},
+        "decode_amort_bias_s": {"$ref": "#/$defs/nullableSeconds"}
+      },
+      "additionalProperties": false
+    },
+    "operator": {
+      "type": "object",
+      "required": [
+        "node_id", "op_type", "phase", "baseline_device", "legal_devices",
+        "candidates", "constraints", "dynamic_eligible", "weight"
+      ],
+      "properties": {
+        "node_id": {"type": "string", "minLength": 1},
+        "op_type": {"type": "string"},
+        "phase": {"enum": ["prefill", "decode"]},
+        "baseline_device": {"type": "string", "minLength": 1},
+        "legal_devices": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "candidates": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {"$ref": "#/$defs/candidate"}
+        },
+        "constraints": {"type": "object"},
+        "dynamic_eligible": {"type": "boolean"},
+        "weight": {
+          "type": "object",
+          "required": ["weight_id", "size_bytes", "storage_layout"],
+          "properties": {
+            "weight_id": {"type": ["string", "null"]},
+            "size_bytes": {"type": "integer", "minimum": 0},
+            "storage_layout": {"type": "string", "minLength": 1}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "phase": {
+      "type": "object",
+      "required": ["context_len", "token_idx", "operators"],
+      "properties": {
+        "context_len": {"type": "integer", "minimum": 0},
+        "token_idx": {"type": ["integer", "null"], "minimum": 0},
+        "operators": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/operator"}
+        }
+      },
+      "additionalProperties": false
+    },
+    "profile": {
+      "type": "object",
+      "required": ["profile_id", "workload", "source", "phases"],
+      "properties": {
+        "profile_id": {"type": "string", "minLength": 1},
+        "workload": {
+          "type": "object",
+          "required": ["batch", "context_len", "token_idx", "dtype", "prefill_len", "decode_len", "max_seq_len"],
+          "properties": {
+            "batch": {"type": "integer", "minimum": 1},
+            "context_len": {"type": "integer", "minimum": 0},
+            "token_idx": {"type": ["integer", "null"], "minimum": 0},
+            "dtype": {"type": ["string", "null"]},
+            "prefill_len": {"type": "integer", "minimum": 0},
+            "decode_len": {"type": "integer", "minimum": 0},
+            "max_seq_len": {"type": "integer", "minimum": 0}
+          },
+          "additionalProperties": true
+        },
+        "source": {"type": "object"},
+        "phases": {
+          "type": "object",
+          "required": ["prefill", "decode"],
+          "properties": {
+            "prefill": {"$ref": "#/$defs/phase"},
+            "decode": {"$ref": "#/$defs/phase"}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
