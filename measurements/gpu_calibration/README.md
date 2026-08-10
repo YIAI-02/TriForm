@@ -32,9 +32,9 @@ There is intentionally no partition in the Slurm file. Supply the real GPU
 partition at submission time:
 
 ```bash
-export DOPS_ROOT=/lustre/home/2501111916/HeteroLLM-workspace/DOPS-HetInfer
+export DOPS_ROOT=/path/to/workspace/DOPS-HetInfer
 export DOPS_PYTHON=/absolute/path/to/python-with-torch
-export DOPS_GPU_CALIBRATION_OUTPUT=/lustre/home/2501111916/HeteroLLM-workspace/results/gpu_calibration/run_001
+export DOPS_GPU_CALIBRATION_OUTPUT=/path/to/workspace/results/gpu_calibration/run_001
 
 sbatch \
   --partition=<actual_gpu_partition> \

@@ -40,9 +40,9 @@ Only submit from the login node; all Python/simulator work runs in Slurm. Set
 the checkout, Python, output, and Ramulator paths explicitly:
 
 ```bash
-export DOPS_ROOT=/lustre/home/2501111916/HeteroLLM-workspace/DOPS-HetInfer
+export DOPS_ROOT=/path/to/workspace/DOPS-HetInfer
 export DOPS_PYTHON=/absolute/path/to/python
-export DOPS_PRIOR_OUTPUT_ROOT=/lustre/home/2501111916/HeteroLLM-workspace/results/dops_gpu_pim_prior_grid
+export DOPS_PRIOR_OUTPUT_ROOT=/path/to/workspace/results/dops_gpu_pim_prior_grid
 
 sbatch --export=ALL commands/hetinfer_gpu_proxy/prior_grid_fast.slurm
 ```

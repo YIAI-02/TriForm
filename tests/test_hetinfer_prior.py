@@ -118,6 +118,118 @@ def _record(phase: str, call: int, seq_len: int, token_idx: int | None) -> dict:
 
 
 class HetInferPriorTests(unittest.TestCase):
+    def test_native_evaluate_cli_writes_scored_prior_bundle(self) -> None:
+        """Exercise the real DOPS evaluate path, not the legacy exporter."""
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            shape = root / "one_layer_shape.json"
+            shape.write_text(
+                json.dumps(
+                    {
+                        "hidden_dim": 64,
+                        "layer_num": 1,
+                        "intermediate_dim": 128,
+                        "q_head_num": 4,
+                        "kv_head_num": 2,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            result_dir = root / "results"
+            config = root / "evaluate.json"
+            config.write_text(
+                json.dumps(
+                    {
+                        "model_family": "qwen",
+                        "model_variant": "1.8b",
+                        "model_revision": "test:one-layer-shape",
+                        "shape_file": str(shape),
+                        "dtype": "fp16",
+                        "batch": 1,
+                        "max_batch_size": 1,
+                        "prefill_len": 2,
+                        "decode_len": 2,
+                        "max_seq_len": 4,
+                        "decode_sample_stride": 1,
+                        "decode_plan_refresh_stride": 0,
+                        "result_dir": str(result_dir),
+                        "hardware_json": str(
+                            REPO_ROOT / "src" / "examples" / "hardware_1npu_2aim.json"
+                        ),
+                        "algo": ["Bifocal"],
+                        "baselines": [],
+                        "tp_qkv": 1,
+                        "tp_ffn": 1,
+                        "tp_moe": 1,
+                        "pp": 1,
+                        "ep": 1,
+                        "npu_backend": "fast",
+                        "pim_fast_mode": True,
+                        "scheduler_seed": 0,
+                        "dump_graph": False,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            output = root / "prior.json"
+            environment = dict(os.environ)
+            environment["PYTHONDONTWRITEBYTECODE"] = "1"
+            environment["TRIFORM_SKIP_PYCACHE_PURGE"] = "1"
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(SRC_ROOT / "main.py"),
+                    "evaluate",
+                    "--config",
+                    str(config),
+                    "--algo",
+                    "Bifocal",
+                    "--hetinfer-prior-out",
+                    str(output),
+                ],
+                cwd=REPO_ROOT,
+                env=environment,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertTrue(output.is_file(), completed.stdout)
+
+            artifact, source_path = load_artifact_bundle(output)
+            source = json.loads(source_path.read_text(encoding="utf-8"))
+            self.assertEqual(artifact["schema"], "dops.hetinfer_prior.v1")
+            self.assertEqual(source["schema"], "dops.hetinfer_prior_source.v1")
+            self.assertEqual(source["kind"], "bifocal_candidate_records")
+            self.assertTrue(source["candidate_records"])
+
+            dynamic = []
+            for profile in artifact["profiles"]:
+                self.assertEqual(set(profile["phases"]), {"prefill", "decode"})
+                self.assertTrue(profile["source"]["candidate_scores_complete"])
+                for phase in ("prefill", "decode"):
+                    for operator in profile["phases"][phase]["operators"]:
+                        self.assertEqual(
+                            set(operator["legal_devices"]),
+                            set(operator["candidates"]),
+                        )
+                        if operator["dynamic_eligible"]:
+                            dynamic.append(operator)
+                            self.assertGreater(len(operator["legal_devices"]), 1)
+                            self.assertTrue(
+                                all(
+                                    score["dops_score_s"] is not None
+                                    for score in operator["candidates"].values()
+                                )
+                            )
+            self.assertTrue(dynamic)
+
+            summaries = list(result_dir.rglob("best_summary_*.json"))
+            self.assertEqual(len(summaries), 1, summaries)
+            summary = json.loads(summaries[0].read_text(encoding="utf-8"))
+            self.assertEqual(summary["hetinfer_prior_path"], str(output))
+
     def test_scored_capture_builds_dual_phase_profiles(self) -> None:
         records = [
             _record("prefill", 1, 128, None),
@@ -498,14 +610,14 @@ class HetInferPriorTests(unittest.TestCase):
         validate_artifact(golden)
         self.assertEqual(set(golden["profiles"][0]["phases"]), {"prefill", "decode"})
 
-    def test_heterollm_loader_verifies_written_bundle_when_available(self) -> None:
-        heterollm_root_raw = os.environ.get("HETEROLLM_ROOT")
-        if not heterollm_root_raw:
-            self.skipTest("set HETEROLLM_ROOT for the cross-repository loader check")
-        heterollm_root = Path(heterollm_root_raw).expanduser().resolve()
-        heterollm_src = heterollm_root / "src"
-        if not (heterollm_src / "heterollm" / "planning" / "prior.py").is_file():
-            self.fail(f"HETEROLLM_ROOT has no HetInfer loader: {heterollm_root}")
+    def test_het_infer_loader_verifies_written_bundle_when_available(self) -> None:
+        het_infer_root_raw = os.environ.get("HET_INFER_ROOT")
+        if not het_infer_root_raw:
+            self.skipTest("set HET_INFER_ROOT for the cross-repository loader check")
+        het_infer_root = Path(het_infer_root_raw).expanduser().resolve()
+        het_infer_src = het_infer_root / "src"
+        if not (het_infer_src / "het_infer" / "planning" / "prior.py").is_file():
+            self.fail(f"HET_INFER_ROOT has no Het-Infer loader: {het_infer_root}")
 
         records = [
             _record("prefill", 1, 128, None),
@@ -524,27 +636,27 @@ class HetInferPriorTests(unittest.TestCase):
                 candidate_records=records,
             )
             environment = dict(os.environ)
-            environment["PYTHONPATH"] = str(heterollm_src)
+            environment["PYTHONPATH"] = str(het_infer_src)
             completed = subprocess.run(
                 [
                     sys.executable,
                     "-c",
                     (
-                        "from heterollm.planning import load_dops_prior_library; "
+                        "from het_infer.planning import load_dops_prior_library; "
                         "p=load_dops_prior_library(__import__('sys').argv[1]).profiles()[0]; "
                         "assert p.provenance.source_artifact_verified; "
-                        "print('HETEROLLM_DOPS_SOURCE_VERIFIED', p.profile_id)"
+                        "print('HET_INFER_DOPS_SOURCE_VERIFIED', p.profile_id)"
                     ),
                     str(path),
                 ],
-                cwd=heterollm_root,
+                cwd=het_infer_root,
                 env=environment,
                 check=False,
                 capture_output=True,
                 text=True,
             )
             self.assertEqual(completed.returncode, 0, completed.stderr)
-            self.assertIn("HETEROLLM_DOPS_SOURCE_VERIFIED", completed.stdout)
+            self.assertIn("HET_INFER_DOPS_SOURCE_VERIFIED", completed.stdout)
 
 
 if __name__ == "__main__":
