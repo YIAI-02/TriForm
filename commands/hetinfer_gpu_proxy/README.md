@@ -1,84 +1,89 @@
-# GPU0 + PIM0 prior-profile grid for Het-Infer
+# Het-Infer static-prior export from DOPS
 
-This directory prepares DOPS placement priors for the Het-Infer online device
-selector. It does **not** execute the model on a physical GPU or PIM.
+This directory previously contained a score-profile grid and manifest builder.
+That workflow is retired. The public schema name is still
+`dops.hetinfer_prior.v1`, but it now names one strict static artifact with
+exactly three complete tables:
 
-## Evidence classes
+1. `expert_placement` from the completed Bifocal placement;
+2. `t_service` for every legal operator-device pair, including unselected
+   candidates;
+3. `t_move` for every declared legal movement route, including resident
+   self-routes.
 
-| Mode | GPU0 cost | PIM0 cost | Intended use |
-| --- | --- | --- | --- |
-| `fast` | LLMCompass `A100_80GB_fp16` proxy | Analytical FLOP/bandwidth estimate | Broad 18-point prior grid |
-| `ramulator-scaled` | Same GPU proxy | CENT/AiM unit trace + Ramulator2, repeated work scaled arithmetically | Three trace-backed anchors |
-| `ramulator-strict` | Same GPU proxy | Fully expanded CENT/AiM trace + Ramulator2 | One small integration validation |
+The artifact also carries strict `inputs` and `collective_contexts` execution
+manifests so a consumer can bind tensor residency, fixed collective staging,
+and atomic internal transport without inventing a fourth timing table.
 
-The current DOPS source does not directly load the ATLAS C++ simulator. The
-trace modes above are DOPS' own `CENT/AiM -> Ramulator2` path. An ATLAS result
-must remain a separate Het-Infer co-simulation telemetry source until an
-explicit DOPS-to-ATLAS cost-backend adapter exists.
+The retired score-bearing v1 payload, profile-grid manifest, source sidecar,
+and `DQN_PRIOR` bundle are not compatible with this contract. There is no v2
+alias and no compatibility loader.
 
-`GPU0` is intentionally encoded as hardware `type: "npu"`, because that is
-the accelerator device class understood by the current DOPS scheduler. Its
-exported device name remains `GPU0`, so Het-Infer can consume it without
-renaming the placement action.
+## Evidence boundary
 
-## Profile axes
+DOPS performs placement and local cost-model evaluation. Export is a pure
+post-placement projection and does not change the selected devices. It does
+not invoke a Value model, trainer, Het-Infer runtime, or online ATLAS
+simulation. `GPU0` may still be represented by DOPS' `npu` device type while
+retaining the exported device id `GPU0`.
 
-The broad grid is the Cartesian product:
+The artifact is an offline cost contract. It does not prove physical GPU/PIM
+execution, tensor correctness, overlap, end-to-end inference latency, or
+speedup.
 
-- batch: `1, 4, 8`
-- prefill length: `128, 512, 2048`
-- decode horizon: `64, 256`
+## Two-stage ATLAS workflow
 
-It produces 18 separate `dops.hetinfer_prior.v1` artifacts. Keeping runs
-separate preserves each run's exact graph/config provenance. Het-Infer may
-load the resulting manifest and select/interpolate among the profile
-workloads; DOPS timeline timestamps are not a runtime dispatch contract.
+Run all Python work inside a Slurm compute allocation. The login node is only
+for inspection and job submission.
 
-## Submit from the login node
-
-Only submit from the login node; all Python/simulator work runs in Slurm. Set
-the checkout, Python, output, and Ramulator paths explicitly:
-
-```bash
-export DOPS_ROOT=/path/to/workspace/DOPS-HetInfer
-export DOPS_PYTHON=/absolute/path/to/python
-export DOPS_PRIOR_OUTPUT_ROOT=/path/to/workspace/results/dops_gpu_pim_prior_grid
-
-sbatch --export=ALL commands/hetinfer_gpu_proxy/prior_grid_fast.slurm
-```
-
-For the trace-backed anchors, `RAMULATOR2_BIN` must be an already compiled
-executable. Compilation must also happen in a compute allocation, never on the
-login node.
+Use the exact same config, workload overrides, scheduler seed, and Bifocal
+algorithm in both DOPS runs. First export the exact PIM-dependent service and
+movement keys that require offline ATLAS measurements:
 
 ```bash
-export RAMULATOR2_BIN=/absolute/path/to/ramulator2
-sbatch --export=ALL commands/hetinfer_gpu_proxy/prior_grid_ramulator_scaled.slurm
-sbatch --export=ALL commands/hetinfer_gpu_proxy/prior_grid_ramulator_strict.slurm
+python3 src/main.py evaluate \
+  --config /absolute/path/to/evaluate.json \
+  --algo Bifocal \
+  --scheduler_seed 0 \
+  --hetinfer-atlas-manifest-out /absolute/path/to/atlas_request.json
 ```
 
-After an array completes, build a validated manifest in a compute allocation:
+The request schema is `dops.hetinfer_atlas_timing_request.v1`. It carries the
+derived `graph_id` and `workload_id`, a timing-context SHA-256 bound to the
+complete snapshot/config/input-file bytes, and exact descriptor-bearing
+`service` and `movement` arrays. Run ATLAS offline for those keys and create a strict
+`dops.hetinfer_atlas_timings.v1` JSON with the same identity and key fields.
+Each result entry adds only:
+
+```json
+{
+  "cycles": 250,
+  "frequency_MHz": 500
+}
+```
+
+DOPS converts each result to seconds using
+`cycles / (frequency_MHz * 1_000_000)`. Missing, duplicate, extra, or
+identity-mismatched entries are rejected. ATLAS is never recomputed during
+prior export.
+
+Then rerun the same schedule with the completed timings and write the static
+prior:
 
 ```bash
-export PYTHONPATH="${DOPS_ROOT}/src"
-"${DOPS_PYTHON}" commands/hetinfer_gpu_proxy/build_prior_grid_manifest.py \
-  --grid-root "${DOPS_PRIOR_OUTPUT_ROOT}/fast" \
-  --require-count 18
+python3 src/main.py evaluate \
+  --config /absolute/path/to/evaluate.json \
+  --algo Bifocal \
+  --scheduler_seed 0 \
+  --hetinfer-atlas-timings /absolute/path/to/atlas_timings.json \
+  --hetinfer-prior-out /absolute/path/to/dops_hetinfer_prior.json
 ```
 
-The corresponding expected counts are 3 for `ramulator-scaled` and 1 for
-`ramulator-strict`.
+If a schedule has no ATLAS-marked PIM service or movement key, the timings
+file is optional. A `.json` output argument is the exact output file; a
+directory argument receives an automatic workload filename. Repeating either
+command with the same output path atomically replaces the previous complete
+file, which is the supported same-name v1 update behavior.
 
-Each `prior.json` is accompanied by a uniquely named canonical
-`<artifact_id>.source.json`. Treat those two files as one bundle. The manifest
-records both relative paths under `bundle_files`; a training-stage copy must
-preserve both files in the same directory and must not rename the source
-sidecar. Het-Infer intentionally rejects a `DQN_PRIOR` whose source companion
-is absent or whose byte digest differs.
-
-## What this does and does not prove
-
-Successful jobs prove that DOPS can build the Qwen 1.8B DAG, score legal
-`GPU0`/`PIM0` candidates under the named cost models, and export validated
-placement priors. They do not prove physical A100/A800 latency, real PIM
-latency, GPU/PIM overlap, token correctness, or end-to-end inference speedup.
+The exact schema, completeness rules, and validation boundary are documented
+in `docs/HETINFER_PRIOR_CONTRACT.md`.

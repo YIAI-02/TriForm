@@ -1,1126 +1,863 @@
-"""Versioned DOPS -> Het-Infer placement-prior artifact support.
+"""Strict DOPS -> Het-Infer static prior contract.
 
-The online runtime consumes this artifact as a *prior*.  Simulated start/finish
-times remain diagnostic data and are deliberately not part of the execution
-contract.  Candidate metrics may be unavailable when importing an old
-``best_summary``; unavailable values are emitted as JSON ``null`` rather than
-being guessed.
+This module defines the versioned file boundary only.  It deliberately does
+not integrate with the DOPS scheduler or the Het-Infer online runtime.
 """
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
-import hashlib
+import copy
 import json
 import math
 import os
-from pathlib import Path
-import subprocess
 import tempfile
-from typing import Any, Dict, Iterable, Mapping, Optional, Sequence, Tuple
+from collections.abc import Mapping
+from pathlib import Path
+from typing import Any
 
 
-SCHEMA_NAME = "dops.hetinfer_prior.v1"
-SCHEMA_VERSION = 1
-SOURCE_SCHEMA_NAME = "dops.hetinfer_prior_source.v1"
-SOURCE_SCHEMA_VERSION = 1
-SCORE_FIELDS = (
-    "dops_score_s",
-    "eft_s",
-    "window_s",
-    "compute_s",
-    "reload_s",
-    "comm_s",
-    "weight_reuse_bias_s",
-    "decode_amort_bias_s",
+PRIOR_SCHEMA = "dops.hetinfer_prior.v1"
+PRIOR_SCHEMA_VERSION = 1
+TIME_UNIT = "seconds"
+
+_ROOT_FIELDS = frozenset(
+    {
+        "schema",
+        "schema_version",
+        "graph_id",
+        "workload_id",
+        "time_unit",
+        "devices",
+        "operators",
+        "inputs",
+        "collective_contexts",
+        "legal_movement_routes",
+        "expert_placement",
+        "t_service",
+        "t_move",
+    }
 )
-
-
-class PriorValidationError(ValueError):
-    """Raised when an artifact violates the v1 contract."""
-
-
-def _jsonable(value: Any) -> Any:
-    if value is None or isinstance(value, (str, int, bool)):
-        return value
-    if isinstance(value, float):
-        return value if math.isfinite(value) else None
-    if isinstance(value, Mapping):
-        return {str(k): _jsonable(v) for k, v in value.items()}
-    if isinstance(value, (list, tuple, set, frozenset)):
-        return [_jsonable(v) for v in value]
-    if isinstance(value, Path):
-        return str(value)
-    try:
-        return _jsonable(vars(value))
-    except Exception:
-        return str(value)
-
-
-def _stable_json_bytes(value: Any) -> bytes:
-    return json.dumps(
-        _jsonable(value), ensure_ascii=False, sort_keys=True, separators=(",", ":")
-    ).encode("utf-8")
-
-
-def digest_json(value: Any) -> str:
-    return hashlib.sha256(_stable_json_bytes(value)).hexdigest()
-
-
-def digest_file(path: str | os.PathLike[str] | None) -> Optional[str]:
-    if not path:
-        return None
-    p = Path(path)
-    if not p.is_file():
-        return None
-    h = hashlib.sha256()
-    with p.open("rb") as f:
-        for chunk in iter(lambda: f.read(1024 * 1024), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-
-def _source_artifact_document(
-    *,
-    candidate_records: Optional[Iterable[Mapping[str, Any]]] = None,
-    legacy_best_summary: Optional[Mapping[str, Any]] = None,
-) -> Dict[str, Any]:
-    records = list(candidate_records or [])
-    if records and legacy_best_summary is not None:
-        raise PriorValidationError(
-            "source artifact must contain candidate records or a legacy best summary, not both"
-        )
-    if records:
-        return {
-            "schema": SOURCE_SCHEMA_NAME,
-            "schema_version": SOURCE_SCHEMA_VERSION,
-            "kind": "bifocal_candidate_records",
-            "candidate_records": _jsonable(records),
-        }
-    if legacy_best_summary is not None:
-        return {
-            "schema": SOURCE_SCHEMA_NAME,
-            "schema_version": SOURCE_SCHEMA_VERSION,
-            "kind": "legacy_best_summary",
-            "legacy_best_summary": _jsonable(dict(legacy_best_summary)),
-        }
-    raise PriorValidationError(
-        "source artifact requires candidate_records or legacy_best_summary"
-    )
-
-
-def _source_artifact_bytes(source: Mapping[str, Any]) -> bytes:
-    """Return the canonical on-disk representation hashed by consumers."""
-
-    if source.get("schema") != SOURCE_SCHEMA_NAME:
-        raise PriorValidationError(
-            f"source artifact schema must equal {SOURCE_SCHEMA_NAME!r}"
-        )
-    if source.get("schema_version") != SOURCE_SCHEMA_VERSION:
-        raise PriorValidationError(
-            f"source artifact schema_version must equal {SOURCE_SCHEMA_VERSION}"
-        )
-    kind = source.get("kind")
-    if kind == "bifocal_candidate_records":
-        records = source.get("candidate_records")
-        if not isinstance(records, list) or not records:
-            raise PriorValidationError(
-                "bifocal source artifact requires non-empty candidate_records"
-            )
-    elif kind == "legacy_best_summary":
-        if not isinstance(source.get("legacy_best_summary"), Mapping):
-            raise PriorValidationError(
-                "legacy source artifact requires a legacy_best_summary object"
-            )
-    else:
-        raise PriorValidationError(f"unsupported source artifact kind {kind!r}")
-    return _stable_json_bytes(source) + b"\n"
-
-
-def _source_artifact_name(value: Any) -> str:
-    name = _require_nonempty_str(value, "provenance.source_artifact_path")
-    candidate = Path(name)
-    if candidate.is_absolute() or len(candidate.parts) != 1 or candidate.name != name:
-        raise PriorValidationError(
-            "provenance.source_artifact_path must be a relative adjacent filename"
-        )
-    if name in {".", ".."}:
-        raise PriorValidationError(
-            "provenance.source_artifact_path must name a JSON sidecar file"
-        )
-    return name
-
-
-def _float_or_none(value: Any, *, field: str) -> Optional[float]:
-    if value is None:
-        return None
-    try:
-        out = float(value)
-    except Exception as exc:
-        raise PriorValidationError(f"{field} must be numeric or null") from exc
-    if not math.isfinite(out):
-        raise PriorValidationError(f"{field} must be finite or null")
-    return out
-
-
-@dataclass(frozen=True)
-class CandidatePrior:
-    """Bifocal score terms for one legal device at one scheduling decision."""
-
-    dops_score_s: Optional[float]
-    eft_s: Optional[float]
-    window_s: Optional[float]
-    compute_s: Optional[float]
-    reload_s: Optional[float]
-    comm_s: Optional[float]
-    weight_reuse_bias_s: Optional[float]
-    decode_amort_bias_s: Optional[float]
-
-    @classmethod
-    def from_mapping(cls, value: Mapping[str, Any]) -> "CandidatePrior":
-        if not isinstance(value, Mapping):
-            raise PriorValidationError("candidate entry must be an object")
-        return cls(
-            **{
-                name: _float_or_none(value.get(name), field=name)
-                for name in SCORE_FIELDS
-            }
-        )
-
-    @classmethod
-    def unavailable(cls) -> "CandidatePrior":
-        return cls(**{name: None for name in SCORE_FIELDS})
-
-    def to_dict(self) -> Dict[str, Optional[float]]:
-        return asdict(self)
-
-
-def _require_nonempty_str(value: Any, path: str) -> str:
-    out = str(value or "").strip()
-    if not out:
-        raise PriorValidationError(f"{path} must be a non-empty string")
-    return out
-
-
-def _require_positive_int(value: Any, path: str, *, allow_zero: bool = False) -> int:
-    try:
-        out = int(value)
-    except Exception as exc:
-        raise PriorValidationError(f"{path} must be an integer") from exc
-    if out < 0 or (out == 0 and not allow_zero):
-        relation = "non-negative" if allow_zero else "positive"
-        raise PriorValidationError(f"{path} must be {relation}")
-    return out
-
-
-def validate_artifact(artifact: Mapping[str, Any]) -> None:
-    """Validate cross-field invariants not expressible concisely in JSON Schema."""
-
-    if not isinstance(artifact, Mapping):
-        raise PriorValidationError("artifact must be an object")
-    if artifact.get("schema") != SCHEMA_NAME:
-        raise PriorValidationError(f"schema must equal {SCHEMA_NAME!r}")
-    try:
-        schema_version = int(artifact.get("schema_version", -1))
-    except Exception as exc:
-        raise PriorValidationError("schema_version must be an integer") from exc
-    if schema_version != SCHEMA_VERSION:
-        raise PriorValidationError(f"schema_version must equal {SCHEMA_VERSION}")
-    _require_nonempty_str(artifact.get("artifact_id"), "artifact_id")
-    _require_nonempty_str(artifact.get("created_at"), "created_at")
-
-    semantics = artifact.get("semantics")
-    if not isinstance(semantics, Mapping):
-        raise PriorValidationError("semantics must be an object")
-    expected_semantics = {
-        "role": "offline_placement_prior",
-        "timeline_is_runtime_contract": False,
-        "online_device_selection_required": True,
-        "score_units": "seconds",
+_DEVICE_FIELDS = frozenset({"device_id"})
+_OPERATOR_FIELDS = frozenset({"op_id", "dependencies", "legal_devices"})
+_INPUT_FIELDS = frozenset(
+    {
+        "consumer_op_id",
+        "producer_op_id",
+        "tensor_id",
+        "semantics",
+        "bytes",
+        "source_residencies",
+        "destination_devices",
     }
-    for field, expected in expected_semantics.items():
-        if semantics.get(field) != expected:
-            raise PriorValidationError(
-                f"semantics.{field} must equal {expected!r}"
-            )
-
-    provenance = artifact.get("provenance")
-    if not isinstance(provenance, Mapping):
-        raise PriorValidationError("provenance must be an object")
-    for section in ("model", "workload", "hardware", "graph", "producer"):
-        if not isinstance(provenance.get(section), Mapping):
-            raise PriorValidationError(f"provenance.{section} must be an object")
-    for field in (
-        "model_family",
-        "model_revision",
-        "graph_sha256",
-        "hardware_sha256",
-        "dops_revision",
-        "source_artifact_sha256",
-        "source_artifact_path",
-        "policy",
-    ):
-        _require_nonempty_str(provenance.get(field), f"provenance.{field}")
-    for field in ("graph_sha256", "hardware_sha256", "source_artifact_sha256"):
-        value = str(provenance.get(field, ""))
-        if not re_full_sha256(value):
-            raise PriorValidationError(f"provenance.{field} must be a lowercase 64-hex SHA256")
-    _source_artifact_name(provenance.get("source_artifact_path"))
-    if not isinstance(provenance.get("parallelism"), Mapping):
-        raise PriorValidationError("provenance.parallelism must be an object")
-    for axis in ("tp", "pp", "ep"):
-        _require_positive_int(
-            provenance["parallelism"].get(axis),
-            f"provenance.parallelism.{axis}",
-        )
-
-    profiles = artifact.get("profiles")
-    if not isinstance(profiles, list) or not profiles:
-        raise PriorValidationError("profiles must be a non-empty array")
-    seen_profiles: set[str] = set()
-    for pidx, profile in enumerate(profiles):
-        if not isinstance(profile, Mapping):
-            raise PriorValidationError(f"profiles[{pidx}] must be an object")
-        profile_id = _require_nonempty_str(profile.get("profile_id"), f"profiles[{pidx}].profile_id")
-        if profile_id in seen_profiles:
-            raise PriorValidationError(f"duplicate profile_id {profile_id!r}")
-        seen_profiles.add(profile_id)
-
-        workload = profile.get("workload")
-        if not isinstance(workload, Mapping):
-            raise PriorValidationError(f"profiles[{pidx}].workload must be an object")
-        _require_positive_int(workload.get("batch"), f"profiles[{pidx}].workload.batch")
-        _require_positive_int(
-            workload.get("context_len"),
-            f"profiles[{pidx}].workload.context_len",
-            allow_zero=True,
-        )
-        for field in ("prefill_len", "decode_len", "max_seq_len"):
-            _require_positive_int(
-                workload.get(field), f"profiles[{pidx}].workload.{field}", allow_zero=True
-            )
-        phases = profile.get("phases")
-        if not isinstance(phases, Mapping) or not phases:
-            raise PriorValidationError(f"profiles[{pidx}].phases must be a non-empty object")
-        if set(str(k) for k in phases) != {"prefill", "decode"}:
-            raise PriorValidationError(
-                f"profiles[{pidx}].phases must contain exactly prefill and decode"
-            )
-        for phase, phase_data in phases.items():
-            if str(phase) not in {"prefill", "decode"}:
-                raise PriorValidationError(f"profiles[{pidx}].phases has invalid key {phase!r}")
-            if not isinstance(phase_data, Mapping):
-                raise PriorValidationError(f"profiles[{pidx}].phases.{phase} must be an object")
-            operators = phase_data.get("operators")
-            if not isinstance(operators, list) or not operators:
-                raise PriorValidationError(
-                    f"profiles[{pidx}].phases.{phase}.operators must be a non-empty array"
-                )
-            seen_ops: set[str] = set()
-            for oidx, op in enumerate(operators):
-                base = f"profiles[{pidx}].phases.{phase}.operators[{oidx}]"
-                if not isinstance(op, Mapping):
-                    raise PriorValidationError(f"{base} must be an object")
-                node_id = _require_nonempty_str(op.get("node_id"), f"{base}.node_id")
-                if node_id in seen_ops:
-                    raise PriorValidationError(f"{base}.node_id duplicates {node_id!r}")
-                seen_ops.add(node_id)
-                baseline = _require_nonempty_str(op.get("baseline_device"), f"{base}.baseline_device")
-                legal = op.get("legal_devices")
-                if not isinstance(legal, list) or not legal:
-                    raise PriorValidationError(f"{base}.legal_devices must be a non-empty array")
-                legal_names = [_require_nonempty_str(v, f"{base}.legal_devices") for v in legal]
-                if len(set(legal_names)) != len(legal_names):
-                    raise PriorValidationError(f"{base}.legal_devices contains duplicates")
-                if baseline not in legal_names:
-                    raise PriorValidationError(f"{base}.baseline_device is not legal")
-                candidates = op.get("candidates")
-                if not isinstance(candidates, Mapping):
-                    raise PriorValidationError(f"{base}.candidates must be an object")
-                if set(str(k) for k in candidates) != set(legal_names):
-                    raise PriorValidationError(f"{base}.candidates keys must equal legal_devices")
-                parsed_candidates: Dict[str, CandidatePrior] = {}
-                for dev_name, score in candidates.items():
-                    parsed = CandidatePrior.from_mapping(score)
-                    parsed_candidates[str(dev_name)] = parsed
-                    for field in ("eft_s", "window_s", "compute_s", "reload_s", "comm_s"):
-                        number = getattr(parsed, field)
-                        if number is not None and number < 0.0:
-                            raise PriorValidationError(
-                                f"{base}.candidates.{dev_name}.{field} must be non-negative"
-                            )
-
-                if not isinstance(op.get("dynamic_eligible"), bool):
-                    raise PriorValidationError(f"{base}.dynamic_eligible must be boolean")
-                if bool(op.get("dynamic_eligible")) and len(legal_names) < 2:
-                    raise PriorValidationError(
-                        f"{base}.dynamic_eligible requires at least two legal devices"
-                    )
-                if bool(op.get("dynamic_eligible")) and any(
-                    candidate.dops_score_s is None
-                    for candidate in parsed_candidates.values()
-                ):
-                    raise PriorValidationError(
-                        f"{base}.dynamic_eligible requires a DOPS score for every legal device"
-                    )
-                op_phase = _require_nonempty_str(op.get("phase"), f"{base}.phase")
-                if op_phase != str(phase):
-                    raise PriorValidationError(f"{base}.phase must match enclosing phase")
-                weight = op.get("weight")
-                if not isinstance(weight, Mapping):
-                    raise PriorValidationError(f"{base}.weight must be an object")
-                if not isinstance(op.get("constraints"), Mapping):
-                    raise PriorValidationError(f"{base}.constraints must be an object")
-                _require_positive_int(
-                    weight.get("size_bytes", 0), f"{base}.weight.size_bytes", allow_zero=True
-                )
-                _require_nonempty_str(weight.get("storage_layout"), f"{base}.weight.storage_layout")
-
-
-def _git_revision(repo_root: str | os.PathLike[str] | None = None) -> str:
-    root = Path(repo_root or Path(__file__).resolve().parents[1])
-    try:
-        return subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], cwd=str(root), text=True, stderr=subprocess.DEVNULL
-        ).strip()
-    except Exception:
-        return "unknown"
-
-
-def _shape_snapshot(shape: Any) -> Dict[str, Any]:
-    if shape is None:
-        return {}
-    fields = (
-        "layer_num",
-        "dim",
-        "ffn_dim",
-        "n_heads",
-        "n_kv_heads",
-        "experts_per_layer",
-        "experts_top_k",
-        "active_experts_per_layer",
-        "max_seq_len",
-    )
-    return {name: _jsonable(getattr(shape, name)) for name in fields if hasattr(shape, name)}
-
-
-def _graph_snapshot(graph: Any) -> Dict[str, Any]:
-    if graph is None:
-        empty = {"nodes": [], "edges": []}
-        return {
-            **empty,
-            "node_count": 0,
-            "edge_count": 0,
-            "digest_algorithm": "sha256",
-            "digest": digest_json(empty),
-        }
-    nodes: list[Dict[str, Any]] = []
-    edges: list[list[str]] = []
-    for nid, node in getattr(graph, "nodes", {}).items():
-        node_id = str(getattr(node, "id", nid))
-        preds = sorted(str(x) for x in (graph.predecessors(str(nid)) or []))
-        succs = sorted(str(x) for x in (graph.successors(str(nid)) or []))
-        nodes.append(
-            {
-                "node_id": node_id,
-                "op_type": str(getattr(node, "name", "") or ""),
-                "predecessors": preds,
-                "successors": succs,
-                "flops": float(getattr(node, "flops", 0.0) or 0.0),
-                "bytes_read": float(getattr(node, "bytes_read", 0.0) or 0.0),
-                "bytes_write": float(getattr(node, "bytes_write", 0.0) or 0.0),
-                "weight_id": (
-                    None if getattr(node, "weight_id", None) in (None, "") else str(node.weight_id)
-                ),
-                "weight_size_bytes": int(getattr(node, "weight_size", 0) or 0),
-                "allowed_device_types": _jsonable(getattr(node, "allowed", {}) or {}),
-                "attrs": _jsonable(getattr(node, "attrs", {}) or {}),
-            }
-        )
-        edges.extend([[node_id, str(v)] for v in succs])
-    nodes.sort(key=lambda item: item["node_id"])
-    edges.sort()
-    core = {"nodes": nodes, "edges": edges}
-    return {
-        **core,
-        "node_count": len(nodes),
-        "edge_count": len(edges),
-        "digest_algorithm": "sha256",
-        "digest": digest_json(core),
+)
+_INPUT_SEMANTICS = frozenset({"data", "barrier", "collective_staging"})
+_SOURCE_RESIDENCY_FIELDS = frozenset({"device_id", "layout"})
+_COLLECTIVE_FIELDS = frozenset(
+    {
+        "op_id",
+        "primitive",
+        "topology",
+        "canonical_device_id",
+        "participant_device_ids",
+        "output_device_ids",
+        "resource_device_ids",
+        "tensor_bytes",
+        "internal_transport",
     }
+)
+_PLACEMENT_FIELDS = frozenset({"op_id", "device_id"})
+_SERVICE_FIELDS = frozenset({"op_id", "device_id", "duration_s"})
+_ROUTE_FIELDS = frozenset(
+    {"tensor_id", "source_device_id", "destination_device_id", "bytes", "layout"}
+)
+_MOVE_FIELDS = _ROUTE_FIELDS | {"duration_s"}
 
 
-def _hardware_snapshot(cluster: Any, cfg: Mapping[str, Any]) -> Dict[str, Any]:
-    devices: list[Dict[str, Any]] = []
-    links: list[Dict[str, Any]] = []
-    if cluster is not None:
-        for name, dev in sorted(getattr(cluster, "devices", {}).items()):
-            device_snapshot = _jsonable(vars(dev))
-            if not isinstance(device_snapshot, dict):
-                device_snapshot = {}
-            device_snapshot["name"] = str(name)
-            device_snapshot["type"] = str(getattr(dev, "type", "") or "")
-            devices.append(device_snapshot)
-        seen: set[Tuple[str, str]] = set()
-        for (src, dst), spec in sorted(getattr(cluster, "link_specs", {}).items()):
-            key = tuple(sorted((str(src), str(dst))))
-            if key in seen:
-                continue
-            seen.add(key)
-            links.append(
-                {
-                    "a": key[0],
-                    "b": key[1],
-                    "bw_GBs": float(getattr(spec, "bw_GBs", 0.0) or 0.0),
-                    "latency_s": float(getattr(spec, "latency_s", 0.0) or 0.0),
-                    "overhead_s": float(getattr(spec, "overhead_s", 0.0) or 0.0),
-                    "flit_size_B": int(getattr(spec, "flit_size_B", 0) or 0),
-                    "max_payload_B": int(getattr(spec, "max_payload_B", 0) or 0),
-                }
-            )
+class DOPSPriorValidationError(ValueError):
+    """The static execution artifact is incomplete, ambiguous, or unsafe."""
 
-    raw_path = cfg.get("hardware_json")
-    raw_digest = digest_file(str(raw_path)) if raw_path else None
-    raw_snapshot = None
-    if raw_path:
+
+class DOPSPriorArtifact:
+    """Validated immutable-by-copy view of the three static DOPS tables."""
+
+    def __init__(
+        self,
+        *,
+        payload: Mapping[str, Any],
+        device_ids: tuple[str, ...],
+        operator_ids: tuple[str, ...],
+        legal_devices: Mapping[str, tuple[str, ...]],
+        inputs: tuple[Mapping[str, Any], ...],
+        collective_contexts: Mapping[str, Mapping[str, Any]],
+        placement: Mapping[str, str],
+        service_times: Mapping[tuple[str, str], float],
+        movement_times: Mapping[tuple[str, str, str, int, str], float],
+    ) -> None:
+        self._payload = copy.deepcopy(dict(payload))
+        self.device_ids = device_ids
+        self.operator_ids = operator_ids
+        self.legal_devices = dict(legal_devices)
+        self.inputs = tuple(copy.deepcopy(dict(entry)) for entry in inputs)
+        self.collective_contexts = {
+            op_id: copy.deepcopy(dict(context))
+            for op_id, context in collective_contexts.items()
+        }
+        self.expert_placement = dict(placement)
+        self._service_times = dict(service_times)
+        self._movement_times = dict(movement_times)
+
+    @property
+    def payload(self) -> dict[str, Any]:
+        return copy.deepcopy(self._payload)
+
+    def expert_device(self, op_id: str) -> str:
         try:
-            raw_snapshot = json.loads(Path(str(raw_path)).read_text(encoding="utf-8"))
-        except Exception:
-            raw_snapshot = None
-    default_link = None
-    if cluster is not None and getattr(cluster, "default_link_spec", None) is not None:
-        default_link = _jsonable(vars(cluster.default_link_spec))
-    normalized = {
-        "topology": str(getattr(cluster, "topology", cfg.get("topology", "")) or ""),
-        "devices": devices,
-        "links": links,
-        "default_link": default_link,
-        "pim_memory": _jsonable(getattr(cluster, "pim_memory", {}) or {}) if cluster is not None else {},
-    }
-    return {
-        **normalized,
-        "source_path": str(raw_path) if raw_path else None,
-        "source_digest": raw_digest,
-        "source_snapshot": _jsonable(raw_snapshot),
-        "digest_algorithm": "sha256",
-        "digest": digest_json(normalized),
-    }
+            return self.expert_placement[op_id]
+        except KeyError as exc:
+            raise KeyError(f"unknown expert placement op_id: {op_id!r}") from exc
 
-
-def build_provenance(
-    *,
-    cfg: Mapping[str, Any],
-    graph: Any = None,
-    cluster: Any = None,
-    shape: Any = None,
-    producer_revision: Optional[str] = None,
-) -> Dict[str, Any]:
-    """Build an explicit, self-contained provenance snapshot."""
-
-    cfg_snapshot = _jsonable(dict(cfg))
-    graph_info = _graph_snapshot(graph)
-    hardware_info = _hardware_snapshot(cluster, cfg)
-    tp_effective = int(
-        cfg.get(
-            "tp",
-            max(
-                int(cfg.get("tp_qkv_effective", cfg.get("tp_qkv", 1)) or 1),
-                int(cfg.get("tp_ffn_effective", cfg.get("tp_ffn", 1)) or 1),
-                int(cfg.get("tp_moe_effective", cfg.get("tp_moe", 1)) or 1),
-            ),
+    def inputs_for(self, consumer_op_id: str) -> tuple[dict[str, Any], ...]:
+        if consumer_op_id not in self.legal_devices:
+            raise KeyError(f"unknown consumer op_id: {consumer_op_id!r}")
+        return tuple(
+            copy.deepcopy(entry)
+            for entry in self.inputs
+            if entry["consumer_op_id"] == consumer_op_id
         )
-        or 1
+
+    def collective_context(self, op_id: str) -> dict[str, Any]:
+        try:
+            return copy.deepcopy(self.collective_contexts[op_id])
+        except KeyError as exc:
+            raise KeyError(f"operator {op_id!r} is not a collective") from exc
+
+    def service_time_s(self, op_id: str, device_id: str) -> float:
+        try:
+            return self._service_times[(op_id, device_id)]
+        except KeyError as exc:
+            raise KeyError(
+                f"no T_service entry for op_id={op_id!r}, device_id={device_id!r}"
+            ) from exc
+
+    def movement_time_s(
+        self,
+        tensor_id: str,
+        source_device_id: str,
+        destination_device_id: str,
+        bytes_: int,
+        layout: str,
+    ) -> float:
+        key = (tensor_id, source_device_id, destination_device_id, bytes_, layout)
+        try:
+            return self._movement_times[key]
+        except KeyError as exc:
+            raise KeyError(
+                "no T_move entry for "
+                f"tensor_id={tensor_id!r}, source={source_device_id!r}, "
+                f"destination={destination_device_id!r}, bytes={bytes_!r}, "
+                f"layout={layout!r}"
+            ) from exc
+
+
+def _error(field: str, message: str) -> DOPSPriorValidationError:
+    return DOPSPriorValidationError(f"invalid {field}: {message}")
+
+
+def _object(value: Any, field: str) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise _error(field, "expected a JSON object")
+    return dict(value)
+
+
+def _array(value: Any, field: str) -> list[Any]:
+    if not isinstance(value, list):
+        raise _error(field, "expected a JSON array")
+    return value
+
+
+def _exact_fields(
+    value: Mapping[str, Any], expected: frozenset[str], field: str
+) -> None:
+    actual = set(value)
+    missing = sorted(expected - actual)
+    extra = sorted(actual - expected)
+    if missing:
+        raise _error(field, f"missing fields: {missing}")
+    if extra:
+        raise _error(field, f"unexpected fields: {extra}")
+
+
+def _string(value: Any, field: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise _error(field, "expected a non-empty string")
+    return value.strip()
+
+
+def _non_negative_int(value: Any, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise _error(field, "expected a non-negative integer")
+    return value
+
+
+def _duration(value: Any, field: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise _error(field, "expected a finite, non-negative number of seconds")
+    result = float(value)
+    if not math.isfinite(result) or result < 0:
+        raise _error(field, "expected a finite, non-negative number of seconds")
+    return result
+
+
+def _unique_strings(value: Any, field: str, *, nonempty: bool) -> tuple[str, ...]:
+    raw = _array(value, field)
+    if nonempty and not raw:
+        raise _error(field, "cannot be empty")
+    result = tuple(_string(item, f"{field}[{index}]") for index, item in enumerate(raw))
+    if len(set(result)) != len(result):
+        raise _error(field, "contains duplicates")
+    return result
+
+
+def _missing_keys(
+    actual: set[Any], expected: set[Any], field: str, description: str
+) -> None:
+    if actual == expected:
+        return
+    missing = sorted(expected - actual)
+    unexpected = sorted(actual - expected)
+    raise _error(
+        field,
+        f"must cover every {description} exactly once; "
+        f"missing={missing}, unexpected={unexpected}",
     )
-    pp_effective = int(cfg.get("pp", cfg.get("pipeline_parallel_size", 1)) or 1)
-    ep_effective = int(cfg.get("ep", cfg.get("expert_parallel_size", 1)) or 1)
-    shape_info = _shape_snapshot(shape)
-    explicit_model_revision = cfg.get(
-        "model_revision", cfg.get("model_commit", cfg.get("revision"))
+
+
+def _validate_acyclic(dependencies: Mapping[str, tuple[str, ...]]) -> None:
+    state: dict[str, int] = {}
+
+    def visit(op_id: str) -> None:
+        marker = state.get(op_id, 0)
+        if marker == 1:
+            raise _error("operators", f"dependency cycle includes {op_id!r}")
+        if marker == 2:
+            return
+        state[op_id] = 1
+        for dependency in dependencies[op_id]:
+            visit(dependency)
+        state[op_id] = 2
+
+    for op_id in dependencies:
+        visit(op_id)
+
+
+def _canonical_payload(root: Mapping[str, Any]) -> dict[str, Any]:
+    """Return stable bytes for arrays whose contract semantics are unordered."""
+
+    payload = copy.deepcopy(dict(root))
+    payload["devices"].sort(key=lambda entry: entry["device_id"])
+    for operator in payload["operators"]:
+        operator["dependencies"] = sorted(operator["dependencies"])
+        operator["legal_devices"] = sorted(operator["legal_devices"])
+    payload["operators"].sort(key=lambda entry: entry["op_id"])
+    for entry in payload["inputs"]:
+        entry["source_residencies"].sort(
+            key=lambda residency: (residency["device_id"], residency["layout"])
+        )
+        entry["destination_devices"] = sorted(entry["destination_devices"])
+    payload["inputs"].sort(
+        key=lambda entry: (
+            entry["consumer_op_id"],
+            entry["producer_op_id"] or "",
+            entry["tensor_id"],
+            entry["semantics"],
+            entry["bytes"],
+            tuple(
+                (residency["device_id"], residency["layout"])
+                for residency in entry["source_residencies"]
+            ),
+            tuple(entry["destination_devices"]),
+        )
     )
-    model_revision = (
-        str(explicit_model_revision)
-        if explicit_model_revision not in (None, "")
-        else ("shape-sha256:" + digest_json(shape_info) if shape_info else "unknown")
+    for context in payload["collective_contexts"]:
+        context["participant_device_ids"] = sorted(
+            context["participant_device_ids"]
+        )
+        context["output_device_ids"] = sorted(context["output_device_ids"])
+        context["resource_device_ids"] = sorted(
+            context["resource_device_ids"]
+        )
+    payload["collective_contexts"].sort(key=lambda entry: entry["op_id"])
+    payload["legal_movement_routes"].sort(
+        key=lambda entry: (
+            entry["tensor_id"],
+            entry["source_device_id"],
+            entry["destination_device_id"],
+            entry["bytes"],
+            entry["layout"],
+        )
     )
-    model = {
-        "family": cfg.get("model_family", cfg.get("model_type")),
-        "variant": cfg.get("model_variant"),
-        "revision": model_revision,
-        "revision_kind": (
-            "explicit" if explicit_model_revision not in (None, "") else "normalized_shape"
-        ),
-        "shape": shape_info,
-        "parallelism": {
-            "tp": tp_effective,
-            "tp_qkv": cfg.get("tp_qkv"),
-            "tp_qkv_effective": cfg.get("tp_qkv_effective"),
-            "tp_ffn": cfg.get("tp_ffn"),
-            "tp_ffn_effective": cfg.get("tp_ffn_effective"),
-            "tp_moe": cfg.get("tp_moe"),
-            "tp_moe_effective": cfg.get("tp_moe_effective"),
-            "pp": pp_effective,
-            "ep": ep_effective,
-        },
-    }
-    workload = {
-        "batch": int(cfg.get("batch", 1) or 1),
-        "max_batch_size": int(cfg.get("max_batch_size", cfg.get("batch", 1)) or 1),
-        "prefill_len": int(cfg.get("prefill_len", 0) or 0),
-        "decode_len": int(cfg.get("decode_len", 0) or 0),
-        "max_seq_len": int(
-            cfg.get(
-                "max_seq_len",
-                int(cfg.get("prefill_len", 0) or 0) + int(cfg.get("decode_len", 0) or 0),
+    payload["expert_placement"].sort(key=lambda entry: entry["op_id"])
+    payload["t_service"].sort(key=lambda entry: (entry["op_id"], entry["device_id"]))
+    payload["t_move"].sort(
+        key=lambda entry: (
+            entry["tensor_id"],
+            entry["source_device_id"],
+            entry["destination_device_id"],
+            entry["bytes"],
+            entry["layout"],
+        )
+    )
+    return payload
+
+
+def validate_prior_artifact(payload: Any) -> DOPSPriorArtifact:
+    """Validate all structural and cross-table invariants."""
+
+    root = _object(payload, "<root>")
+    _exact_fields(root, _ROOT_FIELDS, "<root>")
+    if root["schema"] != PRIOR_SCHEMA:
+        raise _error("schema", f"must equal {PRIOR_SCHEMA!r}")
+    version = root["schema_version"]
+    if isinstance(version, bool) or version != PRIOR_SCHEMA_VERSION:
+        raise _error("schema_version", f"must equal {PRIOR_SCHEMA_VERSION}")
+    _string(root["graph_id"], "graph_id")
+    _string(root["workload_id"], "workload_id")
+    if root["time_unit"] != TIME_UNIT:
+        raise _error("time_unit", f"must equal {TIME_UNIT!r}")
+
+    device_ids: list[str] = []
+    for index, raw in enumerate(_array(root["devices"], "devices")):
+        field = f"devices[{index}]"
+        device = _object(raw, field)
+        _exact_fields(device, _DEVICE_FIELDS, field)
+        device_ids.append(_string(device["device_id"], f"{field}.device_id"))
+    if len(device_ids) < 2:
+        raise _error("devices", "requires at least two devices")
+    if len(set(device_ids)) != len(device_ids):
+        raise _error("devices", "contains duplicate device_id values")
+    known_devices = set(device_ids)
+
+    operator_ids: list[str] = []
+    dependencies: dict[str, tuple[str, ...]] = {}
+    legal_devices: dict[str, tuple[str, ...]] = {}
+    for index, raw in enumerate(_array(root["operators"], "operators")):
+        field = f"operators[{index}]"
+        operator = _object(raw, field)
+        _exact_fields(operator, _OPERATOR_FIELDS, field)
+        op_id = _string(operator["op_id"], f"{field}.op_id")
+        if op_id in legal_devices:
+            raise _error("operators", f"duplicate op_id {op_id!r}")
+        deps = _unique_strings(
+            operator["dependencies"], f"{field}.dependencies", nonempty=False
+        )
+        legal = _unique_strings(
+            operator["legal_devices"], f"{field}.legal_devices", nonempty=True
+        )
+        unknown_devices = sorted(set(legal) - known_devices)
+        if unknown_devices:
+            raise _error(
+                f"{field}.legal_devices", f"unknown devices: {unknown_devices}"
             )
-            or 0
-        ),
-        "dtype": cfg.get("dtype"),
-        "decode_plan_refresh_stride": cfg.get("decode_plan_refresh_stride"),
-        "decode_sample_stride": cfg.get("decode_sample_stride"),
-    }
-    missing: list[str] = []
-    for path, value in (
-        ("model.family", model["family"]),
-        ("model.variant", model["variant"]),
-        ("workload.dtype", workload["dtype"]),
+        operator_ids.append(op_id)
+        dependencies[op_id] = deps
+        legal_devices[op_id] = legal
+    if not operator_ids:
+        raise _error("operators", "cannot be empty")
+    known_operators = set(operator_ids)
+    for op_id, deps in dependencies.items():
+        unknown = sorted(set(deps) - known_operators)
+        if unknown:
+            raise _error(
+                f"operators[{op_id!r}].dependencies", f"unknown op_id values: {unknown}"
+            )
+        if op_id in deps:
+            raise _error(
+                f"operators[{op_id!r}].dependencies", "cannot depend on itself"
+            )
+    _validate_acyclic(dependencies)
+
+    collective_contexts: dict[str, dict[str, Any]] = {}
+    for index, raw in enumerate(
+        _array(root["collective_contexts"], "collective_contexts")
     ):
-        if value in (None, ""):
-            missing.append(path)
-    if not hardware_info["devices"]:
-        missing.append("hardware.devices")
-    if graph_info["node_count"] <= 0:
-        missing.append("graph.nodes")
-    revision = str(producer_revision or _git_revision())
-    return {
-        "status": "complete" if not missing else "partial",
-        "missing_fields": missing,
-        "model_family": str(model["family"] or "unknown"),
-        "model_revision": model_revision,
-        "graph_sha256": str(graph_info["digest"]),
-        "hardware_sha256": str(hardware_info["digest"]),
-        "dops_revision": revision,
-        "source_artifact_sha256": str(cfg.get("source_artifact_sha256") or "pending"),
-        "policy": str(cfg.get("algo", "Bifocal") or "Bifocal"),
-        "parallelism": dict(model["parallelism"]),
-        "model": model,
-        "workload": workload,
-        "hardware": hardware_info,
-        "graph": graph_info,
-        "config": {
-            "snapshot": cfg_snapshot,
-            "digest_algorithm": "sha256",
-            "digest": digest_json(cfg_snapshot),
-        },
-        "producer": {
-            "name": "DOPS",
-            "repository": "YIAI-02/DOPS",
-            "revision": revision,
-            "scheduler": str(cfg.get("algo", "Bifocal")),
-        },
-    }
-
-
-def re_full_sha256(value: str) -> bool:
-    return len(value) == 64 and all(ch in "0123456789abcdef" for ch in value)
-
-
-def _profile_id(workload: Mapping[str, Any], phase: str, ordinal: int) -> str:
-    batch = int(workload.get("batch", 1) or 1)
-    context = int(workload.get("context_len", 0) or 0)
-    token = workload.get("token_idx")
-    token_part = "" if token is None else f"-t{int(token)}"
-    short = digest_json({"workload": workload, "phase": phase})[:10]
-    return f"{phase}-b{batch}-c{context}{token_part}-p{ordinal}-{short}"
-
-
-def _normalize_candidate_record(record: Mapping[str, Any]) -> Dict[str, Any]:
-    node_id = _require_nonempty_str(record.get("node_id"), "candidate_record.node_id")
-    baseline = _require_nonempty_str(record.get("baseline_device"), "candidate_record.baseline_device")
-    legal_raw = record.get("legal_devices")
-    if not isinstance(legal_raw, Sequence) or isinstance(legal_raw, (str, bytes)) or not legal_raw:
-        raise PriorValidationError(f"candidate record {node_id!r} has no legal_devices")
-    legal = [
-        _require_nonempty_str(x, f"candidate record {node_id!r} legal_devices")
-        for x in legal_raw
-    ]
-    candidates_raw = record.get("candidates")
-    if not isinstance(candidates_raw, Mapping):
-        raise PriorValidationError(f"candidate record {node_id!r} has no candidates object")
-    candidates_by_name: Dict[str, Any] = {}
-    for key, value in candidates_raw.items():
-        name = _require_nonempty_str(key, f"candidate record {node_id!r} candidate key")
-        if name in candidates_by_name:
-            raise PriorValidationError(
-                f"candidate record {node_id!r} has duplicate normalized candidate {name!r}"
+        field = f"collective_contexts[{index}]"
+        entry = _object(raw, field)
+        _exact_fields(entry, _COLLECTIVE_FIELDS, field)
+        op_id = _string(entry["op_id"], f"{field}.op_id")
+        if op_id not in known_operators:
+            raise _error(field, f"unknown op_id {op_id!r}")
+        if op_id in collective_contexts:
+            raise _error("collective_contexts", f"duplicate op_id {op_id!r}")
+        primitive = _string(entry["primitive"], f"{field}.primitive")
+        topology = _string(entry["topology"], f"{field}.topology")
+        canonical = _string(
+            entry["canonical_device_id"], f"{field}.canonical_device_id"
+        )
+        if canonical not in known_devices:
+            raise _error(field, f"unknown canonical device {canonical!r}")
+        if set(legal_devices[op_id]) != {canonical}:
+            raise _error(
+                field,
+                "a fixed collective must expose exactly its canonical device "
+                "as legal_devices",
             )
-        candidates_by_name[name] = value
-    if set(candidates_by_name) != set(legal):
-        raise PriorValidationError(
-            f"candidate record {node_id!r} candidate keys must equal legal_devices"
+        participants = _unique_strings(
+            entry["participant_device_ids"],
+            f"{field}.participant_device_ids",
+            nonempty=True,
         )
-    candidates: Dict[str, Dict[str, Optional[float]]] = {}
-    for dev in legal:
-        raw = candidates_by_name[dev]
-        candidates[dev] = CandidatePrior.from_mapping(raw).to_dict()
-    weight_raw = record.get("weight") or {}
-    if not isinstance(weight_raw, Mapping):
-        raise PriorValidationError(f"candidate record {node_id!r} weight must be an object")
-    constraints_raw = record.get("constraints") or {}
-    if not isinstance(constraints_raw, Mapping):
-        raise PriorValidationError(
-            f"candidate record {node_id!r} constraints must be an object"
+        outputs = _unique_strings(
+            entry["output_device_ids"],
+            f"{field}.output_device_ids",
+            nonempty=True,
         )
-    if "dynamic_eligible" in record and not isinstance(record.get("dynamic_eligible"), bool):
-        raise PriorValidationError(
-            f"candidate record {node_id!r} dynamic_eligible must be boolean"
+        resources = _unique_strings(
+            entry["resource_device_ids"],
+            f"{field}.resource_device_ids",
+            nonempty=True,
         )
-    return {
-        "node_id": node_id,
-        "op_type": str(record.get("op_type", "") or ""),
-        "phase": str(record.get("phase", "") or ""),
-        "baseline_device": baseline,
-        "legal_devices": legal,
-        "candidates": candidates,
-        "constraints": _jsonable(constraints_raw),
-        "dynamic_eligible": bool(
-            record.get(
-                "dynamic_eligible",
-                len(legal) > 1 and str(record.get("op_type", "") or "").upper() not in {
-                    "ALLREDUCE",
-                    "REDUCE",
-                    "GATHER",
-                    "SCATTER",
-                    "TRANSFER",
-                },
+        unknown_context_devices = sorted(
+            (set(participants) | set(outputs) | set(resources)) - known_devices
+        )
+        if unknown_context_devices:
+            raise _error(
+                field, f"unknown collective devices: {unknown_context_devices}"
             )
-        ),
-        "weight": {
-            "weight_id": (
-                None
-                if weight_raw.get("weight_id") in (None, "")
-                else str(weight_raw.get("weight_id"))
-            ),
-            "size_bytes": _require_positive_int(
-                weight_raw.get("size_bytes", 0),
-                f"candidate record {node_id!r} weight.size_bytes",
-                allow_zero=True,
-            ),
-            "storage_layout": str(
-                weight_raw.get("storage_layout", "ND") or "ND"
-            ),
-        },
-    }
-
-
-def profiles_from_candidate_records(
-    records: Iterable[Mapping[str, Any]], *, cfg: Mapping[str, Any]
-) -> list[Dict[str, Any]]:
-    """Group Bifocal decisions into profile-selector points.
-
-    Each decode-context capture is paired with the prefill capture from the
-    same offline workload.  Consequently every canonical profile contains
-    both ``phases.prefill`` and ``phases.decode``.  Decode fixed-plan replay
-    does not create candidate records and therefore cannot be mistaken for a
-    newly evaluated DOPS prior.
-    """
-
-    grouped: Dict[Tuple[Any, ...], list[Mapping[str, Any]]] = {}
-    for rec in records:
-        phase = str(rec.get("phase", "") or "")
-        key = (
-            int(rec.get("schedule_call_index", 0) or 0),
-            phase,
-            int(rec.get("batch", cfg.get("batch", 1)) or 1),
-            int(rec.get("seq_len", cfg.get("prefill_len", 0)) or 0),
-            rec.get("token_idx"),
+        if canonical not in outputs:
+            raise _error(
+                f"{field}.output_device_ids",
+                "must include canonical_device_id",
+            )
+        if not (set(participants) | set(outputs)).issubset(set(resources)):
+            raise _error(
+                f"{field}.resource_device_ids",
+                "must include every participant and output device",
+            )
+        internal_transport = _string(
+            entry["internal_transport"], f"{field}.internal_transport"
         )
-        grouped.setdefault(key, []).append(rec)
+        if internal_transport != "included_in_t_service":
+            raise _error(
+                f"{field}.internal_transport",
+                "must equal 'included_in_t_service'",
+            )
+        collective_contexts[op_id] = {
+            "op_id": op_id,
+            "primitive": primitive,
+            "topology": topology,
+            "canonical_device_id": canonical,
+            "participant_device_ids": list(participants),
+            "output_device_ids": list(outputs),
+            "resource_device_ids": list(resources),
+            "tensor_bytes": _non_negative_int(
+                entry["tensor_bytes"], f"{field}.tensor_bytes"
+            ),
+            "internal_transport": internal_transport,
+        }
 
-    ordered_groups = sorted(
-        grouped.items(),
-        key=lambda item: (
-            int(item[0][0]),
-            0 if item[0][1] == "prefill" else 1,
-            int(item[0][2]),
-            int(item[0][3]),
-            -1 if item[0][4] is None else int(item[0][4]),
-        ),
+    inputs: list[dict[str, Any]] = []
+    input_keys: set[tuple[str, str | None, str]] = set()
+    dependency_inputs: set[tuple[str, str]] = set()
+    tensor_bindings: dict[str, tuple[str | None, int]] = {}
+    for index, raw in enumerate(_array(root["inputs"], "inputs")):
+        field = f"inputs[{index}]"
+        entry = _object(raw, field)
+        _exact_fields(entry, _INPUT_FIELDS, field)
+        consumer = _string(entry["consumer_op_id"], f"{field}.consumer_op_id")
+        if consumer not in known_operators:
+            raise _error(field, f"unknown consumer_op_id {consumer!r}")
+        producer_raw = entry["producer_op_id"]
+        producer = (
+            None
+            if producer_raw is None
+            else _string(producer_raw, f"{field}.producer_op_id")
+        )
+        if producer is not None:
+            if producer not in known_operators:
+                raise _error(field, f"unknown producer_op_id {producer!r}")
+            if producer not in dependencies[consumer]:
+                raise _error(
+                    field,
+                    f"producer {producer!r} is not a dependency of {consumer!r}",
+                )
+            dependency_inputs.add((consumer, producer))
+        tensor_id = _string(entry["tensor_id"], f"{field}.tensor_id")
+        semantics = _string(entry["semantics"], f"{field}.semantics")
+        if semantics not in _INPUT_SEMANTICS:
+            raise _error(
+                f"{field}.semantics",
+                f"must be one of {sorted(_INPUT_SEMANTICS)}",
+            )
+        bytes_ = _non_negative_int(entry["bytes"], f"{field}.bytes")
+        residencies: list[dict[str, str]] = []
+        residency_devices: set[str] = set()
+        for residency_index, raw_residency in enumerate(
+            _array(entry["source_residencies"], f"{field}.source_residencies")
+        ):
+            residency_field = f"{field}.source_residencies[{residency_index}]"
+            residency = _object(raw_residency, residency_field)
+            _exact_fields(residency, _SOURCE_RESIDENCY_FIELDS, residency_field)
+            device = _string(
+                residency["device_id"], f"{residency_field}.device_id"
+            )
+            layout = _string(residency["layout"], f"{residency_field}.layout")
+            if device in residency_devices:
+                raise _error(
+                    f"{field}.source_residencies",
+                    f"duplicate device_id {device!r}",
+                )
+            residency_devices.add(device)
+            residencies.append({"device_id": device, "layout": layout})
+        unknown_sources = sorted(residency_devices - known_devices)
+        if unknown_sources:
+            raise _error(
+                f"{field}.source_residencies", f"unknown devices: {unknown_sources}"
+            )
+        destinations = _unique_strings(
+            entry["destination_devices"],
+            f"{field}.destination_devices",
+            nonempty=False,
+        )
+        unknown_destinations = sorted(set(destinations) - known_devices)
+        if unknown_destinations:
+            raise _error(
+                f"{field}.destination_devices",
+                f"unknown devices: {unknown_destinations}",
+            )
+        if producer is None and semantics != "data":
+            raise _error(
+                field, "an external input (producer_op_id=null) must use data semantics"
+            )
+        if semantics == "barrier":
+            if producer is None:
+                raise _error(field, "barrier semantics requires a producer_op_id")
+            if bytes_ != 0 or residencies or destinations:
+                raise _error(
+                    field,
+                    "barrier semantics requires bytes=0, source_residencies=[], "
+                    "and destination_devices=[]",
+                )
+        elif not residencies or not destinations:
+            raise _error(
+                field,
+                f"{semantics} semantics requires non-empty source and destination devices",
+            )
+        if semantics == "data":
+            if set(destinations) != set(legal_devices[consumer]):
+                raise _error(
+                    f"{field}.destination_devices",
+                    "data inputs must target exactly the consumer legal_devices",
+                )
+            if consumer in collective_contexts:
+                raise _error(
+                    field,
+                    "collective dependencies must use collective_staging semantics",
+                )
+        elif semantics == "collective_staging":
+            if producer is None:
+                raise _error(
+                    field, "collective_staging semantics requires a producer_op_id"
+                )
+            context = collective_contexts.get(consumer)
+            if context is None:
+                raise _error(
+                    field,
+                    "collective_staging consumer has no collective_context",
+                )
+            if len(destinations) != 1:
+                raise _error(
+                    f"{field}.destination_devices",
+                    "collective_staging requires exactly one fixed staging device",
+                )
+            if destinations[0] not in context["participant_device_ids"]:
+                raise _error(
+                    f"{field}.destination_devices",
+                    "staging device is not a collective participant",
+                )
+
+        key = (consumer, producer, tensor_id)
+        if key in input_keys:
+            raise _error("inputs", f"duplicate input key {key!r}")
+        input_keys.add(key)
+        tensor_binding = (producer, bytes_)
+        previous_binding = tensor_bindings.setdefault(tensor_id, tensor_binding)
+        if previous_binding != tensor_binding:
+            raise _error(
+                field,
+                "tensor_id must bind one producer_op_id and byte count globally",
+            )
+        inputs.append(
+            {
+                "consumer_op_id": consumer,
+                "producer_op_id": producer,
+                "tensor_id": tensor_id,
+                "semantics": semantics,
+                "bytes": bytes_,
+                "source_residencies": residencies,
+                "destination_devices": list(destinations),
+            }
+        )
+    if not inputs:
+        raise _error("inputs", "cannot be empty")
+    expected_dependencies = {
+        (consumer, producer)
+        for consumer, producers in dependencies.items()
+        for producer in producers
+    }
+    _missing_keys(
+        dependency_inputs,
+        expected_dependencies,
+        "inputs",
+        "declared operator dependency",
     )
-    prefill_groups = [(key, group) for key, group in ordered_groups if key[1] == "prefill"]
-    decode_groups = [(key, group) for key, group in ordered_groups if key[1] == "decode"]
-    if not prefill_groups or not decode_groups:
-        raise PriorValidationError(
-            "canonical workload profiles require both prefill and decode candidate captures"
-        )
-
-    profiles: list[Dict[str, Any]] = []
-    for ordinal, (decode_key, decode_group) in enumerate(decode_groups):
-        decode_call, _, batch, decode_context, token_idx = decode_key
-        # A scheduler can be reused for more than one capture session. Pair a
-        # decode decision with the latest preceding prefill of the same batch,
-        # rather than silently attaching every decode group to the first
-        # prefill ever observed.
-        matching_prefill = [
-            item
-            for item in prefill_groups
-            if int(item[0][2]) == int(batch) and int(item[0][0]) < int(decode_call)
+    for op_id, context in collective_contexts.items():
+        staging_inputs = [
+            entry
+            for entry in inputs
+            if entry["consumer_op_id"] == op_id
+            and entry["semantics"] == "collective_staging"
         ]
-        if not matching_prefill:
-            raise PriorValidationError(
-                f"decode capture call={decode_call} batch={batch} has no preceding matching prefill capture"
+        if not staging_inputs:
+            raise _error(
+                f"collective_contexts[{op_id!r}]",
+                "must have at least one collective_staging input",
             )
-        prefill_key, prefill_group = max(
-            matching_prefill,
-            key=lambda item: int(item[0][0]),
-        )
-        prefill_call, _, _, prefill_context, _ = prefill_key
-        phase_operators = {
-            "prefill": [_normalize_candidate_record(rec) for rec in prefill_group],
-            "decode": [_normalize_candidate_record(rec) for rec in decode_group],
+        staged_devices = {
+            destination
+            for entry in staging_inputs
+            for destination in entry["destination_devices"]
         }
-        available = sorted(
-            {
-                field
-                for operators in phase_operators.values()
-                for op in operators
-                for score in op["candidates"].values()
-                for field in SCORE_FIELDS
-                if score.get(field) is not None
-            }
+        if staged_devices != set(context["participant_device_ids"]):
+            raise _error(
+                f"collective_contexts[{op_id!r}].participant_device_ids",
+                "must exactly equal the staging input destinations; "
+                f"staged={sorted(staged_devices)}",
+            )
+
+    placement: dict[str, str] = {}
+    for index, raw in enumerate(_array(root["expert_placement"], "expert_placement")):
+        field = f"expert_placement[{index}]"
+        entry = _object(raw, field)
+        _exact_fields(entry, _PLACEMENT_FIELDS, field)
+        op_id = _string(entry["op_id"], f"{field}.op_id")
+        device = _string(entry["device_id"], f"{field}.device_id")
+        if op_id not in known_operators:
+            raise _error(field, f"unknown op_id {op_id!r}")
+        if op_id in placement:
+            raise _error("expert_placement", f"duplicate op_id {op_id!r}")
+        if device not in legal_devices[op_id]:
+            raise _error(field, f"device {device!r} is not legal for {op_id!r}")
+        placement[op_id] = device
+    _missing_keys(set(placement), known_operators, "expert_placement", "operator")
+    for op_id, context in collective_contexts.items():
+        if placement[op_id] != context["canonical_device_id"]:
+            raise _error(
+                f"expert_placement[{op_id!r}]",
+                "collective placement must equal canonical_device_id",
+            )
+
+    service_times: dict[tuple[str, str], float] = {}
+    for index, raw in enumerate(_array(root["t_service"], "t_service")):
+        field = f"t_service[{index}]"
+        entry = _object(raw, field)
+        _exact_fields(entry, _SERVICE_FIELDS, field)
+        op_id = _string(entry["op_id"], f"{field}.op_id")
+        device = _string(entry["device_id"], f"{field}.device_id")
+        if op_id not in known_operators:
+            raise _error(field, f"unknown op_id {op_id!r}")
+        if device not in legal_devices[op_id]:
+            raise _error(field, f"device {device!r} is not legal for {op_id!r}")
+        key = (op_id, device)
+        if key in service_times:
+            raise _error("t_service", f"duplicate key {key!r}")
+        service_times[key] = _duration(entry["duration_s"], f"{field}.duration_s")
+    expected_service = {
+        (op_id, device)
+        for op_id, devices in legal_devices.items()
+        for device in devices
+    }
+    _missing_keys(
+        set(service_times), expected_service, "t_service", "legal operator-device"
+    )
+
+    legal_routes: set[tuple[str, str, str, int, str]] = set()
+    for index, raw in enumerate(
+        _array(root["legal_movement_routes"], "legal_movement_routes")
+    ):
+        field = f"legal_movement_routes[{index}]"
+        route = _object(raw, field)
+        _exact_fields(route, _ROUTE_FIELDS, field)
+        tensor_id = _string(route["tensor_id"], f"{field}.tensor_id")
+        source = _string(route["source_device_id"], f"{field}.source_device_id")
+        destination = _string(
+            route["destination_device_id"], f"{field}.destination_device_id"
         )
-        workload = {
-            "batch": int(batch),
-            "context_len": int(decode_context),
-            "token_idx": token_idx,
-            "dtype": cfg.get("dtype"),
-            "prefill_len": int(cfg.get("prefill_len", prefill_context) or prefill_context),
-            "decode_len": int(cfg.get("decode_len", 0) or 0),
-            "max_seq_len": int(
-                cfg.get(
-                    "max_seq_len",
-                    int(cfg.get("prefill_len", prefill_context) or prefill_context)
-                    + int(cfg.get("decode_len", 0) or 0),
+        bytes_ = _non_negative_int(route["bytes"], f"{field}.bytes")
+        layout = _string(route["layout"], f"{field}.layout")
+        unknown = sorted({source, destination} - known_devices)
+        if unknown:
+            raise _error(field, f"unknown devices: {unknown}")
+        key = (tensor_id, source, destination, bytes_, layout)
+        if key in legal_routes:
+            raise _error("legal_movement_routes", f"duplicate key {key!r}")
+        legal_routes.add(key)
+    if not legal_routes:
+        raise _error("legal_movement_routes", "cannot be empty")
+
+    for index, entry in enumerate(inputs):
+        if entry["semantics"] == "barrier":
+            barrier_routes = sorted(
+                route for route in legal_routes if route[0] == entry["tensor_id"]
+            )
+            if barrier_routes:
+                raise _error(
+                    f"inputs[{index}]",
+                    "barrier input must not have legal movement routes: "
+                    f"{barrier_routes}",
                 )
-                or 0
-            ),
-        }
-        all_operators = phase_operators["prefill"] + phase_operators["decode"]
-        profiles.append(
-            {
-                "profile_id": _profile_id(workload, "prefill-decode", ordinal),
-                "workload": workload,
-                "source": {
-                    "kind": "bifocal_candidate_capture",
-                    "schedule_call_indices": {
-                        "prefill": int(prefill_call),
-                        "decode": int(decode_call),
-                    },
-                    "score_formula": "(1-gamma)*eft_s + gamma*window_s + weight_reuse_bias_s + decode_amort_bias_s",
-                    "gamma": decode_group[0].get("gamma"),
-                    "available_metrics": available,
-                    "candidate_scores_complete": all(
-                        all(score.get("dops_score_s") is not None for score in op["candidates"].values())
-                        for op in all_operators
-                    ),
-                },
-                "phases": {
-                    "prefill": {
-                        "context_len": int(prefill_context),
-                        "token_idx": None,
-                        "operators": phase_operators["prefill"],
-                    },
-                    "decode": {
-                        "context_len": int(decode_context),
-                        "token_idx": token_idx,
-                        "operators": phase_operators["decode"],
-                    },
-                },
-            }
-        )
-    return profiles
-
-
-def _legacy_schedule_profiles(summary: Mapping[str, Any], cfg: Mapping[str, Any]) -> list[Dict[str, Any]]:
-    """Convert legacy timeline placement into explicitly unscored priors."""
-
-    prefill_schedule: Optional[Sequence[Mapping[str, Any]]] = None
-    prefill = summary.get("prefill_schedule")
-    if isinstance(prefill, list) and prefill:
-        prefill_schedule = prefill
-    decode_groups: list[Tuple[int, int, Sequence[Mapping[str, Any]]]] = []
-    decode_steps = summary.get("decode_steps")
-    if isinstance(decode_steps, list):
-        for step in decode_steps:
-            if not isinstance(step, Mapping):
-                continue
-            schedule = step.get("schedule")
-            if not isinstance(schedule, list) or not schedule:
-                continue
-            token = int(step.get("t", 0) or 0)
-            context = int(step.get("seq_len", int(cfg.get("prefill_len", 0) or 0) + token) or 0)
-            decode_groups.append((token, context, schedule))
-
-    if prefill_schedule is None or not decode_groups:
-        raise PriorValidationError(
-            "legacy best_summary needs both prefill_schedule and at least one materialized decode schedule"
-        )
-
-    def _legacy_operators(
-        schedule: Sequence[Mapping[str, Any]], phase: str
-    ) -> list[Dict[str, Any]]:
-        operators: list[Dict[str, Any]] = []
-        for item in schedule:
-            if not isinstance(item, Mapping):
-                continue
-            node_id = str(item.get("node_id", "") or "")
-            baseline = str(item.get("device", "") or "")
-            if not node_id or not baseline:
-                continue
-            operators.append(
-                {
-                    "node_id": node_id,
-                    "op_type": str(item.get("op_type", "") or ""),
-                    "phase": phase,
-                    "baseline_device": baseline,
-                    "legal_devices": [baseline],
-                    "candidates": {baseline: CandidatePrior.unavailable().to_dict()},
-                    "constraints": {"source": "legacy_schedule_only"},
-                    "dynamic_eligible": False,
-                    "weight": {
-                        "weight_id": None,
-                        "size_bytes": 0,
-                        "storage_layout": "UNKNOWN",
-                    },
-                }
+            continue
+        expected_routes = {
+            (
+                entry["tensor_id"],
+                residency["device_id"],
+                destination,
+                entry["bytes"],
+                residency["layout"],
             )
-        return operators
-
-    profiles: list[Dict[str, Any]] = []
-    prefill_context = int(cfg.get("prefill_len", 0) or 0)
-    prefill_operators = _legacy_operators(prefill_schedule, "prefill")
-    for ordinal, (token_idx, context_len, schedule) in enumerate(decode_groups):
-        decode_operators = _legacy_operators(schedule, "decode")
-        workload = {
-            "batch": int(cfg.get("batch", 1) or 1),
-            "context_len": context_len,
-            "token_idx": token_idx,
-            "dtype": cfg.get("dtype"),
-            "prefill_len": int(cfg.get("prefill_len", 0) or 0),
-            "decode_len": int(cfg.get("decode_len", 0) or 0),
-            "max_seq_len": int(
-                cfg.get(
-                    "max_seq_len",
-                    int(cfg.get("prefill_len", 0) or 0) + int(cfg.get("decode_len", 0) or 0),
-                )
-                or 0
-            ),
+            for residency in entry["source_residencies"]
+            for destination in entry["destination_devices"]
         }
-        if prefill_operators and decode_operators:
-            profiles.append(
-                {
-                    "profile_id": _profile_id(workload, "prefill-decode", ordinal),
-                    "workload": workload,
-                    "source": {
-                        "kind": "legacy_best_summary",
-                        "score_formula": None,
-                        "gamma": None,
-                        "available_metrics": [],
-                        "candidate_scores_complete": False,
-                        "warning": "Only the historical baseline placement was available; no alternative score was fabricated.",
-                    },
-                    "phases": {
-                        "prefill": {
-                            "context_len": prefill_context,
-                            "token_idx": None,
-                            "operators": prefill_operators,
-                        },
-                        "decode": {
-                            "context_len": int(context_len),
-                            "token_idx": token_idx,
-                            "operators": decode_operators,
-                        }
-                    },
-                }
+        missing_routes = sorted(expected_routes - legal_routes)
+        if missing_routes:
+            raise _error(
+                f"inputs[{index}]",
+                f"{entry['semantics']} input is missing legal movement routes: "
+                f"{missing_routes}",
             )
-    return profiles
+
+    movement_times: dict[tuple[str, str, str, int, str], float] = {}
+    for index, raw in enumerate(_array(root["t_move"], "t_move")):
+        field = f"t_move[{index}]"
+        entry = _object(raw, field)
+        _exact_fields(entry, _MOVE_FIELDS, field)
+        key = (
+            _string(entry["tensor_id"], f"{field}.tensor_id"),
+            _string(entry["source_device_id"], f"{field}.source_device_id"),
+            _string(entry["destination_device_id"], f"{field}.destination_device_id"),
+            _non_negative_int(entry["bytes"], f"{field}.bytes"),
+            _string(entry["layout"], f"{field}.layout"),
+        )
+        if key in movement_times:
+            raise _error("t_move", f"duplicate key {key!r}")
+        duration_s = _duration(entry["duration_s"], f"{field}.duration_s")
+        if key[1] == key[2] and duration_s != 0.0:
+            raise _error(
+                f"{field}.duration_s", "resident source/destination must be zero"
+            )
+        movement_times[key] = duration_s
+    _missing_keys(set(movement_times), legal_routes, "t_move", "legal movement route")
+
+    return DOPSPriorArtifact(
+        payload=_canonical_payload(root),
+        device_ids=tuple(device_ids),
+        operator_ids=tuple(operator_ids),
+        legal_devices=legal_devices,
+        inputs=tuple(inputs),
+        collective_contexts=collective_contexts,
+        placement=placement,
+        service_times=service_times,
+        movement_times=movement_times,
+    )
 
 
-def build_artifact(
+def _reject_duplicate_object_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise DOPSPriorValidationError(f"duplicate JSON object key: {key!r}")
+        result[key] = value
+    return result
+
+
+def _reject_nonstandard_number(value: str) -> None:
+    raise DOPSPriorValidationError(
+        f"non-finite JSON number is forbidden: {value}"
+    )
+
+
+def load_prior_artifact(path: str | Path) -> DOPSPriorArtifact:
+    source = Path(path).expanduser()
+    if not source.is_file():
+        raise FileNotFoundError(f"prior artifact does not exist: {source}")
+    try:
+        with source.open("r", encoding="utf-8") as handle:
+            payload = json.load(
+                handle,
+                object_pairs_hook=_reject_duplicate_object_keys,
+                parse_constant=_reject_nonstandard_number,
+            )
+    except json.JSONDecodeError as exc:
+        raise DOPSPriorValidationError(
+            f"invalid JSON in {source}: {exc}"
+        ) from exc
+    return validate_prior_artifact(payload)
+
+
+def write_prior_artifact(
+    artifact: DOPSPriorArtifact | Mapping[str, Any],
+    path: str | Path,
     *,
-    cfg: Mapping[str, Any],
-    graph: Any = None,
-    cluster: Any = None,
-    shape: Any = None,
-    candidate_records: Optional[Iterable[Mapping[str, Any]]] = None,
-    legacy_best_summary: Optional[Mapping[str, Any]] = None,
-    producer_revision: Optional[str] = None,
-    created_at: Optional[str] = None,
-) -> Dict[str, Any]:
-    provenance = build_provenance(
-        cfg=cfg,
-        graph=graph,
-        cluster=cluster,
-        shape=shape,
-        producer_revision=producer_revision,
+    overwrite: bool = False,
+) -> Path:
+    """Validate and atomically write the canonical offline handoff file."""
+
+    validated = (
+        artifact
+        if isinstance(artifact, DOPSPriorArtifact)
+        else validate_prior_artifact(artifact)
     )
-    records = list(candidate_records or [])
-    source_artifact = _source_artifact_document(
-        candidate_records=records or None,
-        legacy_best_summary=legacy_best_summary,
-    )
-    source_artifact_sha256 = hashlib.sha256(
-        _source_artifact_bytes(source_artifact)
-    ).hexdigest()
-    provenance["source_artifact_sha256"] = source_artifact_sha256
-    if records:
-        profiles = profiles_from_candidate_records(records, cfg=cfg)
-    elif legacy_best_summary is not None:
-        profiles = _legacy_schedule_profiles(legacy_best_summary, cfg)
-    else:
-        raise PriorValidationError("candidate_records or legacy_best_summary is required")
-    if not profiles:
-        raise PriorValidationError("no executable profiles could be produced")
-
-    identity_core = {
-        "config_digest": provenance["config"]["digest"],
-        "graph_digest": provenance["graph"]["digest"],
-        "hardware_digest": provenance["hardware"]["digest"],
-        "source_artifact_sha256": source_artifact_sha256,
-        "profiles": profiles,
-    }
-    artifact_id = "dops-prior-" + digest_json(identity_core)[:20]
-    provenance["source_artifact_path"] = f"{artifact_id}.source.json"
-    artifact = {
-        "schema": SCHEMA_NAME,
-        "schema_version": SCHEMA_VERSION,
-        "artifact_id": artifact_id,
-        "created_at": created_at or datetime.now(timezone.utc).isoformat(),
-        "semantics": {
-            "role": "offline_placement_prior",
-            "timeline_is_runtime_contract": False,
-            "online_device_selection_required": True,
-            "score_units": "seconds",
-        },
-        "provenance": provenance,
-        "profiles": profiles,
-    }
-    validate_artifact(artifact)
-    return artifact
-
-
-def _write_bytes_atomic(path: Path, payload: bytes) -> None:
+    destination = Path(path).expanduser()
+    if destination.exists() and not overwrite:
+        raise FileExistsError(
+            f"refusing to overwrite prior artifact: {destination}"
+        )
+    if not destination.parent.is_dir():
+        raise FileNotFoundError(
+            f"prior artifact output directory does not exist: {destination.parent}"
+        )
     descriptor, temporary_name = tempfile.mkstemp(
-        dir=path.parent,
-        prefix=f".{path.name}.",
+        dir=destination.parent,
+        prefix=f".{destination.name}.",
         suffix=".tmp",
     )
     temporary = Path(temporary_name)
     try:
-        with os.fdopen(descriptor, "wb") as stream:
-            stream.write(payload)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, path)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(
+                validated.payload,
+                handle,
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+                allow_nan=False,
+            )
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, destination)
     finally:
         if temporary.exists():
             temporary.unlink()
-
-
-def write_artifact(
-    artifact: Mapping[str, Any],
-    output: str | os.PathLike[str],
-    *,
-    candidate_records: Optional[Iterable[Mapping[str, Any]]] = None,
-    legacy_best_summary: Optional[Mapping[str, Any]] = None,
-) -> Path:
-    """Atomically write a prior and its source-verified adjacent sidecar."""
-
-    validate_artifact(artifact)
-    path = Path(output)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    source = _source_artifact_document(
-        candidate_records=candidate_records,
-        legacy_best_summary=legacy_best_summary,
-    )
-    source_bytes = _source_artifact_bytes(source)
-    actual_source_sha256 = hashlib.sha256(source_bytes).hexdigest()
-    provenance = artifact["provenance"]
-    expected_source_sha256 = str(provenance["source_artifact_sha256"])
-    if actual_source_sha256 != expected_source_sha256:
-        raise PriorValidationError(
-            "source artifact payload does not match provenance.source_artifact_sha256: "
-            f"expected {expected_source_sha256}, got {actual_source_sha256}"
-        )
-    source_name = _source_artifact_name(provenance["source_artifact_path"])
-    source_path = path.parent / source_name
-    if source_path == path:
-        raise PriorValidationError("prior output cannot overwrite its source artifact")
-
-    prior_bytes = (
-        json.dumps(_jsonable(artifact), ensure_ascii=False, indent=2) + "\n"
-    ).encode("utf-8")
-    # Publish the source first. A crash can leave an unreferenced sidecar, but
-    # can never publish a prior whose referenced source has not been written.
-    _write_bytes_atomic(source_path, source_bytes)
-    _write_bytes_atomic(path, prior_bytes)
-    load_artifact_bundle(path)
-    return path
-
-
-def load_json(path: str | os.PathLike[str]) -> Dict[str, Any]:
-    value = json.loads(Path(path).read_text(encoding="utf-8"))
-    if not isinstance(value, dict):
-        raise PriorValidationError(f"{path} must contain a JSON object")
-    return value
-
-
-def load_artifact_bundle(
-    path: str | os.PathLike[str],
-) -> Tuple[Dict[str, Any], Path]:
-    """Load a prior and fail closed unless its adjacent source hashes exactly."""
-
-    prior_path = Path(path).expanduser().resolve(strict=True)
-    artifact = load_json(prior_path)
-    validate_artifact(artifact)
-    provenance = artifact["provenance"]
-    source_name = _source_artifact_name(provenance["source_artifact_path"])
-    source_path = prior_path.parent / source_name
-    if not source_path.is_file():
-        raise PriorValidationError(
-            f"source artifact does not exist: {source_path}"
-        )
-    expected = str(provenance["source_artifact_sha256"])
-    actual = digest_file(source_path)
-    if actual != expected:
-        raise PriorValidationError(
-            "source artifact SHA256 mismatch: "
-            f"expected {expected}, got {actual} for {source_path}"
-        )
-    source_raw = load_json(source_path)
-    canonical = _source_artifact_bytes(source_raw)
-    if source_path.read_bytes() != canonical:
-        raise PriorValidationError(
-            f"source artifact is not in canonical JSON encoding: {source_path}"
-        )
-    return artifact, source_path
+    return destination
 
 
 __all__ = [
-    "CandidatePrior",
-    "PriorValidationError",
-    "SCHEMA_NAME",
-    "SCHEMA_VERSION",
-    "SOURCE_SCHEMA_NAME",
-    "SOURCE_SCHEMA_VERSION",
-    "SCORE_FIELDS",
-    "build_artifact",
-    "build_provenance",
-    "digest_file",
-    "digest_json",
-    "load_artifact_bundle",
-    "load_json",
-    "profiles_from_candidate_records",
-    "validate_artifact",
-    "write_artifact",
+    "PRIOR_SCHEMA",
+    "PRIOR_SCHEMA_VERSION",
+    "TIME_UNIT",
+    "DOPSPriorArtifact",
+    "DOPSPriorValidationError",
+    "load_prior_artifact",
+    "validate_prior_artifact",
+    "write_prior_artifact",
 ]

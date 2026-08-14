@@ -1,0 +1,292 @@
+{
+  "schema": "dops.hetinfer_prior.v1",
+  "schema_version": 1,
+  "graph_id": "minimal-fork-join-v1",
+  "workload_id": "minimal-b1-context8-fp16",
+  "time_unit": "seconds",
+  "devices": [
+    {"device_id": "GPU0"},
+    {"device_id": "PIM0"}
+  ],
+  "operators": [
+    {
+      "op_id": "source",
+      "dependencies": [],
+      "legal_devices": ["GPU0", "PIM0"]
+    },
+    {
+      "op_id": "left",
+      "dependencies": ["source"],
+      "legal_devices": ["GPU0", "PIM0"]
+    },
+    {
+      "op_id": "right",
+      "dependencies": ["source"],
+      "legal_devices": ["GPU0", "PIM0"]
+    },
+    {
+      "op_id": "join",
+      "dependencies": ["left", "right"],
+      "legal_devices": ["GPU0"]
+    },
+    {
+      "op_id": "finish",
+      "dependencies": ["join"],
+      "legal_devices": ["GPU0", "PIM0"]
+    }
+  ],
+  "inputs": [
+    {
+      "consumer_op_id": "source",
+      "producer_op_id": null,
+      "tensor_id": "request_input",
+      "semantics": "data",
+      "bytes": 4096,
+      "source_residencies": [
+        {"device_id": "GPU0", "layout": "row_major"},
+        {"device_id": "PIM0", "layout": "pim_blocked"}
+      ],
+      "destination_devices": ["GPU0", "PIM0"]
+    },
+    {
+      "consumer_op_id": "left",
+      "producer_op_id": "source",
+      "tensor_id": "fork_activation",
+      "semantics": "data",
+      "bytes": 8192,
+      "source_residencies": [
+        {"device_id": "GPU0", "layout": "row_major"}
+      ],
+      "destination_devices": ["GPU0", "PIM0"]
+    },
+    {
+      "consumer_op_id": "right",
+      "producer_op_id": "source",
+      "tensor_id": "fork_activation",
+      "semantics": "data",
+      "bytes": 8192,
+      "source_residencies": [
+        {"device_id": "GPU0", "layout": "row_major"}
+      ],
+      "destination_devices": ["GPU0", "PIM0"]
+    },
+    {
+      "consumer_op_id": "join",
+      "producer_op_id": "left",
+      "tensor_id": "left_activation",
+      "semantics": "collective_staging",
+      "bytes": 8192,
+      "source_residencies": [
+        {"device_id": "GPU0", "layout": "row_major"},
+        {"device_id": "PIM0", "layout": "pim_blocked"}
+      ],
+      "destination_devices": ["GPU0"]
+    },
+    {
+      "consumer_op_id": "join",
+      "producer_op_id": "right",
+      "tensor_id": "right_activation",
+      "semantics": "collective_staging",
+      "bytes": 8192,
+      "source_residencies": [
+        {"device_id": "GPU0", "layout": "row_major"},
+        {"device_id": "PIM0", "layout": "pim_blocked"}
+      ],
+      "destination_devices": ["PIM0"]
+    },
+    {
+      "consumer_op_id": "finish",
+      "producer_op_id": "join",
+      "tensor_id": "barrier:join:finish",
+      "semantics": "barrier",
+      "bytes": 0,
+      "source_residencies": [],
+      "destination_devices": []
+    }
+  ],
+  "collective_contexts": [
+    {
+      "op_id": "join",
+      "primitive": "ALLREDUCE",
+      "topology": "ring",
+      "canonical_device_id": "GPU0",
+      "participant_device_ids": ["GPU0", "PIM0"],
+      "output_device_ids": ["GPU0", "PIM0"],
+      "resource_device_ids": ["GPU0", "PIM0"],
+      "tensor_bytes": 8192,
+      "internal_transport": "included_in_t_service"
+    }
+  ],
+  "legal_movement_routes": [
+    {
+      "tensor_id": "request_input",
+      "source_device_id": "GPU0",
+      "destination_device_id": "GPU0",
+      "bytes": 4096,
+      "layout": "row_major"
+    },
+    {
+      "tensor_id": "request_input",
+      "source_device_id": "GPU0",
+      "destination_device_id": "PIM0",
+      "bytes": 4096,
+      "layout": "row_major"
+    },
+    {
+      "tensor_id": "request_input",
+      "source_device_id": "PIM0",
+      "destination_device_id": "GPU0",
+      "bytes": 4096,
+      "layout": "pim_blocked"
+    },
+    {
+      "tensor_id": "request_input",
+      "source_device_id": "PIM0",
+      "destination_device_id": "PIM0",
+      "bytes": 4096,
+      "layout": "pim_blocked"
+    },
+    {
+      "tensor_id": "fork_activation",
+      "source_device_id": "GPU0",
+      "destination_device_id": "PIM0",
+      "bytes": 8192,
+      "layout": "row_major"
+    },
+    {
+      "tensor_id": "left_activation",
+      "source_device_id": "GPU0",
+      "destination_device_id": "GPU0",
+      "bytes": 8192,
+      "layout": "row_major"
+    },
+    {
+      "tensor_id": "left_activation",
+      "source_device_id": "PIM0",
+      "destination_device_id": "GPU0",
+      "bytes": 8192,
+      "layout": "pim_blocked"
+    },
+    {
+      "tensor_id": "fork_activation",
+      "source_device_id": "GPU0",
+      "destination_device_id": "GPU0",
+      "bytes": 8192,
+      "layout": "row_major"
+    },
+    {
+      "tensor_id": "right_activation",
+      "source_device_id": "GPU0",
+      "destination_device_id": "PIM0",
+      "bytes": 8192,
+      "layout": "row_major"
+    },
+    {
+      "tensor_id": "right_activation",
+      "source_device_id": "PIM0",
+      "destination_device_id": "PIM0",
+      "bytes": 8192,
+      "layout": "pim_blocked"
+    }
+  ],
+  "expert_placement": [
+    {"op_id": "source", "device_id": "GPU0"},
+    {"op_id": "left", "device_id": "GPU0"},
+    {"op_id": "right", "device_id": "PIM0"},
+    {"op_id": "join", "device_id": "GPU0"},
+    {"op_id": "finish", "device_id": "GPU0"}
+  ],
+  "t_service": [
+    {"op_id": "source", "device_id": "GPU0", "duration_s": 0.0010},
+    {"op_id": "source", "device_id": "PIM0", "duration_s": 0.0018},
+    {"op_id": "left", "device_id": "GPU0", "duration_s": 0.0020},
+    {"op_id": "left", "device_id": "PIM0", "duration_s": 0.0014},
+    {"op_id": "right", "device_id": "GPU0", "duration_s": 0.0022},
+    {"op_id": "right", "device_id": "PIM0", "duration_s": 0.0013},
+    {"op_id": "join", "device_id": "GPU0", "duration_s": 0.0041},
+    {"op_id": "finish", "device_id": "GPU0", "duration_s": 0.0008},
+    {"op_id": "finish", "device_id": "PIM0", "duration_s": 0.0012}
+  ],
+  "t_move": [
+    {
+      "tensor_id": "request_input",
+      "source_device_id": "GPU0",
+      "destination_device_id": "GPU0",
+      "bytes": 4096,
+      "layout": "row_major",
+      "duration_s": 0.0
+    },
+    {
+      "tensor_id": "request_input",
+      "source_device_id": "GPU0",
+      "destination_device_id": "PIM0",
+      "bytes": 4096,
+      "layout": "row_major",
+      "duration_s": 0.0015
+    },
+    {
+      "tensor_id": "request_input",
+      "source_device_id": "PIM0",
+      "destination_device_id": "GPU0",
+      "bytes": 4096,
+      "layout": "pim_blocked",
+      "duration_s": 0.0027
+    },
+    {
+      "tensor_id": "request_input",
+      "source_device_id": "PIM0",
+      "destination_device_id": "PIM0",
+      "bytes": 4096,
+      "layout": "pim_blocked",
+      "duration_s": 0.0
+    },
+    {
+      "tensor_id": "fork_activation",
+      "source_device_id": "GPU0",
+      "destination_device_id": "PIM0",
+      "bytes": 8192,
+      "layout": "row_major",
+      "duration_s": 0.0025
+    },
+    {
+      "tensor_id": "fork_activation",
+      "source_device_id": "GPU0",
+      "destination_device_id": "GPU0",
+      "bytes": 8192,
+      "layout": "row_major",
+      "duration_s": 0.0
+    },
+    {
+      "tensor_id": "left_activation",
+      "source_device_id": "GPU0",
+      "destination_device_id": "GPU0",
+      "bytes": 8192,
+      "layout": "row_major",
+      "duration_s": 0.0
+    },
+    {
+      "tensor_id": "left_activation",
+      "source_device_id": "PIM0",
+      "destination_device_id": "GPU0",
+      "bytes": 8192,
+      "layout": "pim_blocked",
+      "duration_s": 0.0031
+    },
+    {
+      "tensor_id": "right_activation",
+      "source_device_id": "GPU0",
+      "destination_device_id": "PIM0",
+      "bytes": 8192,
+      "layout": "row_major",
+      "duration_s": 0.0025
+    },
+    {
+      "tensor_id": "right_activation",
+      "source_device_id": "PIM0",
+      "destination_device_id": "PIM0",
+      "bytes": 8192,
+      "layout": "pim_blocked",
+      "duration_s": 0.0
+    }
+  ]
+}

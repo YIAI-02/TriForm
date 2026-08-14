@@ -260,7 +260,7 @@ def _build_config(
     config["npu_backend"] = "fast"
     config["hardware_json"] = _relative_path(hardware_out, config_out)
     config["gpu_runtime_model_json"] = _relative_path(runtime_model_out, config_out)
-    config["experiment_label"] = "hetinfer_gpu0_pim0_prior_grid_gpu_calibrated_v1"
+    config["experiment_label"] = "hetinfer_gpu0_pim0_static_prior_gpu_calibrated_v1"
     pim_kind = (
         "analytical fast-mode"
         if bool(config.get("pim_fast_mode", False))

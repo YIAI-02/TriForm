@@ -8,14 +8,14 @@ from .storage import (
     _artifact_tag_token,
     _best_summary_config_snapshot,
     _build_uniform_weight_storage_map,
+    _canonicalize_hetinfer_export_paths,
     _collect_weight_ids_from_graph,
     _normalize_weight_storage_fmt,
+    _resolve_hetinfer_atlas_manifest_output,
     _resolve_hetinfer_prior_output,
     _storage_mode_display_name,
     _weight_map_summary,
 )
-from hetinfer_prior import build_artifact as build_hetinfer_prior_artifact
-from hetinfer_prior import write_artifact as write_hetinfer_prior_artifact
 from .graph_utils import _clone_graph, _fallback_npu_to_cpu_if_needed, _fallback_pim_to_cpu_if_needed
 from .baselines import PD_BASELINES, _BASELINE_REGISTRY, _apply_policy_on_graph
 from .kv_policy import (
@@ -26,6 +26,12 @@ from .kv_policy import (
     auto_select_kv_policy,
 )
 from .simulator import _make_scheduler, simulate_decode_progressive, simulate_prefill
+from hetinfer_prior_export import (
+    export_atlas_timing_request,
+    export_prior_artifact,
+    load_atlas_timings,
+    snapshots_require_atlas,
+)
 
 def _eval_one_baseline(
     cfg: Dict,
@@ -231,6 +237,20 @@ def _run_strategy_once(
 
     strategy_token = _normalize_algo_name(strategy)
     strategy_name = _display_policy_name(strategy_token)
+    export_requested = bool(
+        cfg.get("hetinfer_prior_out") not in (None, "")
+        or cfg.get("hetinfer_atlas_manifest_out") not in (None, "")
+    )
+    if export_requested:
+        if strategy_token != "Bifocal":
+            raise ValueError(
+                "Het-Infer prior/ATLAS manifest export requires strategy=Bifocal"
+            )
+        if cfg.get("scheduler_seed") is None:
+            raise ValueError(
+                "Het-Infer two-stage export requires an explicit scheduler_seed "
+                "so the manifest and timing-consumption passes are identical"
+            )
 
     # If there is no NPU in the hardware topology, fall back NPU ops to CPU.
     _fallback_npu_to_cpu_if_needed(graph, cluster)
@@ -315,8 +335,11 @@ def _run_strategy_once(
             buffer=buffer_mgr,
             rand_seed=cfg.get("scheduler_seed"),
         )
-        if cfg.get('hetinfer_prior_out') not in (None, ''):
-            enable_capture = getattr(sched, 'enable_hetinfer_candidate_capture', None)
+        if (
+            cfg.get('hetinfer_prior_out') not in (None, '')
+            or cfg.get('hetinfer_atlas_manifest_out') not in (None, '')
+        ):
+            enable_capture = getattr(sched, 'enable_hetinfer_prior_capture', None)
             if callable(enable_capture):
                 enable_capture(True)
         sched.reset_state()
@@ -377,40 +400,82 @@ def _run_strategy_once(
         pim_trace = None
 
     hetinfer_prior_path = None
+    hetinfer_atlas_manifest_path = None
     requested_prior_out = cfg.get("hetinfer_prior_out")
-    if requested_prior_out not in (None, "") and strategy_token == "Bifocal":
-        exporter = getattr(best_sched, "export_hetinfer_candidate_records", None)
-        if not callable(exporter):
-            raise RuntimeError("Bifocal scheduler does not expose Het-Infer candidate records")
-        candidate_records = list(exporter() or [])
-        if not candidate_records:
-            raise RuntimeError("Bifocal produced no exact candidate records for Het-Infer export")
-        output_path = _resolve_hetinfer_prior_output(
-            str(requested_prior_out),
-            result_dir=str(cfg.get("result_dir", "./output")),
-            tag=f"{int(cfg.get('prefill_len', 0) or 0)}x{int(cfg.get('decode_len', 0) or 0)}",
+    requested_manifest_out = cfg.get("hetinfer_atlas_manifest_out")
+    if (
+        requested_prior_out not in (None, "")
+        or requested_manifest_out not in (None, "")
+    ) and strategy_token == "Bifocal":
+        snapshots = list(best_sched.export_hetinfer_prior_snapshots() or [])
+        if not snapshots:
+            raise RuntimeError("Bifocal produced no completed static-prior snapshots")
+        output_tag = (
+            f"{int(cfg.get('prefill_len', 0) or 0)}x"
+            f"{int(cfg.get('decode_len', 0) or 0)}"
         )
-        if output_path is None:
-            raise RuntimeError("failed to resolve Het-Infer prior output path")
-        prior_cfg = dict(cfg)
-        # ``cfg['algo']`` may be a multi-algorithm list. Provenance must name
-        # the concrete scheduler whose candidate scores are in this file.
-        prior_cfg["algo"] = strategy_token
-        artifact = build_hetinfer_prior_artifact(
-            cfg=prior_cfg,
-            graph=graph_kv,
-            cluster=cluster,
-            shape=shape,
-            candidate_records=candidate_records,
-        )
-        hetinfer_prior_path = str(
-            write_hetinfer_prior_artifact(
-                artifact,
-                output_path,
-                candidate_records=candidate_records,
+        manifest_path = (
+            None
+            if requested_manifest_out in (None, "")
+            else _resolve_hetinfer_atlas_manifest_output(
+                str(requested_manifest_out),
+                result_dir=str(cfg.get("result_dir", "./output")),
+                tag=output_tag,
             )
         )
-        _debug(f"[Het-Infer] Saved versioned placement prior to: {hetinfer_prior_path}")
+        output_path = (
+            None
+            if requested_prior_out in (None, "")
+            else _resolve_hetinfer_prior_output(
+                str(requested_prior_out),
+                result_dir=str(cfg.get("result_dir", "./output")),
+                tag=output_tag,
+            )
+        )
+        atlas_path, manifest_path, output_path = (
+            _canonicalize_hetinfer_export_paths(
+                atlas_timings=cfg.get("hetinfer_atlas_timings"),
+                atlas_manifest_out=manifest_path,
+                prior_out=output_path,
+            )
+        )
+
+        # Parse the immutable timing input before opening either output with
+        # overwrite enabled.  The canonical alias check above guarantees that
+        # neither output can name the input through a relative path/symlink.
+        atlas = (
+            None
+            if atlas_path is None
+            else load_atlas_timings(str(atlas_path))
+        )
+
+        if manifest_path is not None:
+            hetinfer_atlas_manifest_path = str(
+                export_atlas_timing_request(
+                    cfg=cfg,
+                    snapshots=snapshots,
+                    output=manifest_path,
+                    overwrite=True,
+                )
+            )
+            _debug(
+                "[Het-Infer] Saved ATLAS timing request to: "
+                f"{hetinfer_atlas_manifest_path}"
+            )
+        if output_path is not None:
+            if snapshots_require_atlas(snapshots) and atlas is None:
+                raise ValueError(
+                    "--hetinfer-atlas-timings is required for the PIM keys in "
+                    "this schedule; generate --hetinfer-atlas-manifest-out first"
+                )
+            hetinfer_prior_path = str(export_prior_artifact(
+                cfg=cfg,
+                snapshots=snapshots,
+                atlas_timings=atlas,
+                output=output_path,
+                overwrite=True,
+            ))
+            _debug(f"[Het-Infer] Saved static prior to: {hetinfer_prior_path}")
 
     return {
         "policy": _policy_label(strategy_token),
@@ -434,6 +499,7 @@ def _run_strategy_once(
         "weight_storage_map_summary": _weight_map_summary(_collect_weight_ids_from_graph(graph), weight_fmt_map),
         "label": best_label,
         "hetinfer_prior_path": hetinfer_prior_path,
+        "hetinfer_atlas_manifest_path": hetinfer_atlas_manifest_path,
     }
 
 def _ensure_dir(p:Path):
@@ -495,6 +561,10 @@ def _save_best_json(algo_dir: Path, tag: str, policy: str, *, times: Dict, prefi
         payload['pim_strategy_scores'] = times.get('pim_strategy_scores')
     if times.get('hetinfer_prior_path'):
         payload['hetinfer_prior_path'] = str(times.get('hetinfer_prior_path'))
+    if times.get('hetinfer_atlas_manifest_path'):
+        payload['hetinfer_atlas_manifest_path'] = str(
+            times.get('hetinfer_atlas_manifest_path')
+        )
     path = algo_dir / f"best_summary_{tag}.json"
     with open(path,'w', encoding='utf-8') as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
@@ -557,8 +627,20 @@ def evaluate_suite(cfg: Dict, *, algos: List[str], baselines: List[str], result_
         if token and token not in alist:
             alist.append(token)
 
-    if cfg.get('hetinfer_prior_out') not in (None, '') and 'Bifocal' not in alist:
-        raise ValueError('--hetinfer-prior-out requires Bifocal in the evaluate algorithm list')
+    if (
+        cfg.get('hetinfer_prior_out') not in (None, '')
+        or cfg.get('hetinfer_atlas_manifest_out') not in (None, '')
+    ):
+        if 'Bifocal' not in alist:
+            raise ValueError(
+                'Het-Infer prior/ATLAS manifest export requires Bifocal in the '
+                'evaluate algorithm list'
+            )
+        if cfg.get('scheduler_seed') is None:
+            raise ValueError(
+                'Het-Infer two-stage export requires an explicit scheduler_seed '
+                'so the manifest and timing-consumption passes are identical'
+            )
 
     for a in alist:
         algo_dir = _ensure_dir(base_dir / _policy_dir_name(a))
@@ -567,6 +649,10 @@ def evaluate_suite(cfg: Dict, *, algos: List[str], baselines: List[str], result_
         except Exception:
             logger.error(f"Failed to setup logging for algorithm '{a}'")
         cfg_a = dict(cfg)
+        if a != 'Bifocal':
+            cfg_a.pop('hetinfer_prior_out', None)
+            cfg_a.pop('hetinfer_atlas_timings', None)
+            cfg_a.pop('hetinfer_atlas_manifest_out', None)
         cfg_a['simulation_log_file'] = str(algo_dir / f"pim_sim_{tag}.txt")
         cfg_a['result_dir'] = str(algo_dir)
         res = _run_strategy_once(a, cfg_a, shared_graph=shared_graph, shared_shape=shared_shape)
@@ -588,6 +674,9 @@ def evaluate_suite(cfg: Dict, *, algos: List[str], baselines: List[str], result_
             'kv_total_bytes': int(res.get('kv_total_bytes', 0) or 0),
             'pim_weight_capacity_bytes': int(res.get('pim_weight_capacity_bytes', 0) or 0),
             'hetinfer_prior_path': res.get('hetinfer_prior_path'),
+            'hetinfer_atlas_manifest_path': res.get(
+                'hetinfer_atlas_manifest_path'
+            ),
             **{k: res[k] for k in ('prefill_time_s', 'decode_time_s', 'total_time_s')},
         })
 

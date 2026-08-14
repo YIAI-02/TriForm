@@ -57,6 +57,8 @@ def main():
             'best_summary_json',
             'weight_format_json',
             'hetinfer_prior_out',
+            'hetinfer_atlas_timings',
+            'hetinfer_atlas_manifest_out',
             'npu_backend',
             'pim_fast_mode',
             'pim_weight_load_overlap_ratio',

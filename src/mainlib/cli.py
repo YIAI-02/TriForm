@@ -14,6 +14,7 @@ _INPUT_PATH_KEYS = {
     'workload_path',
     'request_trace_path',
     'gpu_runtime_model_json',
+    'hetinfer_atlas_timings',
 }
 
 _OUTPUT_PATH_KEYS = {
@@ -23,6 +24,7 @@ _OUTPUT_PATH_KEYS = {
     'all_passes_json',
     'best_summary_json',
     'hetinfer_prior_out',
+    'hetinfer_atlas_manifest_out',
     'weight_format_json',
     'baseline_out',
     'serve_out',
@@ -81,6 +83,18 @@ def parse_args():
         type=str,
         help='Write a separate dops.hetinfer_prior.v1 artifact (Bifocal only). A directory gets an automatic filename.',
     )
+    sp_eval.add_argument(
+        '--hetinfer-atlas-timings',
+        dest='hetinfer_atlas_timings',
+        type=str,
+        help='Precomputed ATLAS cycles/frequency JSON required for PIM service/routes.',
+    )
+    sp_eval.add_argument(
+        '--hetinfer-atlas-manifest-out',
+        dest='hetinfer_atlas_manifest_out',
+        type=str,
+        help='First pass: write the exact PIM service/route keys that ATLAS must measure.',
+    )
 
     sp_ws = sub.add_parser('weight-suggest', help='Run multi-pass SA to suggest weight formats and fixed baseline experiments.')
     sp_ws.add_argument('--config', required=True, type=str, help='Path to a JSON config with run parameters.')
@@ -131,6 +145,18 @@ def parse_args():
         dest='hetinfer_prior_out',
         type=str,
         help='After choosing the best layout, re-evaluate it with Bifocal and write dops.hetinfer_prior.v1.',
+    )
+    sp_ws.add_argument(
+        '--hetinfer-atlas-timings',
+        dest='hetinfer_atlas_timings',
+        type=str,
+        help='Precomputed ATLAS cycles/frequency JSON required for PIM service/routes.',
+    )
+    sp_ws.add_argument(
+        '--hetinfer-atlas-manifest-out',
+        dest='hetinfer_atlas_manifest_out',
+        type=str,
+        help='First pass: write the exact PIM service/route keys that ATLAS must measure.',
     )
     sp_ws.add_argument(
         '--format_outer_max_iters',

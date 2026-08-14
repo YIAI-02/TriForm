@@ -1,662 +1,476 @@
 from __future__ import annotations
 
 import copy
-import hashlib
 import json
-import os
 from pathlib import Path
-import shutil
-import subprocess
 import sys
 import tempfile
 import unittest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SRC_ROOT = REPO_ROOT / "src"
+if (REPO_ROOT / "src").is_dir():
+    SRC_ROOT = REPO_ROOT / "src"
+    FIXTURE = REPO_ROOT / "tests" / "fixtures" / "dops_hetinfer_prior_v1_minimal.json"
+    SCHEMA = REPO_ROOT / "schemas" / "dops.hetinfer_prior.v1.schema.json"
+else:
+    SRC_ROOT = Path(__file__).resolve().parent
+    FIXTURE = SRC_ROOT / "dops_hetinfer_prior_v1_minimal.json"
+    SCHEMA = SRC_ROOT / "dops.hetinfer_prior.v1.schema.json"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from hardware import Cluster, DeviceSpec  # noqa: E402
 from hetinfer_prior import (  # noqa: E402
-    PriorValidationError,
-    build_artifact,
-    load_artifact_bundle,
-    validate_artifact,
-    write_artifact,
+    PRIOR_SCHEMA,
+    DOPSPriorValidationError,
+    load_prior_artifact,
+    validate_prior_artifact,
+    write_prior_artifact,
 )
-from mainlib.storage import _best_summary_config_snapshot  # noqa: E402
-from mainlib.runner import _comparison_cfg_without_prior_export  # noqa: E402
-from model_parser import build_graph  # noqa: E402
-from task_graph import TaskGraph, TaskNode  # noqa: E402
 
 
-def _cfg() -> dict:
-    return {
-        "model_family": "llama",
-        "model_variant": "7b",
-        "model_revision": "test-model-revision",
-        "dtype": "fp16",
-        "batch": 4,
-        "max_batch_size": 8,
-        "prefill_len": 128,
-        "decode_len": 32,
-        "max_seq_len": 160,
-        "tp": 2,
-        "tp_qkv": 2,
-        "tp_ffn": 2,
-        "pp": 1,
-        "ep": 1,
-        "algo": "Bifocal",
-    }
 
+class DOPSPriorContractTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
 
-def _graph() -> TaskGraph:
-    graph = TaskGraph()
-    graph.add_node(
-        TaskNode(
-            "L0_FFN1",
-            "FFN_W1",
-            weight_id="layers.0.ffn.w1",
-            weight_size=4096,
-            allowed={"npu": True, "pim": True, "cpu": False},
+    def test_shared_fork_join_fixture_is_complete_and_queryable(self) -> None:
+        artifact = load_prior_artifact(FIXTURE)
+        self.assertEqual(PRIOR_SCHEMA, "dops.hetinfer_prior.v1")
+        self.assertEqual(artifact.device_ids, ("GPU0", "PIM0"))
+        self.assertEqual(
+            artifact.expert_placement,
+            {
+                "source": "GPU0",
+                "left": "GPU0",
+                "right": "PIM0",
+                "join": "GPU0",
+                "finish": "GPU0",
+            },
         )
-    )
-    return graph
-
-
-def _cluster() -> Cluster:
-    cluster = Cluster()
-    cluster.add_device(DeviceSpec("CPU0", "cpu", 1.0, 100.0, 64.0))
-    cluster.add_device(DeviceSpec("NPU0", "npu", 100.0, 900.0, 80.0))
-    cluster.add_device(DeviceSpec("PIM0", "pim", 10.0, 1200.0, 16.0, pim_type="3d-dram"))
-    cluster.connect("CPU0", "NPU0", 64.0)
-    cluster.connect("CPU0", "PIM0", 32.0)
-    return cluster
-
-
-def _scores(npu_score: float, pim_score: float) -> dict:
-    def one(score: float, compute: float, reload: float) -> dict:
-        return {
-            "dops_score_s": score,
-            "eft_s": score + 0.001,
-            "window_s": score + 0.002,
-            "compute_s": compute,
-            "reload_s": reload,
-            "comm_s": 0.0002,
-            "weight_reuse_bias_s": -0.0001,
-            "decode_amort_bias_s": 0.0,
+        operators = {entry["op_id"]: entry for entry in self.payload["operators"]}
+        self.assertEqual(operators["left"]["dependencies"], ["source"])
+        self.assertEqual(operators["right"]["dependencies"], ["source"])
+        self.assertEqual(operators["join"]["dependencies"], ["left", "right"])
+        self.assertEqual(operators["finish"]["dependencies"], ["join"])
+        self.assertEqual(len(artifact.inputs), 6)
+        self.assertEqual(
+            {entry["semantics"] for entry in artifact.inputs_for("join")},
+            {"collective_staging"},
+        )
+        self.assertEqual(
+            artifact.inputs_for("source")[0]["producer_op_id"], None
+        )
+        self.assertEqual(
+            artifact.inputs_for("source")[0]["source_residencies"],
+            [
+                {"device_id": "GPU0", "layout": "row_major"},
+                {"device_id": "PIM0", "layout": "pim_blocked"},
+            ],
+        )
+        routes = {
+            (
+                entry["tensor_id"],
+                entry["source_device_id"],
+                entry["destination_device_id"],
+                entry["bytes"],
+                entry["layout"],
+            )
+            for entry in self.payload["legal_movement_routes"]
         }
+        self.assertEqual(
+            routes,
+            {
+                ("request_input", "GPU0", "GPU0", 4096, "row_major"),
+                ("request_input", "GPU0", "PIM0", 4096, "row_major"),
+                ("request_input", "PIM0", "GPU0", 4096, "pim_blocked"),
+                ("request_input", "PIM0", "PIM0", 4096, "pim_blocked"),
+                ("fork_activation", "GPU0", "GPU0", 8192, "row_major"),
+                ("fork_activation", "GPU0", "PIM0", 8192, "row_major"),
+                ("left_activation", "GPU0", "GPU0", 8192, "row_major"),
+                ("left_activation", "PIM0", "GPU0", 8192, "pim_blocked"),
+                ("right_activation", "GPU0", "PIM0", 8192, "row_major"),
+                ("right_activation", "PIM0", "PIM0", 8192, "pim_blocked"),
+            },
+        )
+        for operator in self.payload["operators"]:
+            for device in operator["legal_devices"]:
+                self.assertGreaterEqual(
+                    artifact.service_time_s(operator["op_id"], device), 0.0
+                )
+        self.assertEqual(
+            artifact.movement_time_s(
+                "request_input", "GPU0", "GPU0", 4096, "row_major"
+            ),
+            0.0,
+        )
+        self.assertEqual(
+            artifact.movement_time_s(
+                "fork_activation", "GPU0", "PIM0", 8192, "row_major"
+            ),
+            0.0025,
+        )
 
-    return {
-        "NPU0": one(npu_score, 0.0012, 0.0004),
-        "PIM0": one(pim_score, 0.0009, 0.0008),
-    }
+    def test_collective_context_has_fixed_staging_and_atomic_service(self) -> None:
+        artifact = validate_prior_artifact(self.payload)
+        context = artifact.collective_context("join")
+        self.assertEqual(context["primitive"], "ALLREDUCE")
+        self.assertEqual(context["topology"], "ring")
+        self.assertEqual(context["canonical_device_id"], "GPU0")
+        self.assertEqual(
+            context["internal_transport"], "included_in_t_service"
+        )
+        staging = artifact.inputs_for("join")
+        self.assertEqual(
+            {entry["producer_op_id"]: entry["destination_devices"] for entry in staging},
+            {"left": ["GPU0"], "right": ["PIM0"]},
+        )
+        self.assertEqual(
+            {
+                device
+                for entry in staging
+                for device in entry["destination_devices"]
+            },
+            set(context["participant_device_ids"]),
+        )
+        route_keys = {
+            (
+                entry["tensor_id"],
+                entry["source_device_id"],
+                entry["destination_device_id"],
+                entry["bytes"],
+                entry["layout"],
+            )
+            for entry in self.payload["legal_movement_routes"]
+        }
+        for entry in staging:
+            expected_closure = {
+                (
+                    entry["tensor_id"],
+                    source["device_id"],
+                    destination,
+                    entry["bytes"],
+                    source["layout"],
+                )
+                for source in entry["source_residencies"]
+                for destination in entry["destination_devices"]
+            }
+            self.assertTrue(expected_closure.issubset(route_keys))
+        self.assertEqual(artifact.legal_devices["join"], ("GPU0",))
+        self.assertEqual(artifact.service_time_s("join", "GPU0"), 0.0041)
 
+    def test_writer_round_trip_preserves_inputs_and_all_three_tables(self) -> None:
+        expected = validate_prior_artifact(self.payload).payload
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "prior.json"
+            write_prior_artifact(self.payload, output)
+            reloaded = load_prior_artifact(output)
+        self.assertEqual(reloaded.payload["inputs"], expected["inputs"])
+        self.assertEqual(
+            reloaded.payload["expert_placement"], expected["expert_placement"]
+        )
+        self.assertEqual(reloaded.payload["t_service"], expected["t_service"])
+        self.assertEqual(reloaded.payload["t_move"], expected["t_move"])
 
-def _record(phase: str, call: int, seq_len: int, token_idx: int | None) -> dict:
-    return {
-        "schedule_call_index": call,
-        "node_id": "L0_FFN1",
-        "op_type": "FFN_W1",
-        "phase": phase,
-        "batch": 4,
-        "seq_len": seq_len,
-        "token_idx": token_idx,
-        "baseline_device": "NPU0",
-        "legal_devices": ["NPU0", "PIM0"],
-        "candidates": _scores(0.003, 0.004),
-        "gamma": 0.25,
-        "constraints": {"operator_allowed_device_types": {"npu": True, "pim": True}},
-        "dynamic_eligible": True,
-        "weight": {
-            "weight_id": "layers.0.ffn.w1",
-            "size_bytes": 4096,
-            "storage_layout": "NZ",
-        },
-    }
+    def test_machine_readable_schema_matches_contract_version(self) -> None:
+        schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
+        self.assertEqual(schema["properties"]["schema"]["const"], PRIOR_SCHEMA)
+        self.assertEqual(schema["properties"]["schema_version"]["const"], 1)
+        self.assertIn("inputs", schema["required"])
+        self.assertIn("collective_contexts", schema["required"])
+        self.assertFalse(schema["$defs"]["input"]["additionalProperties"])
+        self.assertIn(
+            "destination_devices", schema["$defs"]["input"]["required"]
+        )
+        self.assertEqual(
+            schema["$defs"]["collectiveContext"]["properties"]
+            ["internal_transport"]["const"],
+            "included_in_t_service",
+        )
+        self.assertFalse(
+            schema["$defs"]["sourceResidency"]["additionalProperties"]
+        )
+        self.assertFalse(schema["additionalProperties"])
 
+    def test_rejects_invalid_ambiguous_or_unbound_inputs(self) -> None:
+        cases: list[tuple[str, dict]] = []
 
-class HetInferPriorTests(unittest.TestCase):
-    def test_native_evaluate_cli_writes_scored_prior_bundle(self) -> None:
-        """Exercise the real DOPS evaluate path, not the legacy exporter."""
+        duplicate = copy.deepcopy(self.payload)
+        duplicate["inputs"].append(copy.deepcopy(duplicate["inputs"][0]))
+        cases.append(("duplicate input key", duplicate))
 
+        unexpected_field = copy.deepcopy(self.payload)
+        unexpected_field["inputs"][0]["input_id"] = "not-in-v1"
+        cases.append(("unexpected fields", unexpected_field))
+
+        unexpected_residency_field = copy.deepcopy(self.payload)
+        unexpected_residency_field["inputs"][0]["source_residencies"][0][
+            "kind"
+        ] = "GPU"
+        cases.append(("unexpected fields", unexpected_residency_field))
+
+        unknown_consumer = copy.deepcopy(self.payload)
+        unknown_consumer["inputs"][0]["consumer_op_id"] = "unknown"
+        cases.append(("unknown consumer_op_id", unknown_consumer))
+
+        not_dependency = copy.deepcopy(self.payload)
+        not_dependency["inputs"][1]["producer_op_id"] = "right"
+        cases.append(("is not a dependency", not_dependency))
+
+        missing_dependency = copy.deepcopy(self.payload)
+        missing_dependency["inputs"] = [
+            entry
+            for entry in missing_dependency["inputs"]
+            if not (
+                entry["consumer_op_id"] == "join"
+                and entry["producer_op_id"] == "left"
+            )
+        ]
+        cases.append(("declared operator dependency", missing_dependency))
+
+        unknown_source = copy.deepcopy(self.payload)
+        unknown_source["inputs"][0]["source_residencies"] = [
+            {"device_id": "GPU9", "layout": "row_major"}
+        ]
+        cases.append(("unknown devices", unknown_source))
+
+        empty_data_sources = copy.deepcopy(self.payload)
+        empty_data_sources["inputs"][0]["source_residencies"] = []
+        cases.append(("data semantics requires non-empty", empty_data_sources))
+
+        incomplete_data_destinations = copy.deepcopy(self.payload)
+        incomplete_data_destinations["inputs"][0]["destination_devices"] = [
+            "GPU0"
+        ]
+        cases.append(
+            ("data inputs must target exactly", incomplete_data_destinations)
+        )
+
+        external_collective = copy.deepcopy(self.payload)
+        external_collective["inputs"][0]["semantics"] = "collective_staging"
+        cases.append(("external input", external_collective))
+
+        unknown_semantics = copy.deepcopy(self.payload)
+        unknown_semantics["inputs"][0]["semantics"] = "control"
+        cases.append(("must be one of", unknown_semantics))
+
+        duplicate_source = copy.deepcopy(self.payload)
+        duplicate_source["inputs"][0]["source_residencies"].append(
+            {"device_id": "GPU0", "layout": "column_major"}
+        )
+        cases.append(("duplicate device_id", duplicate_source))
+
+        malformed_barrier = copy.deepcopy(self.payload)
+        malformed_barrier["inputs"][5]["bytes"] = 1
+        cases.append(("barrier semantics requires", malformed_barrier))
+
+        inconsistent_tensor = copy.deepcopy(self.payload)
+        inconsistent_tensor["inputs"][2]["bytes"] = 4096
+        cases.append(("tensor_id must bind", inconsistent_tensor))
+
+        missing_data_route = copy.deepcopy(self.payload)
+        missing_data_route["legal_movement_routes"] = [
+            entry
+            for entry in missing_data_route["legal_movement_routes"]
+            if not (
+                entry["tensor_id"] == "request_input"
+                and entry["destination_device_id"] == "PIM0"
+            )
+        ]
+        cases.append(("data input is missing legal movement routes", missing_data_route))
+
+        for expected, payload in cases:
+            with self.subTest(expected=expected):
+                with self.assertRaisesRegex(DOPSPriorValidationError, expected):
+                    validate_prior_artifact(payload)
+
+    def test_barrier_has_no_route_and_collective_only_exposes_staging_routes(self) -> None:
+        route_tensors = {
+            entry["tensor_id"] for entry in self.payload["legal_movement_routes"]
+        }
+        self.assertNotIn("barrier:join:finish", route_tensors)
+        self.assertFalse(any(tensor.startswith("collective_internal:") for tensor in route_tensors))
+        artifact = validate_prior_artifact(self.payload)
+        self.assertEqual(
+            [entry["semantics"] for entry in artifact.inputs_for("finish")],
+            ["barrier"],
+        )
+
+        barrier_route = copy.deepcopy(self.payload)
+        route = {
+            "tensor_id": "barrier:join:finish",
+            "source_device_id": "GPU0",
+            "destination_device_id": "GPU0",
+            "bytes": 0,
+            "layout": "barrier",
+        }
+        barrier_route["legal_movement_routes"].append(route)
+        barrier_route["t_move"].append({**route, "duration_s": 0.0})
+        with self.assertRaisesRegex(
+            DOPSPriorValidationError, "barrier input must not have"
+        ):
+            validate_prior_artifact(barrier_route)
+
+    def test_rejects_incomplete_collective_context_and_double_count_marker(self) -> None:
+        cases: list[tuple[str, dict]] = []
+
+        missing_staging_route = copy.deepcopy(self.payload)
+        missing_staging_route["legal_movement_routes"] = [
+            entry
+            for entry in missing_staging_route["legal_movement_routes"]
+            if not (
+                entry["tensor_id"] == "left_activation"
+                and entry["source_device_id"] == "PIM0"
+                and entry["destination_device_id"] == "GPU0"
+            )
+        ]
+        cases.append(("collective_staging input is missing legal movement routes", missing_staging_route))
+
+        wrong_participants = copy.deepcopy(self.payload)
+        wrong_participants["collective_contexts"][0]["participant_device_ids"] = [
+            "GPU0"
+        ]
+        cases.append(("staging device is not a collective participant", wrong_participants))
+
+        double_count_marker = copy.deepcopy(self.payload)
+        double_count_marker["collective_contexts"][0]["internal_transport"] = (
+            "separate_t_move"
+        )
+        cases.append(("must equal 'included_in_t_service'", double_count_marker))
+
+        for expected, payload in cases:
+            with self.subTest(expected=expected):
+                with self.assertRaisesRegex(DOPSPriorValidationError, expected):
+                    validate_prior_artifact(payload)
+
+    def test_rejects_duplicate_missing_unknown_and_illegal_placement(self) -> None:
+        cases: list[tuple[str, dict]] = []
+        duplicate = copy.deepcopy(self.payload)
+        duplicate["expert_placement"].append(
+            copy.deepcopy(duplicate["expert_placement"][0])
+        )
+        cases.append(("duplicate op_id", duplicate))
+        missing = copy.deepcopy(self.payload)
+        missing["expert_placement"].pop()
+        cases.append(("must cover every operator", missing))
+        unknown = copy.deepcopy(self.payload)
+        unknown["expert_placement"][0]["op_id"] = "unknown"
+        cases.append(("unknown op_id", unknown))
+        illegal = copy.deepcopy(self.payload)
+        illegal["operators"][0]["legal_devices"] = ["GPU0"]
+        illegal["inputs"][0]["destination_devices"] = ["GPU0"]
+        illegal["expert_placement"][0]["device_id"] = "PIM0"
+        illegal["t_service"] = [
+            entry
+            for entry in illegal["t_service"]
+            if not (entry["op_id"] == "source" and entry["device_id"] == "PIM0")
+        ]
+        cases.append(("is not legal", illegal))
+        for expected, payload in cases:
+            with self.subTest(expected=expected):
+                with self.assertRaisesRegex(DOPSPriorValidationError, expected):
+                    validate_prior_artifact(payload)
+
+    def test_rejects_incomplete_duplicate_or_invalid_service_entries(self) -> None:
+        cases: list[tuple[str, dict]] = []
+        missing = copy.deepcopy(self.payload)
+        missing["t_service"].pop()
+        cases.append(("must cover every legal operator-device", missing))
+        duplicate = copy.deepcopy(self.payload)
+        duplicate["t_service"].append(copy.deepcopy(duplicate["t_service"][0]))
+        cases.append(("duplicate key", duplicate))
+        negative = copy.deepcopy(self.payload)
+        negative["t_service"][0]["duration_s"] = -0.1
+        cases.append(("finite, non-negative", negative))
+        nonfinite = copy.deepcopy(self.payload)
+        nonfinite["t_service"][0]["duration_s"] = float("inf")
+        cases.append(("finite, non-negative", nonfinite))
+        unknown_device = copy.deepcopy(self.payload)
+        unknown_device["t_service"][0]["device_id"] = "GPU9"
+        cases.append(("is not legal", unknown_device))
+        for expected, payload in cases:
+            with self.subTest(expected=expected):
+                with self.assertRaisesRegex(DOPSPriorValidationError, expected):
+                    validate_prior_artifact(payload)
+
+    def test_rejects_incomplete_duplicate_or_invalid_movement_entries(self) -> None:
+        cases: list[tuple[str, dict]] = []
+        missing = copy.deepcopy(self.payload)
+        missing["t_move"].pop()
+        cases.append(("must cover every legal movement route", missing))
+        duplicate = copy.deepcopy(self.payload)
+        duplicate["t_move"].append(copy.deepcopy(duplicate["t_move"][0]))
+        cases.append(("duplicate key", duplicate))
+        nonzero_resident = copy.deepcopy(self.payload)
+        nonzero_resident["t_move"][0]["duration_s"] = 0.1
+        cases.append(("resident source/destination must be zero", nonzero_resident))
+        unknown_device = copy.deepcopy(self.payload)
+        unknown_device["legal_movement_routes"][0]["source_device_id"] = "GPU9"
+        cases.append(("unknown devices", unknown_device))
+        for expected, payload in cases:
+            with self.subTest(expected=expected):
+                with self.assertRaisesRegex(DOPSPriorValidationError, expected):
+                    validate_prior_artifact(payload)
+
+    def test_rejects_missing_fields_wrong_units_and_internal_score_terms(self) -> None:
+        missing = copy.deepcopy(self.payload)
+        del missing["t_move"][0]["layout"]
+        with self.assertRaisesRegex(DOPSPriorValidationError, "missing fields"):
+            validate_prior_artifact(missing)
+
+        wrong_units = copy.deepcopy(self.payload)
+        wrong_units["time_unit"] = "milliseconds"
+        with self.assertRaisesRegex(DOPSPriorValidationError, "time_unit"):
+            validate_prior_artifact(wrong_units)
+
+        for forbidden in ("dops_score_s", "eft_s", "window_s", "reload_s", "comm_s"):
+            polluted = copy.deepcopy(self.payload)
+            polluted["t_service"][0][forbidden] = 123.0
+            with self.subTest(forbidden=forbidden):
+                with self.assertRaisesRegex(
+                    DOPSPriorValidationError, "unexpected fields"
+                ):
+                    validate_prior_artifact(polluted)
+
+    def test_rejects_replaced_score_prior_and_retired_v2_discriminator(self) -> None:
+        old_score_prior = {
+            "schema": "dops.hetinfer_prior.v1",
+            "schema_version": 1,
+            "profile_id": "legacy-score-profile",
+            "placements": [],
+            "operator_costs": [],
+        }
+        with self.assertRaisesRegex(DOPSPriorValidationError, "missing fields"):
+            validate_prior_artifact(old_score_prior)
+
+        retired_v2 = copy.deepcopy(self.payload)
+        retired_v2["schema"] = "dops.hetinfer_prior.v2"
+        retired_v2["schema_version"] = 2
+        with self.assertRaisesRegex(DOPSPriorValidationError, "schema"):
+            validate_prior_artifact(retired_v2)
+
+    def test_json_loader_rejects_duplicate_keys_and_nonfinite_literals(self) -> None:
+        text = FIXTURE.read_text(encoding="utf-8")
+        duplicate_key = text.replace(
+            '"time_unit": "seconds",',
+            '"time_unit": "seconds",\n  "time_unit": "seconds",',
+            1,
+        )
+        nonfinite = text.replace('"duration_s": 0.0010', '"duration_s": NaN', 1)
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            shape = root / "one_layer_shape.json"
-            shape.write_text(
-                json.dumps(
-                    {
-                        "hidden_dim": 64,
-                        "layer_num": 1,
-                        "intermediate_dim": 128,
-                        "q_head_num": 4,
-                        "kv_head_num": 2,
-                    }
-                ),
-                encoding="utf-8",
-            )
-            result_dir = root / "results"
-            config = root / "evaluate.json"
-            config.write_text(
-                json.dumps(
-                    {
-                        "model_family": "qwen",
-                        "model_variant": "1.8b",
-                        "model_revision": "test:one-layer-shape",
-                        "shape_file": str(shape),
-                        "dtype": "fp16",
-                        "batch": 1,
-                        "max_batch_size": 1,
-                        "prefill_len": 2,
-                        "decode_len": 2,
-                        "max_seq_len": 4,
-                        "decode_sample_stride": 1,
-                        "decode_plan_refresh_stride": 0,
-                        "result_dir": str(result_dir),
-                        "hardware_json": str(
-                            REPO_ROOT / "src" / "examples" / "hardware_1npu_2aim.json"
-                        ),
-                        "algo": ["Bifocal"],
-                        "baselines": [],
-                        "tp_qkv": 1,
-                        "tp_ffn": 1,
-                        "tp_moe": 1,
-                        "pp": 1,
-                        "ep": 1,
-                        "npu_backend": "fast",
-                        "pim_fast_mode": True,
-                        "scheduler_seed": 0,
-                        "dump_graph": False,
-                    }
-                ),
-                encoding="utf-8",
-            )
-            output = root / "prior.json"
-            environment = dict(os.environ)
-            environment["PYTHONDONTWRITEBYTECODE"] = "1"
-            environment["TRIFORM_SKIP_PYCACHE_PURGE"] = "1"
-            completed = subprocess.run(
-                [
-                    sys.executable,
-                    str(SRC_ROOT / "main.py"),
-                    "evaluate",
-                    "--config",
-                    str(config),
-                    "--algo",
-                    "Bifocal",
-                    "--hetinfer-prior-out",
-                    str(output),
-                ],
-                cwd=REPO_ROOT,
-                env=environment,
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-            self.assertEqual(completed.returncode, 0, completed.stderr)
-            self.assertTrue(output.is_file(), completed.stdout)
-
-            artifact, source_path = load_artifact_bundle(output)
-            source = json.loads(source_path.read_text(encoding="utf-8"))
-            self.assertEqual(artifact["schema"], "dops.hetinfer_prior.v1")
-            self.assertEqual(source["schema"], "dops.hetinfer_prior_source.v1")
-            self.assertEqual(source["kind"], "bifocal_candidate_records")
-            self.assertTrue(source["candidate_records"])
-
-            dynamic = []
-            for profile in artifact["profiles"]:
-                self.assertEqual(set(profile["phases"]), {"prefill", "decode"})
-                self.assertTrue(profile["source"]["candidate_scores_complete"])
-                for phase in ("prefill", "decode"):
-                    for operator in profile["phases"][phase]["operators"]:
-                        self.assertEqual(
-                            set(operator["legal_devices"]),
-                            set(operator["candidates"]),
-                        )
-                        if operator["dynamic_eligible"]:
-                            dynamic.append(operator)
-                            self.assertGreater(len(operator["legal_devices"]), 1)
-                            self.assertTrue(
-                                all(
-                                    score["dops_score_s"] is not None
-                                    for score in operator["candidates"].values()
-                                )
-                            )
-            self.assertTrue(dynamic)
-
-            summaries = list(result_dir.rglob("best_summary_*.json"))
-            self.assertEqual(len(summaries), 1, summaries)
-            summary = json.loads(summaries[0].read_text(encoding="utf-8"))
-            self.assertEqual(summary["hetinfer_prior_path"], str(output))
-
-    def test_scored_capture_builds_dual_phase_profiles(self) -> None:
-        records = [
-            _record("prefill", 1, 128, None),
-            _record("decode", 2, 128, 0),
-            _record("decode", 3, 144, 16),
-        ]
-        artifact = build_artifact(
-            cfg=_cfg(),
-            graph=_graph(),
-            cluster=_cluster(),
-            candidate_records=records,
-            producer_revision="0123456789abcdef0123456789abcdef01234567",
-            created_at="2026-08-09T00:00:00+00:00",
-        )
-        validate_artifact(artifact)
-        self.assertEqual(artifact["schema"], "dops.hetinfer_prior.v1")
-        self.assertEqual(len(artifact["profiles"]), 2)
-        for profile in artifact["profiles"]:
-            self.assertEqual(set(profile["phases"]), {"prefill", "decode"})
-            self.assertTrue(profile["phases"]["decode"]["operators"][0]["dynamic_eligible"])
-        provenance = artifact["provenance"]
-        self.assertEqual(len(provenance["graph_sha256"]), 64)
-        self.assertEqual(len(provenance["hardware_sha256"]), 64)
-        self.assertEqual(len(provenance["source_artifact_sha256"]), 64)
-
-        with tempfile.TemporaryDirectory() as tmp:
-            path = write_artifact(
-                artifact,
-                Path(tmp) / "prior.json",
-                candidate_records=records,
-            )
-            loaded = json.loads(path.read_text(encoding="utf-8"))
-            self.assertFalse(loaded["semantics"]["timeline_is_runtime_contract"])
-            verified, source_path = load_artifact_bundle(path)
-            self.assertEqual(
-                verified["provenance"]["source_artifact_path"],
-                source_path.name,
-            )
-            self.assertEqual(
-                verified["provenance"]["source_artifact_sha256"],
-                hashlib.sha256(source_path.read_bytes()).hexdigest(),
-            )
-
-    def test_bundle_validation_rejects_tampered_source(self) -> None:
-        records = [
-            _record("prefill", 1, 128, None),
-            _record("decode", 2, 128, 0),
-        ]
-        artifact = build_artifact(
-            cfg=_cfg(),
-            graph=_graph(),
-            cluster=_cluster(),
-            candidate_records=records,
-        )
-        with tempfile.TemporaryDirectory() as tmp:
-            path = write_artifact(
-                artifact,
-                Path(tmp) / "prior.json",
-                candidate_records=records,
-            )
-            _, source_path = load_artifact_bundle(path)
-            source_path.write_text('{"tampered":true}\n', encoding="utf-8")
-            with self.assertRaisesRegex(PriorValidationError, "SHA256 mismatch"):
-                load_artifact_bundle(path)
-
-    def test_grid_manifest_lists_the_complete_training_bundle(self) -> None:
-        records = [
-            _record("prefill", 1, 128, None),
-            _record("decode", 2, 128, 0),
-        ]
-        artifact = build_artifact(
-            cfg=_cfg(),
-            graph=_graph(),
-            cluster=_cluster(),
-            candidate_records=records,
-        )
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp).resolve()
-            case_root = root / "b4_p128_d32"
-            prior = write_artifact(
-                artifact,
-                case_root / "prior.json",
-                candidate_records=records,
-            )
-            environment = dict(os.environ)
-            environment["PYTHONPATH"] = str(SRC_ROOT)
-            completed = subprocess.run(
-                [
-                    sys.executable,
-                    str(
-                        REPO_ROOT
-                        / "commands"
-                        / "hetinfer_gpu_proxy"
-                        / "build_prior_grid_manifest.py"
-                    ),
-                    "--grid-root",
-                    str(root),
-                    "--require-count",
-                    "1",
-                ],
-                cwd=REPO_ROOT,
-                env=environment,
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-            self.assertEqual(completed.returncode, 0, completed.stderr)
-            manifest = json.loads(
-                (root / "prior_grid_manifest.json").read_text(encoding="utf-8")
-            )
-            entry = manifest["artifacts"][0]
-            _, source_path = load_artifact_bundle(prior)
-            self.assertEqual(
-                entry["bundle_files"],
-                [
-                    str(prior.relative_to(root)),
-                    str(source_path.relative_to(root)),
-                ],
-            )
-            self.assertEqual(
-                entry["source_artifact_sha256"],
-                artifact["provenance"]["source_artifact_sha256"],
-            )
-
-    def test_validator_rejects_unmasked_baseline(self) -> None:
-        artifact = build_artifact(
-            cfg=_cfg(),
-            graph=_graph(),
-            cluster=_cluster(),
-            candidate_records=[
-                _record("prefill", 1, 128, None),
-                _record("decode", 2, 128, 0),
-            ],
-        )
-        broken = copy.deepcopy(artifact)
-        broken["profiles"][0]["phases"]["decode"]["operators"][0][
-            "baseline_device"
-        ] = "PIM9"
-        with self.assertRaises(PriorValidationError):
-            validate_artifact(broken)
-
-    def test_validator_rejects_changed_contract_semantics(self) -> None:
-        artifact = build_artifact(
-            cfg=_cfg(),
-            graph=_graph(),
-            cluster=_cluster(),
-            candidate_records=[
-                _record("prefill", 1, 128, None),
-                _record("decode", 2, 128, 0),
-            ],
-        )
-        broken = copy.deepcopy(artifact)
-        broken["semantics"]["timeline_is_runtime_contract"] = True
-        with self.assertRaises(PriorValidationError):
-            validate_artifact(broken)
-
-    def test_candidate_capture_must_cover_exact_legal_set(self) -> None:
-        prefill = _record("prefill", 1, 128, None)
-        del prefill["candidates"]["PIM0"]
-        with self.assertRaisesRegex(PriorValidationError, "candidate keys"):
-            build_artifact(
-                cfg=_cfg(),
-                graph=_graph(),
-                cluster=_cluster(),
-                candidate_records=[
-                    prefill,
-                    _record("decode", 2, 128, 0),
-                ],
-            )
-
-    def test_dynamic_candidate_requires_scores_for_all_legal_devices(self) -> None:
-        prefill = _record("prefill", 1, 128, None)
-        prefill["candidates"]["PIM0"]["dops_score_s"] = None
-        with self.assertRaisesRegex(PriorValidationError, "requires a DOPS score"):
-            build_artifact(
-                cfg=_cfg(),
-                graph=_graph(),
-                cluster=_cluster(),
-                candidate_records=[
-                    prefill,
-                    _record("decode", 2, 128, 0),
-                ],
-            )
-
-    def test_reused_capture_pairs_latest_preceding_prefill(self) -> None:
-        prefill_first = _record("prefill", 1, 128, None)
-        prefill_second = _record("prefill", 3, 256, None)
-        prefill_second["baseline_device"] = "PIM0"
-        artifact = build_artifact(
-            cfg=_cfg(),
-            graph=_graph(),
-            cluster=_cluster(),
-            candidate_records=[
-                prefill_first,
-                _record("decode", 2, 128, 0),
-                prefill_second,
-                _record("decode", 4, 256, 1),
-            ],
-        )
-        self.assertEqual(len(artifact["profiles"]), 2)
-        first, second = artifact["profiles"]
-        self.assertEqual(
-            first["phases"]["prefill"]["operators"][0]["baseline_device"],
-            "NPU0",
-        )
-        self.assertEqual(
-            second["phases"]["prefill"]["operators"][0]["baseline_device"],
-            "PIM0",
-        )
-
-    def test_legacy_summary_is_explicitly_unscored(self) -> None:
-        legacy = {
-            "config": {"batch": 4, "prefill_len": 128, "decode_len": 1, "dtype": "fp16"},
-            "prefill_schedule": [{"node_id": "L0_FFN1", "device": "NPU0"}],
-            "decode_steps": [
-                {
-                    "t": 0,
-                    "seq_len": 128,
-                    "schedule": [{"node_id": "L0_FFN1", "device": "PIM0"}],
-                }
-            ],
-        }
-        artifact = build_artifact(cfg=_cfg(), legacy_best_summary=legacy)
-        profile = artifact["profiles"][0]
-        self.assertEqual(set(profile["phases"]), {"prefill", "decode"})
-        op = profile["phases"]["decode"]["operators"][0]
-        self.assertFalse(op["dynamic_eligible"])
-        self.assertIsNone(op["candidates"]["PIM0"]["dops_score_s"])
-        self.assertFalse(profile["source"]["candidate_scores_complete"])
-
-    def test_schema_file_is_valid_json(self) -> None:
-        schema = json.loads(
-            (REPO_ROOT / "schemas" / "dops.hetinfer_prior.v1.schema.json").read_text(
-                encoding="utf-8"
-            )
-        )
-        self.assertEqual(schema["properties"]["schema"]["const"], "dops.hetinfer_prior.v1")
-
-    def test_best_summary_snapshot_preserves_default_shape_recovery(self) -> None:
-        cfg = {
-            "model_family": "qwen",
-            "model_variant": "7b",
-            "shape_file": None,
-            "dtype": "fp16",
-            "batch": 1,
-            "prefill_len": 8,
-            "decode_len": 1,
-        }
-        snapshot = _best_summary_config_snapshot(cfg)
-        self.assertNotIn("shape_file", snapshot)
-        graph, _ = build_graph(snapshot)
-        self.assertGreater(len(graph.nodes), 0)
-
-    def test_weight_suggest_comparisons_cannot_overwrite_selected_prior(self) -> None:
-        original = {
-            "hetinfer_prior_out": "/tmp/selected-layout-prior.json",
-            "algo": "Bifocal",
-        }
-        comparison = _comparison_cfg_without_prior_export(original)
-        self.assertNotIn("hetinfer_prior_out", comparison)
-        self.assertEqual(
-            original["hetinfer_prior_out"],
-            "/tmp/selected-layout-prior.json",
-        )
-
-    def test_legacy_export_resolves_paths_relative_to_explicit_config(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            hardware = root / "hardware.json"
-            shutil.copyfile(
-                REPO_ROOT / "src" / "examples" / "hardware_1npu_2aim.json",
-                hardware,
-            )
-            shape = root / "shape.json"
-            shape.write_text(
-                json.dumps(
-                    {
-                        "hidden_dim": 64,
-                        "layer_num": 1,
-                        "intermediate_dim": 128,
-                        "q_head_num": 4,
-                        "kv_head_num": 2,
-                    }
-                ),
-                encoding="utf-8",
-            )
-            config = root / "config.json"
-            config.write_text(
-                json.dumps(
-                    {
-                        "model_family": "qwen",
-                        "model_variant": "7b",
-                        "dtype": "fp16",
-                        "batch": 1,
-                        "prefill_len": 8,
-                        "decode_len": 1,
-                        "hardware_json": "hardware.json",
-                        "shape_file": "shape.json",
-                        "algo": "Bifocal",
-                    }
-                ),
-                encoding="utf-8",
-            )
-            summary = root / "best_summary.json"
-            summary.write_text(
-                json.dumps(
-                    {
-                        "config": {
-                            "batch": 1,
-                            "prefill_len": 8,
-                            "decode_len": 1,
-                            "dtype": "fp16",
-                            "shape_file": None,
-                        },
-                        "prefill_schedule": [
-                            {"node_id": "L0_FFN1", "device": "NPU0"}
-                        ],
-                        "decode_steps": [
-                            {
-                                "t": 0,
-                                "seq_len": 8,
-                                "schedule": [
-                                    {"node_id": "L0_FFN1", "device": "NPU0"}
-                                ],
-                            }
-                        ],
-                    }
-                ),
-                encoding="utf-8",
-            )
-            output = root / "prior.json"
-            completed = subprocess.run(
-                [
-                    sys.executable,
-                    str(SRC_ROOT / "export_hetinfer_prior.py"),
-                    "--best-summary",
-                    str(summary),
-                    "--config",
-                    str(config),
-                    "--output",
-                    str(output),
-                ],
-                # Run outside the config directory without assuming a macOS
-                # /private/tmp alias exists on Linux compute nodes.
-                cwd=REPO_ROOT,
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-            self.assertEqual(completed.returncode, 0, completed.stderr)
-            artifact = json.loads(output.read_text(encoding="utf-8"))
-            verified, source_path = load_artifact_bundle(output)
-            self.assertEqual(verified["artifact_id"], artifact["artifact_id"])
-            self.assertEqual(
-                artifact["provenance"]["source_artifact_path"],
-                source_path.name,
-            )
-            self.assertEqual(artifact["provenance"]["status"], "complete")
-            self.assertEqual(
-                artifact["provenance"]["hardware"]["source_path"],
-                str(hardware.resolve()),
-            )
-            self.assertEqual(
-                artifact["provenance"]["config"]["snapshot"]["shape_file"],
-                str(shape.resolve()),
-            )
-            self.assertEqual(
-                artifact["provenance"]["model"]["shape"]["dim"],
-                64,
-            )
-
-    def test_cross_repo_golden_artifact(self) -> None:
-        golden = json.loads(
-            (REPO_ROOT / "tests" / "fixtures" / "dops_hetinfer_prior_v1_golden.json").read_text(
-                encoding="utf-8"
-            )
-        )
-        validate_artifact(golden)
-        self.assertEqual(set(golden["profiles"][0]["phases"]), {"prefill", "decode"})
-
-    def test_het_infer_loader_verifies_written_bundle_when_available(self) -> None:
-        het_infer_root_raw = os.environ.get("HET_INFER_ROOT")
-        if not het_infer_root_raw:
-            self.skipTest("set HET_INFER_ROOT for the cross-repository loader check")
-        het_infer_root = Path(het_infer_root_raw).expanduser().resolve()
-        het_infer_src = het_infer_root / "src"
-        if not (het_infer_src / "het_infer" / "planning" / "prior.py").is_file():
-            self.fail(f"HET_INFER_ROOT has no Het-Infer loader: {het_infer_root}")
-
-        records = [
-            _record("prefill", 1, 128, None),
-            _record("decode", 2, 128, 0),
-        ]
-        artifact = build_artifact(
-            cfg=_cfg(),
-            graph=_graph(),
-            cluster=_cluster(),
-            candidate_records=records,
-        )
-        with tempfile.TemporaryDirectory() as tmp:
-            path = write_artifact(
-                artifact,
-                Path(tmp) / "prior.json",
-                candidate_records=records,
-            )
-            environment = dict(os.environ)
-            environment["PYTHONPATH"] = str(het_infer_src)
-            completed = subprocess.run(
-                [
-                    sys.executable,
-                    "-c",
-                    (
-                        "from het_infer.planning import load_dops_prior_library; "
-                        "p=load_dops_prior_library(__import__('sys').argv[1]).profiles()[0]; "
-                        "assert p.provenance.source_artifact_verified; "
-                        "print('HET_INFER_DOPS_SOURCE_VERIFIED', p.profile_id)"
-                    ),
-                    str(path),
-                ],
-                cwd=het_infer_root,
-                env=environment,
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-            self.assertEqual(completed.returncode, 0, completed.stderr)
-            self.assertIn("HET_INFER_DOPS_SOURCE_VERIFIED", completed.stdout)
+            duplicate_path = root / "duplicate.json"
+            duplicate_path.write_text(duplicate_key, encoding="utf-8")
+            with self.assertRaisesRegex(
+                DOPSPriorValidationError, "duplicate JSON"
+            ):
+                load_prior_artifact(duplicate_path)
+            nonfinite_path = root / "nonfinite.json"
+            nonfinite_path.write_text(nonfinite, encoding="utf-8")
+            with self.assertRaisesRegex(
+                DOPSPriorValidationError, "non-finite JSON"
+            ):
+                load_prior_artifact(nonfinite_path)
 
 
 if __name__ == "__main__":

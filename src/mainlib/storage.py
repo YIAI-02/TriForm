@@ -88,6 +88,63 @@ def _resolve_hetinfer_prior_output(raw: str | None, *, result_dir: str, tag: str
     return path / f"dops_hetinfer_prior_{tag}.json"
 
 
+def _resolve_hetinfer_atlas_manifest_output(
+    raw: str | None, *, result_dir: str, tag: str
+) -> Path | None:
+    """Resolve a timing-request manifest as either a JSON file or directory."""
+
+    if raw in (None, ""):
+        return None
+    path = Path(str(raw))
+    if path.suffix.lower() == ".json":
+        return path
+    return path / f"dops_hetinfer_atlas_request_{tag}.json"
+
+
+def _canonicalize_hetinfer_export_paths(
+    *,
+    atlas_timings: str | Path | None,
+    atlas_manifest_out: str | Path | None,
+    prior_out: str | Path | None,
+) -> Tuple[Path | None, Path | None, Path | None]:
+    """Resolve and reject aliases among the three static-prior I/O paths.
+
+    ``Path.resolve(strict=False)`` canonicalizes relative paths and resolves
+    every existing symlink component without requiring a not-yet-created
+    output file to exist.  This check must run before either output is opened
+    with overwrite enabled, otherwise a manifest/prior path could destroy the
+    ATLAS timing input before it is parsed.
+    """
+
+    raw_paths = (
+        ("ATLAS timing input", atlas_timings),
+        ("ATLAS manifest output", atlas_manifest_out),
+        ("Het-Infer prior output", prior_out),
+    )
+    canonical: Dict[str, Path | None] = {}
+    owner_by_path: Dict[Path, str] = {}
+    for label, raw in raw_paths:
+        if raw in (None, ""):
+            canonical[label] = None
+            continue
+        path = Path(str(raw)).expanduser().resolve(strict=False)
+        previous = owner_by_path.get(path)
+        if previous is not None:
+            raise ValueError(
+                "Het-Infer export paths must be pairwise distinct after "
+                f"canonical resolution: {previous} and {label} both resolve "
+                f"to {path}"
+            )
+        owner_by_path[path] = label
+        canonical[label] = path
+
+    return (
+        canonical["ATLAS timing input"],
+        canonical["ATLAS manifest output"],
+        canonical["Het-Infer prior output"],
+    )
+
+
 def _best_summary_config_snapshot(cfg: Dict[str, Any] | None) -> Dict[str, Any]:
     """Keep graph-building and hardware identity inputs in legacy summaries."""
     source = dict(cfg or {})

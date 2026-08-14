@@ -57,19 +57,48 @@ The script contains `#SBATCH --gres=gpu:1` but no `#SBATCH --partition`.
 Compilation or execution must occur in a compute allocation, not on a login
 node.
 
-## Use the calibrated config for the DOPS prior grid
+## Use the calibrated config for a static Het-Infer prior
 
-The broad grid runner keeps LLMCompass as its default fallback. Override both
-the config and backend after calibration:
+The retired score-profile grid scripts are no longer an export path. Use the
+generated config directly with the Bifocal two-stage static-prior workflow.
+Run these Python commands only inside a Slurm compute allocation; the second
+job remains an offline simulator workload and does not need a GPU.
+
+First capture the exact PIM-dependent keys that require offline ATLAS timing:
 
 ```bash
-export DOPS_PRIOR_FAST_CONFIG="${DOPS_GPU_CALIBRATION_OUTPUT}/evaluate_qwen1p8b_gpu_calibrated.json"
-export DOPS_PRIOR_FAST_NPU_BACKEND=fast
-sbatch --partition=<cpu_partition> --export=ALL \
-  commands/hetinfer_gpu_proxy/prior_grid_fast.slurm
+export DOPS_PRIOR_CONFIG="${DOPS_GPU_CALIBRATION_OUTPUT}/evaluate_qwen1p8b_gpu_calibrated.json"
+export DOPS_ATLAS_REQUEST=/absolute/path/to/atlas_request.json
+
+python3 src/main.py evaluate \
+  --config "${DOPS_PRIOR_CONFIG}" \
+  --algo Bifocal \
+  --scheduler_seed 0 \
+  --hetinfer-atlas-manifest-out "${DOPS_ATLAS_REQUEST}"
 ```
 
-This second job is still an offline simulator job and does not need a GPU.
+Run ATLAS offline for every request key and write a strict
+`dops.hetinfer_atlas_timings.v1` file. Then rerun the identical DOPS config,
+workload overrides, and scheduler seed:
+
+```bash
+export DOPS_ATLAS_TIMINGS=/absolute/path/to/atlas_timings.json
+export DOPS_PRIOR_OUTPUT=/absolute/path/to/dops_hetinfer_prior.json
+
+python3 src/main.py evaluate \
+  --config "${DOPS_PRIOR_CONFIG}" \
+  --algo Bifocal \
+  --scheduler_seed 0 \
+  --hetinfer-atlas-timings "${DOPS_ATLAS_TIMINGS}" \
+  --hetinfer-prior-out "${DOPS_PRIOR_OUTPUT}"
+```
+
+The final file is the same-name static `dops.hetinfer_prior.v1` contract:
+complete `expert_placement`, `t_service`, and `t_move`. Repeating the command
+with the same output path atomically replaces the previous complete v1 file;
+it does not create v2. GPU service entries use the calibrated local cost
+model. PIM service and non-resident PIM movement entries use only the supplied
+offline ATLAS cycles/frequency results.
 
 ## Model boundary
 

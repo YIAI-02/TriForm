@@ -1,5 +1,5 @@
 {
-  "experiment_label": "hetinfer_gpu0_pim0_prior_grid_fast_v1",
+  "experiment_label": "hetinfer_gpu0_pim0_static_prior_fast_v1",
   "evidence_class": "DOPS offline simulation; GPU0 is an A100 LLMCompass proxy and PIM0 is analytical fast-mode",
   "model_family": "qwen",
   "model_variant": "1.8b",
@@ -17,9 +17,7 @@
   "ramulator_config_path": "../../src/aim_simulator/example.yaml",
   "result_dir": "../../output/hetinfer_gpu_proxy/fast",
   "hardware_json": "./hardware_gpu0_pim0_a100_llmcompass_proxy.json",
-  "algo": [
-    "Bifocal"
-  ],
+  "algo": ["Bifocal"],
   "baselines": [],
   "tp_qkv": 1,
   "tp_ffn": 1,

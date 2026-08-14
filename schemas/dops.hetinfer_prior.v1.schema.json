@@ -1,163 +1,275 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/YIAI-02/DOPS/schemas/dops.hetinfer_prior.v1.schema.json",
-  "title": "DOPS Het-Infer Placement Prior v1",
+  "title": "DOPS Het-Infer Static Prior Contract v1",
   "type": "object",
-  "required": ["schema", "schema_version", "artifact_id", "created_at", "semantics", "provenance", "profiles"],
+  "required": [
+    "schema",
+    "schema_version",
+    "graph_id",
+    "workload_id",
+    "time_unit",
+    "devices",
+    "operators",
+    "inputs",
+    "collective_contexts",
+    "legal_movement_routes",
+    "expert_placement",
+    "t_service",
+    "t_move"
+  ],
   "properties": {
     "schema": {"const": "dops.hetinfer_prior.v1"},
     "schema_version": {"const": 1},
-    "artifact_id": {"type": "string", "minLength": 1},
-    "created_at": {"type": "string", "format": "date-time"},
-    "semantics": {
-      "type": "object",
-      "required": ["role", "timeline_is_runtime_contract", "online_device_selection_required", "score_units"],
-      "properties": {
-        "role": {"const": "offline_placement_prior"},
-        "timeline_is_runtime_contract": {"const": false},
-        "online_device_selection_required": {"const": true},
-        "score_units": {"const": "seconds"}
-      },
-      "additionalProperties": true
+    "graph_id": {"$ref": "#/$defs/identifier"},
+    "workload_id": {"$ref": "#/$defs/identifier"},
+    "time_unit": {"const": "seconds"},
+    "devices": {
+      "type": "array",
+      "minItems": 2,
+      "items": {"$ref": "#/$defs/device"}
     },
-    "provenance": {
-      "type": "object",
-      "required": [
-        "model_family", "model_revision", "graph_sha256", "hardware_sha256",
-        "dops_revision", "source_artifact_sha256", "source_artifact_path",
-        "policy", "parallelism",
-        "model", "workload", "hardware", "graph", "producer"
-      ],
-      "properties": {
-        "model_family": {"type": "string", "minLength": 1},
-        "model_revision": {"type": "string", "minLength": 1},
-        "graph_sha256": {"$ref": "#/$defs/sha256"},
-        "hardware_sha256": {"$ref": "#/$defs/sha256"},
-        "dops_revision": {"type": "string", "minLength": 1},
-        "source_artifact_sha256": {"$ref": "#/$defs/sha256"},
-        "source_artifact_path": {
-          "type": "string",
-          "pattern": "^[^/\\\\]+$",
-          "minLength": 1
-        },
-        "policy": {"type": "string", "minLength": 1},
-        "parallelism": {"type": "object"},
-        "model": {"type": "object"},
-        "workload": {"type": "object"},
-        "hardware": {"type": "object"},
-        "graph": {"type": "object"},
-        "producer": {"type": "object"}
-      },
-      "additionalProperties": true
-    },
-    "profiles": {
+    "operators": {
       "type": "array",
       "minItems": 1,
-      "items": {"$ref": "#/$defs/profile"}
+      "items": {"$ref": "#/$defs/operator"}
+    },
+    "inputs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/input"}
+    },
+    "collective_contexts": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/collectiveContext"}
+    },
+    "legal_movement_routes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/movementRoute"}
+    },
+    "expert_placement": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/placement"}
+    },
+    "t_service": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/serviceTime"}
+    },
+    "t_move": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/movementTime"}
     }
   },
   "$defs": {
-    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-    "nullableSeconds": {"type": ["number", "null"]},
-    "nonnegativeNullableSeconds": {"type": ["number", "null"], "minimum": 0},
-    "candidate": {
+    "identifier": {"type": "string", "minLength": 1},
+    "device": {
       "type": "object",
-      "required": [
-        "dops_score_s", "eft_s", "window_s", "compute_s", "reload_s", "comm_s",
-        "weight_reuse_bias_s", "decode_amort_bias_s"
-      ],
-      "properties": {
-        "dops_score_s": {"$ref": "#/$defs/nullableSeconds"},
-        "eft_s": {"$ref": "#/$defs/nonnegativeNullableSeconds"},
-        "window_s": {"$ref": "#/$defs/nonnegativeNullableSeconds"},
-        "compute_s": {"$ref": "#/$defs/nonnegativeNullableSeconds"},
-        "reload_s": {"$ref": "#/$defs/nonnegativeNullableSeconds"},
-        "comm_s": {"$ref": "#/$defs/nonnegativeNullableSeconds"},
-        "weight_reuse_bias_s": {"$ref": "#/$defs/nullableSeconds"},
-        "decode_amort_bias_s": {"$ref": "#/$defs/nullableSeconds"}
-      },
+      "required": ["device_id"],
+      "properties": {"device_id": {"$ref": "#/$defs/identifier"}},
       "additionalProperties": false
     },
     "operator": {
       "type": "object",
-      "required": [
-        "node_id", "op_type", "phase", "baseline_device", "legal_devices",
-        "candidates", "constraints", "dynamic_eligible", "weight"
-      ],
+      "required": ["op_id", "dependencies", "legal_devices"],
       "properties": {
-        "node_id": {"type": "string", "minLength": 1},
-        "op_type": {"type": "string"},
-        "phase": {"enum": ["prefill", "decode"]},
-        "baseline_device": {"type": "string", "minLength": 1},
+        "op_id": {"$ref": "#/$defs/identifier"},
+        "dependencies": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/identifier"}
+        },
         "legal_devices": {
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
-          "items": {"type": "string", "minLength": 1}
-        },
-        "candidates": {
-          "type": "object",
-          "minProperties": 1,
-          "additionalProperties": {"$ref": "#/$defs/candidate"}
-        },
-        "constraints": {"type": "object"},
-        "dynamic_eligible": {"type": "boolean"},
-        "weight": {
-          "type": "object",
-          "required": ["weight_id", "size_bytes", "storage_layout"],
-          "properties": {
-            "weight_id": {"type": ["string", "null"]},
-            "size_bytes": {"type": "integer", "minimum": 0},
-            "storage_layout": {"type": "string", "minLength": 1}
-          },
-          "additionalProperties": false
+          "items": {"$ref": "#/$defs/identifier"}
         }
       },
       "additionalProperties": false
     },
-    "phase": {
+    "input": {
       "type": "object",
-      "required": ["context_len", "token_idx", "operators"],
+      "required": [
+        "consumer_op_id",
+        "producer_op_id",
+        "tensor_id",
+        "semantics",
+        "bytes",
+        "source_residencies",
+        "destination_devices"
+      ],
       "properties": {
-        "context_len": {"type": "integer", "minimum": 0},
-        "token_idx": {"type": ["integer", "null"], "minimum": 0},
-        "operators": {
+        "consumer_op_id": {"$ref": "#/$defs/identifier"},
+        "producer_op_id": {
+          "anyOf": [
+            {"$ref": "#/$defs/identifier"},
+            {"type": "null"}
+          ]
+        },
+        "tensor_id": {"$ref": "#/$defs/identifier"},
+        "semantics": {
+          "enum": ["data", "barrier", "collective_staging"]
+        },
+        "bytes": {"type": "integer", "minimum": 0},
+        "source_residencies": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/sourceResidency"}
+        },
+        "destination_devices": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/identifier"}
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"semantics": {"const": "data"}}},
+          "then": {
+            "properties": {
+              "source_residencies": {"minItems": 1},
+              "destination_devices": {"minItems": 1}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"semantics": {"const": "barrier"}}},
+          "then": {
+            "properties": {
+              "producer_op_id": {"$ref": "#/$defs/identifier"},
+              "bytes": {"const": 0},
+              "source_residencies": {"maxItems": 0},
+              "destination_devices": {"maxItems": 0}
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {"semantics": {"const": "collective_staging"}}
+          },
+          "then": {
+            "properties": {
+              "producer_op_id": {"$ref": "#/$defs/identifier"},
+              "source_residencies": {"minItems": 1},
+              "destination_devices": {"minItems": 1, "maxItems": 1}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"producer_op_id": {"type": "null"}}},
+          "then": {"properties": {"semantics": {"const": "data"}}}
+        }
+      ],
+      "additionalProperties": false
+    },
+    "sourceResidency": {
+      "type": "object",
+      "required": ["device_id", "layout"],
+      "properties": {
+        "device_id": {"$ref": "#/$defs/identifier"},
+        "layout": {"$ref": "#/$defs/identifier"}
+      },
+      "additionalProperties": false
+    },
+    "collectiveContext": {
+      "type": "object",
+      "required": [
+        "op_id",
+        "primitive",
+        "topology",
+        "canonical_device_id",
+        "participant_device_ids",
+        "output_device_ids",
+        "resource_device_ids",
+        "tensor_bytes",
+        "internal_transport"
+      ],
+      "properties": {
+        "op_id": {"$ref": "#/$defs/identifier"},
+        "primitive": {"$ref": "#/$defs/identifier"},
+        "topology": {"$ref": "#/$defs/identifier"},
+        "canonical_device_id": {"$ref": "#/$defs/identifier"},
+        "participant_device_ids": {
           "type": "array",
           "minItems": 1,
-          "items": {"$ref": "#/$defs/operator"}
-        }
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/identifier"}
+        },
+        "output_device_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/identifier"}
+        },
+        "resource_device_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/identifier"}
+        },
+        "tensor_bytes": {"type": "integer", "minimum": 0},
+        "internal_transport": {"const": "included_in_t_service"}
       },
       "additionalProperties": false
     },
-    "profile": {
+    "placement": {
       "type": "object",
-      "required": ["profile_id", "workload", "source", "phases"],
+      "required": ["op_id", "device_id"],
       "properties": {
-        "profile_id": {"type": "string", "minLength": 1},
-        "workload": {
-          "type": "object",
-          "required": ["batch", "context_len", "token_idx", "dtype", "prefill_len", "decode_len", "max_seq_len"],
-          "properties": {
-            "batch": {"type": "integer", "minimum": 1},
-            "context_len": {"type": "integer", "minimum": 0},
-            "token_idx": {"type": ["integer", "null"], "minimum": 0},
-            "dtype": {"type": ["string", "null"]},
-            "prefill_len": {"type": "integer", "minimum": 0},
-            "decode_len": {"type": "integer", "minimum": 0},
-            "max_seq_len": {"type": "integer", "minimum": 0}
-          },
-          "additionalProperties": true
-        },
-        "source": {"type": "object"},
-        "phases": {
-          "type": "object",
-          "required": ["prefill", "decode"],
-          "properties": {
-            "prefill": {"$ref": "#/$defs/phase"},
-            "decode": {"$ref": "#/$defs/phase"}
-          },
-          "additionalProperties": false
-        }
+        "op_id": {"$ref": "#/$defs/identifier"},
+        "device_id": {"$ref": "#/$defs/identifier"}
+      },
+      "additionalProperties": false
+    },
+    "serviceTime": {
+      "type": "object",
+      "required": ["op_id", "device_id", "duration_s"],
+      "properties": {
+        "op_id": {"$ref": "#/$defs/identifier"},
+        "device_id": {"$ref": "#/$defs/identifier"},
+        "duration_s": {"type": "number", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "movementRoute": {
+      "type": "object",
+      "required": [
+        "tensor_id",
+        "source_device_id",
+        "destination_device_id",
+        "bytes",
+        "layout"
+      ],
+      "properties": {
+        "tensor_id": {"$ref": "#/$defs/identifier"},
+        "source_device_id": {"$ref": "#/$defs/identifier"},
+        "destination_device_id": {"$ref": "#/$defs/identifier"},
+        "bytes": {"type": "integer", "minimum": 0},
+        "layout": {"$ref": "#/$defs/identifier"}
+      },
+      "additionalProperties": false
+    },
+    "movementTime": {
+      "type": "object",
+      "required": [
+        "tensor_id",
+        "source_device_id",
+        "destination_device_id",
+        "bytes",
+        "layout",
+        "duration_s"
+      ],
+      "properties": {
+        "tensor_id": {"$ref": "#/$defs/identifier"},
+        "source_device_id": {"$ref": "#/$defs/identifier"},
+        "destination_device_id": {"$ref": "#/$defs/identifier"},
+        "bytes": {"type": "integer", "minimum": 0},
+        "layout": {"$ref": "#/$defs/identifier"},
+        "duration_s": {"type": "number", "minimum": 0}
       },
       "additionalProperties": false
     }

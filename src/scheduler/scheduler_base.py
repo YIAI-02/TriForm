@@ -92,10 +92,15 @@ class SchedulerBaseCoreMixin:
         self._weight_proto_node: Dict[str, TaskNode] = {}
         self._pim_weight_desc_cache: Dict[Tuple[str, str], Any] = {}
         self._last_op_trace_extra: Dict[str, Any] = {}
-        # Side-channel populated by commit=False candidate evaluations.  It is
-        # read immediately by Bifocal's Het-Infer prior capture and never feeds
-        # back into scheduling decisions.
+        # Side-channel populated by commit=False candidate evaluations for
+        # existing scheduler diagnostics.  Static-prior export never reads it.
         self._last_candidate_component_extra: Dict[str, Any] = {}
+
+        # Optional Step-2 export capture.  This state is observational only:
+        # the complete snapshot is published after a successful schedule.
+        self._hetinfer_prior_capture_enabled: bool = False
+        self._hetinfer_prior_snapshots: List[Dict[str, Any]] = []
+        self._hetinfer_schedule_call_index: int = 0
 
     def set_seq_len(self, seq_len: int) -> None:
         self.seq_len = int(seq_len)
@@ -152,6 +157,19 @@ class SchedulerBaseCoreMixin:
             "device_by_node": dict(device_by_node),
         }
 
+    def enable_hetinfer_prior_capture(self, enabled: bool = True) -> None:
+        """Enable a post-placement, clean static-prior snapshot."""
+
+        self._hetinfer_prior_capture_enabled = bool(enabled)
+
+    def clear_hetinfer_prior_snapshots(self) -> None:
+        self._hetinfer_prior_snapshots.clear()
+
+    def export_hetinfer_prior_snapshots(self) -> List[Dict[str, Any]]:
+        """Return isolated completed snapshots; partial schedules are absent."""
+
+        return copy.deepcopy(self._hetinfer_prior_snapshots)
+
     def schedule_with_plan(
         self,
         g: TaskGraph,
@@ -163,6 +181,10 @@ class SchedulerBaseCoreMixin:
             self.stats.set_phase(phase)
 
         self.reset_state(clear_caches=False)
+        # Artifact instance ids count only successfully published snapshots.
+        # Disabled capture and failed schedules therefore cannot perturb the
+        # ids used by the two-stage ATLAS workflow.
+        capture_call_index = int(len(self._hetinfer_prior_snapshots) + 1)
         idx = self._get_graph_index(g)
         remaining_preds = {nid: len(idx.preds[nid]) for nid in idx.nodes}
 
@@ -306,6 +328,12 @@ class SchedulerBaseCoreMixin:
                 f"Schedule failed: graph may have cycles or missing deps; unscheduled nodes: {missing[:16]}"
             )
 
+        self._finalize_hetinfer_prior_snapshot(
+            g,
+            phase,
+            schedule_call_index=capture_call_index,
+        )
+
         return schedule
 
 from .scheduler_common import *
@@ -314,6 +342,1155 @@ from .scheduler_comm import CommManager
 
 
 class SchedulerBaseHelperMixin:
+    def _hetinfer_legal_devices(
+        self, g: Any, nid: str, node: TaskNode
+    ) -> Tuple[DeviceSpec, ...]:
+        """Return the capability/legal candidate set without timing filters."""
+
+        if self._is_comm_node(node):
+            # Communication primitives are not ordinary placement choices.
+            # Their committed canonical output device is the scheduler's
+            # concrete placement; REDUCE/GATHER/SCATTER may additionally leave
+            # copies on devices recorded in _collective_output_devs.
+            committed = self._node_placement.get(str(nid))
+            if committed in self.cluster.devices:
+                return (self.cluster.devices[str(committed)],)
+            return (self.cost.get_host_device(),)
+        name_up = str(getattr(node, "name", "") or "").upper()
+        if name_up in ("K_WRITE", "V_WRITE", "KV_WRITE"):
+            pinned = self._preferred_kv_write_device(g, nid)
+            if pinned is not None and self._node_allowed_on(node, pinned):
+                return (pinned,)
+            # Match Bifocal's long-standing fallback when the KV pin cannot be
+            # resolved: fall through to the ordinary executor candidates.
+        candidates: List[DeviceSpec] = []
+        for device_type in self._executor_device_types():
+            for device in self.cluster.devices_by_type(device_type):
+                try:
+                    allowed = self._node_allowed_on(node, device)
+                except Exception:
+                    # Preserve the scheduler's existing conservative behavior:
+                    # an unavailable optional legality hint must not remove an
+                    # otherwise capability-compatible executor.
+                    allowed = True
+                if allowed:
+                    candidates.append(device)
+        return tuple(candidates)
+
+    def _hetinfer_kv_source_device(self, node: TaskNode) -> DeviceSpec:
+        kv_place = str(self._kv_place(self.label) or "host").lower()
+        if kv_place == "pim":
+            source = self._kv_pim_for_node(node)
+            if source is not None:
+                return source
+        elif kv_place == "npu":
+            source = self._kv_npu_device(self.label)
+            if source is not None:
+                return source
+        return self.cost.get_host_device()
+
+    def _hetinfer_comm_devices(self, g: Any, nid: str) -> Tuple[DeviceSpec, ...]:
+        node = g.nodes[nid]
+        prim = str(self._comm_primitive(node) or "").upper()
+        names: set[str] = set()
+        for predecessor in g.predecessors(nid):
+            placed = self._node_placement.get(str(predecessor))
+            if placed in self.cluster.devices:
+                names.add(str(placed))
+        if prim == "SCATTER":
+            names.update(self._collective_output_devs.get(str(nid), set()))
+        elif prim == "TRANSFER":
+            attrs = getattr(node, "attrs", {}) or {}
+            for key in ("src", "dst"):
+                name = attrs.get(key)
+                if name in self.cluster.devices:
+                    names.add(str(name))
+        committed = self._node_placement.get(str(nid))
+        if committed in self.cluster.devices:
+            names.add(str(committed))
+        return tuple(
+            self.cluster.devices[name]
+            for name in sorted(names)
+            if name in self.cluster.devices
+        )
+
+    def _hetinfer_comm_service_s(
+        self, g: Any, nid: str, phase: str
+    ) -> Optional[float]:
+        """Return an availability-free communication primitive duration.
+
+        If any participant is PIM the timing is deliberately delegated to the
+        precomputed ATLAS table by returning ``None``.
+        """
+
+        node = g.nodes[nid]
+        devices = self._hetinfer_comm_devices(g, nid)
+        if any(str(device.type).lower() == "pim" for device in devices):
+            return None
+        phase_eff = self._node_phase(g, nid, phase)
+        batch = self._node_batch(g, nid, phase_eff)
+        seq_len = self._node_seq_len(g, nid, phase_eff)
+        read_bytes, write_bytes = self.cost.estimate_activation_bytes(
+            node, batch, seq_len, phase_eff
+        )
+        tensor_bytes = int(max(int(read_bytes), int(write_bytes), 0))
+        prim = str(self._comm_primitive(node) or "").upper()
+        host = self.cost.get_host_device()
+        host_name = str(host.name)
+
+        def transfer(source_name: str, destination_name: str, bytes_: int) -> float:
+            if source_name == destination_name or int(bytes_) == 0:
+                return 0.0
+            source = self.cluster.devices[str(source_name)]
+            destination = self.cluster.devices[str(destination_name)]
+            value = float(self.cost.comm_cost(source, destination, int(bytes_)))
+            if not math.isfinite(value) or value < 0.0:
+                raise RuntimeError(
+                    "no finite communication primitive for "
+                    f"{source_name!r}->{destination_name!r}"
+                )
+            return value
+
+        participant_names = sorted(
+            {
+                str(self._node_placement[pred])
+                for pred in g.predecessors(nid)
+                if self._node_placement.get(pred) in self.cluster.devices
+            }
+        )
+        duration = 0.0
+        if prim in ("ALLREDUCE", "ALL_REDUCE", "ALL-REDUCE"):
+            topology = normalize_topology(getattr(self.cluster, "topology", None))
+            if topology == "fc":
+                duration = float(
+                    ring_allreduce(
+                        cost=self.cost,
+                        cluster=self.cluster,
+                        ring=participant_names,
+                        tensor_bytes=tensor_bytes,
+                        start=0.0,
+                    )
+                )
+            else:
+                reduce_s = max(
+                    (
+                        transfer(name, host_name, tensor_bytes)
+                        for name in participant_names
+                    ),
+                    default=0.0,
+                )
+                try:
+                    dtype_bytes = float(self.cost._act_dtype_bytes(node, phase_eff))
+                except Exception:
+                    dtype_bytes = 2.0
+                elements = float(tensor_bytes) / max(1.0, dtype_bytes)
+                accumulation_s = float(
+                    self.cost.flop_time(
+                        max(0, len(participant_names) - 1) * elements, host
+                    )
+                )
+                scatter_s = max(
+                    (
+                        transfer(host_name, name, tensor_bytes)
+                        for name in participant_names
+                    ),
+                    default=0.0,
+                )
+                duration = reduce_s + accumulation_s + scatter_s
+        elif prim in ("REDUCE", "GATHER"):
+            duration = max(
+                (
+                    transfer(name, host_name, tensor_bytes)
+                    for name in participant_names
+                ),
+                default=0.0,
+            )
+            if prim == "REDUCE":
+                try:
+                    dtype_bytes = float(self.cost._act_dtype_bytes(node, phase_eff))
+                except Exception:
+                    dtype_bytes = 2.0
+                elements = float(tensor_bytes) / max(1.0, dtype_bytes)
+                duration += float(
+                    self.cost.flop_time(
+                        max(0, len(participant_names) - 1) * elements, host
+                    )
+                )
+        elif prim == "SCATTER":
+            attrs = getattr(node, "attrs", {}) or {}
+            targets = sorted(
+                set(self._collective_output_devs.get(str(nid), set()))
+                - {host_name}
+            )
+            per_target = tensor_bytes
+            if str(attrs.get("scatter_mode", "broadcast")).lower() in (
+                "partition",
+                "shard",
+                "split",
+            ):
+                per_target = int(
+                    math.ceil(float(tensor_bytes) / float(max(1, len(targets))))
+                )
+            duration = max(
+                (transfer(host_name, name, per_target) for name in targets),
+                default=0.0,
+            )
+        elif prim == "TRANSFER":
+            attrs = getattr(node, "attrs", {}) or {}
+            source_name = str(attrs.get("src") or (participant_names or [host_name])[0])
+            destination_name = str(attrs.get("dst") or host_name)
+            override = attrs.get("bytes", attrs.get("bytes_nd", tensor_bytes))
+            duration = transfer(source_name, destination_name, int(override))
+        if not math.isfinite(duration) or duration < 0.0:
+            raise RuntimeError(f"invalid communication service for {nid!r}: {duration!r}")
+        return float(duration)
+
+    def _hetinfer_compute_service_s(
+        self,
+        g: Any,
+        nid: str,
+        device: DeviceSpec,
+        phase: str,
+    ) -> Optional[float]:
+        """Return movement-, reload-, and queue-free local execution seconds.
+
+        PIM values are intentionally absent: the offline exporter must replace
+        them with precomputed ATLAS cycles/frequency records.
+        """
+
+        node = g.nodes[nid]
+        if self._is_comm_node(node):
+            return self._hetinfer_comm_service_s(g, nid, phase)
+        if str(getattr(device, "type", "") or "").lower() == "pim":
+            return None
+        phase_eff = self._node_phase(g, nid, phase)
+        batch = self._node_batch(g, nid, phase_eff)
+        seq_len = self._node_seq_len(g, nid, phase_eff)
+        name_up = str(getattr(node, "name", "") or "").upper()
+        if name_up in ("K_WRITE", "V_WRITE", "KV_WRITE"):
+            _, write_bytes = self.cost.estimate_activation_bytes(
+                node, batch, seq_len, phase_eff
+            )
+            bytes_nd = int(self.cost.format_size(int(write_bytes), "ND"))
+            if str(device.name) == str(self.cost.get_host_device().name):
+                # The existing DOPS host-KV path models the predecessor-to-host
+                # copy as movement and commits a zero-duration host-local
+                # primitive.  Preserve that exact separation in the static
+                # tables; adding host mem_time here would double count it.
+                return 0.0
+            source_layout = str(self.cost.device_preferred_fmt(device))
+            conversion_s = 0.0
+            if source_layout != "ND":
+                conversion_s = float(
+                    self.cost.format_conversion_time(
+                        bytes_nd, source_layout, "ND", device
+                    )
+                )
+            return conversion_s + float(self.cost.mem_time(bytes_nd, device))
+        result = float(
+            self._weighted_compute_time(
+                node,
+                device,
+                self.label,
+                int(batch),
+                int(seq_len),
+                str(phase_eff),
+            )
+        )
+        if name_up in ("QK", "SV"):
+            source = self._hetinfer_kv_source_device(node)
+            if str(source.name) == str(device.name):
+                kv_bytes = int(
+                    self.cost.estimate_kv_cache_read_bytes(
+                        node, batch, seq_len, phase_eff
+                    )
+                )
+                if kv_bytes > 0:
+                    size_nd = int(self.cost.format_size(kv_bytes, "ND"))
+                    result += float(self.cost.mem_time(size_nd, device))
+                    destination_layout = str(
+                        self.cost.device_preferred_fmt(device)
+                    )
+                    if destination_layout != "ND":
+                        result += float(
+                            self.cost.format_conversion_time(
+                                size_nd,
+                                "ND",
+                                destination_layout,
+                                device,
+                            )
+                        )
+        if not math.isfinite(result) or result < 0.0:
+            raise RuntimeError(
+                f"invalid local service for {(nid, device.name)!r}: {result!r}"
+            )
+        return result
+
+    def _hetinfer_edge_data_bytes(
+        self, g: Any, source_id: str, destination_id: str, phase: str
+    ) -> int:
+        edge_tensor = getattr(g, "edge_tensor", None)
+        if callable(edge_tensor):
+            metadata = edge_tensor(source_id, destination_id)
+            if isinstance(metadata, Mapping) and metadata.get("bytes") is not None:
+                return max(0, int(metadata["bytes"]))
+        source = g.nodes[source_id]
+        source_phase = self._node_phase(g, source_id, phase)
+        source_batch = self._node_batch(g, source_id, source_phase)
+        source_seq = self._node_seq_len(g, source_id, source_phase)
+        _, source_write = self.cost.estimate_activation_bytes(
+            source, source_batch, source_seq, source_phase
+        )
+        return max(0, int(source_write))
+
+    def _hetinfer_edge_tensor_id(
+        self,
+        g: Any,
+        source_id: str,
+        destination_id: str,
+        phase: str,
+        schedule_call_index: int,
+    ) -> str:
+        edge_tensor = getattr(g, "edge_tensor", None)
+        if callable(edge_tensor):
+            metadata = edge_tensor(source_id, destination_id)
+            if isinstance(metadata, Mapping) and metadata.get("tensor_id"):
+                return (
+                    f"{phase}:{int(schedule_call_index)}:"
+                    f"{str(metadata['tensor_id'])}"
+                )
+        attrs = getattr(g.nodes[source_id], "attrs", {}) or {}
+        output = attrs.get("hetinfer_output")
+        if isinstance(output, Mapping) and output.get("tensor_id"):
+            return (
+                f"{phase}:{int(schedule_call_index)}:"
+                f"{str(output['tensor_id'])}"
+            )
+        if attrs.get("hetinfer_tensor_id"):
+            return (
+                f"{phase}:{int(schedule_call_index)}:"
+                f"{str(attrs['hetinfer_tensor_id'])}"
+            )
+        # Tensor identity belongs to the producer output, not an edge.  Forked
+        # consumers therefore share one tensor and one residency domain.
+        return f"{phase}:{int(schedule_call_index)}:tensor:{source_id}"
+
+    def _hetinfer_output_layout(
+        self,
+        g: Any,
+        source_id: str,
+        source: DeviceSpec,
+        destination_id: Optional[str] = None,
+    ) -> str:
+        if str(source.name) == str(self.cost.get_host_device().name):
+            return "ND"
+        edge_tensor = getattr(g, "edge_tensor", None)
+        if destination_id is not None and callable(edge_tensor):
+            metadata = edge_tensor(source_id, destination_id)
+            if isinstance(metadata, Mapping) and metadata.get("layout"):
+                return str(metadata["layout"])
+        node = g.nodes[source_id]
+        attrs = getattr(node, "attrs", {}) or {}
+        output = attrs.get("hetinfer_output")
+        if isinstance(output, Mapping) and output.get("layout"):
+            return str(output["layout"])
+        if self._is_comm_node(node) or str(getattr(node, "name", "")).upper() in (
+            "K_WRITE",
+            "V_WRITE",
+            "KV_WRITE",
+        ):
+            return "ND"
+        return str(self.cost.device_preferred_fmt(source))
+
+    def _hetinfer_route_time_s(
+        self,
+        source: DeviceSpec,
+        destination: DeviceSpec,
+        bytes_nd: int,
+        *,
+        source_layout: str,
+        include_source_read: bool = False,
+    ) -> float:
+        if source.name == destination.name:
+            return 0.0
+        size_nd = int(self.cost.format_size(int(bytes_nd), "ND"))
+        source_size = int(self.cost.format_size(int(bytes_nd), source_layout))
+        source_conversion = 0.0
+        if source_layout != "ND":
+            source_conversion = float(
+                self.cost.format_conversion_time(
+                    source_size, source_layout, "ND", source
+                )
+            )
+        source_read = 0.0
+        if str(getattr(source, "type", "") or "").lower() == "pim":
+            source_read = float(self.cost.activation_read_time_pim(size_nd))
+        elif include_source_read:
+            source_read = float(self.cost.mem_time(size_nd, source))
+        base = source_conversion + source_read
+        destination_layout = str(self.cost.device_preferred_fmt(destination))
+        direct_probe = float(self.cost.comm_cost(source, destination, size_nd))
+        direct = float("inf")
+        if math.isfinite(direct_probe):
+            direct = base + float(
+                self.cost.combine_transfer_and_convert(
+                    source,
+                    destination,
+                    size_nd,
+                    "ND",
+                    destination_layout,
+                )
+            )
+        host = self.cost.get_host_device()
+        via_host = float("inf")
+        to_host = float(self.cost.comm_cost(source, host, size_nd))
+        if math.isfinite(to_host):
+            via_host = base + to_host + float(
+                self.cost.combine_transfer_and_convert(
+                    host,
+                    destination,
+                    size_nd,
+                    "ND",
+                    destination_layout,
+                )
+            )
+        topology = normalize_topology(getattr(self.cluster, "topology", None))
+        # The execution path uses the direct FC route when it exists, but it
+        # still falls back through the host when that particular pair has no
+        # finite direct link.  Keep the offline primitive identical.
+        if topology == "fc" and math.isfinite(direct):
+            result = direct
+        else:
+            result = min(direct, via_host)
+        if not math.isfinite(result) or result < 0.0:
+            raise RuntimeError(
+                "no finite movement route for "
+                f"{source.name!r}->{destination.name!r}"
+            )
+        return float(result)
+
+    def _hetinfer_json_value(self, value: Any, field: str) -> Any:
+        """Return deterministic JSON-only scheduler provenance.
+
+        Timing identity is fail-closed: an opaque Python object must never be
+        reduced to a process-specific repr and silently reuse an ATLAS result.
+        """
+
+        if value is None or isinstance(value, (str, bool, int)):
+            return value
+        if isinstance(value, float):
+            if not math.isfinite(value):
+                raise RuntimeError(f"non-finite timing descriptor at {field}")
+            return value
+        if isinstance(value, os.PathLike):
+            return os.fspath(value)
+        if isinstance(value, Mapping):
+            result: Dict[str, Any] = {}
+            for raw_key, raw_item in value.items():
+                if not isinstance(raw_key, str) or not raw_key:
+                    raise RuntimeError(
+                        f"timing descriptor keys must be non-empty strings at {field}"
+                    )
+                result[raw_key] = self._hetinfer_json_value(
+                    raw_item, f"{field}.{raw_key}"
+                )
+            return result
+        if isinstance(value, (list, tuple)):
+            return [
+                self._hetinfer_json_value(item, f"{field}[{index}]")
+                for index, item in enumerate(value)
+            ]
+        raise RuntimeError(
+            "timing descriptor must contain JSON-only data: "
+            f"{field} has {type(value).__name__}"
+        )
+
+    def _hetinfer_weight_layout_descriptor(
+        self,
+        node: TaskNode,
+        device: DeviceSpec,
+        *,
+        batch: int,
+        seq_len: int,
+        phase: str,
+    ) -> str:
+        """Bind every weight layout stage that can change local service."""
+
+        wid = self._node_weight_id(node)
+        weight_size = self._node_weight_size(node)
+        if not wid or weight_size <= 0:
+            return "NONE"
+        storage = str(self._weight_storage_format_for_wid(wid))
+        host_source = str(self._weight_host_source_format(device, storage))
+        resident = str(self._weight_resident_format(device, storage))
+        profile = self._weight_compute_stage_profile(
+            node,
+            device,
+            self.label,
+            int(batch),
+            int(seq_len),
+            str(phase),
+            resident_fmt=resident,
+        )
+        compute = str(profile["compute_fmt"])
+        return (
+            f"storage={storage};host_source={host_source};"
+            f"resident={resident};compute={compute}"
+        )
+
+    def _finalize_hetinfer_prior_snapshot(
+        self,
+        g: Any,
+        phase: str,
+        *,
+        schedule_call_index: int,
+    ) -> None:
+        """Publish one complete clean snapshot after all placements commit."""
+
+        if not self._hetinfer_prior_capture_enabled:
+            return
+        graph_nodes = tuple(str(nid) for nid in self._get_graph_index(g).nodes)
+        if set(self._node_placement) != set(graph_nodes):
+            raise RuntimeError(
+                "cannot export an incomplete final placement: "
+                f"missing={sorted(set(graph_nodes) - set(self._node_placement))}, "
+                f"unexpected={sorted(set(self._node_placement) - set(graph_nodes))}"
+            )
+
+        devices = [
+            {
+                "device_id": str(device.name),
+                "device_type": str(device.type).lower(),
+            }
+            for device in sorted(
+                self.cluster.devices.values(), key=lambda item: str(item.name)
+            )
+        ]
+        host = self.cost.get_host_device()
+        host_name = str(host.name)
+        topology = str(normalize_topology(getattr(self.cluster, "topology", None)))
+        barrier_edges = {
+            (str(source), str(destination))
+            for source, destination in (getattr(g, "barrier_edges", ()) or ())
+        }
+        op_id_by_node = {
+            nid: f"{phase}:{int(schedule_call_index)}:{nid}"
+            for nid in graph_nodes
+        }
+        legal_by_node: Dict[str, Tuple[DeviceSpec, ...]] = {}
+        for nid in graph_nodes:
+            node = g.nodes[nid]
+            legal = self._hetinfer_legal_devices(g, nid, node)
+            if not legal:
+                raise RuntimeError(f"operator {nid!r} has no legal export devices")
+            legal_by_node[nid] = legal
+            expert = str(self._node_placement[nid])
+            if expert not in {str(device.name) for device in legal}:
+                raise RuntimeError(
+                    f"final placement {(nid, expert)!r} is outside legal candidates"
+                )
+
+        # Communication nodes expose one fixed, physical DOPS expert context.
+        # Inputs may still originate from every legal upstream residency, but
+        # they first stage to these fixed devices.  T_service starts only after
+        # staging and atomically includes the primitive's internal transport.
+        collective_context_by_node: Dict[str, Dict[str, Any]] = {}
+        collective_staging_by_edge: Dict[Tuple[str, str], str] = {}
+        for nid in graph_nodes:
+            node = g.nodes[nid]
+            if not self._is_comm_node(node):
+                continue
+            primitive = str(self._comm_primitive(node) or "").upper()
+            if primitive in ("ALL_REDUCE", "ALL-REDUCE"):
+                primitive = "ALLREDUCE"
+            data_predecessors = [
+                str(pred)
+                for pred in g.predecessors(nid)
+                if (str(pred), nid) not in barrier_edges
+            ]
+            if not data_predecessors:
+                raise RuntimeError(
+                    f"collective {nid!r} has no data input to bind to fixed staging"
+                )
+            attrs = getattr(node, "attrs", {}) or {}
+            if primitive == "SCATTER":
+                staging_devices = {pred: host_name for pred in data_predecessors}
+            elif primitive == "TRANSFER":
+                if len(data_predecessors) != 1:
+                    raise RuntimeError(
+                        "TRANSFER export requires exactly one data predecessor: "
+                        f"{nid!r} has {data_predecessors!r}"
+                    )
+                effective_source = str(
+                    attrs.get("src")
+                    or self._node_placement.get(data_predecessors[0], host_name)
+                )
+                if effective_source not in self.cluster.devices:
+                    raise RuntimeError(
+                        f"TRANSFER {nid!r} references unknown source {effective_source!r}"
+                    )
+                staging_devices = {
+                    data_predecessors[0]: effective_source
+                }
+            else:
+                staging_devices = {
+                    pred: str(self._node_placement[pred])
+                    for pred in data_predecessors
+                }
+            participants = sorted(set(staging_devices.values()))
+            if any(name not in self.cluster.devices for name in participants):
+                raise RuntimeError(
+                    f"collective {nid!r} has an unknown participant: {participants!r}"
+                )
+            recorded_outputs = {
+                str(name)
+                for name in self._collective_output_devs.get(nid, set())
+            }
+            if primitive == "ALLREDUCE":
+                outputs = recorded_outputs or set(participants)
+            elif primitive in ("REDUCE", "GATHER"):
+                outputs = recorded_outputs or {host_name}
+            elif primitive == "SCATTER":
+                outputs = recorded_outputs or {host_name}
+            elif primitive == "TRANSFER":
+                destination = str(
+                    attrs.get("dst") or self._node_placement.get(nid, host_name)
+                )
+                outputs = recorded_outputs or {destination}
+            else:
+                raise RuntimeError(
+                    f"unsupported communication primitive for export: {primitive!r}"
+                )
+            canonical = str(self._node_placement[nid])
+            if canonical not in outputs:
+                raise RuntimeError(
+                    f"collective {nid!r} canonical device {canonical!r} is not an output"
+                )
+            unknown_outputs = sorted(outputs - set(self.cluster.devices))
+            if unknown_outputs:
+                raise RuntimeError(
+                    f"collective {nid!r} has unknown outputs: {unknown_outputs!r}"
+                )
+            node_phase = self._node_phase(g, nid, phase)
+            node_batch = self._node_batch(g, nid, node_phase)
+            node_seq = self._node_seq_len(g, nid, node_phase)
+            read_bytes, write_bytes = self.cost.estimate_activation_bytes(
+                node, node_batch, node_seq, node_phase
+            )
+            resources = set(participants) | set(outputs)
+            if primitive == "ALLREDUCE" and topology != "fc":
+                resources.add(host_name)
+            context = {
+                "op_id": op_id_by_node[nid],
+                "primitive": primitive,
+                "topology": topology,
+                "canonical_device_id": canonical,
+                "participant_device_ids": participants,
+                "output_device_ids": sorted(outputs),
+                "resource_device_ids": sorted(resources),
+                "tensor_bytes": max(0, int(read_bytes), int(write_bytes)),
+                "internal_transport": "included_in_t_service",
+            }
+            collective_context_by_node[nid] = context
+            for pred, staging_device in staging_devices.items():
+                collective_staging_by_edge[(pred, nid)] = staging_device
+
+        routes_by_key: Dict[Tuple[str, str, str, int, str], Dict[str, Any]] = {}
+        tensor_source_descriptions: Dict[Tuple[str, str], Tuple[int, str]] = {}
+        inputs: List[Dict[str, Any]] = []
+        input_keys: set[Tuple[str, Optional[str], str]] = set()
+        tensor_bindings: Dict[str, Tuple[Optional[str], int]] = {}
+
+        def add_input(
+            *,
+            consumer_id: str,
+            producer_id: Optional[str],
+            tensor_id: str,
+            semantics: str,
+            bytes_nd: int,
+            source_residencies: List[Dict[str, str]],
+            destination_devices: List[str],
+        ) -> None:
+            consumer_op_id = op_id_by_node[consumer_id]
+            producer_op_id = (
+                None if producer_id is None else op_id_by_node[producer_id]
+            )
+            key = (consumer_op_id, producer_op_id, str(tensor_id))
+            if key in input_keys:
+                raise RuntimeError(f"duplicate static-prior input binding: {key!r}")
+            input_keys.add(key)
+            binding = (producer_op_id, int(bytes_nd))
+            previous = tensor_bindings.setdefault(str(tensor_id), binding)
+            if previous != binding:
+                raise RuntimeError(
+                    "one tensor_id cannot change producer or bytes across inputs: "
+                    f"{tensor_id!r}, previous={previous!r}, new={binding!r}"
+                )
+            residency_devices = [
+                str(entry["device_id"]) for entry in source_residencies
+            ]
+            if len(residency_devices) != len(set(residency_devices)):
+                raise RuntimeError(
+                    f"input {key!r} has duplicate source residency devices"
+                )
+            inputs.append(
+                {
+                    "consumer_op_id": consumer_op_id,
+                    "producer_op_id": producer_op_id,
+                    "tensor_id": str(tensor_id),
+                    "semantics": str(semantics),
+                    "bytes": int(bytes_nd),
+                    "source_residencies": copy.deepcopy(source_residencies),
+                    "destination_devices": sorted(
+                        {str(name) for name in destination_devices}
+                    ),
+                }
+            )
+
+        def add_route(
+            *,
+            tensor_id: str,
+            source: DeviceSpec,
+            destination: DeviceSpec,
+            bytes_nd: int,
+            layout: str,
+            include_source_read: bool = False,
+        ) -> None:
+            source_description_key = (str(tensor_id), str(source.name))
+            source_description = (int(bytes_nd), str(layout))
+            previous_description = tensor_source_descriptions.get(
+                source_description_key
+            )
+            if (
+                previous_description is not None
+                and previous_description != source_description
+            ):
+                raise RuntimeError(
+                    "one tensor residency cannot change bytes/layout across "
+                    f"consumers: {source_description_key!r}, "
+                    f"previous={previous_description!r}, "
+                    f"new={source_description!r}"
+                )
+            tensor_source_descriptions[source_description_key] = source_description
+            resident = str(source.name) == str(destination.name)
+            pim_related = (
+                str(source.type).lower() == "pim"
+                or str(destination.type).lower() == "pim"
+            )
+            requires_atlas = bool(pim_related and not resident)
+            if resident:
+                duration_s: Optional[float] = 0.0
+            elif requires_atlas:
+                # PIM movement is supplied only by the precomputed ATLAS file;
+                # snapshot capture never launches or queries the simulator.
+                duration_s = None
+            else:
+                duration_s = self._hetinfer_route_time_s(
+                    source,
+                    destination,
+                    int(bytes_nd),
+                    source_layout=str(layout),
+                    include_source_read=bool(include_source_read),
+                )
+            key = (
+                str(tensor_id),
+                str(source.name),
+                str(destination.name),
+                int(bytes_nd),
+                str(layout),
+            )
+            entry = {
+                "tensor_id": key[0],
+                "source_device_id": key[1],
+                "destination_device_id": key[2],
+                "bytes": key[3],
+                "layout": key[4],
+                "duration_s": duration_s,
+                "requires_atlas": requires_atlas,
+                "atlas_descriptor": {
+                    "topology": topology,
+                    "source_device_type": str(source.type).lower(),
+                    "destination_device_type": str(destination.type).lower(),
+                },
+            }
+            previous = routes_by_key.get(key)
+            if previous is not None and previous != entry:
+                raise RuntimeError(f"inconsistent duplicate route {key!r}")
+            routes_by_key[key] = entry
+
+        # Root operators consume explicit external inputs when declared.  The
+        # compatibility fallback is one ND tensor resident on the host.
+        for destination_id in graph_nodes:
+            data_predecessors = tuple(
+                str(item)
+                for item in g.predecessors(destination_id)
+                if (str(item), destination_id) not in barrier_edges
+            )
+            if not data_predecessors:
+                raw_inputs: Any = None
+                external_inputs_for = getattr(g, "external_inputs_for", None)
+                if callable(external_inputs_for):
+                    raw_inputs = external_inputs_for(destination_id)
+                if raw_inputs in (None, (), []):
+                    attrs = getattr(g.nodes[destination_id], "attrs", {}) or {}
+                    raw_inputs = attrs.get("hetinfer_external_inputs")
+                if raw_inputs in (None, (), []):
+                    destination_node = g.nodes[destination_id]
+                    destination_phase = self._node_phase(
+                        g, destination_id, phase
+                    )
+                    destination_batch = self._node_batch(
+                        g, destination_id, destination_phase
+                    )
+                    destination_seq = self._node_seq_len(
+                        g, destination_id, destination_phase
+                    )
+                    read_bytes, _ = self.cost.estimate_activation_bytes(
+                        destination_node,
+                        destination_batch,
+                        destination_seq,
+                        destination_phase,
+                    )
+                    raw_inputs = [
+                        {
+                            "tensor_id": f"input:{destination_id}",
+                            "source_devices": [str(host.name)],
+                            "bytes": max(0, int(read_bytes)),
+                            "layout": "ND",
+                        }
+                    ]
+                if isinstance(raw_inputs, Mapping) or isinstance(
+                    raw_inputs, (str, bytes)
+                ):
+                    raise RuntimeError(
+                        f"external inputs for {destination_id!r} must be an array"
+                    )
+                for input_index, raw_input in enumerate(raw_inputs):
+                    if not isinstance(raw_input, Mapping):
+                        raise RuntimeError(
+                            "external input must be an object: "
+                            f"{destination_id!r}[{input_index}]"
+                        )
+                    raw_tensor_id = str(
+                        raw_input.get("tensor_id")
+                        or f"input:{destination_id}:{input_index}"
+                    )
+                    tensor_id = (
+                        f"{phase}:{int(schedule_call_index)}:{raw_tensor_id}"
+                    )
+                    source_names = raw_input.get(
+                        "source_devices", [str(host.name)]
+                    )
+                    if isinstance(source_names, (str, bytes)):
+                        source_names = [str(source_names)]
+                    try:
+                        source_names = [str(item) for item in source_names]
+                    except TypeError as exc:
+                        raise RuntimeError(
+                            "external input source_devices must be an array: "
+                            f"{destination_id!r}[{input_index}]"
+                        ) from exc
+                    if not source_names:
+                        raise RuntimeError(
+                            "external input source_devices cannot be empty: "
+                            f"{destination_id!r}[{input_index}]"
+                        )
+                    bytes_nd = int(raw_input.get("bytes", 0))
+                    if bytes_nd < 0:
+                        raise RuntimeError(
+                            "external input bytes cannot be negative: "
+                            f"{destination_id!r}[{input_index}]"
+                        )
+                    layout = str(raw_input.get("layout", "ND") or "ND")
+                    source_residencies: List[Dict[str, str]] = []
+                    destination_names = [
+                        str(device.name) for device in legal_by_node[destination_id]
+                    ]
+                    for source_name in source_names:
+                        if str(source_name) not in self.cluster.devices:
+                            raise RuntimeError(
+                                "external input references unknown source device "
+                                f"{source_name!r}"
+                            )
+                        source = self.cluster.devices[str(source_name)]
+                        source_residencies.append(
+                            {"device_id": str(source.name), "layout": layout}
+                        )
+                        for destination in legal_by_node[destination_id]:
+                            add_route(
+                                tensor_id=tensor_id,
+                                source=source,
+                                destination=destination,
+                                bytes_nd=bytes_nd,
+                                layout=layout,
+                            )
+                    add_input(
+                        consumer_id=destination_id,
+                        producer_id=None,
+                        tensor_id=tensor_id,
+                        semantics="data",
+                        bytes_nd=bytes_nd,
+                        source_residencies=source_residencies,
+                        destination_devices=destination_names,
+                    )
+
+            # QK/SV have an additional cache tensor whose residency is fixed by
+            # the DOPS KV plan.  It is independent of ordinary graph edges.
+            node = g.nodes[destination_id]
+            role = str(getattr(node, "name", "") or "").upper()
+            if role in ("QK", "SV"):
+                destination_phase = self._node_phase(g, destination_id, phase)
+                destination_batch = self._node_batch(
+                    g, destination_id, destination_phase
+                )
+                destination_seq = self._node_seq_len(
+                    g, destination_id, destination_phase
+                )
+                kv_bytes = max(
+                    0,
+                    int(
+                        self.cost.estimate_kv_cache_read_bytes(
+                            node,
+                            destination_batch,
+                            destination_seq,
+                            destination_phase,
+                        )
+                    ),
+                )
+                if kv_bytes > 0:
+                    source = self._hetinfer_kv_source_device(node)
+                    tensor_id = (
+                        f"{phase}:{int(schedule_call_index)}:"
+                        f"kv:{'K' if role == 'QK' else 'V'}:{destination_id}"
+                    )
+                    for destination in legal_by_node[destination_id]:
+                        add_route(
+                            tensor_id=tensor_id,
+                            source=source,
+                            destination=destination,
+                            bytes_nd=kv_bytes,
+                            layout="ND",
+                            include_source_read=True,
+                        )
+                    add_input(
+                        consumer_id=destination_id,
+                        producer_id=None,
+                        tensor_id=tensor_id,
+                        semantics="data",
+                        bytes_nd=kv_bytes,
+                        source_residencies=[
+                            {"device_id": str(source.name), "layout": "ND"}
+                        ],
+                        destination_devices=[
+                            str(device.name)
+                            for device in legal_by_node[destination_id]
+                        ],
+                    )
+
+        # Each producer output is one tensor even when it fans out.  Its source
+        # domain is every legal producer placement (or every fixed collective
+        # output) plus a possible host spill.  Ordinary consumers target all of
+        # their legal devices; collective inputs target exactly one fixed
+        # staging device.  Internal collective hops never appear as T_move.
+        for source_id in graph_nodes:
+            successors = tuple(str(item) for item in g.successors(source_id))
+            if not successors:
+                continue
+            source_context = collective_context_by_node.get(source_id)
+            if source_context is None:
+                source_devices: Dict[str, DeviceSpec] = {
+                    str(device.name): device
+                    for device in legal_by_node[source_id]
+                }
+            else:
+                source_devices = {
+                    str(name): self.cluster.devices[str(name)]
+                    for name in source_context["output_device_ids"]
+                }
+            # Ordinary DOPS execution may spill an activation to host.  Host is
+            # therefore a legal source residency even when it is not an
+            # operator execution candidate.
+            source_devices[host_name] = host
+            for destination_id in successors:
+                if (source_id, destination_id) in barrier_edges:
+                    add_input(
+                        consumer_id=destination_id,
+                        producer_id=source_id,
+                        tensor_id=(
+                            f"{phase}:{int(schedule_call_index)}:"
+                            f"barrier:{source_id}->{destination_id}"
+                        ),
+                        semantics="barrier",
+                        bytes_nd=0,
+                        source_residencies=[],
+                        destination_devices=[],
+                    )
+                    continue
+                tensor_id = self._hetinfer_edge_tensor_id(
+                    g,
+                    source_id,
+                    destination_id,
+                    phase,
+                    schedule_call_index,
+                )
+                bytes_nd = self._hetinfer_edge_data_bytes(
+                    g, source_id, destination_id, phase
+                )
+                staging_device = collective_staging_by_edge.get(
+                    (source_id, destination_id)
+                )
+                if staging_device is None:
+                    semantics = "data"
+                    consumer_destinations = {
+                        str(device.name): device
+                        for device in legal_by_node[destination_id]
+                    }
+                else:
+                    semantics = "collective_staging"
+                    consumer_destinations = {
+                        str(staging_device): self.cluster.devices[str(staging_device)]
+                    }
+                # DOPS may materialize an activation in host memory before a
+                # later consumer reloads it.  Export both halves of that
+                # residency transition: producer->host store and
+                # host->consumer reload (including host->host resident zero).
+                route_destinations = dict(consumer_destinations)
+                route_destinations[host_name] = host
+                source_residencies: List[Dict[str, str]] = []
+                for source in source_devices.values():
+                    layout = self._hetinfer_output_layout(
+                        g, source_id, source, destination_id
+                    )
+                    source_residencies.append(
+                        {"device_id": str(source.name), "layout": str(layout)}
+                    )
+                    for destination in route_destinations.values():
+                        add_route(
+                            tensor_id=tensor_id,
+                            source=source,
+                            destination=destination,
+                            bytes_nd=bytes_nd,
+                            layout=layout,
+                        )
+                add_input(
+                    consumer_id=destination_id,
+                    producer_id=source_id,
+                    tensor_id=tensor_id,
+                    semantics=semantics,
+                    bytes_nd=bytes_nd,
+                    source_residencies=source_residencies,
+                    destination_devices=list(consumer_destinations),
+                )
+
+        routes = [routes_by_key[key] for key in sorted(routes_by_key)]
+
+        operators: List[Dict[str, Any]] = []
+        for nid in graph_nodes:
+            node = g.nodes[nid]
+            legal = legal_by_node[nid]
+            node_phase = self._node_phase(g, nid, phase)
+            node_batch = self._node_batch(g, nid, node_phase)
+            node_seq = self._node_seq_len(g, nid, node_phase)
+            context = collective_context_by_node.get(nid)
+            context_bindings = sorted(
+                [
+                    copy.deepcopy(entry)
+                    for entry in inputs
+                    if entry["consumer_op_id"] == op_id_by_node[nid]
+                    and entry["semantics"] == "collective_staging"
+                ],
+                key=lambda entry: (
+                    entry["producer_op_id"] or "",
+                    entry["tensor_id"],
+                ),
+            )
+            descriptor_attrs = self._hetinfer_json_value(
+                {
+                    "name": str(getattr(node, "name", "") or ""),
+                    "flops": float(getattr(node, "flops", 0.0) or 0.0),
+                    "bytes_read": float(
+                        getattr(node, "bytes_read", 0.0) or 0.0
+                    ),
+                    "bytes_write": float(
+                        getattr(node, "bytes_write", 0.0) or 0.0
+                    ),
+                    "weight_id": self._node_weight_id(node),
+                    "weight_size": self._node_weight_size(node),
+                    "allowed": dict(getattr(node, "allowed", {}) or {}),
+                    "node_attrs": dict(getattr(node, "attrs", {}) or {}),
+                    "effective_phase": str(node_phase),
+                    "collective_context": context,
+                    "collective_input_bindings": context_bindings,
+                },
+                f"operator[{nid}].atlas_descriptor.attrs",
+            )
+            operators.append(
+                {
+                    "op_id": op_id_by_node[nid],
+                    "dependencies": [
+                        op_id_by_node[str(pred)] for pred in g.predecessors(nid)
+                    ],
+                    "legal_devices": [str(device.name) for device in legal],
+                    "expert_device": str(self._node_placement[nid]),
+                    "service_s": {
+                        str(device.name): self._hetinfer_compute_service_s(
+                            g, nid, device, phase
+                        )
+                        for device in legal
+                    },
+                    "atlas_descriptor": {
+                        "op_kind": str(getattr(node, "name", "") or "UNKNOWN"),
+                        "phase": str(phase),
+                        "batch": int(node_batch),
+                        "seq_len": int(node_seq),
+                        "attrs": descriptor_attrs,
+                        "weight_layout_by_device": {
+                            str(device.name): self._hetinfer_weight_layout_descriptor(
+                                node,
+                                device,
+                                batch=int(node_batch),
+                                seq_len=int(node_seq),
+                                phase=str(node_phase),
+                            )
+                            for device in legal
+                        },
+                        "collective_primitive": (
+                            None if context is None else context["primitive"]
+                        ),
+                        "collective_participants": (
+                            []
+                            if context is None
+                            else list(context["participant_device_ids"])
+                        ),
+                        "topology": topology,
+                    },
+                }
+            )
+
+        snapshot = {
+            "schedule_call_index": int(schedule_call_index),
+            "phase": str(phase),
+            "devices": devices,
+            "operators": operators,
+            "inputs": sorted(
+                inputs,
+                key=lambda entry: (
+                    entry["consumer_op_id"],
+                    entry["producer_op_id"] or "",
+                    entry["tensor_id"],
+                    entry["semantics"],
+                ),
+            ),
+            "collective_contexts": [
+                copy.deepcopy(collective_context_by_node[nid])
+                for nid in graph_nodes
+                if nid in collective_context_by_node
+            ],
+            "routes": routes,
+        }
+        self._hetinfer_prior_snapshots.append(copy.deepcopy(snapshot))
+        self._hetinfer_schedule_call_index = int(schedule_call_index)
+
     def _executor_device_types(self) -> Tuple[str, ...]:
         try:
             has_npu = bool(self.cluster.devices_by_type('npu'))
