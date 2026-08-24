@@ -117,6 +117,7 @@ def main() -> int:
     env = os.environ.copy()
     env["RAMULATOR2_BIN"] = str(simulator_root / "build" / "ramulator2")
     env["DYLD_LIBRARY_PATH"] = str(simulator_root)
+    env["LD_LIBRARY_PATH"] = str(simulator_root)
     env["PIM_TRACE_SCALE_REPEATS"] = "1"
 
     selected_batches = tuple(args.batch or BATCHES)
