@@ -988,6 +988,74 @@ class QwenDef:
         g = TaskGraph()
         for l in range(int(shape.layer_num)):
             add_llama_block(g, l, shape, float(dtype_bytes), cfg=cfg)
+
+        total_repeats = int(shape.layer_num)
+        for node_id, node in g.nodes.items():
+            layer_index = int(node.attrs["layer"])
+            node.attrs["layer_index"] = layer_index
+            node.attrs["repeat_index"] = layer_index
+            node.attrs["total_repeats"] = total_repeats
+            node.attrs["block_id"] = f"layer:{layer_index}"
+            node.attrs["canonical_op_slot"] = node_id.removeprefix(
+                f"L{layer_index}_"
+            ).lower()
+
+        npu_only = {"cpu": False, "npu": True, "pim": False}
+        dim = int(shape.dim)
+        vocab_size = int(getattr(shape, "vocab_size"))
+        global_attrs = {
+            "batch": int(shape.batch),
+            "dim": dim,
+            "ffn_dim": int(shape.ffn_dim),
+            "q_heads": int(shape.n_heads),
+            "kv_heads": int(shape.n_kv_heads),
+            "n_heads": int(shape.n_heads),
+            "n_kv_heads": int(shape.n_kv_heads),
+            "head_dim": int(shape.head_dim),
+            "q_dim": int(shape.n_heads * shape.head_dim),
+            "kv_dim": int(shape.n_kv_heads * shape.head_dim),
+            "o_dim": int(shape.n_heads * shape.head_dim),
+            "block_id": "global",
+        }
+        embedding_attrs = dict(global_attrs)
+        embedding_attrs["canonical_op_slot"] = "embedding"
+        embedding_attrs["npu_weight_target_format"] = "NZ"
+        g.add_node(
+            TaskNode(
+                "embedding",
+                "IDENTITY",
+                weight_id="embedding",
+                weight_size=_weight_bytes(vocab_size * dim, dtype_bytes),
+                allowed=npu_only,
+                attrs=embedding_attrs,
+            )
+        )
+        final_norm_attrs = dict(global_attrs)
+        final_norm_attrs["canonical_op_slot"] = "final_norm"
+        g.add_node(
+            TaskNode(
+                "final_norm",
+                "LN",
+                allowed=npu_only,
+                attrs=final_norm_attrs,
+            )
+        )
+        lm_head_attrs = dict(global_attrs)
+        lm_head_attrs["canonical_op_slot"] = "lm_head"
+        lm_head_attrs["q_dim"] = vocab_size
+        g.add_node(
+            TaskNode(
+                "lm_head",
+                "Q",
+                weight_id="lm_head",
+                weight_size=_weight_bytes(vocab_size * dim, dtype_bytes),
+                allowed=npu_only,
+                attrs=lm_head_attrs,
+            )
+        )
+        g.add_edge("embedding", "L0_LN")
+        g.add_edge(f"L{total_repeats - 1}_Add2", "final_norm")
+        g.add_edge("final_norm", "lm_head")
         return g
 
 

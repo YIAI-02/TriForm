@@ -89,6 +89,16 @@ class PimTraceBackend(PimBackendBase):
     def estimate_s(self, cm: "CostModel", node: TaskNode, dev: DeviceSpec, label: PlanLabel, ctx: PimOpContext) -> float:
         op_in = str(ctx.op_key) if ctx.op_key is not None else ''
         op_norm = _normalize_pim_op(op_in) if op_in else ''
+
+        # KV writes are storage primitives, not CENT compute-trace operators.
+        # Use the same PIM line-latency model as the scheduler's committed
+        # KV-write path; every other unsupported op remains fail-closed below.
+        if op_norm in ('k_write', 'v_write'):
+            rd, wr = cm.estimate_activation_bytes(
+                node, ctx.batch, ctx.seq_len, ctx.phase
+            )
+            return float(cm.pim_mem_time(int(rd), int(wr), dev))
+
         traceable = bool(op_norm) and (op_norm in PIM_TRACE_SUPPORTED_OPS)
 
         # Strict mode can be enabled either via CostModel(..., pim_trace_strict=True)
@@ -97,6 +107,12 @@ class PimTraceBackend(PimBackendBase):
         env_strict = str(os.environ.get('PIM_TRACE_STRICT', '') or '').strip().lower()
         if env_strict in ('1', 'true', 'yes', 'on'):
             strict = True
+
+        if strict and not traceable:
+            raise RuntimeError(
+                f"[PIM] Trace backend does not support op='{op_in}' "
+                f"normalized='{op_norm}' node='{getattr(node, 'name', getattr(node, 'id', '?'))}'"
+            )
 
         # Trace mode requires configs.
         if traceable and (not cm.pim_config_path or not cm.ramulator_config_path):

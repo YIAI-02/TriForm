@@ -101,7 +101,11 @@ def _build_cost_model_for_run(
         debug_traces=bool(debug_traces),
         model_dict=model_dict,
         npu_backend=npu_backend,
+        npu_lut_strict=bool(cfg.get('npu_lut_strict', False)),
         pim_fast_mode=pim_fast_mode,
+        pim_ramulator_bin=_optional_path(cfg.get('pim_ramulator_bin')),
+        pim_ramulator_timeout_s=cfg.get('pim_ramulator_timeout_s'),
+        pim_trace_strict=bool(cfg.get('pim_trace_strict', False)),
         tp_qkv=int(cfg.get('tp_qkv', 1) or 1),
         tp_ffn=int(cfg.get('tp_ffn', 1) or 1),
         tp_moe=int(cfg.get('tp_moe', 1) or 1),
@@ -444,6 +448,14 @@ def _estimate_total_time_for_label(
     except Exception:
         # Fallback: baseline HEFT if an unknown strategy name is supplied.
         sched = _make_scheduler("HEFT", cluster, cost, label, batch=batch, seq_len=prefill_len, buffer=buffer_mgr)
+
+    if (
+        cfg.get('hetinfer_prior_out') not in (None, '')
+        or cfg.get('hetinfer_network_out') not in (None, '')
+    ):
+        enable_capture = getattr(sched, 'enable_hetinfer_prior_capture', None)
+        if callable(enable_capture):
+            enable_capture(True)
 
     try:
         sched.reset_state()

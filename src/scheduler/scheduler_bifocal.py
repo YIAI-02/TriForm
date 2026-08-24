@@ -939,6 +939,7 @@ class BifocalScheduler(HEFTScheduler):
             self.stats.set_phase(phase)
 
         self.reset_state(clear_caches=False)
+        capture_call_index = int(len(self._hetinfer_prior_snapshots) + 1)
         idx = self._get_graph_index(g)
 
         # Step 1: HEFT priority (upward ranks).
@@ -1146,6 +1147,11 @@ class BifocalScheduler(HEFTScheduler):
             raise RuntimeError(
                 f"Schedule failed: graph may have cycles or missing deps; unscheduled nodes: {missing[:16]}"
             )
+        self._finalize_hetinfer_prior_snapshot(
+            g,
+            phase,
+            schedule_call_index=capture_call_index,
+        )
         return schedule
 
 

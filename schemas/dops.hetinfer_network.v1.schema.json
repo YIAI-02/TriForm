@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/YIAI-02/DOPS/schemas/dops.hetinfer_network.v1.schema.json",
+  "title": "DOPS Het-Infer network manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "schema_version", "networks"],
+  "properties": {
+    "schema": {"const": "dops.hetinfer_network.v1"},
+    "schema_version": {"const": 1},
+    "networks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "graph_id",
+          "workload_id",
+          "schedule_call_index",
+          "phase",
+          "policy_devices",
+          "workload",
+          "device_memory_bytes",
+          "operators"
+        ],
+        "properties": {
+          "graph_id": {"type": "string", "minLength": 1},
+          "workload_id": {"type": "string", "minLength": 1},
+          "schedule_call_index": {"type": "integer", "minimum": 0},
+          "phase": {"enum": ["prefill", "decode"]},
+          "policy_devices": {
+            "type": "array",
+            "prefixItems": [
+              {"const": "Ascend_910B_NPU0"},
+              {"const": "PIM0"},
+              {"const": "PIM1"}
+            ],
+            "items": false,
+            "minItems": 3,
+            "maxItems": 3
+          },
+          "workload": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["batch", "scheduled_tokens", "mean_context"],
+            "properties": {
+              "batch": {"type": "integer", "minimum": 1},
+              "scheduled_tokens": {"type": "integer", "minimum": 0},
+              "mean_context": {"type": "number", "minimum": 0}
+            }
+          },
+          "device_memory_bytes": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["Ascend_910B_NPU0", "PIM0", "PIM1"],
+            "properties": {
+              "Ascend_910B_NPU0": {"type": "integer", "minimum": 1},
+              "PIM0": {"type": "integer", "minimum": 1},
+              "PIM1": {"type": "integer", "minimum": 1}
+            }
+          },
+          "operators": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "op_id",
+                "dependencies",
+                "op_role",
+                "block_type",
+                "block_id",
+                "repeat_index",
+                "total_repeats"
+              ],
+              "properties": {
+                "op_id": {"type": "string", "minLength": 1},
+                "dependencies": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "items": {"type": "string", "minLength": 1}
+                },
+                "op_role": {
+                  "enum": [
+                    "LAYERNORM", "Q_PROJ", "K_PROJ", "V_PROJ", "KV_WRITE",
+                    "QK", "SOFTMAX", "SV", "O_PROJ", "FFN_UP", "ACTIVATION",
+                    "FFN_DOWN", "ROUTER", "EXPERT", "COLLECTIVE", "COPY", "OTHER"
+                  ]
+                },
+                "block_type": {
+                  "enum": ["DENSE_BLOCK", "MOE_BLOCK", "SPECIAL_ATTENTION_BLOCK", "OTHER"]
+                },
+                "block_id": {"type": "string", "minLength": 1},
+                "repeat_index": {"type": "integer", "minimum": 0},
+                "total_repeats": {"type": "integer", "minimum": 1}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -18,6 +18,7 @@ class CostModelRuntimeMixin:
         model_dict: Optional[Dict] = None,
         pim_fast_mode: bool = False,
         npu_backend: Optional[str] = None,
+        npu_lut_strict: bool = False,
         tp_qkv: int = 1,
         tp_ffn: int = 1,
         tp_moe: int = 1,
@@ -62,6 +63,7 @@ class CostModelRuntimeMixin:
         self.debug_traces = debug_traces
         self.pim_fast_mode = pim_fast_mode  # When True, skip all trace simulations
         self.npu_backend = _normalize_npu_backend_safe(npu_backend)
+        self.npu_lut_strict = bool(npu_lut_strict)
         try:
             self.tp_qkv = max(1, int(tp_qkv or 1))
             self.tp_ffn = max(1, int(tp_ffn or 1))

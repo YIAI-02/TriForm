@@ -264,6 +264,10 @@ def parse_model_shape_from_file(family: str, variant: str, batch: int, max_seq_l
     if router_jitter_noise is not None:
         setattr(shape, "router_jitter_noise", float(router_jitter_noise))
 
+    vocab_size = _pick("vocab_size")
+    if vocab_size is not None:
+        setattr(shape, "vocab_size", int(vocab_size))
+
     return shape
 
 

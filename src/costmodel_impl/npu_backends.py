@@ -228,6 +228,21 @@ class NpuAscend310BLutBackend(NpuBackendBase):
 
     name = 'ascend_310b_lut'
 
+    def _fallback_or_raise(
+        self,
+        cm: "CostModel",
+        node: TaskNode,
+        dev: DeviceSpec,
+        ctx: NpuOpContext,
+        reason: str,
+    ) -> float:
+        if bool(getattr(cm, 'npu_lut_strict', False)):
+            raise RuntimeError(
+                f"[ASCEND-LUT] strict mode rejected op_key={ctx.op_key!r}: "
+                f"{reason}; node={getattr(node, 'name', '?')!r}"
+            )
+        return float(self._fallback_fast_s(cm, node, dev, ctx))
+
     def estimate_s(self, cm: "CostModel", node: TaskNode, dev: DeviceSpec, ctx: NpuOpContext) -> float:
         op = (ctx.op_key or '').strip().lower()
 
@@ -249,7 +264,7 @@ class NpuAscend310BLutBackend(NpuBackendBase):
             logger.debug(str(f'[NPU-SOFTMAX][ASCEND-LUT] M={M_rows} K={K_cols} phase={ctx.phase} causal={ctx.causal} us={us}'))
             if us is not None:
                 return float(max(float(us) * 1e-06, float(ctx.mem_s)))
-            return float(self._fallback_fast_s(cm, node, dev, ctx))
+            return self._fallback_or_raise(cm, node, dev, ctx, "softmax LUT miss")
 
         # (c) Activation (GELU proxy -> treat as any activation function)
         if op in NPU_ACT_KEYS:
@@ -259,7 +274,7 @@ class NpuAscend310BLutBackend(NpuBackendBase):
             logger.debug(str(f'[NPU-ACT][ASCEND-LUT] op={op} data_len={data_len} us={us}'))
             if us is not None:
                 return float(max(float(us) * 1e-06, float(ctx.mem_s)))
-            return float(self._fallback_fast_s(cm, node, dev, ctx))
+            return self._fallback_or_raise(cm, node, dev, ctx, "activation LUT miss")
 
         # (d) Norm (RMSNorm LUT is treated as generic norm LUT)
         if _is_norm_like(op):
@@ -269,7 +284,7 @@ class NpuAscend310BLutBackend(NpuBackendBase):
             logger.debug(str(f'[NPU-NORM][ASCEND-LUT] op={op} rows={rows} width={width} us={us}'))
             if us is not None:
                 return float(max(float(us) * 1e-06, float(ctx.mem_s)))
-            return float(self._fallback_fast_s(cm, node, dev, ctx))
+            return self._fallback_or_raise(cm, node, dev, ctx, "norm LUT miss")
 
         # (e) MMAD / GEMM / BMM
         if op in NPU_GEMM_KEYS:
@@ -319,21 +334,23 @@ class NpuAscend310BLutBackend(NpuBackendBase):
                     K_mm = max(1, int(ctx.ffn_dim) if int(ctx.ffn_dim) > 0 else int(4 * int(ctx.dim)))
                     N_mm = max(1, int(ctx.dim))
                 else:
-                    return float(self._fallback_fast_s(cm, node, dev, ctx))
+                    return self._fallback_or_raise(
+                        cm, node, dev, ctx, "unsupported MMAD operation"
+                    )
 
             us = _predict_mmad_latency_us_from_lut(int(M_mm), int(N_mm), int(K_mm))
             logger.debug(str(f'[NPU-MMAD][ASCEND-LUT] op={op} M={M_mm} N={N_mm} K={K_mm} us={us}'))
             if us is not None:
                 return float(max(float(us) * 1e-06, float(ctx.mem_s)))
-            return float(self._fallback_fast_s(cm, node, dev, ctx))
+            return self._fallback_or_raise(cm, node, dev, ctx, "MMAD LUT miss")
 
         # (f) MoE router: use analytic fallback (combined gate GEMM + softmax + top-k + combine).
         if op in NPU_ROUTER_KEYS:
             logger.debug(str(f'[NPU-ROUTER][ASCEND-LUT] fallback-fast op={op} node={getattr(node, "name", "?")}'))
-            return float(self._fallback_fast_s(cm, node, dev, ctx))
+            return self._fallback_or_raise(cm, node, dev, ctx, "router is unsupported")
 
         # (g) Unknown -> fallback
-        return float(self._fallback_fast_s(cm, node, dev, ctx))
+        return self._fallback_or_raise(cm, node, dev, ctx, "operation is unsupported")
 
 
 def build_npu_backend(backend: Optional[str]) -> NpuBackendBase:

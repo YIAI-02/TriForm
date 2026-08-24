@@ -6,9 +6,12 @@ from .shared import *
 from .log_utils import _debug
 from .storage import (
     _artifact_tag_token,
+    _best_summary_config_snapshot,
     _build_uniform_weight_storage_map,
     _collect_weight_ids_from_graph,
     _normalize_weight_storage_fmt,
+    _resolve_hetinfer_network_output,
+    _resolve_hetinfer_prior_output,
     _storage_mode_display_name,
     _weight_map_summary,
 )
@@ -22,6 +25,9 @@ from .kv_policy import (
     auto_select_kv_policy,
 )
 from .simulator import _make_scheduler, simulate_decode_progressive, simulate_prefill
+from hetinfer_prior_export import build_prior_artifact
+from hetinfer_prior import write_prior_artifact
+from hetinfer_network_export import export_network_manifest
 
 def _eval_one_baseline(
     cfg: Dict,
@@ -227,6 +233,26 @@ def _run_strategy_once(
 
     strategy_token = _normalize_algo_name(strategy)
     strategy_name = _display_policy_name(strategy_token)
+    export_requested = bool(
+        cfg.get("hetinfer_prior_out") not in (None, "")
+        or cfg.get("hetinfer_network_out") not in (None, "")
+    )
+    if export_requested:
+        if (
+            cfg.get("hetinfer_network_out") in (None, "")
+            or cfg.get("hetinfer_prior_out") in (None, "")
+        ):
+            raise ValueError(
+                "Het-Infer export requires both prior and network outputs"
+            )
+        if strategy_token != "Bifocal":
+            raise ValueError(
+                "Het-Infer artifact export requires strategy=Bifocal"
+            )
+        if cfg.get("scheduler_seed") is None:
+            raise ValueError(
+                "Het-Infer export requires an explicit scheduler_seed"
+            )
 
     # If there is no NPU in the hardware topology, fall back NPU ops to CPU.
     _fallback_npu_to_cpu_if_needed(graph, cluster)
@@ -311,6 +337,13 @@ def _run_strategy_once(
             buffer=buffer_mgr,
             rand_seed=cfg.get("scheduler_seed"),
         )
+        if (
+            cfg.get('hetinfer_prior_out') not in (None, '')
+            or cfg.get('hetinfer_network_out') not in (None, '')
+        ):
+            enable_capture = getattr(sched, 'enable_hetinfer_prior_capture', None)
+            if callable(enable_capture):
+                enable_capture(True)
         sched.reset_state()
         sched.set_storage_format_map(weight_fmt_map)
 
@@ -368,6 +401,55 @@ def _run_strategy_once(
     except Exception:
         pim_trace = None
 
+    hetinfer_prior_path = None
+    hetinfer_network_path = None
+    requested_prior_out = cfg.get("hetinfer_prior_out")
+    requested_network_out = cfg.get("hetinfer_network_out")
+    if (
+        requested_prior_out not in (None, "")
+        or requested_network_out not in (None, "")
+    ) and strategy_token == "Bifocal":
+        snapshots = list(best_sched.export_hetinfer_prior_snapshots() or [])
+        if not snapshots:
+            raise RuntimeError("Bifocal produced no completed static-prior snapshots")
+        output_tag = (
+            f"{int(cfg.get('prefill_len', 0) or 0)}x"
+            f"{int(cfg.get('decode_len', 0) or 0)}"
+        )
+        output_path = _resolve_hetinfer_prior_output(
+            str(requested_prior_out),
+            result_dir=str(cfg.get("result_dir", "./output")),
+            tag=output_tag,
+        )
+        network_path = _resolve_hetinfer_network_output(
+            str(requested_network_out),
+            tag=output_tag,
+        )
+        prior_artifact = build_prior_artifact(
+            cfg=cfg,
+            snapshots=snapshots,
+        )
+        hetinfer_prior_path = str(
+            write_prior_artifact(
+                prior_artifact,
+                output_path,
+                overwrite=True,
+            )
+        )
+        _debug(f"[Het-Infer] Saved static prior to: {hetinfer_prior_path}")
+        hetinfer_network_path = str(
+            export_network_manifest(
+                cfg=cfg,
+                snapshots=snapshots,
+                prior_artifact=prior_artifact,
+                output=network_path,
+            )
+        )
+        _debug(
+            "[Het-Infer] Saved network manifest to: "
+            f"{hetinfer_network_path}"
+        )
+
     return {
         "policy": _policy_label(strategy_token),
         "strategy": strategy_name,
@@ -389,6 +471,8 @@ def _run_strategy_once(
         "weight_storage_format": _normalize_weight_storage_fmt(uniform_weight_storage_fmt or 'ND'),
         "weight_storage_map_summary": _weight_map_summary(_collect_weight_ids_from_graph(graph), weight_fmt_map),
         "label": best_label,
+        "hetinfer_prior_path": hetinfer_prior_path,
+        "hetinfer_network_path": hetinfer_network_path,
     }
 
 def _ensure_dir(p:Path):
@@ -429,7 +513,7 @@ def _save_best_json(algo_dir: Path, tag: str, policy: str, *, times: Dict, prefi
     payload = {
         'policy': policy,
         'pim_strategy': times.get('pim_strategy', 'unknown'),
-        'config': {'batch': int((cfg or {}).get('batch', 1)), 'prefill_len': int((cfg or {}).get('prefill_len', 0)), 'decode_len': int((cfg or {}).get('decode_len', 0)), 'dtype': (cfg or {}).get('dtype')},
+        'config': _best_summary_config_snapshot(cfg),
         'best_times': {'prefill': float(times.get('prefill_time_s', 0.0)), 'decode': float(times.get('decode_time_s', 0.0)), 'total': float(times.get('total_time_s', 0.0))},
     }
 
@@ -448,6 +532,10 @@ def _save_best_json(algo_dir: Path, tag: str, policy: str, *, times: Dict, prefi
     # Also record the KV policy comparison numbers if present.
     if 'pim_strategy_scores' in times:
         payload['pim_strategy_scores'] = times.get('pim_strategy_scores')
+    if times.get('hetinfer_prior_path'):
+        payload['hetinfer_prior_path'] = str(times.get('hetinfer_prior_path'))
+    if times.get('hetinfer_network_path'):
+        payload['hetinfer_network_path'] = str(times.get('hetinfer_network_path'))
     path = algo_dir / f"best_summary_{tag}.json"
     with open(path,'w', encoding='utf-8') as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
@@ -510,6 +598,20 @@ def evaluate_suite(cfg: Dict, *, algos: List[str], baselines: List[str], result_
         if token and token not in alist:
             alist.append(token)
 
+    if (
+        cfg.get('hetinfer_prior_out') not in (None, '')
+        or cfg.get('hetinfer_network_out') not in (None, '')
+    ):
+        if 'Bifocal' not in alist:
+            raise ValueError(
+                'Het-Infer artifact export requires Bifocal in the '
+                'evaluate algorithm list'
+            )
+        if cfg.get('scheduler_seed') is None:
+            raise ValueError(
+                'Het-Infer export requires an explicit scheduler_seed'
+            )
+
     for a in alist:
         algo_dir = _ensure_dir(base_dir / _policy_dir_name(a))
         try:
@@ -517,6 +619,9 @@ def evaluate_suite(cfg: Dict, *, algos: List[str], baselines: List[str], result_
         except Exception:
             logger.error(f"Failed to setup logging for algorithm '{a}'")
         cfg_a = dict(cfg)
+        if a != 'Bifocal':
+            cfg_a.pop('hetinfer_prior_out', None)
+            cfg_a.pop('hetinfer_network_out', None)
         cfg_a['simulation_log_file'] = str(algo_dir / f"pim_sim_{tag}.txt")
         cfg_a['result_dir'] = str(algo_dir)
         res = _run_strategy_once(a, cfg_a, shared_graph=shared_graph, shared_shape=shared_shape)
@@ -537,6 +642,8 @@ def evaluate_suite(cfg: Dict, *, algos: List[str], baselines: List[str], result_
             'kv_in_pim': bool(res.get('kv_in_pim', False)),
             'kv_total_bytes': int(res.get('kv_total_bytes', 0) or 0),
             'pim_weight_capacity_bytes': int(res.get('pim_weight_capacity_bytes', 0) or 0),
+            'hetinfer_prior_path': res.get('hetinfer_prior_path'),
+            'hetinfer_network_path': res.get('hetinfer_network_path'),
             **{k: res[k] for k in ('prefill_time_s', 'decode_time_s', 'total_time_s')},
         })
 

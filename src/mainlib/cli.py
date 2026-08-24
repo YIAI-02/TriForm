@@ -7,11 +7,13 @@ from .shared import *
 
 _INPUT_PATH_KEYS = {
     'hardware_json',
+    'shape_file',
     'pim_config_path',
     'ramulator_config_path',
     'burstgpt_csv',
     'workload_path',
     'request_trace_path',
+    'gpu_runtime_model_json',
 }
 
 _OUTPUT_PATH_KEYS = {
@@ -20,6 +22,8 @@ _OUTPUT_PATH_KEYS = {
     'dump_graph_dir',
     'all_passes_json',
     'best_summary_json',
+    'hetinfer_prior_out',
+    'hetinfer_network_out',
     'weight_format_json',
     'baseline_out',
     'serve_out',
@@ -72,7 +76,18 @@ def parse_args():
     sp_eval.add_argument('--tp_qkv', type=int, help='Tensor-parallel shard size for Q/K/V generation and attention head sharding.')
     sp_eval.add_argument('--tp_ffn', type=int, help='Tensor-parallel shard size for FFN intermediate dimension.')
     sp_eval.add_argument('--tp_moe', type=int, help='Expert-parallel shard size for MoE experts / Mixtral routing.')
-
+    sp_eval.add_argument(
+        '--hetinfer-prior-out',
+        dest='hetinfer_prior_out',
+        type=str,
+        help='Write a separate dops.hetinfer_prior.v1 artifact (Bifocal only). A directory gets an automatic filename.',
+    )
+    sp_eval.add_argument(
+        '--hetinfer-network-out',
+        dest='hetinfer_network_out',
+        type=str,
+        help='Write the companion dops.hetinfer_network.v1 manifest.',
+    )
     sp_ws = sub.add_parser('weight-suggest', help='Run multi-pass SA to suggest weight formats and fixed baseline experiments.')
     sp_ws.add_argument('--config', required=True, type=str, help='Path to a JSON config with run parameters.')
     sp_ws.add_argument('--debug', action='store_true', help='Enable verbose logging.')
@@ -117,11 +132,6 @@ def parse_args():
     sp_ws.add_argument('--tp_qkv', type=int, help='Tensor-parallel shard size for Q/K/V generation and attention head sharding.')
     sp_ws.add_argument('--tp_ffn', type=int, help='Tensor-parallel shard size for FFN intermediate dimension.')
     sp_ws.add_argument('--tp_moe', type=int, help='Expert-parallel shard size for MoE experts / Mixtral routing.')
-    sp_ws.add_argument(
-        '--format_outer_max_iters',
-        type=int,
-        help='Deprecated compatibility knob. If format_block_change_percent is unset, percent is derived as 1/format_outer_max_iters.',
-    )
     sp_ws.add_argument('--format_block_change_percent', type=float, help='At most this fraction of total blocks may change per outer iteration.')
     sp_ws.add_argument('--format_inner_max_blocks', type=int, help='AL inner sweep cap (0 means no cap).')
     sp_ws.add_argument('--format_nd_margin_init', type=float, help='AL initial ND band in [0,1].')
@@ -269,4 +279,49 @@ def _apply_runtime_config_overrides(cfg: Dict) -> Dict[str, Any]:
 
     _apply_ratio('pim_weight_load_overlap_ratio', 'PIM_WEIGHT_LOAD_OVERLAP_RATIO')
     _apply_ratio('weight_load_compute_overlap_ratio', 'WEIGHT_LOAD_COMPUTE_OVERLAP_RATIO')
+
+    runtime_model_path = cfg.get('gpu_runtime_model_json')
+    if runtime_model_path not in (None, ''):
+        backend = str(cfg.get('npu_backend', '') or '').strip().lower().replace('-', '_')
+        if backend not in {'fast', 'fast_mode', 'fastmode'}:
+            raise ValueError(
+                "gpu_runtime_model_json is only valid with npu_backend=fast; "
+                f"got npu_backend={cfg.get('npu_backend')!r}"
+            )
+        path = Path(str(runtime_model_path)).expanduser()
+        try:
+            runtime_model = json.loads(path.read_text(encoding='utf-8'))
+        except Exception as exc:
+            raise ValueError(f"Failed to read gpu_runtime_model_json={path}: {exc}") from exc
+        if not isinstance(runtime_model, dict):
+            raise ValueError("gpu_runtime_model_json must contain a JSON object")
+        if runtime_model.get('schema') != 'dops.gpu_runtime_model.v1':
+            raise ValueError(
+                "gpu_runtime_model_json schema must equal 'dops.gpu_runtime_model.v1'"
+            )
+        prefix = str(runtime_model.get('device_name_prefix', '') or '').strip()
+        if not prefix:
+            raise ValueError("gpu_runtime_model_json.device_name_prefix must be non-empty")
+        compute = runtime_model.get('compute_utilization')
+        launch = runtime_model.get('kernel_launch_overhead')
+        if not isinstance(compute, dict) or not compute:
+            raise ValueError("gpu_runtime_model_json.compute_utilization must be a non-empty object")
+        if not isinstance(launch, dict) or not launch:
+            raise ValueError("gpu_runtime_model_json.kernel_launch_overhead must be a non-empty object")
+
+        compute_root = dict(getattr(_runtime_config, 'COMPUTE_UTILIZATION', {}) or {})
+        compute_by_name = dict(compute_root.get('by_device_name', compute_root.get('by_name', {})) or {})
+        compute_by_name[prefix] = dict(compute)
+        compute_root['by_device_name'] = compute_by_name
+        _runtime_config.COMPUTE_UTILIZATION = compute_root
+
+        launch_root = dict(getattr(_runtime_config, 'KERNEL_LAUNCH_OVERHEAD', {}) or {})
+        launch_by_name = dict(launch_root.get('by_device_name', launch_root.get('by_name', {})) or {})
+        launch_by_name[prefix] = dict(launch)
+        launch_root['by_device_name'] = launch_by_name
+        _runtime_config.KERNEL_LAUNCH_OVERHEAD = launch_root
+        applied['GPU_RUNTIME_MODEL'] = {
+            'path': str(path.resolve()),
+            'device_name_prefix': prefix,
+        }
     return applied
