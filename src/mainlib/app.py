@@ -58,6 +58,7 @@ def main():
             'weight_format_json',
             'hetinfer_prior_out',
             'hetinfer_network_out',
+            'hetinfer_tensor_bindings_out',
             'npu_backend',
             'pim_fast_mode',
             'pim_weight_load_overlap_ratio',

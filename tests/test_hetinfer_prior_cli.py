@@ -13,6 +13,7 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from mainlib.cli import _load_cfg_from_json, parse_args  # noqa: E402
+from mainlib.storage import _resolve_hetinfer_tensor_bindings_output  # noqa: E402
 
 
 class HetInferNativeCliTests(unittest.TestCase):
@@ -30,13 +31,17 @@ class HetInferNativeCliTests(unittest.TestCase):
         self.assertIs(raw["npu_lut_strict"], True)
         self.assertIs(raw["pim_fast_mode"], False)
         self.assertIs(raw["pim_trace_strict"], True)
+        self.assertEqual(
+            Path(raw["hetinfer_tensor_bindings_out"]).name,
+            "dops_hetinfer_tensor_bindings.json",
+        )
 
         cfg = _load_cfg_from_json(str(path))
         self.assertTrue(Path(cfg["hardware_json"]).is_file())
         self.assertTrue(Path(cfg["pim_config_path"]).is_file())
         self.assertTrue(Path(cfg["ramulator_config_path"]).is_file())
 
-    def test_evaluate_cli_accepts_the_paired_outputs(self) -> None:
+    def test_evaluate_cli_accepts_all_three_outputs(self) -> None:
         with mock.patch.object(
             sys,
             "argv",
@@ -49,11 +54,22 @@ class HetInferNativeCliTests(unittest.TestCase):
                 "prior.json",
                 "--hetinfer-network-out",
                 "network.json",
+                "--hetinfer-tensor-bindings-out",
+                "tensor_bindings.json",
             ],
         ):
             args = parse_args()
         self.assertEqual(args.hetinfer_prior_out, "prior.json")
         self.assertEqual(args.hetinfer_network_out, "network.json")
+        self.assertEqual(
+            args.hetinfer_tensor_bindings_out, "tensor_bindings.json"
+        )
+
+    def test_tensor_bindings_directory_gets_an_automatic_filename(self) -> None:
+        self.assertEqual(
+            _resolve_hetinfer_tensor_bindings_output("artifacts", tag="8x1"),
+            Path("artifacts/dops_hetinfer_tensor_bindings_8x1.json"),
+        )
 
 
 if __name__ == "__main__":

@@ -452,6 +452,7 @@ def _estimate_total_time_for_label(
     if (
         cfg.get('hetinfer_prior_out') not in (None, '')
         or cfg.get('hetinfer_network_out') not in (None, '')
+        or cfg.get('hetinfer_tensor_bindings_out') not in (None, '')
     ):
         enable_capture = getattr(sched, 'enable_hetinfer_prior_capture', None)
         if callable(enable_capture):

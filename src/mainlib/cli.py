@@ -24,6 +24,7 @@ _OUTPUT_PATH_KEYS = {
     'best_summary_json',
     'hetinfer_prior_out',
     'hetinfer_network_out',
+    'hetinfer_tensor_bindings_out',
     'weight_format_json',
     'baseline_out',
     'serve_out',
@@ -87,6 +88,12 @@ def parse_args():
         dest='hetinfer_network_out',
         type=str,
         help='Write the companion dops.hetinfer_network.v1 manifest.',
+    )
+    sp_eval.add_argument(
+        '--hetinfer-tensor-bindings-out',
+        dest='hetinfer_tensor_bindings_out',
+        type=str,
+        help='Write the companion dops.hetinfer_tensor_bindings.v1 manifest.',
     )
     sp_ws = sub.add_parser('weight-suggest', help='Run multi-pass SA to suggest weight formats and fixed baseline experiments.')
     sp_ws.add_argument('--config', required=True, type=str, help='Path to a JSON config with run parameters.')

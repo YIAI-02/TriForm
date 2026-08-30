@@ -23,6 +23,7 @@
   "hardware_json": "../../src/examples/hardware_1npu_2aim.json",
   "hetinfer_prior_out": "../../output/hetinfer_native/qwen1layer_b1_s8_d1_1npu2aim/dops_hetinfer_prior.json",
   "hetinfer_network_out": "../../output/hetinfer_native/qwen1layer_b1_s8_d1_1npu2aim/dops_hetinfer_network.json",
+  "hetinfer_tensor_bindings_out": "../../output/hetinfer_native/qwen1layer_b1_s8_d1_1npu2aim/dops_hetinfer_tensor_bindings.json",
   "algo": ["Bifocal"],
   "baselines": [],
   "tp_qkv": 1,

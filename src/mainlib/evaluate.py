@@ -12,6 +12,7 @@ from .storage import (
     _normalize_weight_storage_fmt,
     _resolve_hetinfer_network_output,
     _resolve_hetinfer_prior_output,
+    _resolve_hetinfer_tensor_bindings_output,
     _storage_mode_display_name,
     _weight_map_summary,
 )
@@ -28,6 +29,7 @@ from .simulator import _make_scheduler, simulate_decode_progressive, simulate_pr
 from hetinfer_prior_export import build_prior_artifact
 from hetinfer_prior import write_prior_artifact
 from hetinfer_network_export import export_network_manifest
+from hetinfer_tensor_bindings_export import export_tensor_bindings_manifest
 
 def _eval_one_baseline(
     cfg: Dict,
@@ -236,14 +238,16 @@ def _run_strategy_once(
     export_requested = bool(
         cfg.get("hetinfer_prior_out") not in (None, "")
         or cfg.get("hetinfer_network_out") not in (None, "")
+        or cfg.get("hetinfer_tensor_bindings_out") not in (None, "")
     )
     if export_requested:
         if (
             cfg.get("hetinfer_network_out") in (None, "")
             or cfg.get("hetinfer_prior_out") in (None, "")
+            or cfg.get("hetinfer_tensor_bindings_out") in (None, "")
         ):
             raise ValueError(
-                "Het-Infer export requires both prior and network outputs"
+                "Het-Infer export requires prior, network, and tensor binding outputs"
             )
         if strategy_token != "Bifocal":
             raise ValueError(
@@ -340,6 +344,7 @@ def _run_strategy_once(
         if (
             cfg.get('hetinfer_prior_out') not in (None, '')
             or cfg.get('hetinfer_network_out') not in (None, '')
+            or cfg.get('hetinfer_tensor_bindings_out') not in (None, '')
         ):
             enable_capture = getattr(sched, 'enable_hetinfer_prior_capture', None)
             if callable(enable_capture):
@@ -403,11 +408,14 @@ def _run_strategy_once(
 
     hetinfer_prior_path = None
     hetinfer_network_path = None
+    hetinfer_tensor_bindings_path = None
     requested_prior_out = cfg.get("hetinfer_prior_out")
     requested_network_out = cfg.get("hetinfer_network_out")
+    requested_tensor_bindings_out = cfg.get("hetinfer_tensor_bindings_out")
     if (
         requested_prior_out not in (None, "")
         or requested_network_out not in (None, "")
+        or requested_tensor_bindings_out not in (None, "")
     ) and strategy_token == "Bifocal":
         snapshots = list(best_sched.export_hetinfer_prior_snapshots() or [])
         if not snapshots:
@@ -423,6 +431,10 @@ def _run_strategy_once(
         )
         network_path = _resolve_hetinfer_network_output(
             str(requested_network_out),
+            tag=output_tag,
+        )
+        tensor_bindings_path = _resolve_hetinfer_tensor_bindings_output(
+            str(requested_tensor_bindings_out),
             tag=output_tag,
         )
         prior_artifact = build_prior_artifact(
@@ -449,6 +461,17 @@ def _run_strategy_once(
             "[Het-Infer] Saved network manifest to: "
             f"{hetinfer_network_path}"
         )
+        hetinfer_tensor_bindings_path = str(
+            export_tensor_bindings_manifest(
+                snapshots=snapshots,
+                prior_artifact=prior_artifact,
+                output=tensor_bindings_path,
+            )
+        )
+        _debug(
+            "[Het-Infer] Saved tensor bindings to: "
+            f"{hetinfer_tensor_bindings_path}"
+        )
 
     return {
         "policy": _policy_label(strategy_token),
@@ -473,6 +496,7 @@ def _run_strategy_once(
         "label": best_label,
         "hetinfer_prior_path": hetinfer_prior_path,
         "hetinfer_network_path": hetinfer_network_path,
+        "hetinfer_tensor_bindings_path": hetinfer_tensor_bindings_path,
     }
 
 def _ensure_dir(p:Path):
@@ -536,6 +560,10 @@ def _save_best_json(algo_dir: Path, tag: str, policy: str, *, times: Dict, prefi
         payload['hetinfer_prior_path'] = str(times.get('hetinfer_prior_path'))
     if times.get('hetinfer_network_path'):
         payload['hetinfer_network_path'] = str(times.get('hetinfer_network_path'))
+    if times.get('hetinfer_tensor_bindings_path'):
+        payload['hetinfer_tensor_bindings_path'] = str(
+            times.get('hetinfer_tensor_bindings_path')
+        )
     path = algo_dir / f"best_summary_{tag}.json"
     with open(path,'w', encoding='utf-8') as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
@@ -601,6 +629,7 @@ def evaluate_suite(cfg: Dict, *, algos: List[str], baselines: List[str], result_
     if (
         cfg.get('hetinfer_prior_out') not in (None, '')
         or cfg.get('hetinfer_network_out') not in (None, '')
+        or cfg.get('hetinfer_tensor_bindings_out') not in (None, '')
     ):
         if 'Bifocal' not in alist:
             raise ValueError(
@@ -622,6 +651,7 @@ def evaluate_suite(cfg: Dict, *, algos: List[str], baselines: List[str], result_
         if a != 'Bifocal':
             cfg_a.pop('hetinfer_prior_out', None)
             cfg_a.pop('hetinfer_network_out', None)
+            cfg_a.pop('hetinfer_tensor_bindings_out', None)
         cfg_a['simulation_log_file'] = str(algo_dir / f"pim_sim_{tag}.txt")
         cfg_a['result_dir'] = str(algo_dir)
         res = _run_strategy_once(a, cfg_a, shared_graph=shared_graph, shared_shape=shared_shape)
@@ -644,6 +674,9 @@ def evaluate_suite(cfg: Dict, *, algos: List[str], baselines: List[str], result_
             'pim_weight_capacity_bytes': int(res.get('pim_weight_capacity_bytes', 0) or 0),
             'hetinfer_prior_path': res.get('hetinfer_prior_path'),
             'hetinfer_network_path': res.get('hetinfer_network_path'),
+            'hetinfer_tensor_bindings_path': res.get(
+                'hetinfer_tensor_bindings_path'
+            ),
             **{k: res[k] for k in ('prefill_time_s', 'decode_time_s', 'total_time_s')},
         })
 

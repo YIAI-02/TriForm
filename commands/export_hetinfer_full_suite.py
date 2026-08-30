@@ -11,6 +11,16 @@ import sys
 from pathlib import Path
 
 
+DOPS_ROOT = Path(__file__).resolve().parents[1]
+SRC_ROOT = DOPS_ROOT / "src"
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
+
+from hetinfer_tensor_bindings_export import (  # noqa: E402
+    export_tensor_bindings_manifest_from_artifacts,
+)
+
+
 BATCHES = (1, 2, 4, 8)
 PREFIX_LENGTHS = (128, 512, 2048, 8192)
 DECODE_TOKENS = 128
@@ -59,6 +69,9 @@ def _config(
         "hardware_json": str(dops_root / "src" / "examples" / "hardware_1npu_2aim.json"),
         "hetinfer_prior_out": str(sidecar_root / "prior.json"),
         "hetinfer_network_out": str(sidecar_root / "network.json"),
+        "hetinfer_tensor_bindings_out": str(
+            sidecar_root / "tensor_bindings.json"
+        ),
         "algo": ["Bifocal"],
         "baselines": [],
         "tp_qkv": 1,
@@ -76,7 +89,9 @@ def _config(
     }
 
 
-def _is_complete(network_path: Path, batch: int, prefix_length: int) -> bool:
+def _network_is_complete(
+    network_path: Path, batch: int, prefix_length: int
+) -> bool:
     if not network_path.is_file():
         return False
     manifest = json.loads(network_path.read_text(encoding="utf-8"))
@@ -91,6 +106,47 @@ def _is_complete(network_path: Path, batch: int, prefix_length: int) -> bool:
     )
 
 
+def _is_complete(
+    network_path: Path,
+    tensor_bindings_path: Path,
+    batch: int,
+    prefix_length: int,
+) -> bool:
+    if not _network_is_complete(network_path, batch, prefix_length):
+        return False
+    if not tensor_bindings_path.is_file():
+        return False
+    manifest = json.loads(network_path.read_text(encoding="utf-8"))
+    networks = manifest["networks"]
+    tensor_bindings = json.loads(
+        tensor_bindings_path.read_text(encoding="utf-8")
+    )
+    if tensor_bindings.get("schema") != "dops.hetinfer_tensor_bindings.v1":
+        return False
+    if tensor_bindings.get("schema_version") != 1:
+        return False
+    if tensor_bindings.get("graph_id") != networks[0]["graph_id"]:
+        return False
+    if tensor_bindings.get("workload_id") != networks[0]["workload_id"]:
+        return False
+    bindings = tensor_bindings.get("bindings", [])
+    if {item["network_index"] for item in bindings} != set(range(len(networks))):
+        return False
+    return True
+
+
+def _backfill_tensor_bindings(
+    *, prior_path: Path, network_path: Path, output: Path
+) -> None:
+    prior_artifact = json.loads(prior_path.read_text(encoding="utf-8"))
+    network_manifest = json.loads(network_path.read_text(encoding="utf-8"))
+    export_tensor_bindings_manifest_from_artifacts(
+        prior_artifact=prior_artifact,
+        network_manifest=network_manifest,
+        output=output,
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--het-infer-root", required=True, type=Path)
@@ -100,7 +156,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    dops_root = Path(__file__).resolve().parents[1]
+    dops_root = DOPS_ROOT
     het_infer_root = args.het_infer_root.expanduser().resolve()
     output_root = dops_root / "output" / "full_qwen_1p8b"
     config_root = output_root / "configs"
@@ -138,10 +194,29 @@ def main() -> int:
             )
             prior_path = sidecar_root / "prior.json"
             network_path = sidecar_root / "network.json"
+            tensor_bindings_path = sidecar_root / "tensor_bindings.json"
             if prior_path.is_file() and _is_complete(
-                network_path, batch, prefix_length
+                network_path, tensor_bindings_path, batch, prefix_length
             ):
                 print(f"[skip] {workload}", flush=True)
+                continue
+            if (
+                prior_path.is_file()
+                and not tensor_bindings_path.exists()
+                and _network_is_complete(network_path, batch, prefix_length)
+            ):
+                _backfill_tensor_bindings(
+                    prior_path=prior_path,
+                    network_path=network_path,
+                    output=tensor_bindings_path,
+                )
+                if not _is_complete(
+                    network_path, tensor_bindings_path, batch, prefix_length
+                ):
+                    raise RuntimeError(
+                        f"incomplete tensor binding backfill for {workload}"
+                    )
+                print(f"[backfill] {workload}", flush=True)
                 continue
 
             sidecar_root.mkdir(parents=True, exist_ok=True)
@@ -177,7 +252,7 @@ def main() -> int:
                     check=True,
                 )
             if not prior_path.is_file() or not _is_complete(
-                network_path, batch, prefix_length
+                network_path, tensor_bindings_path, batch, prefix_length
             ):
                 raise RuntimeError(f"incomplete sidecar export for {workload}")
             print(f"[done] {workload}", flush=True)
