@@ -1,0 +1,189 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/YIAI-02/DOPS/schemas/dops.hetinfer_camc_profile.v1.schema.json",
+  "title": "DOPS Het-Infer CAMC deployment profile v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schema_version",
+    "graph_id",
+    "workload_id",
+    "device_domains",
+    "layers"
+  ],
+  "properties": {
+    "schema": {"const": "dops.hetinfer_camc_profile.v1"},
+    "schema_version": {"const": 1},
+    "graph_id": {"$ref": "#/$defs/identifier"},
+    "workload_id": {"$ref": "#/$defs/identifier"},
+    "device_domains": {
+      "type": "object",
+      "minProperties": 2,
+      "propertyNames": {"$ref": "#/$defs/identifier"},
+      "additionalProperties": {"enum": ["NPU", "PIM"]}
+    },
+    "layers": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/layer"}
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 1
+    },
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "effective_compute_flops_per_s",
+        "effective_bandwidth_bytes_per_s",
+        "queue_count"
+      ],
+      "properties": {
+        "effective_compute_flops_per_s": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "effective_bandwidth_bytes_per_s": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "queue_count": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "domainCapabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["NPU", "PIM"],
+      "properties": {
+        "NPU": {"$ref": "#/$defs/capability"},
+        "PIM": {"$ref": "#/$defs/capability"}
+      }
+    },
+    "nullableIdentifier": {
+      "anyOf": [
+        {"$ref": "#/$defs/identifier"},
+        {"type": "null"}
+      ]
+    },
+    "expertServiceBucket": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min_tokens", "max_tokens", "service_time_s"],
+      "properties": {
+        "min_tokens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "service_time_s": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {"$ref": "#/$defs/identifier"},
+          "additionalProperties": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          }
+        }
+      }
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "expert_id": {"type": "null"}
+            },
+            "required": ["expert_id"]
+          },
+          "then": {
+            "properties": {
+              "expert_service_buckets": {"maxItems": 0}
+            }
+          },
+          "else": {
+            "properties": {
+              "expert_service_buckets": {"minItems": 1}
+            }
+          }
+        }
+      ],
+      "required": [
+        "op_id",
+        "operator_family",
+        "legal_devices",
+        "default_device",
+        "placement_supernode",
+        "parallel_group_hint",
+        "weight_home",
+        "kv_home",
+        "expert_id",
+        "expert_service_buckets"
+      ],
+      "properties": {
+        "op_id": {"$ref": "#/$defs/identifier"},
+        "operator_family": {"$ref": "#/$defs/identifier"},
+        "legal_devices": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/identifier"}
+        },
+        "default_device": {"$ref": "#/$defs/identifier"},
+        "placement_supernode": {"$ref": "#/$defs/identifier"},
+        "parallel_group_hint": {"$ref": "#/$defs/nullableIdentifier"},
+        "weight_home": {"$ref": "#/$defs/nullableIdentifier"},
+        "kv_home": {"$ref": "#/$defs/nullableIdentifier"},
+        "expert_id": {"$ref": "#/$defs/nullableIdentifier"},
+        "expert_service_buckets": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/expertServiceBucket"}
+        }
+      }
+    },
+    "layer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "network_index",
+        "layer_class",
+        "phase",
+        "shape_bucket",
+        "capability_basis",
+        "domain_capabilities",
+        "default_order",
+        "nodes"
+      ],
+      "properties": {
+        "network_index": {"type": "integer", "minimum": 0},
+        "layer_class": {"$ref": "#/$defs/identifier"},
+        "phase": {"enum": ["prefill", "decode", "verify", "draft"]},
+        "shape_bucket": {"$ref": "#/$defs/identifier"},
+        "capability_basis": {"enum": ["compute", "bandwidth"]},
+        "domain_capabilities": {"$ref": "#/$defs/domainCapabilities"},
+        "default_order": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/identifier"}
+        },
+        "nodes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/node"}
+        }
+      }
+    }
+  }
+}
