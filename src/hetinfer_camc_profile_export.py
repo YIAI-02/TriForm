@@ -80,6 +80,7 @@ def _sidecar_index(
     prior_artifact: DOPSPriorArtifact | Mapping[str, Any],
     network_manifest: Mapping[str, Any],
     tensor_bindings: Mapping[str, Any],
+    allow_prior_operator_subset: bool,
 ) -> tuple[
     DOPSPriorArtifact,
     str,
@@ -159,10 +160,22 @@ def _sidecar_index(
             raise RuntimeError(f"network[{network_index}] has no operators")
         networks.append({"phase": phase, "operator_ids": operator_ids})
 
-    if set(op_network) != set(prior.operator_ids):
+    selected_operator_ids = set(op_network)
+    if not allow_prior_operator_subset and selected_operator_ids != set(
+        prior.operator_ids
+    ):
         raise RuntimeError("network operators must exactly cover prior operators")
-    for op_id, op_dependencies in dependencies.items():
-        if any(op_network[dependency] != op_network[op_id] for dependency in op_dependencies):
+    for op_id in selected_operator_ids:
+        missing_dependencies = set(dependencies[op_id]) - selected_operator_ids
+        if missing_dependencies:
+            raise RuntimeError(
+                f"selected network operator {op_id!r} has dependencies outside "
+                f"the selected prior subset: {sorted(missing_dependencies)}"
+            )
+        if any(
+            op_network[dependency] != op_network[op_id]
+            for dependency in dependencies[op_id]
+        ):
             raise RuntimeError(
                 f"prior dependencies for {op_id!r} cross network boundaries"
             )
@@ -440,6 +453,7 @@ def build_camc_profile(
     network_manifest: Mapping[str, Any],
     tensor_bindings: Mapping[str, Any],
     layer_spec: Mapping[str, Any],
+    allow_prior_operator_subset: bool = False,
 ) -> dict[str, Any]:
     """Merge explicit CAMC deployment annotations with validated DOPS sidecars."""
 
@@ -447,6 +461,7 @@ def build_camc_profile(
         prior_artifact=prior_artifact,
         network_manifest=network_manifest,
         tensor_bindings=tensor_bindings,
+        allow_prior_operator_subset=allow_prior_operator_subset,
     )
     spec = _object(layer_spec, "layer_spec")
     _exact_fields(
@@ -459,13 +474,21 @@ def build_camc_profile(
     if spec["workload_id"] != workload_id:
         raise RuntimeError("layer_spec workload_id does not match the prior")
 
+    selected_operator_ids = {
+        op_id for network in networks for op_id in network["operator_ids"]
+    }
+    schedulable_devices = {
+        device_id
+        for op_id in selected_operator_ids
+        for device_id in prior.legal_devices[op_id]
+    }
     raw_domains = _object(spec["device_domains"], "layer_spec.device_domains")
-    if set(raw_domains) != set(prior.device_ids):
+    if set(raw_domains) != schedulable_devices:
         raise RuntimeError(
-            "layer_spec.device_domains must exactly cover prior physical devices"
+            "layer_spec.device_domains must exactly cover schedulable legal devices"
         )
     device_domains: dict[str, str] = {}
-    for device_id in sorted(prior.device_ids):
+    for device_id in sorted(schedulable_devices):
         domain = raw_domains[device_id]
         if domain not in CAMC_DOMAINS:
             raise RuntimeError(
@@ -486,7 +509,7 @@ def build_camc_profile(
         "nodes",
     }
     layers_by_index: dict[int, dict[str, Any]] = {}
-    known_devices = set(prior.device_ids)
+    known_devices = set(device_domains)
     for spec_index, raw_layer in enumerate(_array(spec["layers"], "layer_spec.layers")):
         context = f"layer_spec.layers[{spec_index}]"
         layer = _object(raw_layer, context)
@@ -601,6 +624,7 @@ def export_camc_profile(
     tensor_bindings: Mapping[str, Any],
     layer_spec: Mapping[str, Any],
     output: str | Path,
+    allow_prior_operator_subset: bool = False,
 ) -> Path:
     destination = Path(output).expanduser()
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -611,6 +635,7 @@ def export_camc_profile(
                 network_manifest=network_manifest,
                 tensor_bindings=tensor_bindings,
                 layer_spec=layer_spec,
+                allow_prior_operator_subset=allow_prior_operator_subset,
             ),
             ensure_ascii=False,
             indent=2,

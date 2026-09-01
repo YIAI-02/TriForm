@@ -502,7 +502,7 @@ class HetInferCAMCProfileExportTests(unittest.TestCase):
 
         missing_domain = copy.deepcopy(layer_spec)
         missing_domain["device_domains"].pop("PIM0")
-        cases.append(("exactly cover prior physical devices", missing_domain))
+        cases.append(("exactly cover schedulable legal devices", missing_domain))
 
         invalid_basis = copy.deepcopy(layer_spec)
         invalid_basis["layers"][0]["capability_basis"] = "synthetic"
@@ -527,6 +527,99 @@ class HetInferCAMCProfileExportTests(unittest.TestCase):
                         tensor_bindings=tensor_bindings,
                         layer_spec=case_spec,
                     )
+
+    def test_source_only_cpu_is_not_a_camc_domain_device(self) -> None:
+        prior, network, tensor_bindings, layer_spec = _artifacts()
+        prior["devices"].append({"device_id": "CPU0"})
+        request_input = next(
+            entry for entry in prior["inputs"]
+            if entry["tensor_id"] == "request_input"
+        )
+        request_input["source_residencies"].append(
+            {"device_id": "CPU0", "layout": "row_major"}
+        )
+        for destination in ("GPU0", "PIM0"):
+            route = {
+                "tensor_id": "request_input",
+                "source_device_id": "CPU0",
+                "destination_device_id": destination,
+                "bytes": 4096,
+                "layout": "row_major",
+            }
+            prior["legal_movement_routes"].append(route)
+            prior["t_move"].append(
+                {**route, "duration_s": 0.001 if destination == "GPU0" else 0.002}
+            )
+
+        profile = build_camc_profile(
+            prior_artifact=prior,
+            network_manifest=network,
+            tensor_bindings=tensor_bindings,
+            layer_spec=layer_spec,
+        )
+
+        self.assertEqual(profile["device_domains"], layer_spec["device_domains"])
+        self.assertNotIn("CPU0", profile["device_domains"])
+        invalid_spec = copy.deepcopy(layer_spec)
+        invalid_spec["device_domains"]["CPU0"] = "NPU"
+        with self.assertRaisesRegex(
+            RuntimeError, "exactly cover schedulable legal devices"
+        ):
+            build_camc_profile(
+                prior_artifact=prior,
+                network_manifest=network,
+                tensor_bindings=tensor_bindings,
+                layer_spec=invalid_spec,
+            )
+
+    def test_prior_operator_subset_requires_explicit_closed_selection(self) -> None:
+        prior, network, tensor_bindings, layer_spec = _artifacts()
+        source_network = copy.deepcopy(network)
+        source_network["networks"][0]["operators"] = [
+            source_network["networks"][0]["operators"][0]
+        ]
+        source_spec = copy.deepcopy(layer_spec)
+        source_spec["layers"][0]["default_order"] = ["source"]
+        source_spec["layers"][0]["nodes"] = [
+            node
+            for node in source_spec["layers"][0]["nodes"]
+            if node["op_id"] == "source"
+        ]
+
+        with self.assertRaisesRegex(RuntimeError, "exactly cover prior operators"):
+            build_camc_profile(
+                prior_artifact=prior,
+                network_manifest=source_network,
+                tensor_bindings=tensor_bindings,
+                layer_spec=source_spec,
+            )
+        profile = build_camc_profile(
+            prior_artifact=prior,
+            network_manifest=source_network,
+            tensor_bindings=tensor_bindings,
+            layer_spec=source_spec,
+            allow_prior_operator_subset=True,
+        )
+        self.assertEqual(profile["layers"][0]["default_order"], ["source"])
+
+        open_network = copy.deepcopy(network)
+        open_network["networks"][0]["operators"] = [
+            open_network["networks"][0]["operators"][1]
+        ]
+        open_spec = copy.deepcopy(layer_spec)
+        open_spec["layers"][0]["default_order"] = ["left"]
+        open_spec["layers"][0]["nodes"] = [
+            node for node in open_spec["layers"][0]["nodes"]
+            if node["op_id"] == "left"
+        ]
+        with self.assertRaisesRegex(RuntimeError, "dependencies outside"):
+            build_camc_profile(
+                prior_artifact=prior,
+                network_manifest=open_network,
+                tensor_bindings=tensor_bindings,
+                layer_spec=open_spec,
+                allow_prior_operator_subset=True,
+            )
 
     def test_machine_readable_schema_matches_strict_contract(self) -> None:
         schema = json.loads(
