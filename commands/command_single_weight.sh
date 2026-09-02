@@ -21,8 +21,10 @@ if [[ -n "${NPU_BACKEND}" ]]; then
   EXTRA_ARGS+=(--npu_backend "${NPU_BACKEND}")
 fi
 if [[ "${PIM_FAST_MODE}" =~ ^(1|true|TRUE|yes|YES|on|ON)$ ]]; then
-  EXTRA_ARGS+=(--pim_fast_mode)
+  echo "Error: weight-suggest does not support PIM fast mode. Set PIM_FAST_MODE=0." >&2
+  exit 2
 fi
+EXTRA_ARGS+=(--no-pim_fast_mode)
 
 "${PYTHON_BIN}" "${SRC_DIR}/main.py" weight-suggest \
   --config "${CONFIG}" \

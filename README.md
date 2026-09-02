@@ -58,8 +58,9 @@ The analytical fast-mode workflow uses only the Python standard library on
 Python 3.12+. On Python 3.10 or 3.11, install the compatibility helper with
 `python -m pip install typing_extensions`.
 
-PyTorch is only needed by selected trace conversion, profiling, or optional
-backend utilities; it is not required by the quick test below.
+PyTorch is required by `weight-suggest` and selected trace conversion,
+profiling, or optional backend utilities; it is not required by the fast-mode
+`evaluate` quick test below.
 
 ### Optional external runtimes and toolchains
 
@@ -72,7 +73,9 @@ These are only needed for specific backends or reproduction workflows.
   Needed for reproducing measured results.
 
 - **LLMCompass**  
-  Needed when `npu_backend=llmcompass`.
+  Needed when `npu_backend=llmcompass`. Install the backend dependencies,
+  including `torch`, `numpy`, `pandas`, and `scalesim`, in the active Python
+  environment.
 
 - **Plotting / analysis stack**  
   The full paper-reproduction workflow may additionally use a standard scientific Python stack such as `numpy`, `pandas`, `matplotlib`, `scipy`, `seaborn`, and graph/IO helpers, depending on the scripts you run.
@@ -146,8 +149,10 @@ A successful run produces at least:
 - `baseline_compare_<prefill>x<decode>.json`
 - `algo_PD/best_summary_<prefill>x<decode>.json`
 - `algo_Bifocal/best_summary_<prefill>x<decode>.json`
-- `*_ops_trace.csv`
-- `*_comms_trace.csv`
+- `algo_PD/*_ops_trace.csv`
+- `algo_PD/*_comms_trace.csv`
+- `algo_Bifocal/*_ops_trace.csv`
+- `algo_Bifocal/*_comms_trace.csv`
 
 > 📘 For a field-by-field explanation of the hardware and evaluation JSON files, see the [Configuration Reference](./docs/CONFIG_REFERENCE.md).
 
@@ -160,7 +165,10 @@ The current CLI exposes two main modes:
 - `evaluate`: run scheduling / baseline comparisons and export traces.
 - `weight-suggest`: run the weight-layout arbiter on top of the scheduling flow.
 
-In the current repository setup, the **default model is the roofline model**. This setup is suitable for `evaluate` experiments only. To reproduce the paper results and run `weight-suggest`-mode optimizations, you need to adjust the relevant parameters in the config.
+> **Fast-mode scope:** Fast mode is evaluate-only. The `weight-suggest`
+> workflow does not support either `npu_backend=fast` (including the
+> `fast_mode` alias) or `pim_fast_mode=true`. For `weight-suggest`, select a
+> non-fast NPU backend such as `lut` and keep `pim_fast_mode=false`.
 
 ### Step 1. Prepare a model shape card under `configs/`
 
@@ -479,6 +487,10 @@ python3 commands/sweep_bifocal_all_params.py \
 
 Use this mode when you want to search for a blockwise persistent-weight layout on top of the scheduling flow. Before doing so, you must manually measure the format-conversion overhead. The format-conversion overhead used in the paper is stored under `./src/runtime_models/`.
 
+> **Backend requirement:** `weight-suggest` cannot run in fast mode. Use a
+> non-fast NPU backend such as `lut` and disable PIM fast mode. The bundled
+> `src/examples/weight_suggest_test_config.json` is configured accordingly.
+
 **Wrapper script:**
 
 ```bash
@@ -491,6 +503,7 @@ bash commands/command_single_weight.sh
 python src/main.py weight-suggest \
   --config src/examples/weight_suggest_test_config.json \
   --npu_backend lut \
+  --no-pim_fast_mode \
   --debug
 ```
 
@@ -511,11 +524,23 @@ Use `weight-suggest` when you want to compare a fixed global layout against a se
 
 ---
 
+### Run the v1.0.2 regression tests
+
+The regression suite uses Python's standard-library test runner and covers the
+weight-block parser plus the fast-mode guard:
+
+```bash
+PYTHONPATH=src python3 -m unittest discover -s tests -v
+```
+
+---
+
 ## 🗂️ Repository Layout
 
 ```text
 .
 ├── CITATION.cff                         # Software and associated-paper citation metadata.
+├── tests/                               # Standard-library regression tests for release-critical paths.
 ├── src/                                 # Main implementation of DOPS
 │   ├── main.py                          # CLI entry point. Supports `evaluate` and `weight-suggest`.
 │   ├── mainlib/                         # High-level workflow logic for CLI parsing, evaluation, simulation, and storage helpers.
@@ -681,7 +706,7 @@ The hyperparameter checklist for Sections 6.2–6.4 is provided in [`./docs/EXPE
 
 Some figures from Sections 6.2 and 6.4 of the paper are now provided under `./figs/paper_supplementary/`.
 
-The runtime is primarily affected by the choice of backend, stride size, decode length, `tp_qkv`, and `tp_ffn`. The fastest performance is achieved when the backend is set to `fast mode`. When using Ramulator as the backend, simulation results are cached as `.pkl` files; the first simulation run is significantly slower, but subsequent runs are much faster.
+The runtime is primarily affected by the choice of backend, stride size, decode length, `tp_qkv`, and `tp_ffn`. For `evaluate` runs, fast mode provides the shortest runtime. `weight-suggest` requires non-fast NPU and PIM backends. When using Ramulator as the backend, simulation results are cached as `.pkl` files; the first simulation run is significantly slower, but subsequent runs are much faster.
 
 For generating the results in `./figs/paper_supplementary/sec_6_2`, the simulation time for a single case ranges from 1 minutes to 10 minutes. We used `2 × Intel Xeon Platinum 8358` CPU, and the script `./commands/sweep_models_npu_aim_evaluate.sh` can execute 64 cases in parallel.
 

@@ -2,7 +2,17 @@
 
 from __future__ import annotations
 
-from .shared import *
+import json
+import math
+import random
+import re
+from typing import Any, Dict, List, Tuple
+
+_LAYER_PREFIX_RE = re.compile(
+    r"^L(?P<layer>\d+)_(?P<rest>.*)$",
+    re.IGNORECASE,
+)
+
 
 def mapping_diff_ratio(a: Dict[str, str], b: Dict[str, str]) -> float:
     if not a and (not b):
@@ -234,4 +244,3 @@ def _sa_make_neighbor_map(base_map: Dict[str, str], weight_ids: List[str], flip_
         choices = [x for x in CAND if x != old] or ['ND']
         out[wid] = random.choice(choices)
     return out
-
