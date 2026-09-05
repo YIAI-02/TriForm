@@ -370,32 +370,31 @@ def build_graph(cfg: Dict[str, Any]):
                 f"Invalid Mixtral shape: experts_top_k={top_k} exceeds experts_per_layer={experts_total}."
             )
 
-        # New Mixtral semantics:
-        # - `tp` = total number of MoE FFN shards across the selected top-k experts.
-        # - if tp <= top_k: selected experts are distributed across tp shards and each
-        #   expert FFN remains unsplit.
-        # - if tp > top_k: each selected expert is split into tp / top_k FFN shards.
+        # Mixtral template semantics:
+        # - tp = total MoE FFN shards across every exported expert.
+        # - if tp <= E, complete experts are distributed across tp shards.
+        # - if tp > E, every expert is split into tp / E FFN shards.
         tp_moe_total_raw = cfg.get('tp', cfg.get('tp_ffn', cfg.get('tp_moe', 1)))
         try:
             tp_moe_total = max(1, int(tp_moe_total_raw or 1))
         except Exception:
             tp_moe_total = 1
 
-        if tp_moe_total > top_k:
-            if (tp_moe_total % top_k) != 0:
+        if tp_moe_total > experts_total:
+            if (tp_moe_total % experts_total) != 0:
                 raise ValueError(
-                    f"Invalid Mixtral tp={tp_moe_total}: when tp > top_k, require tp%top_k==0 "
-                    f"(top_k={top_k})."
+                    f"Invalid Mixtral tp={tp_moe_total}: when tp > experts, require tp%experts==0 "
+                    f"(experts={experts_total})."
                 )
-            tp_moe_expert_ffn = int(tp_moe_total // top_k)
+            tp_moe_expert_ffn = int(tp_moe_total // experts_total)
             if Hf <= 0:
                 raise ValueError(
                     f"Invalid Mixtral tp={tp_moe_total}: unknown ffn_dim (Hf={Hf})."
                 )
             if (Hf % tp_moe_expert_ffn) != 0:
                 raise ValueError(
-                    f"Invalid Mixtral tp={tp_moe_total}: require ffn_dim%(tp/top_k)==0 "
-                    f"(ffn_dim={Hf}, top_k={top_k}, per_expert_tp={tp_moe_expert_ffn})."
+                    f"Invalid Mixtral tp={tp_moe_total}: require ffn_dim%(tp/experts)==0 "
+                    f"(ffn_dim={Hf}, experts={experts_total}, per_expert_tp={tp_moe_expert_ffn})."
                 )
         else:
             tp_moe_expert_ffn = 1

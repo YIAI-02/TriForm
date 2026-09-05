@@ -75,13 +75,23 @@
     "expertServiceBucket": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["min_tokens", "max_tokens", "service_time_s"],
+      "required": [
+        "min_tokens",
+        "max_tokens",
+        "activation_bytes",
+        "service_time_s",
+        "timing_source"
+      ],
       "properties": {
         "min_tokens": {
           "type": "integer",
           "minimum": 1
         },
         "max_tokens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "activation_bytes": {
           "type": "integer",
           "minimum": 1
         },
@@ -92,6 +102,14 @@
           "additionalProperties": {
             "type": "number",
             "exclusiveMinimum": 0
+          }
+        },
+        "timing_source": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {"$ref": "#/$defs/identifier"},
+          "additionalProperties": {
+            "enum": ["exact_lut", "aim_simulator", "interpolated_lut"]
           }
         }
       }
@@ -121,6 +139,8 @@
       ],
       "required": [
         "op_id",
+        "layer_index",
+        "operator_index",
         "operator_family",
         "legal_devices",
         "default_device",
@@ -133,6 +153,13 @@
       ],
       "properties": {
         "op_id": {"$ref": "#/$defs/identifier"},
+        "layer_index": {
+          "anyOf": [
+            {"type": "integer", "minimum": 0},
+            {"type": "null"}
+          ]
+        },
+        "operator_index": {"type": "integer", "minimum": 0},
         "operator_family": {"$ref": "#/$defs/identifier"},
         "legal_devices": {
           "type": "array",
@@ -159,6 +186,12 @@
         "network_index",
         "layer_class",
         "phase",
+        "batch_size",
+        "sequence_length",
+        "past_kv_len",
+        "query_len",
+        "router_top_k",
+        "sd_component",
         "shape_bucket",
         "capability_basis",
         "domain_capabilities",
@@ -169,6 +202,25 @@
         "network_index": {"type": "integer", "minimum": 0},
         "layer_class": {"$ref": "#/$defs/identifier"},
         "phase": {"enum": ["prefill", "decode", "verify", "draft"]},
+        "batch_size": {"type": "integer", "minimum": 1},
+        "sequence_length": {"type": "integer", "minimum": 1},
+        "past_kv_len": {"type": "integer", "minimum": 0},
+        "query_len": {"type": "integer", "minimum": 1},
+        "router_top_k": {
+          "anyOf": [
+            {"type": "integer", "minimum": 1},
+            {"type": "null"}
+          ]
+        },
+        "sd_component": {
+          "enum": [
+            "none",
+            "target_decode",
+            "draft_decode",
+            "target_verify",
+            "candidate_transfer"
+          ]
+        },
         "shape_bucket": {"$ref": "#/$defs/identifier"},
         "capability_basis": {"enum": ["compute", "bandwidth"]},
         "domain_capabilities": {"$ref": "#/$defs/domainCapabilities"},

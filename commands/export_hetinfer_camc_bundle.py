@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export the fixed b1-p128 full-Qwen prefill CAMC bundle."""
+"""Export one validated five-file Het-Infer CAMC bundle."""
 
 from __future__ import annotations
 
@@ -15,9 +15,7 @@ SRC_ROOT = DOPS_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from hetinfer_dense_prefill_camc_export import (  # noqa: E402
-    export_dense_prefill_camc_bundle,
-)
+from hetinfer_camc_profile_export import export_camc_bundle  # noqa: E402
 from hetinfer_prior import load_prior_artifact  # noqa: E402
 
 
@@ -30,36 +28,29 @@ def _load_json(path: Path, context: str) -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description=(
-            "Project full_qwen_1p8b b1-p128 network[0] and export its strict "
-            "28-layer prefill CAMC profile"
-        )
+        description="Validate and write prior, network, bindings, spec, and profile"
     )
     parser.add_argument("--prior", required=True, type=Path)
     parser.add_argument("--network", required=True, type=Path)
     parser.add_argument("--tensor-bindings", required=True, type=Path)
-    parser.add_argument("--hardware", required=True, type=Path)
-    parser.add_argument(
-        "--measured-domain-capabilities",
-        required=True,
-        type=Path,
-    )
+    parser.add_argument("--layer-spec", required=True, type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
     args = parser.parse_args()
 
-    outputs = export_dense_prefill_camc_bundle(
+    outputs = export_camc_bundle(
         prior_artifact=load_prior_artifact(args.prior),
         network_manifest=_load_json(args.network, "network"),
         tensor_bindings=_load_json(args.tensor_bindings, "tensor_bindings"),
-        hardware=_load_json(args.hardware, "hardware"),
-        measured_domain_capabilities=_load_json(
-            args.measured_domain_capabilities,
-            "measured_domain_capabilities",
-        ),
+        layer_spec=_load_json(args.layer_spec, "layer_spec"),
         output_dir=args.output_dir,
     )
-    for name, path in sorted(outputs.items()):
-        print(f"{name}={path}")
+    print(
+        json.dumps(
+            {name: str(path) for name, path in sorted(outputs.items())},
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+    )
     return 0
 
 

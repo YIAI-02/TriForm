@@ -90,6 +90,7 @@ OPERATOR_DEVICE_ALLOWED = {
     "GELU":    {"cpu": True, "npu": True, "pim": True},
     "ACT":     {"cpu": True, "npu": True, "pim": True},
     "MOE_ROUTER": {"cpu": True, "npu": True, "pim": False},
+    "MOE_COMBINE": {"cpu": True, "npu": True, "pim": True},
 
     "IDENTITY": {"cpu": True, "npu": True, "pim": True},
     "K_WRITE": {"cpu": True, "npu": True, "pim": True},

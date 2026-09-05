@@ -93,6 +93,8 @@ def _selected_network(network_manifest: Mapping[str, Any]) -> dict[str, Any]:
     expected_workload = {
         "batch": 1,
         "sequence_length": 128,
+        "past_kv_len": 0,
+        "query_len": 128,
         "scheduled_tokens": 128,
     }
     for field, expected in expected_workload.items():
@@ -113,7 +115,7 @@ def _validate_dense_operators(network: Mapping[str, Any]) -> None:
     }
     global_operators: dict[str, Mapping[str, Any]] = {}
     op_ids: set[str] = set()
-    for raw_operator in operators:
+    for operator_index, raw_operator in enumerate(operators):
         operator = _object(raw_operator, "network[0].operator")
         op_id = operator.get("op_id")
         if not isinstance(op_id, str) or not op_id or op_id in op_ids:
@@ -125,6 +127,10 @@ def _validate_dense_operators(network: Mapping[str, Any]) -> None:
         op_role = operator.get("op_role")
         if not isinstance(op_role, str) or not op_role:
             raise RuntimeError(f"operator {op_id!r} lacks op_role")
+        if operator.get("operator_index") != operator_index:
+            raise RuntimeError(
+                f"operator {op_id!r} has invalid operator_index"
+            )
         layer_index = operator.get("layer_index")
         if layer_index is None:
             if operator.get("block_type") != "OTHER":
@@ -250,6 +256,91 @@ def _project_network(network: Mapping[str, Any]) -> dict[str, Any]:
         "schema_version": 1,
         "networks": [copy.deepcopy(dict(network))],
     }
+def _project_prior(
+    prior: DOPSPriorArtifact,
+    selected_ids: set[str],
+) -> DOPSPriorArtifact:
+    root = prior.payload
+    if root.get("graph_id") != GRAPH_ID or root.get("workload_id") != WORKLOAD_ID:
+        raise RuntimeError("prior graph/workload must match fixed prefill")
+    inputs = []
+    movement_keys: set[tuple[str, str, str, int, str]] = set()
+    for raw_input in _array(root.get("inputs"), "prior.inputs"):
+        entry = _object(raw_input, "prior input")
+        if entry.get("consumer_op_id") not in selected_ids:
+            continue
+        producer = entry.get("producer_op_id")
+        if producer is not None and producer not in selected_ids:
+            raise RuntimeError(
+                f"selected input producer {producer!r} is outside fixed prefill"
+            )
+        copied = copy.deepcopy(dict(entry))
+        inputs.append(copied)
+        if copied["semantics"] == "barrier":
+            continue
+        for residency in copied["source_residencies"]:
+            for destination in copied["destination_devices"]:
+                movement_keys.add(
+                    (
+                        copied["tensor_id"],
+                        residency["device_id"],
+                        destination,
+                        copied["bytes"],
+                        residency["layout"],
+                    )
+                )
+
+    def movement_key(entry: Mapping[str, Any]) -> tuple[str, str, str, int, str]:
+        return (
+            str(entry["tensor_id"]),
+            str(entry["source_device_id"]),
+            str(entry["destination_device_id"]),
+            int(entry["bytes"]),
+            str(entry["layout"]),
+        )
+
+    payload = {
+        "schema": root["schema"],
+        "schema_version": root["schema_version"],
+        "graph_id": root["graph_id"],
+        "workload_id": root["workload_id"],
+        "time_unit": root["time_unit"],
+        "devices": copy.deepcopy(root["devices"]),
+        "operators": [
+            copy.deepcopy(entry)
+            for entry in root["operators"]
+            if entry["op_id"] in selected_ids
+        ],
+        "inputs": inputs,
+        "collective_contexts": [
+            copy.deepcopy(entry)
+            for entry in root["collective_contexts"]
+            if entry["op_id"] in selected_ids
+        ],
+        "legal_movement_routes": [
+            copy.deepcopy(entry)
+            for entry in root["legal_movement_routes"]
+            if movement_key(entry) in movement_keys
+        ],
+        "expert_placement": [
+            copy.deepcopy(entry)
+            for entry in root["expert_placement"]
+            if entry["op_id"] in selected_ids
+        ],
+        "t_service": [
+            copy.deepcopy(entry)
+            for entry in root["t_service"]
+            if entry["op_id"] in selected_ids
+        ],
+        "t_move": [
+            copy.deepcopy(entry)
+            for entry in root["t_move"]
+            if movement_key(entry) in movement_keys
+        ],
+    }
+    return validate_prior_artifact(payload)
+
+
 
 
 def _project_tensor_bindings(
@@ -334,7 +425,8 @@ def _topological_order(network: Mapping[str, Any]) -> list[str]:
 def _domain_contract(
     hardware: Mapping[str, Any],
     schedulable_devices: set[str],
-) -> tuple[dict[str, str], dict[str, dict[str, float | int]]]:
+    measured_domain_capabilities: Mapping[str, Any],
+) -> tuple[dict[str, str], dict[str, Any]]:
     root = _object(hardware.get("hardware"), "hardware.hardware")
     raw_devices = _array(root.get("devices"), "hardware.hardware.devices")
     devices = {
@@ -347,37 +439,23 @@ def _domain_contract(
         missing = sorted(schedulable_devices - set(devices))
         raise RuntimeError(f"hardware lacks schedulable devices: {missing}")
     domains: dict[str, str] = {}
-    accumulators = {
-        "NPU": {"compute": 0.0, "bandwidth": 0.0, "queues": 0},
-        "PIM": {"compute": 0.0, "bandwidth": 0.0, "queues": 0},
-    }
     for device_id in sorted(schedulable_devices):
-        device = devices[device_id]
-        device_type = device.get("type")
+        device_type = devices[device_id].get("type")
         if device_type not in {"npu", "pim"}:
             raise RuntimeError(
                 f"schedulable device {device_id!r} must have type npu or pim"
             )
-        domain = str(device_type).upper()
-        domains[device_id] = domain
-        accumulators[domain]["compute"] += (
-            _positive_number(device.get("tflops"), f"{device_id}.tflops") * 1e12
-        )
-        accumulators[domain]["bandwidth"] += (
-            _positive_number(device.get("mem_bw_GBs"), f"{device_id}.mem_bw_GBs")
-            * 1e9
-        )
-        accumulators[domain]["queues"] += 1
+        domains[device_id] = str(device_type).upper()
     if set(domains.values()) != {"NPU", "PIM"}:
         raise RuntimeError("schedulable devices must contain NPU and PIM domains")
-    capabilities = {
-        domain: {
-            "effective_compute_flops_per_s": values["compute"],
-            "effective_bandwidth_bytes_per_s": values["bandwidth"],
-            "queue_count": values["queues"],
-        }
-        for domain, values in accumulators.items()
-    }
+    capabilities = copy.deepcopy(
+        dict(
+            _object(
+                measured_domain_capabilities,
+                "measured_domain_capabilities",
+            )
+        )
+    )
     return domains, capabilities
 
 
@@ -385,6 +463,7 @@ def _layer_spec(
     prior: DOPSPriorArtifact,
     network: Mapping[str, Any],
     hardware: Mapping[str, Any],
+    measured_domain_capabilities: Mapping[str, Any],
 ) -> dict[str, Any]:
     operators = {
         str(_object(item, "network[0].operator")["op_id"]): _object(
@@ -398,7 +477,11 @@ def _layer_spec(
         for op_id in selected_ids
         for device_id in prior.legal_devices[op_id]
     }
-    domains, capabilities = _domain_contract(hardware, schedulable_devices)
+    domains, capabilities = _domain_contract(
+        hardware,
+        schedulable_devices,
+        measured_domain_capabilities,
+    )
     kv_home_by_layer: dict[int, str] = {}
     for layer_index in range(LAYER_COUNT):
         write_nodes = [
@@ -433,6 +516,8 @@ def _layer_spec(
         nodes.append(
             {
                 "op_id": op_id,
+                "layer_index": operator.get("layer_index"),
+                "operator_index": int(operator["operator_index"]),
                 "operator_family": slot,
                 "placement_supernode": op_id,
                 "parallel_group_hint": parallel_group,
@@ -458,6 +543,12 @@ def _layer_spec(
                 "layer_class": "dense",
                 "phase": "prefill",
                 "shape_bucket": "b1-prefill128",
+                "batch_size": 1,
+                "sequence_length": 128,
+                "past_kv_len": 0,
+                "query_len": 128,
+                "router_top_k": None,
+                "sd_component": "none",
                 "capability_basis": "compute",
                 "domain_capabilities": capabilities,
                 "default_order": order,
@@ -473,7 +564,8 @@ def build_dense_prefill_camc_bundle(
     network_manifest: Mapping[str, Any],
     tensor_bindings: Mapping[str, Any],
     hardware: Mapping[str, Any],
-) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    measured_domain_capabilities: Mapping[str, Any],
+) -> dict[str, dict[str, Any]]:
     prior = (
         prior_artifact
         if isinstance(prior_artifact, DOPSPriorArtifact)
@@ -482,15 +574,32 @@ def build_dense_prefill_camc_bundle(
     selected_network = _selected_network(network_manifest)
     projected_network = _project_network(selected_network)
     projected_bindings = _project_tensor_bindings(tensor_bindings)
-    spec = _layer_spec(prior, selected_network, hardware)
+    selected_ids = {
+        str(operator["op_id"])
+        for operator in _array(
+            selected_network.get("operators"), "network[0].operators"
+        )
+    }
+    projected_prior = _project_prior(prior, selected_ids)
+    spec = _layer_spec(
+        projected_prior,
+        selected_network,
+        hardware,
+        measured_domain_capabilities,
+    )
     profile = build_camc_profile(
-        prior_artifact=prior,
+        prior_artifact=projected_prior,
         network_manifest=projected_network,
         tensor_bindings=projected_bindings,
         layer_spec=spec,
-        allow_prior_operator_subset=True,
     )
-    return projected_network, projected_bindings, profile
+    return {
+        "prior": projected_prior.payload,
+        "network": projected_network,
+        "tensor_bindings": projected_bindings,
+        "layer_spec": spec,
+        "camc_profile": profile,
+    }
 
 
 def export_dense_prefill_camc_bundle(
@@ -499,26 +608,26 @@ def export_dense_prefill_camc_bundle(
     network_manifest: Mapping[str, Any],
     tensor_bindings: Mapping[str, Any],
     hardware: Mapping[str, Any],
+    measured_domain_capabilities: Mapping[str, Any],
     output_dir: str | Path,
 ) -> dict[str, Path]:
-    network, bindings, profile = build_dense_prefill_camc_bundle(
+    payloads = build_dense_prefill_camc_bundle(
         prior_artifact=prior_artifact,
         network_manifest=network_manifest,
         tensor_bindings=tensor_bindings,
         hardware=hardware,
+        measured_domain_capabilities=measured_domain_capabilities,
     )
     root = Path(output_dir).expanduser()
     root.mkdir(parents=True, exist_ok=True)
     outputs = {
+        "prior": root / "prior.json",
         "network": root / "network.json",
         "tensor_bindings": root / "tensor_bindings.json",
+        "layer_spec": root / "layer_spec.json",
         "camc_profile": root / "camc_profile.json",
     }
-    for name, payload in (
-        ("network", network),
-        ("tensor_bindings", bindings),
-        ("camc_profile", profile),
-    ):
+    for name, payload in payloads.items():
         outputs[name].write_text(
             json.dumps(
                 payload,

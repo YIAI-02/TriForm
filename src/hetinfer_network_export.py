@@ -58,6 +58,9 @@ def _op_role(name: Any, attrs: Mapping[str, Any]) -> str:
         "FFN_DOWN": "FFN_DOWN",
         "MOE_ROUTER": "ROUTER",
         "ROUTER": "ROUTER",
+        "MOE_COMBINE": "COMBINE",
+        "COMBINE": "COMBINE",
+        "CANDIDATE_TRANSFER": "CANDIDATE_TRANSFER",
         "ALLREDUCE": "COLLECTIVE",
         "ALL_REDUCE": "COLLECTIVE",
         "REDUCE": "COLLECTIVE",
@@ -73,8 +76,10 @@ def _block_type(attrs: Mapping[str, Any], role: str, layer: int | None) -> str:
     explicit = _token(attrs.get("block_type"))
     if explicit:
         return explicit
-    if role in {"ROUTER", "EXPERT"} or attrs.get("experts") is not None:
+    if role in {"ROUTER", "EXPERT", "COMBINE"} or attrs.get("experts") is not None:
         return "MOE_BLOCK"
+    if role == "CANDIDATE_TRANSFER" or attrs.get("sd_component") is not None:
+        return "SD_COMPONENT"
     if attrs.get("attention_sparsity") is not None:
         return "SPECIAL_ATTENTION_BLOCK"
     return "DENSE_BLOCK" if layer is not None else "OTHER"
@@ -107,7 +112,9 @@ def _snapshot_network(
     ]
     inferred_total_repeats = max(layers) + 1 if layers else 1
     operators: list[dict[str, Any]] = []
-    for operator, item in zip(snapshot["operators"], metadata, strict=True):
+    for operator_index, (operator, item) in enumerate(
+        zip(snapshot["operators"], metadata, strict=True)
+    ):
         attrs = item["node_attrs"]
         layer = attrs.get("layer_index", attrs.get("layer"))
         role = _op_role(item["name"], attrs)
@@ -125,6 +132,7 @@ def _snapshot_network(
                 "block_id": str(block_id),
                 "layer_index": int(layer) if layer is not None else None,
                 "canonical_op_slot": str(attrs["canonical_op_slot"]),
+                "operator_index": operator_index,
                 "repeat_index": repeat_index,
                 "total_repeats": total_repeats,
             }
@@ -140,6 +148,8 @@ def _snapshot_network(
         "workload": {
             "batch": batch,
             "sequence_length": mean_context,
+            "past_kv_len": 0 if phase == "prefill" else mean_context,
+            "query_len": mean_context if phase == "prefill" else 1,
             "scheduled_tokens": batch * (mean_context if phase == "prefill" else 1),
             "mean_context": float(mean_context),
         },

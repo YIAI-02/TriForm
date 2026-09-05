@@ -95,15 +95,58 @@ def _network_is_complete(
     if not network_path.is_file():
         return False
     manifest = json.loads(network_path.read_text(encoding="utf-8"))
+    if (
+        manifest.get("schema") != "dops.hetinfer_network.v1"
+        or manifest.get("schema_version") != 1
+    ):
+        return False
     networks = manifest.get("networks", [])
     if len(networks) != 1 + DECODE_TOKENS:
         return False
-    prefill = networks[0]["workload"]
-    return (
-        prefill["batch"] == batch
-        and prefill["sequence_length"] == prefix_length
-        and prefill["scheduled_tokens"] == batch * prefix_length
-    )
+    graph_id = networks[0]["graph_id"]
+    workload_id = networks[0]["workload_id"]
+    required_workload = {
+        "batch",
+        "sequence_length",
+        "past_kv_len",
+        "query_len",
+        "scheduled_tokens",
+        "mean_context",
+    }
+    for network_index, network in enumerate(networks):
+        if (
+            network["graph_id"] != graph_id
+            or network["workload_id"] != workload_id
+            or set(network["workload"]) != required_workload
+        ):
+            return False
+        workload = network["workload"]
+        if workload["batch"] != batch:
+            return False
+        if network_index == 0:
+            if (
+                network["phase"] != "prefill"
+                or workload["sequence_length"] != prefix_length
+                or workload["past_kv_len"] != 0
+                or workload["query_len"] != prefix_length
+                or workload["scheduled_tokens"] != batch * prefix_length
+            ):
+                return False
+        elif (
+            network["phase"] != "decode"
+            or workload["past_kv_len"] != workload["sequence_length"]
+            or workload["query_len"] != 1
+            or workload["scheduled_tokens"] != batch
+        ):
+            return False
+        for operator_index, operator in enumerate(network["operators"]):
+            if (
+                operator.get("operator_index") != operator_index
+                or "layer_index" not in operator
+                or not operator.get("canonical_op_slot")
+            ):
+                return False
+    return True
 
 
 def _is_complete(

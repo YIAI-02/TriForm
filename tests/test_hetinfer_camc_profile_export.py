@@ -17,10 +17,15 @@ FIXTURE = (
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
+from commands.export_hetinfer_camc_bundle import (  # noqa: E402
+    main as bundle_command_main,
+)
 from commands.export_hetinfer_camc_profile import main as command_main  # noqa: E402
 from hetinfer_camc_profile_export import (  # noqa: E402
     CAMC_PROFILE_SCHEMA,
     build_camc_profile,
+    build_expert_service_lut,
+    export_camc_bundle,
     export_camc_profile,
 )
 
@@ -36,13 +41,23 @@ def _artifacts() -> tuple[dict, dict, dict, dict]:
                 "graph_id": prior["graph_id"],
                 "workload_id": prior["workload_id"],
                 "phase": "prefill",
+                "workload": {
+                    "batch": 1,
+                    "sequence_length": 8,
+                    "past_kv_len": 0,
+                    "query_len": 8,
+                    "scheduled_tokens": 8,
+                    "mean_context": 8.0,
+                },
                 "operators": [
                     {
                         "op_id": operator["op_id"],
                         "dependencies": operator["dependencies"],
+                        "op_role": "OTHER",
                         "layer_index": 0,
+                        "operator_index": operator_index,
                     }
-                    for operator in prior["operators"]
+                    for operator_index, operator in enumerate(prior["operators"])
                 ],
             }
         ],
@@ -63,6 +78,13 @@ def _artifacts() -> tuple[dict, dict, dict, dict]:
             }
         ],
     }
+    expert_lut = build_expert_service_lut(
+        max_tokens=8,
+        activation_bytes_per_token=256,
+        npu_anchors={"GPU0": {1: 0.001, 8: 0.008}},
+        pim_measurements={"PIM0": {n_e: n_e * 0.0015 for n_e in range(1, 9)}},
+    )
+
     layer_spec = {
         "graph_id": prior["graph_id"],
         "workload_id": prior["workload_id"],
@@ -72,6 +94,12 @@ def _artifacts() -> tuple[dict, dict, dict, dict]:
                 "network_index": 0,
                 "layer_class": "dense_transformer",
                 "phase": "prefill",
+                "batch_size": 1,
+                "sequence_length": 8,
+                "past_kv_len": 0,
+                "query_len": 8,
+                "router_top_k": None,
+                "sd_component": "none",
                 "shape_bucket": "b1-s8",
                 "capability_basis": "compute",
                 "domain_capabilities": {
@@ -91,6 +119,8 @@ def _artifacts() -> tuple[dict, dict, dict, dict]:
                     {
                         "op_id": op_id,
                         "operator_family": "FORK_JOIN",
+                        "layer_index": 0,
+                        "operator_index": operator_index,
                         "placement_supernode": op_id,
                         "parallel_group_hint": (
                             "fork-pair" if op_id in {"left", "right"} else None
@@ -99,28 +129,10 @@ def _artifacts() -> tuple[dict, dict, dict, dict]:
                         "kv_home": None,
                         "expert_id": "expert-3" if op_id == "right" else None,
                         "expert_service_buckets": (
-                            [
-                                {
-                                    "min_tokens": 1,
-                                    "max_tokens": 4,
-                                    "service_time_s": {
-                                        "GPU0": 0.004,
-                                        "PIM0": 0.006,
-                                    },
-                                },
-                                {
-                                    "min_tokens": 5,
-                                    "max_tokens": 8,
-                                    "service_time_s": {
-                                        "GPU0": 0.007,
-                                        "PIM0": 0.009,
-                                    },
-                                },
-                            ]
-                            if op_id == "right" else []
+                            expert_lut if op_id == "right" else []
                         ),
                     }
-                    for op_id in order
+                    for operator_index, op_id in enumerate(order)
                 ],
             }
         ],
@@ -169,11 +181,16 @@ class HetInferCAMCProfileExportTests(unittest.TestCase):
         self.assertEqual(nodes["right"]["default_device"], "PIM0")
         self.assertEqual(nodes["right"]["expert_id"], "expert-3")
         self.assertEqual(
-            nodes["right"]["expert_service_buckets"][1],
+            nodes["right"]["expert_service_buckets"][4],
             {
                 "min_tokens": 5,
-                "max_tokens": 8,
-                "service_time_s": {"GPU0": 0.007, "PIM0": 0.009},
+                "max_tokens": 5,
+                "activation_bytes": 1280,
+                "service_time_s": {"GPU0": 0.005, "PIM0": 0.0075},
+                "timing_source": {
+                    "GPU0": "interpolated_lut",
+                    "PIM0": "aim_simulator",
+                },
             },
         )
         self.assertEqual(nodes["source"]["expert_service_buckets"], [])
@@ -202,6 +219,22 @@ class HetInferCAMCProfileExportTests(unittest.TestCase):
             )
             self.assertEqual(
                 json.loads(direct_output.read_text(encoding="utf-8")), expected
+            )
+
+            bundle_outputs = export_camc_bundle(
+                prior_artifact=prior,
+                network_manifest=network,
+                tensor_bindings=tensor_bindings,
+                layer_spec=layer_spec,
+                output_dir=root / "bundle",
+            )
+            self.assertEqual(
+                set(bundle_outputs),
+                {"prior", "network", "tensor_bindings", "layer_spec", "camc_profile"},
+            )
+            self.assertEqual(
+                json.loads(bundle_outputs["camc_profile"].read_text(encoding="utf-8")),
+                expected,
             )
 
             paths = {}
@@ -235,6 +268,44 @@ class HetInferCAMCProfileExportTests(unittest.TestCase):
                 self.assertEqual(command_main(), 0)
             self.assertEqual(
                 json.loads(command_output.read_text(encoding="utf-8")), expected
+            )
+
+            command_bundle = root / "command-bundle"
+            with mock.patch.object(
+                sys,
+                "argv",
+                [
+                    "export_hetinfer_camc_bundle.py",
+                    "--prior",
+                    str(paths["prior"]),
+                    "--network",
+                    str(paths["network"]),
+                    "--tensor-bindings",
+                    str(paths["tensor_bindings"]),
+                    "--layer-spec",
+                    str(paths["layer_spec"]),
+                    "--output-dir",
+                    str(command_bundle),
+                ],
+            ):
+                self.assertEqual(bundle_command_main(), 0)
+            self.assertEqual(
+                {path.name for path in command_bundle.iterdir()},
+                {
+                    "prior.json",
+                    "network.json",
+                    "tensor_bindings.json",
+                    "layer_spec.json",
+                    "camc_profile.json",
+                },
+            )
+            self.assertEqual(
+                json.loads(
+                    (command_bundle / "camc_profile.json").read_text(
+                        encoding="utf-8"
+                    )
+                ),
+                expected,
             )
 
     def test_rejects_mismatched_sidecars(self) -> None:
@@ -459,8 +530,9 @@ class HetInferCAMCProfileExportTests(unittest.TestCase):
             node
             for node in overlapping["layers"][0]["nodes"]
             if node["op_id"] == "right"
-        )["expert_service_buckets"][1]["min_tokens"] = 4
-        cases.append(("must not overlap", overlapping))
+        )["expert_service_buckets"][1].update({"min_tokens": 3, "max_tokens": 3})
+        cases.append(("dense integer", overlapping))
+
 
         wrong_devices = copy.deepcopy(layer_spec)
         del next(
@@ -606,6 +678,7 @@ class HetInferCAMCProfileExportTests(unittest.TestCase):
         open_network["networks"][0]["operators"] = [
             open_network["networks"][0]["operators"][1]
         ]
+        open_network["networks"][0]["operators"][0]["operator_index"] = 0
         open_spec = copy.deepcopy(layer_spec)
         open_spec["layers"][0]["default_order"] = ["left"]
         open_spec["layers"][0]["nodes"] = [
@@ -620,6 +693,187 @@ class HetInferCAMCProfileExportTests(unittest.TestCase):
                 layer_spec=open_spec,
                 allow_prior_operator_subset=True,
             )
+
+    def test_validates_moe_router_experts_and_combine_order(self) -> None:
+        prior, network, tensor_bindings, layer_spec = _artifacts()
+        roles = {
+            "source": "ROUTER",
+            "left": "EXPERT",
+            "right": "EXPERT",
+            "join": "COMBINE",
+            "finish": "OTHER",
+        }
+        for operator in network["networks"][0]["operators"]:
+            operator["op_role"] = roles[operator["op_id"]]
+        layer = layer_spec["layers"][0]
+        layer["layer_class"] = "moe"
+        layer["router_top_k"] = 2
+        nodes = {node["op_id"]: node for node in layer["nodes"]}
+        nodes["left"]["expert_id"] = "expert-1"
+        nodes["left"]["expert_service_buckets"] = copy.deepcopy(
+            nodes["right"]["expert_service_buckets"]
+        )
+
+        activation_bytes = {
+            bucket["activation_bytes"]
+            for bucket in nodes["right"]["expert_service_buckets"]
+        }
+        boundary_tensors = {
+            "fork_activation",
+            "left_activation",
+            "right_activation",
+        }
+        for field in ("legal_movement_routes", "t_move"):
+            exact_entries = []
+            for entry in prior[field]:
+                if (
+                    entry["tensor_id"] in boundary_tensors
+                    and entry["bytes"] == 8192
+                ):
+                    for byte_count in activation_bytes:
+                        exact = {**entry, "bytes": byte_count}
+                        if field == "t_move":
+                            exact["duration_s"] = (
+                                0.0
+                                if exact["source_device_id"]
+                                == exact["destination_device_id"]
+                                else entry["duration_s"]
+                            )
+                        exact_entries.append(exact)
+            prior[field].extend(exact_entries)
+
+        payload = build_camc_profile(
+            prior_artifact=prior,
+            network_manifest=network,
+            tensor_bindings=tensor_bindings,
+            layer_spec=layer_spec,
+        )
+        self.assertEqual(payload["layers"][0]["router_top_k"], 2)
+
+        missing_movement = copy.deepcopy(prior)
+        missing_key = next(
+            entry
+            for entry in missing_movement["t_move"]
+            if (
+                entry["tensor_id"] == "fork_activation"
+                and entry["bytes"] == min(activation_bytes)
+                and entry["source_device_id"] != entry["destination_device_id"]
+            )
+        )
+        for field in ("legal_movement_routes", "t_move"):
+            missing_movement[field] = [
+                entry
+                for entry in missing_movement[field]
+                if not all(
+                    entry[key] == missing_key[key]
+                    for key in (
+                        "tensor_id",
+                        "source_device_id",
+                        "destination_device_id",
+                        "bytes",
+                        "layout",
+                    )
+                )
+            ]
+        with self.assertRaisesRegex(RuntimeError, "exact MoE movement timing"):
+            build_camc_profile(
+                prior_artifact=missing_movement,
+                network_manifest=network,
+                tensor_bindings=tensor_bindings,
+                layer_spec=layer_spec,
+            )
+
+        missing_combine = copy.deepcopy(network)
+        next(
+            operator
+            for operator in missing_combine["networks"][0]["operators"]
+            if operator["op_id"] == "join"
+        )["op_role"] = "OTHER"
+        with self.assertRaisesRegex(RuntimeError, "one Router.*one Combine"):
+            build_camc_profile(
+                prior_artifact=prior,
+                network_manifest=missing_combine,
+                tensor_bindings=tensor_bindings,
+                layer_spec=layer_spec,
+            )
+
+        reversed_roles = copy.deepcopy(network)
+        reversed_roles["networks"][0]["operators"][0]["op_role"] = "COMBINE"
+        next(
+            operator
+            for operator in reversed_roles["networks"][0]["operators"]
+            if operator["op_id"] == "join"
+        )["op_role"] = "OTHER"
+        reversed_roles["networks"][0]["operators"][-1]["op_role"] = "ROUTER"
+        with self.assertRaisesRegex(RuntimeError, "Router before Experts before Combine"):
+            build_camc_profile(
+                prior_artifact=prior,
+                network_manifest=reversed_roles,
+                tensor_bindings=tensor_bindings,
+                layer_spec=layer_spec,
+            )
+
+    def test_validates_exact_workload_and_sd_component_roles(self) -> None:
+        prior, network, tensor_bindings, layer_spec = _artifacts()
+
+        extra_workload = copy.deepcopy(network)
+        extra_workload["networks"][0]["workload"]["derived"] = 1
+        with self.assertRaisesRegex(RuntimeError, "fields mismatch"):
+            build_camc_profile(
+                prior_artifact=prior,
+                network_manifest=extra_workload,
+                tensor_bindings=tensor_bindings,
+                layer_spec=layer_spec,
+            )
+
+        cases = (
+            ("target_decode", "decode", 1, "KV_WRITE"),
+            ("draft_decode", "draft", 1, "KV_WRITE"),
+            ("target_verify", "verify", 2, "KV_WRITE"),
+            ("candidate_transfer", "decode", 2, "CANDIDATE_TRANSFER"),
+        )
+        for component, profile_phase, query_len, required_role in cases:
+            with self.subTest(component=component):
+                case_network = copy.deepcopy(network)
+                case_spec = copy.deepcopy(layer_spec)
+                case_network["networks"][0]["phase"] = "decode"
+                case_workload = case_network["networks"][0]["workload"]
+                case_workload.update(
+                    {
+                        "sequence_length": 8,
+                        "past_kv_len": 8,
+                        "query_len": query_len,
+                        "scheduled_tokens": query_len,
+                        "mean_context": 8.0,
+                    }
+                )
+                case_network["networks"][0]["operators"][0]["op_role"] = required_role
+                case_layer = case_spec["layers"][0]
+                case_layer.update(
+                    {
+                        "phase": profile_phase,
+                        "sequence_length": 8,
+                        "past_kv_len": 8,
+                        "query_len": query_len,
+                        "sd_component": component,
+                    }
+                )
+                payload = build_camc_profile(
+                    prior_artifact=prior,
+                    network_manifest=case_network,
+                    tensor_bindings=tensor_bindings,
+                    layer_spec=case_spec,
+                )
+                self.assertEqual(payload["layers"][0]["sd_component"], component)
+
+                case_network["networks"][0]["operators"][0]["op_role"] = "OTHER"
+                with self.assertRaisesRegex(RuntimeError, required_role):
+                    build_camc_profile(
+                        prior_artifact=prior,
+                        network_manifest=case_network,
+                        tensor_bindings=tensor_bindings,
+                        layer_spec=case_spec,
+                    )
 
     def test_machine_readable_schema_matches_strict_contract(self) -> None:
         schema = json.loads(
@@ -650,6 +904,8 @@ class HetInferCAMCProfileExportTests(unittest.TestCase):
             "#/$defs/nullableIdentifier",
         )
         for field in (
+            "layer_index",
+            "operator_index",
             "operator_family",
             "legal_devices",
             "default_device",
@@ -665,7 +921,7 @@ class HetInferCAMCProfileExportTests(unittest.TestCase):
         self.assertFalse(bucket["additionalProperties"])
         self.assertEqual(
             set(bucket["required"]),
-            {"min_tokens", "max_tokens", "service_time_s"},
+            {"min_tokens", "max_tokens", "activation_bytes", "service_time_s", "timing_source"},
         )
 
 

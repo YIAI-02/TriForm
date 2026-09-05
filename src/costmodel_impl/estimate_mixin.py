@@ -325,13 +325,6 @@ class CostModelEstimateMixin:
         if 'ROUTER' in name and D > 0 and moe_experts > 0:
             router_experts = int(attrs.get('router_experts', attrs.get('num_local_experts', moe_experts)) or moe_experts)
             router_experts = max(1, router_experts)
-            router_local_top_k = attrs.get('local_top_k', attrs.get('router_local_top_k', attrs.get('num_experts_per_tok', moe_top_k)))
-            try:
-                local_top_k = float(router_local_top_k if router_local_top_k is not None else moe_top_k)
-            except Exception:
-                local_top_k = float(moe_top_k or 1)
-            local_top_k = max(0.0, local_top_k)
-
             # 1) gating linear: [B*T, D] x [D, E]
             gate_linear = C_MATMUL * D * router_experts * b * q_len
 
@@ -342,10 +335,10 @@ class CostModelEstimateMixin:
             C_TOPK = 2.0
             gate_topk = b * q_len * router_experts * C_TOPK
 
-            # 4) combine local expert outputs: sum_i p_i * y_i
-            combine = C_MATMUL * D * local_top_k * b * q_len
+            return float(gate_linear + gate_softmax + gate_topk)
 
-            return float(gate_linear + gate_softmax + gate_topk + combine)
+        if name == "MOE_COMBINE" and D > 0:
+            return float(C_MATMUL * D * moe_top_k * b * q_len)
 
         # 13)
         if name in ('K_WRITE', 'V_WRITE', 'KV_READ', 'KV_WRITE', 'ROPE', 'ALIBI', 'ALLREDUCE'):
@@ -438,6 +431,10 @@ class CostModelEstimateMixin:
         if name in ('GELU', 'RELU'):
             width = Hf if Hf > 0 else D
             return (to_bytes(dens_store * (b * q_len * width)), to_bytes(dens_store * (b * q_len * width)))
+        if name == "MOE_COMBINE" and D > 0:
+            read_elems = dens_store * (b * q_len * D * moe_top_k)
+            write_elems = dens_store * (b * q_len * D)
+            return (to_bytes(read_elems), to_bytes(write_elems))
         if name == 'ADD' and D > 0:
             read_elems = dens_store * (b * q_len * D * 2)
             write_elems = dens_store * (b * q_len * D)

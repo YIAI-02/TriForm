@@ -246,6 +246,10 @@ class NpuAscend310BLutBackend(NpuBackendBase):
     def estimate_s(self, cm: "CostModel", node: TaskNode, dev: DeviceSpec, ctx: NpuOpContext) -> float:
         op = (ctx.op_key or '').strip().lower()
 
+        # Only the explicitly opted-in MoE control nodes use analytic timing.
+        if ctx.attrs.get("timing_source") == "analytic_moe_control":
+            return float(self._fallback_fast_s(cm, node, dev, ctx))
+
         # (a) Elementwise / bookkeeping
         if op in ('add', 'identity', 'allreduce', 'k_write', 'v_write', 'kv_write'):
             logger.debug(str(f'[NPU-ELEM][ASCEND-LUT] op={op} mem_s={ctx.mem_s}'))

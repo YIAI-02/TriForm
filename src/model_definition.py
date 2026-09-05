@@ -1069,15 +1069,9 @@ class MixtralDef:
         return max(1, min(total_i, int(top_k or 1)))
 
     @staticmethod
-    def _select_first_k_experts(total: int, top_k: int) -> List[int]:
-        total_i = max(1, int(total or 1))
-        top_k_i = MixtralDef._resolve_top_k(total_i, top_k)
-        return [int(e) for e in range(top_k_i)]
-
-    @staticmethod
-    def _plan_selected_expert_shards(selected_experts: List[int], tp_total: int) -> Dict[str, object]:
-        selected = [int(e) for e in (selected_experts or [])]
-        if not selected:
+    def _plan_expert_shards(expert_ids: List[int], tp_total: int) -> Dict[str, object]:
+        experts = [int(e) for e in (expert_ids or [])]
+        if not experts:
             return {
                 "tp_total": 1,
                 "tp_expert_ffn": 1,
@@ -1085,30 +1079,30 @@ class MixtralDef:
                 "shards_by_expert": {},
             }
 
-        top_k = len(selected)
+        expert_count = len(experts)
         tp_total_i = max(1, int(tp_total or 1))
 
-        if tp_total_i <= top_k:
+        if tp_total_i <= expert_count:
             experts_by_shard: List[List[int]] = [[] for _ in range(int(tp_total_i))]
             shards_by_expert: Dict[int, List[int]] = {}
-            for rank, e in enumerate(selected):
-                # When tp <= top-k, we only distribute selected experts across total shards.
+            for rank, e in enumerate(experts):
+                # When tp <= the expert count, distribute complete experts across shards.
                 # Each expert FFN itself stays unsplit.
-                shard = int((int(rank) * int(tp_total_i)) // int(top_k))
+                shard = int((int(rank) * int(tp_total_i)) // int(expert_count))
                 experts_by_shard[shard].append(int(e))
                 shards_by_expert[int(e)] = [int(shard)]
             tp_expert_ffn = 1
         else:
-            # When tp > top-k, each selected expert is split evenly into tp / top-k shards.
-            if (tp_total_i % top_k) != 0:
+            # When tp exceeds the expert count, split every expert evenly.
+            if (tp_total_i % expert_count) != 0:
                 raise ValueError(
-                    f"Invalid Mixtral tp={tp_total_i}: when tp > top_k, require tp%top_k==0 (top_k={top_k})."
+                    f"Invalid Mixtral tp={tp_total_i}: when tp exceeds the expert count, require tp%experts==0 (experts={expert_count})."
                 )
-            tp_expert_ffn = int(tp_total_i // top_k)
+            tp_expert_ffn = int(tp_total_i // expert_count)
             experts_by_shard = [[] for _ in range(int(tp_total_i))]
             shards_by_expert = {}
             gid = 0
-            for e in selected:
+            for e in experts:
                 shard_ids: List[int] = []
                 for _ in range(int(tp_expert_ffn)):
                     experts_by_shard[gid].append(int(e))
@@ -1124,7 +1118,7 @@ class MixtralDef:
         }
 
     @staticmethod
-    def _add_selected_expert_ffn(
+    def _add_expert_ffn(
         g: TaskGraph,
         *,
         l: int,
@@ -1146,10 +1140,11 @@ class MixtralDef:
         expert_base_attr = {
             **base_attr,
             "expert": int(e),
+            "expert_id": f"E{e}",
             "expert_rank": int(expert_rank),
-            "expert_active": True,
-            # Deterministic static simulation: selected experts are treated as fully used.
-            "moe_token_fraction": 1.0,
+            "placement_supernode": f"L{l}:expert:{e}",
+            "parallel_group_hint": f"L{l}:moe_experts",
+            "moe_route_source": "runtime",
             "tp_ffn": int(shard_count),
             "tp_expert_ffn": int(shard_count),
             "expert_shard_ids": [int(s) for s in shards],
@@ -1320,10 +1315,10 @@ class MixtralDef:
 
         experts = int(getattr(shape, "experts_per_layer", 1) or 1)
         top_k = self._resolve_top_k(experts, int(getattr(shape, "experts_top_k", 2) or 2))
-        selected_experts = self._select_first_k_experts(experts, top_k)
-        active_experts = int(len(selected_experts))
+        expert_ids = [int(expert_id) for expert_id in range(experts)]
+        active_experts = int(experts)
         setattr(shape, "active_experts_per_layer", int(active_experts))
-        setattr(shape, "moe_pruned_experts_per_layer", max(0, int(experts - active_experts)))
+        setattr(shape, "moe_pruned_experts_per_layer", 0)
 
         b = int(shape.batch)
         dim, ffn = int(shape.dim), int(shape.ffn_dim)
@@ -1334,7 +1329,7 @@ class MixtralDef:
 
         tp_qkv = int((cfg or {}).get('tp_qkv_effective', 1) or 1)
         tp_total = int((cfg or {}).get('tp_moe_total_effective', (cfg or {}).get('tp_moe_effective', 1) or 1) or 1)
-        shard_plan = self._plan_selected_expert_shards(selected_experts, tp_total)
+        shard_plan = self._plan_expert_shards(expert_ids, tp_total)
         tp_expert_ffn = int(shard_plan["tp_expert_ffn"])
         experts_by_shard = list(shard_plan["experts_by_shard"])
         shards_by_expert = dict(shard_plan["shards_by_expert"])
@@ -1363,10 +1358,11 @@ class MixtralDef:
                 "top_k": int(top_k),
                 "num_local_experts": int(experts),
                 "num_experts_per_tok": int(top_k),
-                "selected_experts": [int(e) for e in selected_experts],
-                "selected_experts_by_shard": [[int(e) for e in xs] for xs in experts_by_shard],
-                "router_kind": "topk_static_first_k",
-                "moe_selection_policy": "first_k",
+                "expert_ids": [int(e) for e in expert_ids],
+                "experts_by_shard": [[int(e) for e in xs] for xs in experts_by_shard],
+                "router_kind": "runtime_topk",
+                "moe_selection_policy": "runtime",
+                "moe_route_source": "runtime",
                 "moe_imbalance_factor": float(moe_imbalance),
                 "router_weight_size": int(router_weight_size),
                 "tp_qkv": int(tp_qkv),
@@ -1420,35 +1416,16 @@ class MixtralDef:
             g.add_node(TaskNode(nid_LN2, "LN", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("LN")))
             g.add_edge(nid_Add1, nid_LN2)
 
-            expert_outputs: Dict[int, str] = {}
-            for rank, e in enumerate(selected_experts):
-                expert_outputs[int(e)] = self._add_selected_expert_ffn(
-                    g,
-                    l=l,
-                    shape=shape,
-                    dtype_bytes=float(dtype_bytes),
-                    base_attr=base_attr,
-                    ln_nid=nid_LN2,
-                    expert_id=int(e),
-                    expert_rank=int(rank),
-                    shard_ids=[int(s) for s in shards_by_expert.get(int(e), [0])],
-                    cfg=cfg,
-                )
-
             nid_router = f"L{l}_Router"
             router_attr = {
                 **base_attr,
-                "experts": int(experts),
-                "active_experts": int(active_experts),
-                "top_k": int(top_k),
+                "op_role": "ROUTER",
+                "placement_supernode": nid_router,
+                "parallel_group_hint": None,
                 "router_experts": int(experts),
                 "local_experts": int(experts),
                 "local_active_experts": int(active_experts),
                 "local_top_k": float(top_k),
-                "tp": int(tp_total),
-                "tp_moe": int(tp_total),
-                "tp_moe_total": int(tp_total),
-                "tp_expert_ffn": int(tp_expert_ffn),
                 "router_replicated": False,
             }
             g.add_node(
@@ -1458,19 +1435,74 @@ class MixtralDef:
                     flops=0.0,
                     weight_id=f"L{l}_ROUTER_W",
                     weight_size=int(router_weight_size),
-                    attrs=_weight_attrs(router_attr, router_weight_elems, dtype_bytes),
+                    attrs=_weight_attrs(
+                        router_attr,
+                        router_weight_elems,
+                        dtype_bytes,
+                    ),
                     allowed=get_op_allowed("MoE_Router"),
                 )
             )
             g.add_edge(nid_LN2, nid_router)
-            for eid in selected_experts:
-                g.add_edge(expert_outputs[int(eid)], nid_router)
+
+            expert_outputs: Dict[int, str] = {}
+            for rank, expert_id in enumerate(expert_ids):
+                expert_outputs[expert_id] = self._add_expert_ffn(
+                    g,
+                    l=l,
+                    shape=shape,
+                    dtype_bytes=float(dtype_bytes),
+                    base_attr=base_attr,
+                    ln_nid=nid_router,
+                    expert_id=expert_id,
+                    expert_rank=rank,
+                    shard_ids=[
+                        int(shard)
+                        for shard in shards_by_expert.get(expert_id, [0])
+                    ],
+                    cfg=cfg,
+                )
+
+            nid_combine = f"L{l}_Combine"
+            combine_attr = {
+                **base_attr,
+                "op_role": "COMBINE",
+                "placement_supernode": nid_combine,
+                "parallel_group_hint": None,
+            }
+            g.add_node(
+                TaskNode(
+                    nid_combine,
+                    "MoE_Combine",
+                    flops=0.0,
+                    attrs=combine_attr,
+                    allowed=get_op_allowed("MoE_Combine"),
+                )
+            )
+            for expert_id in expert_ids:
+                g.add_edge(expert_outputs[expert_id], nid_combine)
 
             # Residual Add2
             nid_Add2 = f"L{l}_Add2"
             g.add_node(TaskNode(nid_Add2, "Add", flops=0.0, attrs=dict(base_attr), allowed=get_op_allowed("Add")))
             g.add_edge(nid_Add1, nid_Add2)
-            g.add_edge(nid_router, nid_Add2)
+            g.add_edge(nid_combine, nid_Add2)
+
+        total_repeats = int(shape.layer_num)
+        for node_id, node in g.nodes.items():
+            layer_index = int(node.attrs["layer"])
+            node.attrs["layer_index"] = layer_index
+            node.attrs["repeat_index"] = layer_index
+            node.attrs["total_repeats"] = total_repeats
+            node.attrs["block_id"] = f"layer:{layer_index}"
+            node.attrs["canonical_op_slot"] = node_id.removeprefix(
+                f"L{layer_index}_"
+            ).lower()
+            node.attrs.setdefault("placement_supernode", node_id)
+            node.attrs.setdefault("parallel_group_hint", None)
+            if (cfg or {}).get("moe_control_timing") == "analytic_npu" and node.name.upper() in {"MOE_ROUTER", "MOE_COMBINE"}:
+                node.allowed = {"cpu": False, "npu": True, "pim": False}
+                node.attrs["timing_source"] = "analytic_moe_control"
 
         return g
 

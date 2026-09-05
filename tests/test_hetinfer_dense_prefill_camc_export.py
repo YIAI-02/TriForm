@@ -21,7 +21,7 @@ from hetinfer_dense_prefill_camc_export import (  # noqa: E402
     build_dense_prefill_camc_bundle,
     export_dense_prefill_camc_bundle,
 )
-from hetinfer_prior import DOPSPriorArtifact  # noqa: E402
+from hetinfer_prior import DOPSPriorArtifact, validate_prior_artifact  # noqa: E402
 
 
 def _op_id(layer_index: int, slot: str) -> str:
@@ -101,7 +101,7 @@ def _operator_role(slot: str) -> str:
     }[slot]
 
 
-def _artifacts() -> tuple[DOPSPriorArtifact, dict, dict, dict]:
+def _artifacts() -> tuple[DOPSPriorArtifact, dict, dict, dict, dict]:
     network_operators = []
     prior_operators = []
     legal_devices: dict[str, tuple[str, ...]] = {}
@@ -208,6 +208,8 @@ def _artifacts() -> tuple[DOPSPriorArtifact, dict, dict, dict]:
             }
         )
     network_operators.extend(globals_)
+    for operator_index, operator in enumerate(network_operators):
+        operator["operator_index"] = operator_index
 
     decode_id = "decode:2:only"
     prior_operators.append(
@@ -215,22 +217,70 @@ def _artifacts() -> tuple[DOPSPriorArtifact, dict, dict, dict]:
     )
     legal_devices[decode_id] = ("PIM0",)
     placement[decode_id] = "PIM0"
+    inputs = []
+    legal_routes = []
+    movement_times = []
+    for operator in prior_operators:
+        op_id = operator["op_id"]
+        producers = operator["dependencies"] or [None]
+        for input_index, producer in enumerate(producers):
+            tensor_id = f"{producer or 'external'}->{op_id}:{input_index}"
+            input_entry = {
+                "consumer_op_id": op_id,
+                "producer_op_id": producer,
+                "tensor_id": tensor_id,
+                "semantics": "data",
+                "bytes": 16,
+                "source_residencies": [
+                    {"device_id": "Ascend_910B_NPU0", "layout": "row_major"}
+                ],
+                "destination_devices": list(legal_devices[op_id]),
+            }
+            inputs.append(input_entry)
+            for destination in input_entry["destination_devices"]:
+                route = {
+                    "tensor_id": tensor_id,
+                    "source_device_id": "Ascend_910B_NPU0",
+                    "destination_device_id": destination,
+                    "bytes": 16,
+                    "layout": "row_major",
+                }
+                legal_routes.append(route)
+                movement_times.append(
+                    {
+                        **route,
+                        "duration_s": (
+                            0.0 if destination == "Ascend_910B_NPU0" else 0.001
+                        ),
+                    }
+                )
     prior_payload = {
+        "schema": "dops.hetinfer_prior.v1",
+        "schema_version": 1,
         "graph_id": GRAPH_ID,
         "workload_id": WORKLOAD_ID,
+        "time_unit": "seconds",
+        "devices": [
+            {"device_id": "CPU0"},
+            {"device_id": "Ascend_910B_NPU0"},
+            {"device_id": "PIM0"},
+        ],
         "operators": prior_operators,
+        "inputs": inputs,
+        "collective_contexts": [],
+        "legal_movement_routes": legal_routes,
+        "expert_placement": [
+            {"op_id": op_id, "device_id": device_id}
+            for op_id, device_id in placement.items()
+        ],
+        "t_service": [
+            {"op_id": op_id, "device_id": device_id, "duration_s": 0.001}
+            for op_id, devices in legal_devices.items()
+            for device_id in devices
+        ],
+        "t_move": movement_times,
     }
-    prior = DOPSPriorArtifact(
-        payload=prior_payload,
-        device_ids=("CPU0", "Ascend_910B_NPU0", "PIM0"),
-        operator_ids=tuple(operator["op_id"] for operator in prior_operators),
-        legal_devices=legal_devices,
-        inputs=(),
-        collective_contexts={},
-        placement=placement,
-        service_times={},
-        movement_times={},
-    )
+    prior = validate_prior_artifact(prior_payload)
     network = {
         "schema": "dops.hetinfer_network.v1",
         "schema_version": 1,
@@ -239,10 +289,20 @@ def _artifacts() -> tuple[DOPSPriorArtifact, dict, dict, dict]:
                 "graph_id": GRAPH_ID,
                 "workload_id": WORKLOAD_ID,
                 "phase": "prefill",
+                "schedule_call_index": 0,
+                "policy_devices": ["Ascend_910B_NPU0", "PIM0", "PIM1"],
+                "device_memory_bytes": {
+                    "Ascend_910B_NPU0": 1024,
+                    "PIM0": 1024,
+                    "PIM1": 1024,
+                },
                 "workload": {
                     "batch": 1,
                     "sequence_length": 128,
+                    "past_kv_len": 0,
+                    "query_len": 128,
                     "scheduled_tokens": 128,
+                    "mean_context": 128.0,
                 },
                 "operators": network_operators,
             },
@@ -285,23 +345,39 @@ def _artifacts() -> tuple[DOPSPriorArtifact, dict, dict, dict]:
             ]
         }
     }
-    return prior, network, bindings, hardware
+    measured_capabilities = {
+        "NPU": {
+            "effective_compute_flops_per_s": 1234.0,
+            "effective_bandwidth_bytes_per_s": 2345.0,
+            "queue_count": 1,
+        },
+        "PIM": {
+            "effective_compute_flops_per_s": 3456.0,
+            "effective_bandwidth_bytes_per_s": 4567.0,
+            "queue_count": 1,
+        },
+    }
+    return prior, network, bindings, hardware, measured_capabilities
 
 
 class DensePrefillCAMCExportTests(unittest.TestCase):
     def test_projects_true_28_layer_prefill_and_excludes_source_cpu(self) -> None:
-        prior, network, bindings, hardware = _artifacts()
+        prior, network, bindings, hardware, measured = _artifacts()
 
-        projected_network, projected_bindings, profile = (
-            build_dense_prefill_camc_bundle(
-                prior_artifact=prior,
-                network_manifest=network,
-                tensor_bindings=bindings,
-                hardware=hardware,
-            )
+        payloads = build_dense_prefill_camc_bundle(
+            prior_artifact=prior,
+            network_manifest=network,
+            tensor_bindings=bindings,
+            hardware=hardware,
+            measured_domain_capabilities=measured,
         )
+        projected_network = payloads["network"]
+        projected_bindings = payloads["tensor_bindings"]
+        profile = payloads["camc_profile"]
 
         self.assertEqual(len(network["networks"]), 2)
+        self.assertEqual(len(payloads["prior"]["operators"]), 479)
+        self.assertEqual(len(payloads["layer_spec"]["layers"]), 1)
         self.assertEqual(len(projected_network["networks"]), 1)
         operators = projected_network["networks"][0]["operators"]
         self.assertEqual(len(operators), 479)
@@ -336,11 +412,11 @@ class DensePrefillCAMCExportTests(unittest.TestCase):
         self.assertEqual(nodes[_op_id(0, "qk")]["kv_home"], "PIM0")
         self.assertEqual(
             layer["domain_capabilities"]["NPU"]["effective_compute_flops_per_s"],
-            280e12,
+            1234.0,
         )
 
     def test_rejects_a_network_that_is_not_28_complete_layers(self) -> None:
-        prior, network, bindings, hardware = _artifacts()
+        prior, network, bindings, hardware, measured = _artifacts()
         invalid = copy.deepcopy(network)
         invalid["networks"][0]["operators"] = [
             operator for operator in invalid["networks"][0]["operators"]
@@ -353,10 +429,11 @@ class DensePrefillCAMCExportTests(unittest.TestCase):
                 network_manifest=invalid,
                 tensor_bindings=bindings,
                 hardware=hardware,
+                measured_domain_capabilities=measured,
             )
 
     def test_rejects_wrong_dense_dependency_contract(self) -> None:
-        prior, network, bindings, hardware = _artifacts()
+        prior, network, bindings, hardware, measured = _artifacts()
         invalid = copy.deepcopy(network)
         qk = next(
             operator
@@ -371,23 +448,27 @@ class DensePrefillCAMCExportTests(unittest.TestCase):
                 network_manifest=invalid,
                 tensor_bindings=bindings,
                 hardware=hardware,
+                measured_domain_capabilities=measured,
             )
 
     def test_export_writes_only_projected_inputs_and_profile(self) -> None:
-        prior, network, bindings, hardware = _artifacts()
+        prior, network, bindings, hardware, measured = _artifacts()
         with tempfile.TemporaryDirectory() as tmp:
             outputs = export_dense_prefill_camc_bundle(
                 prior_artifact=prior,
                 network_manifest=network,
                 tensor_bindings=bindings,
                 hardware=hardware,
+                measured_domain_capabilities=measured,
                 output_dir=tmp,
             )
 
             self.assertEqual(
-                set(outputs), {"network", "tensor_bindings", "camc_profile"}
+                set(outputs), {"prior", "network", "tensor_bindings", "layer_spec", "camc_profile"}
             )
-            self.assertFalse((Path(tmp) / "prior.json").exists())
+            self.assertTrue((Path(tmp) / "prior.json").is_file())
+            exported_prior = validate_prior_artifact(json.loads(outputs["prior"].read_text()))
+            self.assertEqual(len(exported_prior.operator_ids), 479)
             self.assertEqual(
                 len(json.loads(outputs["network"].read_text())["networks"]), 1
             )

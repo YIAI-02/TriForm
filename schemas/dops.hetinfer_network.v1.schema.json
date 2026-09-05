@@ -43,11 +43,21 @@
           "workload": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["batch", "scheduled_tokens", "mean_context"],
+            "required": [
+              "batch",
+              "sequence_length",
+              "past_kv_len",
+              "query_len",
+              "scheduled_tokens",
+              "mean_context"
+            ],
             "properties": {
               "batch": {"type": "integer", "minimum": 1},
-              "scheduled_tokens": {"type": "integer", "minimum": 0},
-              "mean_context": {"type": "number", "minimum": 0}
+              "sequence_length": {"type": "integer", "minimum": 1},
+              "past_kv_len": {"type": "integer", "minimum": 0},
+              "query_len": {"type": "integer", "minimum": 1},
+              "scheduled_tokens": {"type": "integer", "minimum": 1},
+              "mean_context": {"type": "number", "exclusiveMinimum": 0}
             }
           },
           "device_memory_bytes": {
@@ -72,7 +82,10 @@
                 "block_type",
                 "block_id",
                 "repeat_index",
-                "total_repeats"
+                "total_repeats",
+                "layer_index",
+                "canonical_op_slot",
+                "operator_index"
               ],
               "properties": {
                 "op_id": {"type": "string", "minLength": 1},
@@ -85,15 +98,27 @@
                   "enum": [
                     "LAYERNORM", "Q_PROJ", "K_PROJ", "V_PROJ", "KV_WRITE",
                     "QK", "SOFTMAX", "SV", "O_PROJ", "FFN_UP", "ACTIVATION",
-                    "FFN_DOWN", "ROUTER", "EXPERT", "COLLECTIVE", "COPY", "OTHER"
+                    "FFN_DOWN", "ROUTER", "EXPERT", "COMBINE",
+                    "CANDIDATE_TRANSFER", "COLLECTIVE", "COPY", "OTHER"
                   ]
                 },
                 "block_type": {
-                  "enum": ["DENSE_BLOCK", "MOE_BLOCK", "SPECIAL_ATTENTION_BLOCK", "OTHER"]
+                  "enum": [
+                    "DENSE_BLOCK", "MOE_BLOCK", "SD_COMPONENT",
+                    "SPECIAL_ATTENTION_BLOCK", "OTHER"
+                  ]
                 },
                 "block_id": {"type": "string", "minLength": 1},
                 "repeat_index": {"type": "integer", "minimum": 0},
-                "total_repeats": {"type": "integer", "minimum": 1}
+                "total_repeats": {"type": "integer", "minimum": 1},
+                "layer_index": {
+                  "anyOf": [
+                    {"type": "integer", "minimum": 0},
+                    {"type": "null"}
+                  ]
+                },
+                "canonical_op_slot": {"type": "string", "minLength": 1},
+                "operator_index": {"type": "integer", "minimum": 0}
               }
             }
           }

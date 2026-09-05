@@ -34,6 +34,8 @@ workspace_root="$(cd "${repo_root}/.." && pwd)"
 het_infer_source="${HET_INFER_SOURCE_ROOT:-${workspace_root}/current}"
 sidecar_root="${het_infer_source}/artifacts/full_qwen_1p8b/sidecars/b1-p128-h128"
 output_dir="${CAMC_OUTPUT_DIR:-${repo_root}/output/full_qwen_1p8b/camc/b1-p128-h128/prefill}"
+measured_capabilities="${CAMC_MEASURED_DOMAIN_CAPABILITIES:?set CAMC_MEASURED_DOMAIN_CAPABILITIES to a measured capability JSON file}"
+test -f "${measured_capabilities}"
 
 cd "${repo_root}"
 PYTHONPATH="${repo_root}/src" "${python_bin}" -m pytest -q \
@@ -45,6 +47,7 @@ PYTHONPATH="${repo_root}/src" "${python_bin}" -m pytest -q \
   --network "${sidecar_root}/network.json" \
   --tensor-bindings "${sidecar_root}/tensor_bindings.json" \
   --hardware "${repo_root}/src/examples/hardware_1npu_2aim.json" \
+  --measured-domain-capabilities "${measured_capabilities}" \
   --output-dir "${output_dir}"
 
 printf 'source_prior=%s\n' "${sidecar_root}/prior.json"
