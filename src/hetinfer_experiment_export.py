@@ -326,7 +326,7 @@ def build_experiment_bundle(config_path: Path) -> Path:
                        tensor_bindings=bindings, layer_spec=spec, output_dir=bundle)
     _write(bundle / "experiment.json", {
         "model": cfg["model_family"], "layer_count": int(shape.layer_num),
-        "batch": cfg["batch"], "prefill": cfg["prefill_len"], "decode_rounds": 32,
+        "batch": cfg["batch"], "prefill": cfg["prefill_len"], "decode_rounds": int(cfg["decode_len"]),
         "weights": weight_catalog, "operators": metadata,
         "weight_backing_store": "CPU0", "weight_capacity_ratio": 0.95,
         "weight_capacity_bytes": {device: int(cluster.devices[device].mem_capacity_GB
